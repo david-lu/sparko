@@ -3,18 +3,19 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Clapperboard, Minus, Plus, SkipBack, SkipForward } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, Thumbnail } from '../../media/media';
-import type { Interstitial } from '../../../shared/interstitials';
+import { isGenerating, playableResult, type Interstitial } from '../../../shared/interstitials';
 import type { TimelineComposition } from '../../media/TimelineComposition';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import ResizeHandle from '../../shared/ResizeHandle';
 import InterstitialMarker from './InterstitialMarker';
+import { phaseLabel } from '../interstitials/status';
 
 const MAX_ZOOM = 32;
 export default function Timeline({ name, info, thumbnails, interstitials, selectedId, composition, time, duration, buffered, selection, height, maxHeight, onHeight, onAddInterstitial, onMoveInterstitial, onRemoveInterstitial, onSelectInterstitial, onSeek }: {
   name: string; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[]; selectedId: string | null; composition: TimelineComposition | null; time: number; duration: number;
   buffered: { start: number; end: number }[]; selection: Slice | null; height: number; maxHeight: number;
   onHeight: (height: number) => void; onAddInterstitial: () => void; onMoveInterstitial: (id: string, time: number) => void;
-  onRemoveInterstitial: (id: string) => void; onSelectInterstitial: (id: string | null) => void; onSeek: (time: number) => void;
+  onRemoveInterstitial: (id: string) => void; onSelectInterstitial: (id: string | null, time?: number) => void; onSeek: (time: number) => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
@@ -72,7 +73,7 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
 
   return <div className="timeline-section" ref={section} style={{ height }}>
     <ResizeHandle orientation="horizontal" label="Resize timeline" value={height} min={118} max={maxHeight} onChange={onHeight} />
-    <div className="timeline-heading"><span className="eyebrow">TIMELINE <span className="subtle">/ {interstitials.filter(item => item.phase === 'ready').length} INTERSTITIALS</span></span>
+    <div className="timeline-heading"><span className="eyebrow">TIMELINE <span className="subtle">/ {interstitials.filter(item => playableResult(item)).length} INTERSTITIALS</span></span>
       <div className="timeline-actions">
         <div className="timeline-zoom" role="group" aria-label="Timeline zoom">
           <button className="icon-button small" aria-label="Zoom out timeline" title="Zoom out" disabled={zoom <= 1 || !duration} onClick={() => zoomAtPlayhead(zoom / 1.5)}><Minus size={13} /></button>
@@ -99,8 +100,18 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
           {selection && duration > 0 && selection.end > selection.start && <div className="selection-overlay" style={{ left: `${(composition?.timelineTime(selection.start) ?? selection.start) / duration * 100}%`, width: `${((composition?.timelineTime(selection.end) ?? selection.end) - (composition?.timelineTime(selection.start) ?? selection.start)) / duration * 100}%` }} />}
           <div className="buffer-track" aria-hidden="true">{buffered.map((range, index) => <span key={index} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }} />)}</div>
           <input className="timeline-input" type="range" aria-label="Video timeline" aria-valuetext={`${formatTime(time)} of ${formatTime(duration)}`} min="0" max={duration || 1} step={1 / TIMELINE_FPS} value={Math.min(time, duration || 1)} disabled={!duration} onChange={event => onSeek(Number(event.target.value))} />
-          {composition?.segments.filter(segment => segment.kind === 'interstitial').map(segment => <button key={segment.id} className={`rendered-interstitial ${selectedId === segment.id ? 'selected' : ''}`} aria-label={`Select rendered ${segment.label}`} title={`${segment.label} · ${((segment.endFrame - segment.startFrame) / composition.fps).toFixed(2)}s`}
-            style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }} onClick={() => onSelectInterstitial(segment.id)}><Clapperboard size={12} /><span>{segment.label}</span></button>)}
+          {composition?.segments.filter(segment => segment.kind === 'interstitial').map(segment => {
+            const item = interstitials.find(item => item.id === segment.id);
+            const busy = item && isGenerating(item);
+            return <button key={segment.id} className={`rendered-interstitial ${selectedId === segment.id ? 'selected' : ''} ${busy ? 'generating' : ''}`} aria-label={`Select rendered ${segment.label}`} title={`${segment.label} · ${busy ? phaseLabel(item) : `${((segment.endFrame - segment.startFrame) / composition.fps).toFixed(2)}s`}`}
+            style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }} onClick={event => {
+              const rect = track.current?.getBoundingClientRect();
+              // Keyboard selection uses the anchor; pointer clicks seek within the expanded timeline.
+              if (event.detail === 0 || !rect?.width) { onSelectInterstitial(segment.id); return; }
+              const frame = Math.round((event.clientX - rect.left) / rect.width * duration * composition.fps);
+              onSelectInterstitial(segment.id, Math.max(segment.startFrame, Math.min(segment.endFrame - 1, frame)) / composition.fps);
+            }}>{busy ? <span className="spinner timeline-generation-spinner" role="status" aria-label={`${segment.label}: ${phaseLabel(item)}`} /> : <Clapperboard size={12} />}<span>{segment.label}</span></button>;
+          })}
           <div className="playhead" style={{ left: `${progress}%` }} aria-hidden="true"><span /></div>
           {duration > 0 && markers.filter(item => item.time <= duration).map((item, index) => <InterstitialMarker key={item.id} pin={item} selected={selectedId === item.id} number={index + 1} duration={duration} fps={TIMELINE_FPS} track={track} viewport={viewport} onMove={onMoveInterstitial} onRemove={onRemoveInterstitial} onSelect={onSelectInterstitial} />)}
         </div>

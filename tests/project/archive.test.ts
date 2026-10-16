@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { packProject, unpackProject } from '../../src/features/project/archive';
 import { emptyAnalysis, type Asset, type Project } from '../../src/features/project/types';
+import { hasUnsubmittedChanges, interstitialSettings } from '../../shared/interstitials';
 
 const sourceId = crypto.randomUUID(), sceneId = crypto.randomUUID(), subtitleId = crypto.randomUUID();
 const project: Project = { id: 'old-project', name: 'A project', updatedAt: 123, source: { name: 'source.mp4', assetId: sourceId, url: 'https://example.com/source.mp4' },
   subtitle: { name: 'subtitles.vtt', assetId: subtitleId }, analysis: { ...emptyAnalysis(), instructions: 'Describe the scene' },
   interstitials: [
-    { id: 'draft', label: 'Opening', time: 4, start_range: 2, end_range: 3, prompt: 'A new scene', phase: 'draft' },
-    { id: 'ready', label: 'Finished', time: 8, start_range: 2, end_range: 2, prompt: 'A forest', phase: 'ready', result: { url: 'https://fal.media/private-url.mp4', assetId: sceneId, start: 2, duration: 5, totalDuration: 9 } },
+    { id: 'draft', label: 'Opening', time: 4, start_range: 2, end_range: 3, duration: 7.5, enable_prompt_expansion: true, prompt: 'A new scene', phase: 'draft' },
+    { id: 'ready', label: 'Finished', time: 8, start_range: 2, end_range: 2, duration: 6, enable_prompt_expansion: false, prompt: 'A forest', phase: 'ready', result: { url: 'https://fal.media/private-url.mp4', assetId: sceneId, start: 2, duration: 5, totalDuration: 9 } },
   ],
 };
 const media: Asset[] = [
@@ -48,6 +49,7 @@ describe('portable project archives', () => {
     const restored = await unpackProject(blob, signal(), progress);
     expect(restored.project.id).not.toBe(project.id);
     expect(restored.project.interstitials[0]).toEqual(project.interstitials[0]);
+    expect(restored.project.interstitials.map(item => item.enable_prompt_expansion)).toEqual([true, false]);
     expect(restored.project.interstitials[1].result).toMatchObject({ start: 2, duration: 5, totalDuration: 9 });
     expect(restored.project.source.assetId).not.toBe(sourceId);
     expect(restored.assets.map(asset => asset.id)).toContain(restored.project.source.assetId);
@@ -58,6 +60,24 @@ describe('portable project archives', () => {
     await expect(unpackProject(await rewrite(blob, () => {}, `assets/${sceneId}`), signal(), progress)).rejects.toThrow(/missing|duplicate/i);
     await expect(unpackProject(await rewrite(blob, value => { value.version = 99; }), signal(), progress)).rejects.toThrow(/version/);
     await expect(unpackProject(await rewrite(blob, value => { value.project.interstitials[1].result.start = 100; }), signal(), progress)).rejects.toThrow(/boundaries/);
+    await expect(unpackProject(await rewrite(blob, value => { value.project.interstitials[0].duration = 14; }), signal(), progress)).rejects.toThrow(/metadata/);
+    await expect(unpackProject(await rewrite(blob, value => { value.project.interstitials[0].enable_prompt_expansion = 'false'; }), signal(), progress)).rejects.toThrow(/metadata/);
+  });
+  it('opens older archives with default duration and prompt expansion settings', async () => {
+    const blob = await packProject(project, media, signal(), progress);
+    const legacy = await rewrite(blob, value => { for (const item of value.project.interstitials) { delete item.duration; delete item.enable_prompt_expansion; } });
+    const restored = await unpackProject(legacy, signal(), progress);
+    expect(restored.project.interstitials.map(item => item.duration)).toEqual([6, 6]);
+    expect(restored.project.interstitials.map(item => item.enable_prompt_expansion)).toEqual([false, false]);
+  });
+  it('preserves submitted settings separately from edits made after generation', async () => {
+    const snapshot = structuredClone(project);
+    const item = snapshot.interstitials[1];
+    item.generationSettings = interstitialSettings(item);
+    item.prompt = 'An updated scene'; item.duration = 8; item.enable_prompt_expansion = true;
+    const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
+    expect(restored.project.interstitials[1]).toMatchObject({ prompt: item.prompt, duration: 8, enable_prompt_expansion: true, generationSettings: item.generationSettings });
+    expect(hasUnsubmittedChanges(restored.project.interstitials[1])).toBe(true);
   });
   it('rejects corrupt asset bytes instead of silently importing them', async () => {
     const blob = await packProject(project, media, signal(), progress);
@@ -73,6 +93,20 @@ describe('portable project archives', () => {
     const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
     expect(restored.project.interstitials[0].phase).toBe('draft');
     expect(restored.project.interstitials[2]).toMatchObject({ phase: 'queued', requestId: 'pending-job-1234' });
+  });
+  it.each(['queued', 'error', 'cancelled', 'preparing'] as const)('includes the playable video while its replacement is %s', async phase => {
+    const snapshot = structuredClone(project);
+    const item = snapshot.interstitials[1];
+    item.previousResult = item.result; item.result = undefined; item.phase = phase; item.requestId = 'replacement-job-1234';
+    const blob = await packProject(snapshot, media, signal(), progress);
+    const restored = await unpackProject(blob, signal(), progress);
+    const retained = restored.project.interstitials[1];
+    expect(retained).toMatchObject({ phase: phase === 'preparing' ? 'draft' : phase, requestId: item.requestId, result: undefined });
+    expect(retained.previousResult).toMatchObject({ start: 2, duration: 5, totalDuration: 9 });
+    expect(retained.previousResult!.assetId).not.toBe(sceneId);
+    expect(retained.previousResult!.url).toBe(`asset:${retained.previousResult!.assetId}`);
+    expect(await restored.assets.find(asset => asset.id === retained.previousResult!.assetId)!.blob.arrayBuffer()).toEqual(await media[1].blob.arrayBuffer());
+    await expect(packProject(snapshot, media.filter(asset => asset.id !== sceneId), signal(), progress)).rejects.toThrow(/missing/);
   });
   it('supports cancelling export and import', async () => {
     const abort = new AbortController(); abort.abort();

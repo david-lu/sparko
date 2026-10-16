@@ -1,5 +1,6 @@
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { z } from 'zod';
+import { INTERSTITIAL } from '../../../shared/constants';
 import { assetIds, type Asset, type Project } from './types';
 
 const MAX_BYTES = 8 * 1024 ** 3;
@@ -8,14 +9,19 @@ const number = z.number().finite().nonnegative();
 const text = z.string().max(50_000);
 const resultSchema = z.object({ url: text, assetId: z.uuid(), start: number, duration: number.positive(), totalDuration: number.positive() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
+const settingsSchema = z.object({
+  start_range: number.max(4), end_range: number.max(4), prompt: text,
+  duration: number.min(INTERSTITIAL.minDuration).max(INTERSTITIAL.maxDuration).default(INTERSTITIAL.defaultDuration),
+  enable_prompt_expansion: z.boolean().default(INTERSTITIAL.enablePromptExpansion),
+});
 const projectSchema = z.object({
   id: text, name: z.string().min(1).max(1000), updatedAt: number,
   source: z.object({ name: z.string().min(1).max(1000), assetId: z.uuid(), originalAssetId: z.uuid().optional() }),
   interstitials: z.array(z.object({
     id: z.string().min(1).max(200), label: z.string().max(1000), time: number,
-    start_range: number.max(4), end_range: number.max(4), prompt: text,
+    ...settingsSchema.shape, generationSettings: settingsSchema.optional(),
     phase: z.enum(['draft', 'preparing', 'uploading', 'queued', 'rendering', 'loading', 'ready', 'error', 'cancelled']),
-    requestId: z.string().regex(/^[A-Za-z0-9_-]{8,128}$/).optional(), result: resultSchema.optional(), error: text.optional(),
+    requestId: z.string().regex(/^[A-Za-z0-9_-]{8,128}$/).optional(), result: resultSchema.optional(), previousResult: resultSchema.optional(), error: text.optional(),
   })).max(1000).refine(items => new Set(items.map(item => item.id)).size === items.length, 'Duplicate interstitial IDs.')
     .refine(items => items.every(item => item.phase !== 'ready' || item.result), 'A completed interstitial is missing its media.'),
   subtitle: z.object({ name: text, assetId: z.uuid() }).nullable(),
@@ -30,7 +36,10 @@ type Progress = (message: string, fraction: number) => void;
 
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
   const manifest = manifestSchema.parse({ format: 'sparko-project', version: 1, project: {
-    ...project, interstitials: project.interstitials.map(item => ({ ...item, result: item.result ? { ...item.result, url: `asset:${item.result.assetId}` } : undefined })),
+    ...project, interstitials: project.interstitials.map(item => ({ ...item,
+      result: item.result ? { ...item.result, url: `asset:${item.result.assetId}` } : undefined,
+      previousResult: item.previousResult ? { ...item.previousResult, url: `asset:${item.previousResult.assetId}` } : undefined,
+    })),
   }, assets: assets.map(asset => ({ id: asset.id, name: asset.name, mime: asset.blob.type, size: asset.blob.size })) });
   const total = assets.reduce((sum, asset) => sum + asset.blob.size, 0);
   if (total > MAX_BYTES) throw new Error('Project files currently support up to 8 GB of media.');
@@ -94,6 +103,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
       interstitials: project.interstitials.map(item => ({ ...item,
         phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase,
         result: item.result ? { ...item.result, assetId: remap.get(item.result.assetId)!, url: `asset:${remap.get(item.result.assetId)}` } : undefined,
+        previousResult: item.previousResult ? { ...item.previousResult, assetId: remap.get(item.previousResult.assetId)!, url: `asset:${remap.get(item.previousResult.assetId)}` } : undefined,
       })),
     }, assets };
   } finally { await reader.close(); }

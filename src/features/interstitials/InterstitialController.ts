@@ -1,5 +1,5 @@
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
-import { frameTime, isGenerating, type Interstitial } from '../../../shared/interstitials';
+import { frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, playableResult, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from './api';
@@ -31,7 +31,11 @@ export class InterstitialController {
   }
   load(sourceId: string, items?: Interstitial[]) {
     this.dispose(); this.sourceId = sourceId;
-    this.update({ items: items ?? loadInterstitials(sourceId), selectedId: null, error: null });
+    this.update({ items: (items ?? loadInterstitials(sourceId)).map(item => {
+      const restored = { ...item, duration: item.duration ?? INTERSTITIAL.defaultDuration,
+        enable_prompt_expansion: item.enable_prompt_expansion ?? INTERSTITIAL.enablePromptExpansion };
+      return { ...restored, generationSettings: item.generationSettings ?? (item.result || item.requestId ? interstitialSettings(restored) : undefined) };
+    }), selectedId: null, error: null });
     for (const item of this.state.items) if (['queued', 'rendering', 'loading', 'ready'].includes(item.phase)) void this.resume(item.id);
   }
   select(id: string | null) { this.update({ selectedId: id }); }
@@ -43,7 +47,8 @@ export class InterstitialController {
     if (existing) { this.select(existing.id); return existing; }
     const number = Math.max(0, ...this.state.items.map(item => Number(item.label.match(/^Interstitial (\d+)$/)?.[1]) || 0)) + 1;
     const item: Interstitial = { id: crypto.randomUUID(), label: `Interstitial ${number}`, time: anchor,
-      start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, prompt: '', phase: 'draft' };
+      start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
+      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, prompt: '', phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
     return item;
   }
@@ -51,16 +56,25 @@ export class InterstitialController {
     const item = this.state.items.find(item => item.id === id);
     if (item && !isGenerating(item) && Number.isFinite(time) && time >= 0) this.patch(id, { time: frameTime(time, TIMELINE_FPS) });
   }
-  edit(id: string, values: Partial<Pick<Interstitial, 'start_range' | 'end_range' | 'prompt'>>) {
+  edit(id: string, values: Partial<InterstitialSettings>) {
     const item = this.state.items.find(item => item.id === id);
-    if (item && !isGenerating(item) && item.phase !== 'ready' && !item.requestId) this.patch(id, { ...values, phase: 'draft', error: undefined });
+    // The editor always stays usable. Jobs and media retain the inputs they were submitted with.
+    if (item) this.patch(id, values);
   }
   async generate(id: string, engine: MediaEngine, info: MediaInfo) {
     const item = this.state.items.find(item => item.id === id);
-    if (!item || isGenerating(item) || item.requestId || item.result || this.tasks.has(id)) return;
+    if (!item || isGenerating(item) || this.tasks.has(id)) return;
+    // An unchanged scene that only failed to download can reuse its existing render.
+    if (item.result && item.phase !== 'ready' && !hasUnsubmittedChanges(item)) return this.resume(id);
     const operation = new AbortController(); this.tasks.set(id, operation);
-    this.patch(id, { phase: 'preparing', error: undefined, requestId: undefined, result: undefined, progress: 0 });
+    this.patch(id, { phase: 'preparing', error: undefined, progress: 0, queuePosition: undefined,
+      previousResult: playableResult(item), result: undefined, requestId: item.phase === 'ready' ? undefined : item.requestId,
+      generationSettings: interstitialSettings(item) });
     try {
+      // A failed status request may still belong to an active job. Retire it before resubmitting.
+      if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId);
+      operation.signal.throwIfAborted();
+      this.patch(id, { requestId: undefined, result: undefined });
       const job = await generateInterstitial(item, engine, info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });
@@ -81,7 +95,7 @@ export class InterstitialController {
       this.patch(id, { phase: item.result ? 'loading' : 'queued', error: undefined });
       if (item.result) await this.loadResult(id, item.result, operation.signal);
       else if (item.requestId) await this.poll(id, item.requestId, operation.signal);
-      else throw new Error('No generation job was saved. Return to draft and generate again.');
+      else throw new Error('No generation job was saved. Retry to generate the scene.');
     } catch (error) { this.fail(id, operation, error); }
     finally { if (this.tasks.get(id) === operation) this.tasks.delete(id); }
   }
@@ -117,7 +131,7 @@ export class InterstitialController {
       const info = await media.inspect();
       signal.throwIfAborted();
       if (result.start < 0 || result.duration <= 0 || result.start + result.duration > info.duration + 1 / info.fps) throw new Error('The returned video does not contain the full interstitial.');
-      this.patch(id, { phase: 'ready', error: undefined });
+      this.patch(id, { phase: 'ready', result, previousResult: undefined, error: undefined });
     } finally { signal.removeEventListener('abort', abort); media.dispose(); }
   }
   async cancel(id: string) {
@@ -133,12 +147,6 @@ export class InterstitialController {
       if (source === this.sourceId) this.patch(id, { phase: 'error', error: `Could not cancel the remote job. ${error instanceof Error ? error.message : ''}` });
       return false;
     }
-  }
-  async reset(id: string) {
-    const source = this.sourceId, item = this.state.items.find(item => item.id === id);
-    if (!item || isGenerating(item)) return;
-    if (item.requestId && !item.result && item.phase !== 'cancelled' && !await this.cancel(id)) return;
-    if (source === this.sourceId) this.patch(id, { phase: 'draft', result: undefined, requestId: undefined, error: undefined });
   }
   async remove(id: string) {
     const source = this.sourceId, item = this.state.items.find(item => item.id === id);

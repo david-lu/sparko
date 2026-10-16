@@ -13,6 +13,9 @@ const schema = z.object({
   start: z.coerce.number().finite().min(INTERSTITIAL.minStartRange).max(INTERSTITIAL.maxRange + 0.1),
   resume: z.coerce.number().finite().positive(), fps: z.coerce.number().refine(value => value === INTERSTITIAL.referenceFps, 'Prepare the reference at 24 fps. Refresh the app and try again.'),
   prompt: z.string().trim().min(1, 'Describe the interstitial before generating.').max(4000),
+  duration: z.coerce.number().finite().min(INTERSTITIAL.minDuration).max(INTERSTITIAL.maxDuration).default(INTERSTITIAL.defaultDuration),
+  enable_prompt_expansion: z.preprocess(value => value === 'true' ? true : value === 'false' ? false : value,
+    z.boolean().default(INTERSTITIAL.enablePromptExpansion)),
 }).refine(value => Math.abs(value.start * INTERSTITIAL.referenceFps - Math.round(value.start * INTERSTITIAL.referenceFps)) < 1e-6
   && Math.abs(value.resume - referenceResumeTime(value.start)) < 1e-6,
   'Reference insertion must span at least one frame on fal.ai\'s 24 fps timeline. Refresh the app and prepare the reference again.');
@@ -27,8 +30,8 @@ export function addInterstitialRoutes(app: Express, providers: Pick<Providers, '
     const videoUrl = await providers.falUpload(file);
     if (res.destroyed) return;
     const requestId = await providers.falSubmit({ video_url: videoUrl, start_time: input.start, resume_time: input.resume,
-      prompt: input.prompt, duration: INTERSTITIAL.generatedSeconds, resolution: INTERSTITIAL.resolution,
-      enable_prompt_expansion: true, color_match: true });
+      prompt: input.prompt, duration: input.duration, resolution: INTERSTITIAL.resolution,
+      enable_prompt_expansion: input.enable_prompt_expansion, color_match: true });
     if (res.destroyed) { await providers.falCancel(requestId).catch(() => undefined); return; }
     res.status(202).json({ requestId, status: 'IN_QUEUE' });
   });

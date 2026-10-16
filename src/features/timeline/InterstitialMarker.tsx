@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { formatTime } from '../../../shared/contracts';
-import { isGenerating, type Interstitial } from '../../../shared/interstitials';
+import { isGenerating, playableResult, type Interstitial } from '../../../shared/interstitials';
+import { phaseLabel } from '../interstitials/status';
 
 export default function InterstitialMarker({ pin, selected, number, duration, fps, track, viewport, onMove, onRemove, onSelect }: {
   pin: Interstitial; selected: boolean; number: number; duration: number; fps: number;
@@ -44,9 +45,9 @@ export default function InterstitialMarker({ pin, selected, number, duration, fp
     if (commit && current.moved && current.time !== pin.time) onMove(pin.id, current.time);
   };
 
-  return <div className={`timeline-marker ${selected ? 'selected' : ''} ${pin.phase === 'ready' ? 'ready' : ''} ${isGenerating(pin) ? 'generating' : ''} ${draftTime !== null ? 'dragging' : ''}`} style={{ left: `clamp(12px, ${displayTime / duration * 100}%, calc(100% - 12px))` }}>
+  return <div className={`timeline-marker ${selected ? 'selected' : ''} ${playableResult(pin) ? 'ready' : ''} ${isGenerating(pin) ? 'generating' : ''} ${draftTime !== null ? 'dragging' : ''}`} style={{ left: `clamp(12px, ${displayTime / duration * 100}%, calc(100% - 12px))` }}>
     <button ref={button} className="timeline-pin" aria-label={`Select ${pin.label} at ${formatTime(displayTime)}`} aria-describedby="pin-help" aria-pressed={selected}
-      title={`${pin.label} · ${formatTime(displayTime, true)} · ${locked ? 'Position locked while generating' : 'Drag to move'} · Delete to remove`} draggable={false}
+      title={`${pin.label} · ${formatTime(displayTime, true)} · ${locked ? phaseLabel(pin) : 'Drag to move'} · Delete to remove`} draggable={false}
       onPointerDown={event => {
         if (locked || event.button !== 0 || !event.isPrimary) return;
         const rect = track.current?.getBoundingClientRect();
@@ -72,7 +73,7 @@ export default function InterstitialMarker({ pin, selected, number, duration, fp
         event.preventDefault(); event.stopPropagation();
         const step = event.shiftKey ? 1 : 1 / fps;
         onMove(pin.id, event.key === 'Home' ? 0 : event.key === 'End' ? duration : clamp(pin.time + (event.key === 'ArrowLeft' ? -step : step)));
-      }}>{number}</button>
+      }}>{locked && !playableResult(pin) ? <span className="spinner timeline-generation-spinner" role="status" aria-label={`${pin.label}: ${phaseLabel(pin)}`} /> : number}</button>
     {draftTime !== null && <output className="pin-drag-time">{formatTime(draftTime, true)}</output>}
   </div>;
 }

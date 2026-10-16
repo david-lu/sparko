@@ -23,7 +23,9 @@ export const VOICE_DETECTION = {
 
 export const INTERSTITIAL = {
   defaultRange: 2, maxRange: 4, minStartRange: 1.625, minEndRange: 0.1,
-  generatedSeconds: 6, resolution: '768p', maxReferenceBytes: 50 * 1024 * 1024,
+  defaultDuration: 6, minDuration: 5, maxDuration: 13,
+  enablePromptExpansion: false, // Default for new drafts; editable per interstitial.
+  resolution: '768p', maxReferenceBytes: 50 * 1024 * 1024,
   referenceFps: TIMELINE_FPS, // H3 Max validates insertion times at 24 fps.
   pollMilliseconds: 2500,
 } as const;

@@ -6,3 +6,10 @@
 .interstitial-row-content strong{font-size:11px;font-weight:500}.interstitial-row-content>span{font:9px var(--mono);color:var(--muted)}
 .interstitial-progress{width:100%;height:3px;margin-top:10px;accent-color:var(--accent)}.interstitial-ready{border-top:1px solid #3e786d;margin-top:16px;padding-top:12px}.interstitial-ready p{color:#8ed8c8;font-size:10px;margin-bottom:12px}
 .interstitial-panel>.text-button:last-child{margin-top:12px}.interstitial-panel .inline-error{margin-bottom:12px}
+.interstitial-time-fields{display:grid;gap:10px;margin:0 0 14px}.interstitial-time-label{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:10px;margin-bottom:4px}
+.interstitial-time-controls{display:grid;grid-template-columns:minmax(0,1fr) 64px;align-items:center;gap:10px}.interstitial-time-controls input{width:100%;min-width:0}
+.interstitial-time-controls input[type=range]{margin:0;accent-color:var(--accent);cursor:pointer}.interstitial-time-controls input[type=number]{border:1px solid #363d49;background:#121518;padding:4px 5px;font:11px var(--mono);color:#d0d7e4}
+.interstitial-time-controls input:disabled{cursor:not-allowed}
+.interstitial-ready-actions{display:grid;gap:6px}.interstitial-ready .interstitial-download-hint{margin:7px 0 0;color:var(--muted)}
+.interstitial-option{display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:5px;cursor:pointer}.interstitial-option input{margin:0;accent-color:var(--accent)}
+.interstitial-panel>.task-status{margin:0 0 10px}.interstitial-panel>.interstitial-progress{margin:0 0 10px}.interstitial-panel .interstitial-action-hint{margin:6px 0 0}.interstitial-panel .interstitial-edit-hint{color:#b0bfda}

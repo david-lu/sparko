@@ -14,6 +14,17 @@ import type { MediaInfo, MediaSource, Thumbnail } from '../media/media';
 import { getStatus, request } from '../shared/api';
 import type { AppStatus, Slice } from '../../shared/contracts';
 import { emptyAnalysis } from '../features/project/types';
+import { playableResult } from '../../shared/interstitials';
+
+// Fast Refresh preserves useState, including instances with obsolete controller methods.
+// Reload saved project state when a controller changes during local development.
+if (import.meta.hot) {
+  import.meta.hot.accept([
+    '../features/interstitials/InterstitialController',
+    '../features/project/ProjectController',
+    '../features/player/VideoPlayerController',
+  ], () => window.location.reload());
+}
 
 const defaultSource: MediaSource = { id: 'default:episode_mock.mp4', name: 'episode_mock.mp4', url: '/media/episode_mock.mp4' };
 type Tab = 'interstitials' | 'ai' | 'voice';
@@ -60,7 +71,7 @@ export default function App() {
   const fileMenu = useRef<HTMLDetailsElement>(null);
   const defaultUrl = useRef(defaultSource.url);
   const sourceVersion = useRef(0);
-  const readyKey = JSON.stringify(interstitialState.items.filter(item => item.phase === 'ready').map(({ id, label, time, result }) => ({ id, label, time, result })));
+  const readyKey = JSON.stringify(interstitialState.items.filter(item => playableResult(item)).map(item => ({ id: item.id, label: item.label, time: item.time, result: playableResult(item) })));
   const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items) : null, [source, info, readyKey]);
   useEffect(() => { if (composition) controller.setComposition(composition); }, [composition, controller]);
   useEffect(() => () => { interstitials.dispose(); projects.dispose(); }, [interstitials, projects]);
@@ -100,10 +111,10 @@ export default function App() {
     }).catch(err => { if (sourceVersion.current === version && err.name !== 'AbortError') setError(err.message || 'Unable to read video metadata.'); });
     return () => { sourceVersion.current++; media.dispose(); };
   }, [source, controller, projects, projectState.source]);
-  const selectInterstitial = (id: string | null) => {
+  const selectInterstitial = (id: string | null, time?: number) => {
     interstitials.select(id); setTab('interstitials');
     const item = interstitialState.items.find(item => item.id === id);
-    if (item) { controller.pause(); controller.seek(composition?.itemTime(item) ?? item.time); }
+    if (item) { controller.pause(); controller.seek(time ?? composition?.itemTime(item) ?? item.time); }
   };
   const addInterstitial = () => {
     if (!info || !projectState.project) return;
@@ -150,7 +161,7 @@ export default function App() {
       </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar">
         <div className="tabs" role="tablist" aria-label="Video tools">{([{ id: 'interstitials', label: 'Interstitials', icon: Clapperboard }, { id: 'ai', label: 'Describe', icon: Sparkles }, { id: 'voice', label: 'Voice', icon: Mic }] as const).map(item => <button key={item.id} role="tab" id={`tab-${item.id}`} aria-controls={`panel-${item.id}`} aria-selected={tab === item.id} className={tab === item.id ? 'selected' : ''} onClick={() => setTab(item.id)}><item.icon size={15} />{item.label}{item.id === 'interstitials' && <span className="count">{interstitialState.items.length}</span>}</button>)}</div>
         <div role="tabpanel" id="panel-interstitials" aria-labelledby="tab-interstitials" hidden={tab !== 'interstitials'}><InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
-          engine={engine} info={info} status={status} onAdd={addInterstitial} onSelect={selectInterstitial} onPreview={item => { const start = composition?.itemTime(item) ?? item.time; controller.preview(start, start + (item.result?.duration || 0)); }} /></div>
+          engine={engine} info={info} status={status} onAdd={addInterstitial} onSelect={selectInterstitial} onPreview={item => { const start = composition?.itemTime(item) ?? item.time; controller.preview(start, start + (playableResult(item)?.duration || 0)); }} /></div>
         <div role="tabpanel" id="panel-ai" aria-labelledby="tab-ai" hidden={tab !== 'ai'}><AiPanel engine={engine} controller={controller} status={status} analysis={analysis} onAnalysis={value => projects.updateAnalysis(value)} slice={slice} onSlice={setSlice} /></div>
         <div role="tabpanel" id="panel-voice" aria-labelledby="tab-voice" hidden={tab !== 'voice'}><VoicePanel key={source.url} sourceId={source.id} controller={controller} status={status} active={tab === 'voice'} /></div>
       </aside></div>

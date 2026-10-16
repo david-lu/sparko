@@ -5,7 +5,7 @@ import { TimelineComposition } from '../../src/media/TimelineComposition';
 
 const source = { id: 'source', name: 'Original', url: '/original.mp4' };
 const info = { duration: 12, fps: 25, width: 320, height: 180, codec: 'avc', hasAudio: true };
-const item = (id: string, time: number, duration = 5): Interstitial => ({ id, label: id, time, start_range: 2, end_range: 2, prompt: 'A scene', phase: 'ready', result: { url: 'https://fal.media/result.mp4', start: 2, duration, totalDuration: duration + 4 } });
+const item = (id: string, time: number, duration = 5): Interstitial => ({ id, label: id, time, start_range: 2, end_range: 2, duration: 6, enable_prompt_expansion: false, prompt: 'A scene', phase: 'ready', result: { url: 'https://fal.media/result.mp4', start: 2, duration, totalDuration: duration + 4 } });
 
 describe('frame-based timeline composition', () => {
   it('renders the source and inserted scenes on one 24 fps clock', () => {
@@ -26,6 +26,18 @@ describe('frame-based timeline composition', () => {
     expect(composition.at(4).id).toBe('insert');
     expect(composition.at(8.96).id).toBe('insert');
     expect(composition.at(9).sourceStart).toBe(4);
+  });
+  it('keeps the existing splice throughout retries and only uses a ready replacement', () => {
+    const original = item('insert', 4);
+    const replacement = { url: 'https://fal.media/new.mp4', start: 1, duration: 6, totalDuration: 9 };
+    for (const phase of ['preparing', 'uploading', 'queued', 'rendering', 'loading', 'error', 'cancelled', 'draft'] as const) {
+      const composition = new TimelineComposition(source, info, [{ ...original, phase, result: replacement, previousResult: original.result }]);
+      expect(composition.segments).toEqual(new TimelineComposition(source, info, [original]).segments);
+      expect(composition.duration).toBe(17);
+    }
+    const ready = new TimelineComposition(source, info, [{ ...original, result: replacement }]);
+    expect(ready.duration).toBe(18);
+    expect(ready.at(4)).toMatchObject({ source: { url: replacement.url }, sourceStart: 1 });
   });
   it('handles boundary anchors, multiple inserts at an anchor, and incomplete jobs', () => {
     const composition = new TimelineComposition(source, info, [item('end', 12), item('start-b', 0), item('start-a', 0), { ...item('pending', 5), phase: 'rendering' }]);

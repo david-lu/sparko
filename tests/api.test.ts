@@ -55,7 +55,7 @@ describe('server API boundaries', () => {
     const result = await post('/api/fal/jobs').field('source', 'default').field('start', '1').field('resume', '2').field('duration', '5').field('prompt', 'A new scene').expect(202);
     expect(result.body.requestId).toBe('test-job-1234');
     expect(providers.falUpload).toHaveBeenCalledWith(expect.any(Blob));
-    expect(providers.falSubmit).toHaveBeenCalledWith(expect.objectContaining({ video_url: 'https://fal.media/test.mp4', start_time: 1, resume_time: 2, duration: 5, prompt: 'A new scene', resolution: '768p' }));
+    expect(providers.falSubmit).toHaveBeenCalledWith(expect.objectContaining({ video_url: 'https://fal.media/test.mp4', start_time: 1, resume_time: 2, duration: 5, prompt: 'A new scene', resolution: '768p', enable_prompt_expansion: false }));
   });
   it('retrieves and cancels queue jobs', async () => {
     await request(app).get('/api/fal/jobs/test-job-1234').expect(200);
@@ -102,12 +102,40 @@ describe('server API boundaries', () => {
       .attach('audio', wavFixture(), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(429);
     expect(result.text).not.toContain('secret-value');
   });
-  it('submits a bounded reference clip using local insertion times and the fixed scene settings', async () => {
+  it('defaults older interstitial requests to six seconds using local insertion times', async () => {
     vi.mocked(providers.falSubmit).mockClear();
     await post('/api/interstitials').field('start', '2').field('resume', String(49 / 24)).field('fps', '24').field('prompt', 'A new interstitial')
       .attach('video', 'tests/fixtures/interstitial-reference.mp4', { contentType: 'video/mp4' }).expect(202);
     expect(providers.falSubmit).toHaveBeenCalledWith({ video_url: 'https://fal.media/test.mp4', start_time: 2, resume_time: 49 / 24,
-      duration: 6, resolution: '768p', prompt: 'A new interstitial', enable_prompt_expansion: true, color_match: true });
+      duration: 6, resolution: '768p', prompt: 'A new interstitial', enable_prompt_expansion: false, color_match: true });
+  });
+  it.each([5, 7.5, 13])('submits the selected %s-second interstitial duration to fal', async duration => {
+    vi.mocked(providers.falSubmit).mockClear();
+    await post('/api/interstitials').field('start', '2').field('resume', String(49 / 24)).field('fps', '24').field('prompt', 'A new interstitial').field('duration', String(duration))
+      .attach('video', 'tests/fixtures/interstitial-reference.mp4', { contentType: 'video/mp4' }).expect(202);
+    expect(providers.falSubmit).toHaveBeenCalledWith(expect.objectContaining({ duration }));
+  });
+  it.each([true, false])('submits the selected prompt expansion setting: %s', async enabled => {
+    vi.mocked(providers.falSubmit).mockClear();
+    await post('/api/interstitials').field('start', '2').field('resume', String(49 / 24)).field('fps', '24').field('prompt', 'A new interstitial')
+      .field('enable_prompt_expansion', String(enabled)).attach('video', 'tests/fixtures/interstitial-reference.mp4', { contentType: 'video/mp4' }).expect(202);
+    expect(providers.falSubmit).toHaveBeenCalledWith(expect.objectContaining({ enable_prompt_expansion: enabled }));
+  });
+  it('rejects invalid prompt expansion flags before contacting fal', async () => {
+    vi.mocked(providers.falUpload).mockClear(); vi.mocked(providers.falSubmit).mockClear();
+    for (const value of ['yes', '0', '']) {
+      await post('/api/interstitials').field('start', '2').field('resume', String(49 / 24)).field('fps', '24').field('prompt', 'A new interstitial')
+        .field('enable_prompt_expansion', value).attach('video', 'tests/fixtures/interstitial-reference.mp4', { contentType: 'video/mp4' }).expect(400);
+    }
+    expect(providers.falUpload).not.toHaveBeenCalled(); expect(providers.falSubmit).not.toHaveBeenCalled();
+  });
+  it('rejects blank, nonnumeric and unsupported durations before uploading or submitting', async () => {
+    vi.mocked(providers.falUpload).mockClear(); vi.mocked(providers.falSubmit).mockClear();
+    for (const duration of ['', 'NaN', 'Infinity', '0', '4.99', '13.01']) {
+      await post('/api/interstitials').field('start', '2').field('resume', String(49 / 24)).field('fps', '24').field('prompt', 'A new interstitial').field('duration', duration)
+        .attach('video', 'tests/fixtures/interstitial-reference.mp4', { contentType: 'video/mp4' }).expect(400);
+    }
+    expect(providers.falUpload).not.toHaveBeenCalled(); expect(providers.falSubmit).not.toHaveBeenCalled();
   });
   it('rejects invalid interstitial reference bounds before provider submission', async () => {
     vi.mocked(providers.falSubmit).mockClear();

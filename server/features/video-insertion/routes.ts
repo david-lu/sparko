@@ -3,6 +3,7 @@ import { openAsBlob } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { INTERSTITIAL } from '../../../shared/constants';
 import type { Providers } from '../../providers';
 import { authenticate, remoteDefault, validateBlobUrl, downloadRemote } from '../../hosting';
 import { HttpError, requireProvider } from '../../shared/http';
@@ -35,7 +36,7 @@ export function addInsertionRoutes(app: Express, providers: Pick<Providers, 'con
     const requestId = await providers.falSubmit({
       video_url: videoUrl, start_time: input.start, resume_time: input.resume,
       duration: input.duration, resolution: input.resolution, prompt: input.prompt,
-      enable_prompt_expansion: true, color_match: true,
+      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, color_match: true,
     });
     res.status(202).json({ requestId, status: 'IN_QUEUE' });
   });

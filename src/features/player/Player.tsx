@@ -14,7 +14,7 @@ type Props = {
   selectedId: string | null; composition: TimelineComposition | null;
   controller: VideoPlayerController;
   onAddInterstitial: () => void; onSeek: (time: number) => void; onError: (error: string) => void;
-  onMoveInterstitial: (id: string, time: number) => void; onRemoveInterstitial: (id: string) => void; onSelectInterstitial: (id: string | null) => void;
+  onMoveInterstitial: (id: string, time: number) => void; onRemoveInterstitial: (id: string) => void; onSelectInterstitial: (id: string | null, time?: number) => void;
   selection: Slice | null;
   subtitle: { url: string; name: string } | null; onSubtitle: (file: File) => void;
   timelineHeight: number; maxTimelineHeight: number; onTimelineHeight: (value: number) => void;

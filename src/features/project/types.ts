@@ -12,4 +12,4 @@ export type Project = {
 };
 export const emptyAnalysis = (): AnalysisState => ({ slice: { start: 0, end: 10 }, provider: 'openai', instructions: '', result: null });
 export const assetIds = (project: Project) => [...new Set([project.source.assetId, project.source.originalAssetId, project.subtitle?.assetId,
-  ...project.interstitials.map(item => item.result?.assetId)].filter((id): id is string => !!id))];
+  ...project.interstitials.flatMap(item => [item.result?.assetId, item.previousResult?.assetId])].filter((id): id is string => !!id))];

@@ -1,4 +1,4 @@
-import type { Interstitial } from '../../shared/interstitials';
+import { playableResult, type Interstitial } from '../../shared/interstitials';
 import type { MediaInfo, MediaSource } from './media';
 import { assets } from '../features/project/assets';
 import { TIMELINE_FPS } from '../../shared/constants';
@@ -20,7 +20,7 @@ export class TimelineComposition {
     let cursor = 0, sourceFrame = 0;
     const total = Math.max(1, Math.round(info.duration * this.fps));
     this.sourceDuration = total / this.fps;
-    const ready = items.filter(item => item.phase === 'ready' && item.result && item.time <= Math.max(info.duration, this.sourceDuration)).sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
+    const ready = items.filter(item => playableResult(item) && item.time <= Math.max(info.duration, this.sourceDuration)).sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
     const addSource = (end: number) => {
       if (end > sourceFrame) {
         this.segments.push({ id: `source:${sourceFrame}`, kind: 'source', label: source.name, source, sourceStart: sourceFrame / this.fps, startFrame: cursor, endFrame: cursor + end - sourceFrame });
@@ -30,7 +30,7 @@ export class TimelineComposition {
     };
     for (const item of ready) {
       addSource(Math.max(sourceFrame, Math.min(total, Math.round(item.time * this.fps))));
-      const result = item.result!;
+      const result = playableResult(item)!;
       const frames = Math.max(1, Math.round(result.duration * this.fps));
       this.segments.push({ id: item.id, kind: 'interstitial', label: item.label,
         source: { id: item.id, name: item.label, url: result.assetId ? assets.url(result.assetId) || result.url : result.url }, sourceStart: result.start, startFrame: cursor, endFrame: cursor + frames });

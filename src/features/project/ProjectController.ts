@@ -51,6 +51,9 @@ export class ProjectController {
     const { asset, url } = await assets.open(project.source.assetId!);
     const source: MediaSource = { id: project.id, name: project.source.name, url, assetId: asset.id, file: new File([asset.blob], project.source.name, { type: asset.blob.type }) };
     const subtitle = project.subtitle ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
+    // Restore retained renders before publishing the timeline, including failed/cancelled retries.
+    await Promise.all(project.interstitials.flatMap(item => item.previousResult?.assetId ? [assets.open(item.previousResult.assetId)] : []));
+    signal.throwIfAborted();
     this.switching = true;
     this.update({ project, source, subtitle, error: null });
     this.interstitials.load(project.id, project.interstitials);
@@ -135,7 +138,7 @@ export class ProjectController {
       const snapshot = structuredClone(this.state.project);
       signal.throwIfAborted();
       if (!snapshot.source.assetId) throw new Error('Wait for the source video to finish preparing.');
-      if (snapshot.interstitials.some(item => item.result && (!item.result.assetId || item.phase !== 'ready'))) throw new Error('An interstitial result has not finished loading. Finish or retry loading, or return it to a draft before exporting.');
+      if (snapshot.interstitials.some(item => item.result && (!item.result.assetId || item.phase !== 'ready'))) throw new Error('An interstitial result has not finished loading. Finish loading or retry the interstitial before exporting.');
       const stored: Asset[] = [];
       for (const id of assetIds(snapshot)) {
         const asset = await readAsset(id); signal.throwIfAborted();
@@ -161,9 +164,10 @@ export class ProjectController {
       const source = await this.validateVideo(byId.get(imported.project.source.assetId!)!.blob, signal);
       for (const item of imported.project.interstitials) {
         if (item.time > source.duration + Math.max(1 / source.fps, 1 / TIMELINE_FPS)) throw new Error('An interstitial anchor lies outside the source video.');
-        if (item.result) {
-          const info = await this.validateVideo(byId.get(item.result.assetId!)!.blob, signal);
-          if (item.result.start + item.result.duration > info.duration + 1 / info.fps) throw new Error('An interstitial asset is shorter than its saved scene boundaries.');
+        for (const result of [item.result, item.previousResult]) {
+          if (!result) continue;
+          const info = await this.validateVideo(byId.get(result.assetId!)!.blob, signal);
+          if (result.start + result.duration > info.duration + 1 / info.fps) throw new Error('An interstitial asset is shorter than its saved scene boundaries.');
         }
       }
       if (imported.project.subtitle) {

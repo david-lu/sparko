@@ -1,18 +1,37 @@
 import { INTERSTITIAL } from './constants';
 
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
-export type Interstitial = {
+export type InterstitialResult = { url: string; assetId?: string; start: number; duration: number; totalDuration: number };
+export type InterstitialSettings = {
+  start_range: number; end_range: number; duration: number; prompt: string;
+  enable_prompt_expansion: boolean;
+};
+export type Interstitial = InterstitialSettings & {
   id: string; label: string;
   /** Anchor in the original source, never in the expanded playback timeline. */
   time: number;
-  start_range: number; end_range: number; prompt: string;
+  /** Inputs submitted for the latest job, independent of the editable settings above. */
+  generationSettings?: InterstitialSettings;
   phase: InterstitialPhase;
   requestId?: string;
-  result?: { url: string; assetId?: string; start: number; duration: number; totalDuration: number };
+  result?: InterstitialResult;
+  /** Last playable render, retained until a replacement has loaded and passed validation. */
+  previousResult?: InterstitialResult;
   error?: string; progress?: number; queuePosition?: number;
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
+export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
+export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion }: InterstitialSettings): InterstitialSettings =>
+  ({ start_range, end_range, duration, prompt, enable_prompt_expansion });
+export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&
+  (Object.keys(interstitialSettings(item)) as (keyof InterstitialSettings)[]).some(key => item[key] !== item.generationSettings![key]);
 export const frameTime = (seconds: number, fps: number) => Math.round(seconds * fps) / fps;
+
+export function validateInterstitialDuration(duration: number) {
+  if (!Number.isFinite(duration) || duration < INTERSTITIAL.minDuration || duration > INTERSTITIAL.maxDuration) {
+    throw new Error(`Duration must be between ${INTERSTITIAL.minDuration} and ${INTERSTITIAL.maxDuration} seconds.`);
+  }
+}
 
 /** Reference timestamps use integer indices on fal's 24 fps frame clock. */
 export function referenceResumeTime(start: number) {
