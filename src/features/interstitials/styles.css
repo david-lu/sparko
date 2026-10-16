@@ -1,0 +1,8 @@
+.interstitial-back{margin-bottom:14px}.interstitial-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.interstitial-list{list-style:none;margin:12px 0 0;padding:0}.interstitial-list li{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.interstitial-row{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:12px 0;background:transparent;text-align:left}.interstitial-row:hover{background:#ffffff05}
+.interstitial-number{display:grid;place-items:center;width:23px;height:23px;flex-shrink:0;background:#ffc657;color:#201600;font:700 10px var(--mono)}
+.interstitial-row.ready .interstitial-number{background:#62c8b5;color:#0b2924}.interstitial-row.ready>svg{color:#62c8b5}.interstitial-row-content{display:flex;flex:1;min-width:0;flex-direction:column;gap:5px}
+.interstitial-row-content strong{font-size:11px;font-weight:500}.interstitial-row-content>span{font:9px var(--mono);color:var(--muted)}
+.interstitial-progress{width:100%;height:3px;margin-top:10px;accent-color:var(--accent)}.interstitial-ready{border-top:1px solid #3e786d;margin-top:16px;padding-top:12px}.interstitial-ready p{color:#8ed8c8;font-size:10px;margin-bottom:12px}
+.interstitial-panel>.text-button:last-child{margin-top:12px}.interstitial-panel .inline-error{margin-bottom:12px}

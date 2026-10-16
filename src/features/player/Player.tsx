@@ -3,32 +3,55 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Captions, Maximize, Minimize, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, MediaSource, Thumbnail } from '../../media/media';
-import type { Pin } from '../timeline/pins';
+import type { Interstitial } from '../../../shared/interstitials';
+import type { TimelineComposition } from '../../media/TimelineComposition';
 import type { VideoPlayerController } from './VideoPlayerController';
 import Timeline from '../timeline/Timeline';
+import { remapSubtitles } from './subtitles';
 
 type Props = {
-  source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; pins: Pin[];
+  source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[];
+  selectedId: string | null; composition: TimelineComposition | null;
   controller: VideoPlayerController;
-  onPin: () => void; onSeek: (time: number) => void; onError: (error: string) => void;
-  onMovePin: (id: string, time: number) => void; onRemovePin: (id: string) => void;
+  onAddInterstitial: () => void; onSeek: (time: number) => void; onError: (error: string) => void;
+  onMoveInterstitial: (id: string, time: number) => void; onRemoveInterstitial: (id: string) => void; onSelectInterstitial: (id: string | null) => void;
   selection: Slice | null;
+  subtitle: { url: string; name: string } | null; onSubtitle: (file: File) => void;
   timelineHeight: number; maxTimelineHeight: number; onTimelineHeight: (value: number) => void;
 };
 
 export default function Player(props: Props) {
-  const { source, info, thumbnails, pins, controller, onPin, onSeek, onError, selection } = props;
+  const { source, info, thumbnails, interstitials, controller, onAddInterstitial, onSeek, onError, selection } = props;
   const { playing, buffering, volume, muted, speed, loop, buffered, time, duration } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const container = useRef<HTMLDivElement>(null);
   const captionInput = useRef<HTMLInputElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
-  const [subtitle, setSubtitle] = useState<{ url: string; name: string } | null>(null);
+  const subtitle = props.subtitle;
   const [captions, setCaptions] = useState(true);
-
+  const originalCues = useRef<{ url: string; cues: VTTCue[] } | null>(null);
   useEffect(() => {
-    setSubtitle(null);
-  }, [source.id]);
-  useEffect(() => () => { if (subtitle) URL.revokeObjectURL(subtitle.url); }, [subtitle]);
+    const video = controller.video;
+    const element = video?.querySelector('track');
+    if (!element || !subtitle) return;
+    const remap = () => {
+      const track = element.track;
+      if (originalCues.current?.url !== subtitle.url) {
+        if (element.readyState !== HTMLTrackElement.LOADED) return;
+        originalCues.current = { url: subtitle.url, cues: Array.from(track.cues || []) as VTTCue[] };
+      }
+      remapSubtitles(track, originalCues.current.cues, props.composition);
+      track.mode = captions ? 'showing' : 'hidden';
+    };
+    remap();
+    // Track load events do not bubble through React's delegated event handler.
+    element.addEventListener('load', remap);
+    // Loading a new MediaSource restores the track's original cues in the browser.
+    video?.addEventListener('loadedmetadata', remap);
+    video?.addEventListener('canplay', remap);
+    return () => { element.removeEventListener('load', remap); video?.removeEventListener('loadedmetadata', remap); video?.removeEventListener('canplay', remap); };
+  }, [controller, props.composition, subtitle, captions]);
+
+  useEffect(() => { setCaptions(true); }, [subtitle]);
   useEffect(() => {
     const update = () => setFullscreen(document.fullscreenElement === container.current);
     document.addEventListener('fullscreenchange', update);
@@ -58,6 +81,11 @@ export default function Player(props: Props) {
       const target = event.target as HTMLElement;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || target.isContentEditable
         || target.closest('textarea, select, input:not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"])')) return;
+      if ((event.key === 'Delete' || event.key === 'Backspace') && props.selectedId) {
+        event.preventDefault();
+        if (!event.repeat) props.onRemoveInterstitial(props.selectedId);
+        return;
+      }
       const video = controller.video;
       if (!video || !duration) return;
       if (event.code === 'Space' || event.key === ' ') {
@@ -70,18 +98,18 @@ export default function Player(props: Props) {
       if ([' ', 'k', 'j', 'l', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'm', 'f', 'p', ',', '.', 'home', 'end', 'c'].includes(key) || /^[0-9]$/.test(key)) event.preventDefault();
       switch (key) {
         case ' ': case 'k': playPause(); break;
-        case 'j': onSeek(video.currentTime - 10); break;
-        case 'l': onSeek(video.currentTime + 10); break;
-        case 'arrowleft': onSeek(video.currentTime - 5); break;
-        case 'arrowright': onSeek(video.currentTime + 5); break;
+        case 'j': onSeek(time - 10); break;
+        case 'l': onSeek(time + 10); break;
+        case 'arrowleft': onSeek(time - 5); break;
+        case 'arrowright': onSeek(time + 5); break;
         case 'arrowup': changeVolume(video.volume + 0.05); break;
         case 'arrowdown': changeVolume(video.volume - 0.05); break;
         case 'm': toggleMute(); break;
         case 'f': void toggleFullscreen(); break;
-        case 'p': onPin(); break;
+        case 'p': onAddInterstitial(); break;
         case 'c': toggleCaptions(); break;
-        case ',': controller.stepFrame(-1, info?.fps || 30); break;
-        case '.': controller.stepFrame(1, info?.fps || 30); break;
+        case ',': controller.stepFrame(-1); break;
+        case '.': controller.stepFrame(1); break;
         case 'home': onSeek(0); break;
         case 'end': onSeek(duration); break;
         default: if (/^[0-9]$/.test(key)) onSeek(duration * Number(key) / 10);
@@ -94,7 +122,7 @@ export default function Player(props: Props) {
   return <div className="player-card" ref={container}>
     <div className="video-stage" onDoubleClick={() => void toggleFullscreen()}>
       <video ref={controller.attach} preload="metadata" playsInline aria-label={source.name} onClick={playPause}>
-        {subtitle && <track key={subtitle.url} src={subtitle.url} kind="subtitles" label={subtitle.name} srcLang="en" default onLoad={event => { event.currentTarget.track.mode = captions ? 'showing' : 'hidden'; }} />}
+        {subtitle && <track key={subtitle.url} src={subtitle.url} kind="subtitles" label={subtitle.name} srcLang="en" default />}
       </video>
       {!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
       {buffering && <div className="buffering" role="status"><span className="spinner" /> Buffering</div>}
@@ -119,15 +147,13 @@ export default function Player(props: Props) {
     </div>
     </div>
 
-    <Timeline key={source.url} name={source.name} info={info} thumbnails={thumbnails} pins={pins} time={time} duration={duration} buffered={buffered} selection={selection}
-      height={props.timelineHeight} maxHeight={props.maxTimelineHeight} onHeight={props.onTimelineHeight} onPin={onPin} onSeek={onSeek} onMovePin={props.onMovePin} onRemovePin={props.onRemovePin} />
+    <Timeline key={source.url} name={source.name} info={info} thumbnails={thumbnails} interstitials={interstitials} selectedId={props.selectedId} composition={props.composition} time={time} duration={duration} buffered={buffered} selection={selection}
+      height={props.timelineHeight} maxHeight={props.maxTimelineHeight} onHeight={props.onTimelineHeight} onAddInterstitial={onAddInterstitial} onSeek={onSeek}
+      onMoveInterstitial={props.onMoveInterstitial} onRemoveInterstitial={props.onRemoveInterstitial} onSelectInterstitial={props.onSelectInterstitial} />
     <input ref={captionInput} className="sr-only" type="file" accept=".vtt,text/vtt" aria-label="Choose subtitle file" onChange={event => {
       const file = event.target.files?.[0];
       if (!file) return;
-      void file.text().then(text => {
-        if (!text.replace(/^\uFEFF/, '').startsWith('WEBVTT')) { onError('Use a valid WebVTT (.vtt) subtitle file.'); return; }
-        setSubtitle({ url: URL.createObjectURL(new Blob([text], { type: 'text/vtt' })), name: file.name }); setCaptions(true);
-      }).catch(() => onError('The subtitle file could not be read.'));
+      props.onSubtitle(file);
       event.target.value = '';
     }} />
   </div>;

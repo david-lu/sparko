@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { X } from 'lucide-react';
 import { formatTime } from '../../../shared/contracts';
-import type { Pin } from './pins';
+import { isGenerating, type Interstitial } from '../../../shared/interstitials';
 
-export default function TimelinePin({ pin, number, duration, fps, track, viewport, onMove, onRemove, onSeek }: {
-  pin: Pin; number: number; duration: number; fps: number;
+export default function InterstitialMarker({ pin, selected, number, duration, fps, track, viewport, onMove, onRemove, onSelect }: {
+  pin: Interstitial; selected: boolean; number: number; duration: number; fps: number;
   track: RefObject<HTMLDivElement | null>; viewport: RefObject<HTMLDivElement | null>;
-  onMove: (id: string, time: number) => void; onRemove: (id: string) => void; onSeek: (time: number) => void;
+  onMove: (id: string, time: number) => void; onRemove: (id: string) => void; onSelect: (id: string) => void;
 }) {
   const button = useRef<HTMLButtonElement>(null);
   const drag = useRef<{ pointerId: number; startX: number; startY: number; clientX: number; grabOffset: number; time: number; moved: boolean } | null>(null);
   const animation = useRef<number | null>(null);
   const suppressClick = useRef(false);
   const [draftTime, setDraftTime] = useState<number | null>(null);
-  const clamp = (value: number) => Math.max(0, Math.min(duration, Math.round(value * 1000) / 1000));
+  const clamp = (value: number) => Math.max(0, Math.min(duration, Math.round(value * fps) / fps));
+  const locked = isGenerating(pin);
   const displayTime = draftTime ?? pin.time;
   const clearAnimation = () => { if (animation.current !== null) cancelAnimationFrame(animation.current); animation.current = null; };
   useEffect(() => clearAnimation, []);
@@ -44,11 +44,11 @@ export default function TimelinePin({ pin, number, duration, fps, track, viewpor
     if (commit && current.moved && current.time !== pin.time) onMove(pin.id, current.time);
   };
 
-  return <div className={`timeline-marker ${draftTime !== null ? 'dragging' : ''}`} style={{ left: `clamp(12px, ${displayTime / duration * 100}%, calc(100% - 12px))` }}>
-    <button ref={button} className="timeline-pin" aria-label={`Go to ${pin.label} at ${formatTime(displayTime)}`} aria-describedby="pin-help"
-      title={`${pin.label} · ${formatTime(displayTime, true)} · Drag to move · Delete to remove`} draggable={false}
+  return <div className={`timeline-marker ${selected ? 'selected' : ''} ${pin.phase === 'ready' ? 'ready' : ''} ${isGenerating(pin) ? 'generating' : ''} ${draftTime !== null ? 'dragging' : ''}`} style={{ left: `clamp(12px, ${displayTime / duration * 100}%, calc(100% - 12px))` }}>
+    <button ref={button} className="timeline-pin" aria-label={`Select ${pin.label} at ${formatTime(displayTime)}`} aria-describedby="pin-help" aria-pressed={selected}
+      title={`${pin.label} · ${formatTime(displayTime, true)} · ${locked ? 'Position locked while generating' : 'Drag to move'} · Delete to remove`} draggable={false}
       onPointerDown={event => {
-        if (event.button !== 0 || !event.isPrimary) return;
+        if (locked || event.button !== 0 || !event.isPrimary) return;
         const rect = track.current?.getBoundingClientRect();
         if (!rect?.width) return;
         event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); event.currentTarget.setPointerCapture(event.pointerId);
@@ -64,18 +64,15 @@ export default function TimelinePin({ pin, number, duration, fps, track, viewpor
         if (animation.current === null) animation.current = requestAnimationFrame(autoScroll);
       }} onPointerUp={event => { if (drag.current?.pointerId === event.pointerId) finish(true); }}
       onPointerCancel={() => finish(false)} onLostPointerCapture={() => finish(false)}
-      onClick={event => { if (!suppressClick.current || event.detail === 0) onSeek(pin.time); suppressClick.current = false; }}
+      onClick={event => { if (!suppressClick.current || event.detail === 0) onSelect(pin.id); suppressClick.current = false; }}
       onKeyDown={event => {
         if (event.key === 'Escape' && drag.current) { event.preventDefault(); event.stopPropagation(); finish(false); return; }
         if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); finish(false); onRemove(pin.id); return; }
-        if (drag.current || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        if (locked || drag.current || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault(); event.stopPropagation();
         const step = event.shiftKey ? 1 : 1 / fps;
         onMove(pin.id, event.key === 'Home' ? 0 : event.key === 'End' ? duration : clamp(pin.time + (event.key === 'ArrowLeft' ? -step : step)));
       }}>{number}</button>
-    <button className="timeline-pin-remove" aria-label={`Delete ${pin.label}`} title={`Delete ${pin.label}`}
-      onPointerUp={event => { if (event.pointerType === 'touch') { event.preventDefault(); onRemove(pin.id); } }}
-      onClick={() => onRemove(pin.id)}><X size={12} /></button>
     {draftTime !== null && <output className="pin-drag-time">{formatTime(draftTime, true)}</output>}
   </div>;
 }

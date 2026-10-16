@@ -34,6 +34,7 @@ export type FalJob = {
   status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   queuePosition?: number;
   videoUrl?: string;
+  insertion?: { start: number; duration: number; totalDuration: number };
 };
 
 export function validateSlice(slice: Slice, duration: number, maxDuration = Infinity): void {

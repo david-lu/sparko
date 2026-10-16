@@ -1,0 +1,157 @@
+import { expect, test, type Page } from './fixtures';
+import { readFile } from 'node:fs/promises';
+
+const activeProject = (page: Page) => page.evaluate(async () => {
+  const { readActiveProject } = await import('/src/features/project/database.ts' as string); return readActiveProject();
+});
+async function openVideo(page: Page) {
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
+  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
+}
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/status', async route => { const response = await route.fetch(); const body = await response.json(); await route.fulfill({ json: { ...body, providers: { openai: true, gemini: true, fal: true } } }); });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+});
+
+test('exports a complete project and restores assets, drafts, subtitles and analysis in a fresh browser', async ({ page, browser, preparedDefault }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await openVideo(page);
+  const videoBytes = await readFile('tests/fixtures/interstitial-reference.mp4');
+  await page.route('https://fal.media/project-test.mp4', route => route.fulfill({ contentType: 'video/mp4', body: videoBytes }));
+  await page.route('**/api/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'project-test-job', status: 'IN_QUEUE' } }));
+  await page.route('**/api/fal/jobs/project-test-job', route => route.fulfill({ json: { requestId: 'project-test-job', status: 'COMPLETED', videoUrl: 'https://fal.media/project-test.mp4', insertion: { start: 1, duration: 2, totalDuration: 4 } } }));
+  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
+  await page.getByRole('button', { name: /^Add draft/ }).click();
+  await page.getByLabel('Interstitial prompt').fill('The embedded scene');
+  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  await expect(page.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
+  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('1');
+  await page.getByRole('button', { name: /^Add draft/ }).click();
+  await page.getByLabel('Interstitial prompt').fill('Unfinished draft');
+  await page.getByLabel('start_range').fill('3');
+  await page.getByLabel('end_range').fill('1.5');
+  await page.getByLabel('Choose subtitle file').setInputFiles({ name: 'dialogue.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nEmbedded dialogue\n') });
+  await expect.poll(async () => (await activeProject(page)).subtitle?.assetId).toBeTruthy();
+  await page.getByRole('tab', { name: 'Describe' }).click();
+  await page.getByPlaceholder('e.g. Describe the action and camera movement').fill('Saved focus');
+  await page.getByRole('combobox', { name: 'AI provider' }).selectOption('gemini');
+  await page.route('**/api/analyze/gemini', route => route.fulfill({ json: { caption: 'Saved caption', description: 'Saved description', provider: 'gemini', model: 'test-model', start: 0, end: 4, basis: 'Video' } }));
+  await page.getByRole('button', { name: 'Generate description' }).click();
+  await expect(page.getByLabel('Analysis result')).toContainText('Saved description', { timeout: 60_000 });
+  await page.locator('.file-menu summary').click();
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('menuitem', { name: 'Export project', exact: true }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe('interstitial-reference.sparko');
+  const path = (await download.path())!;
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3000', viewport: { width: 1440, height: 1000 } });
+  const restored = await context.newPage();
+  await restored.route('**/media/episode_mock.mp4', route => route.continue({ url: preparedDefault }));
+  let remoteReads = 0;
+  await restored.route('https://fal.media/**', route => { remoteReads++; return route.abort(); });
+  await restored.goto('/');
+  await expect(restored.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await restored.getByLabel('Choose project file').setInputFiles({ name: download.suggestedFilename(), mimeType: 'application/zip', buffer: await readFile(path) });
+  await expect(restored.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+  await expect(restored.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
+  await restored.getByRole('button', { name: 'Select Interstitial 2', exact: true }).click();
+  await expect(restored.getByLabel('Interstitial prompt')).toHaveValue('Unfinished draft');
+  await expect(restored.getByLabel('start_range')).toHaveValue('3');
+  await expect(restored.getByLabel('end_range')).toHaveValue('1.5');
+  const project = await activeProject(restored);
+  expect(project.id).not.toBe((await activeProject(page)).id);
+  const stored = await restored.evaluate(async (project: any) => {
+    const { readAsset } = await import('/src/features/project/database.ts' as string);
+    const result = project.interstitials.find((item: any) => item.result).result;
+    return { source: [...new Uint8Array(await (await readAsset(project.source.assetId)).blob.arrayBuffer())],
+      original: [...new Uint8Array(await (await readAsset(project.source.originalAssetId)).blob.arrayBuffer())],
+      scene: [...new Uint8Array(await (await readAsset(result.assetId)).blob.arrayBuffer())],
+      subtitle: await (await readAsset(project.subtitle.assetId)).blob.text() };
+  }, project);
+  const preparedSource = await page.evaluate(async () => {
+    const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
+    return [...new Uint8Array(await (await readAsset((await readActiveProject()).source.assetId)).blob.arrayBuffer())];
+  });
+  expect(stored.source).toEqual(preparedSource);
+  expect(Buffer.from(stored.original)).toEqual(videoBytes); expect(Buffer.from(stored.scene)).toEqual(videoBytes);
+  expect(stored.subtitle).toContain('Embedded dialogue');
+  await restored.getByRole('tab', { name: 'Describe' }).click();
+  await expect(restored.getByLabel('Analysis result')).toContainText('Saved description');
+  await expect(restored.getByRole('combobox', { name: 'AI provider' })).toHaveValue('gemini');
+  await expect(restored.getByPlaceholder('e.g. Describe the action and camera movement')).toHaveValue('Saved focus');
+  await restored.route('http://127.0.0.1:3000/media/**', route => route.abort());
+  await restored.reload();
+  await expect(restored.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
+  await expect.poll(() => restored.locator('video').evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
+  expect(remoteReads).toBe(0);
+  await expect.poll(() => restored.locator('video').evaluate(video => Array.from((video as HTMLVideoElement).textTracks[0]?.cues || []).map(cue => [cue.startTime, cue.endTime]))).toEqual([[1, 2], [4, 5]]);
+  await restored.screenshot({ path: 'test-results/project-imported.png' });
+  await context.close(); expect(errors).toEqual([]);
+});
+
+test('reopens a local video after reload and leaves it intact when import or storage fails', async ({ page }) => {
+  await openVideo(page);
+  const original = await activeProject(page);
+  await page.route('http://127.0.0.1:3000/media/**', route => route.abort());
+  await page.reload();
+  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
+  await page.getByLabel('Choose project file').setInputFiles({ name: 'broken.sparko', mimeType: 'application/zip', buffer: Buffer.from('not a project') });
+  await expect(page.getByRole('alert')).toBeVisible();
+  expect((await activeProject(page)).id).toBe(original.id);
+  await page.getByRole('button', { name: 'Dismiss error' }).click();
+  await page.evaluate(() => {
+    const originalPut = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+      if (this.name === 'assets') throw new DOMException('Test quota', 'QuotaExceededError');
+      return originalPut.apply(this, args);
+    };
+  });
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'another.mp4', mimeType: 'video/mp4', buffer: await readFile('tests/fixtures/interstitial-reference.mp4') });
+  await expect(page.getByRole('alert')).toContainText('Browser storage is full');
+  expect((await activeProject(page)).id).toBe(original.id);
+  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+});
+
+test('rolls back every asset and the active project if a multi-asset import cannot commit', async ({ page }) => {
+  const before = await activeProject(page);
+  const rollback = await page.evaluate(async () => {
+    const { readActiveProject, readAsset, readProject, writeProject } = await import('/src/features/project/database.ts' as string);
+    const original = await readActiveProject();
+    const first = crypto.randomUUID(), second = crypto.randomUUID(), id = `project:${crypto.randomUUID()}`;
+    const originalPut = IDBObjectStore.prototype.put;
+    let writes = 0, failure = '';
+    IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+      if (this.name === 'assets' && ++writes === 2) throw new DOMException('Test full disk', 'QuotaExceededError');
+      return originalPut.apply(this, args);
+    };
+    try {
+      await writeProject({ ...original, id }, [{ id: first, name: 'first', blob: new Blob(['one']) }, { id: second, name: 'second', blob: new Blob(['two']) }], true);
+    } catch (error) { failure = (error as Error).name; }
+    finally { IDBObjectStore.prototype.put = originalPut; }
+    return { failure, active: (await readActiveProject()).id, first: !!await readAsset(first), second: !!await readAsset(second), project: !!await readProject(id) };
+  });
+  expect(rollback).toEqual({ failure: 'QuotaExceededError', active: before.id, first: false, second: false, project: false });
+});
+
+test('cancelling a storage transaction leaves no imported assets or active-project change', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { readActiveProject, readAsset, readProject, writeProject } = await import('/src/features/project/database.ts' as string);
+    const original = await readActiveProject(), id = crypto.randomUUID(), assetId = crypto.randomUUID();
+    const operation = new AbortController(), originalPut = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+      const request = originalPut.apply(this, args);
+      if (this.name === 'assets') operation.abort();
+      return request;
+    };
+    let error = '';
+    try { await writeProject({ ...original, id }, [{ id: assetId, name: 'cancelled', blob: new Blob(['media']) }], true, operation.signal); }
+    catch (cause) { error = (cause as Error).name; }
+    finally { IDBObjectStore.prototype.put = originalPut; }
+    return { error, asset: !!await readAsset(assetId), project: !!await readProject(id), unchanged: (await readActiveProject()).id === original.id };
+  });
+  expect(result).toEqual({ error: 'AbortError', asset: false, project: false, unchanged: true });
+});

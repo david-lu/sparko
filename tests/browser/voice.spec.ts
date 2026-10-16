@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { readFile } from 'node:fs/promises';
 import { wavFixture } from '../fixtures/audio';
 
@@ -91,7 +91,7 @@ test('waits for speech, rejects a tone, captures an utterance and sends it only 
 test('disables the mic when leaving the voice panel and handles permission denial', async ({ page }) => {
   await page.getByRole('button', { name: 'Enable mic' }).click();
   await expect(page.getByText('Listening for speech', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('tab', { name: 'Pins' }).click();
+  await page.getByRole('tab', { name: /Interstitials/ }).click();
   expect(await page.evaluate(() => window.voiceTest.tracks.every(track => track.readyState === 'ended'))).toBe(true);
   await page.getByRole('tab', { name: 'Voice' }).click();
   await expect(page.getByText('Mic off', { exact: true })).toBeVisible();

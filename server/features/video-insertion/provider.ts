@@ -2,6 +2,7 @@ import { createFalClient } from '@fal-ai/client';
 import { z } from 'zod';
 import type { FalJob } from '../../../shared/contracts';
 import { AI_MODELS } from '../../../shared/constants';
+import { falRequest } from './errors';
 
 const FAL_MODEL = AI_MODELS.fal;
 export type FalInput = {
@@ -16,22 +17,31 @@ export interface FalProvider {
 }
 
 export function createFalProvider(env: NodeJS.ProcessEnv): FalProvider {
-  const fal = createFalClient({ credentials: env.FAL_KEY || env.FAL_API_KEY });
+  const credential = env.FAL_KEY || env.FAL_API_KEY;
+  const fal = createFalClient({ credentials: credential });
+  const call = <T>(request: () => Promise<T>) => falRequest(request, credential);
   return {
-    async falUpload(file) { return fal.storage.upload(file); },
+    async falUpload(file) { return call(() => fal.storage.upload(file)); },
     async falSubmit(input) {
-      const result = await fal.queue.submit(FAL_MODEL, { input });
+      const result = await call(() => fal.queue.submit(FAL_MODEL, { input }));
       return result.request_id;
     },
     async falStatus(requestId) {
-      const state = await fal.queue.status(FAL_MODEL, { requestId, logs: false });
+      const state = await call(() => fal.queue.status(FAL_MODEL, { requestId, logs: false }));
       if (state.status === 'COMPLETED') {
-        const result = await fal.queue.result(FAL_MODEL, { requestId });
-        const data = z.object({ video: z.object({ url: z.url().refine(url => url.startsWith('https://')) }) }).parse(result.data);
-        return { requestId, status: 'COMPLETED', videoUrl: data.video.url };
+        const result = await call(() => fal.queue.result(FAL_MODEL, { requestId }));
+        const data = z.object({ video: z.object({ url: z.url().refine(url => url.startsWith('https://')) }),
+          start_time: z.number().finite().nonnegative(), injected_duration: z.number().finite().positive(), duration: z.number().finite().positive(),
+        }).refine(value => value.start_time + value.injected_duration <= value.duration + 0.1, 'Invalid generated scene boundaries.').parse(result.data);
+        return { requestId, status: 'COMPLETED', videoUrl: data.video.url,
+          insertion: { start: data.start_time, duration: data.injected_duration, totalDuration: data.duration } };
       }
       return { requestId, status: state.status, queuePosition: 'queue_position' in state ? state.queue_position : undefined };
     },
-    async falCancel(requestId) { await fal.queue.cancel(FAL_MODEL, { requestId }); },
+    async falCancel(requestId) {
+      const state = await call(() => fal.queue.status(FAL_MODEL, { requestId, logs: false }));
+      // Completed includes rejected generations. They can return to draft without cancellation.
+      if (state.status !== 'COMPLETED') await call(() => fal.queue.cancel(FAL_MODEL, { requestId }));
+    },
   };
 }

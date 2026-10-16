@@ -9,6 +9,7 @@ import { createUploadReceiver } from './shared/uploads';
 import { addAnalysisRoutes } from './features/video-analysis/routes';
 import { addVoiceRoutes } from './features/voice-input/routes';
 import { addInsertionRoutes } from './features/video-insertion/routes';
+import { addInterstitialRoutes } from './features/interstitials/routes';
 
 export async function createApp(options: { root?: string; providers?: Providers } = {}) {
   const root = options.root || process.cwd();
@@ -33,6 +34,7 @@ export async function createApp(options: { root?: string; providers?: Providers 
   });
   addAnalysisRoutes(app, providers, receive);
   addVoiceRoutes(app, providers);
+  addInterstitialRoutes(app, providers, receive);
   addInsertionRoutes(app, providers, receive, defaultPath, uploadDir);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Unknown API route.' }));
   return app;

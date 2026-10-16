@@ -1,0 +1,82 @@
+import { describe, expect, it } from 'vitest';
+import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
+import { packProject, unpackProject } from '../../src/features/project/archive';
+import { emptyAnalysis, type Asset, type Project } from '../../src/features/project/types';
+
+const sourceId = crypto.randomUUID(), sceneId = crypto.randomUUID(), subtitleId = crypto.randomUUID();
+const project: Project = { id: 'old-project', name: 'A project', updatedAt: 123, source: { name: 'source.mp4', assetId: sourceId, url: 'https://example.com/source.mp4' },
+  subtitle: { name: 'subtitles.vtt', assetId: subtitleId }, analysis: { ...emptyAnalysis(), instructions: 'Describe the scene' },
+  interstitials: [
+    { id: 'draft', label: 'Opening', time: 4, start_range: 2, end_range: 3, prompt: 'A new scene', phase: 'draft' },
+    { id: 'ready', label: 'Finished', time: 8, start_range: 2, end_range: 2, prompt: 'A forest', phase: 'ready', result: { url: 'https://fal.media/private-url.mp4', assetId: sceneId, start: 2, duration: 5, totalDuration: 9 } },
+  ],
+};
+const media: Asset[] = [
+  { id: sourceId, name: 'source.mp4', blob: new Blob([new Uint8Array([1, 2, 0, 255])], { type: 'video/mp4' }) },
+  { id: sceneId, name: 'scene.mp4', blob: new Blob([new Uint8Array([5, 6, 7, 8])], { type: 'video/mp4' }) },
+  { id: subtitleId, name: 'subtitles.vtt', blob: new Blob(['WEBVTT\n'], { type: 'text/vtt' }) },
+];
+const signal = () => new AbortController().signal;
+const progress = () => undefined;
+async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: string) {
+  const reader = new ZipReader(new BlobReader(blob), { useWebWorkers: false });
+  const writer = new ZipWriter(new BlobWriter(), { level: 0, useWebWorkers: false });
+  for (const entry of await reader.getEntries()) {
+    if (entry.directory || entry.filename === omit) continue;
+    if (entry.filename === 'project.json') { const manifest = JSON.parse(await entry.getData(new TextWriter())); modify(manifest); await writer.add(entry.filename, new TextReader(JSON.stringify(manifest))); }
+    else await writer.add(entry.filename, new BlobReader(await entry.getData(new BlobWriter())));
+  }
+  await reader.close(); return writer.close();
+}
+describe('portable project archives', () => {
+  it('includes and remaps the retained original alongside the prepared working video', async () => {
+    const original = { id: crypto.randomUUID(), name: 'original.mp4', blob: new Blob(['original bytes']) };
+    const snapshot = { ...project, source: { ...project.source, originalAssetId: original.id } };
+    const restored = await unpackProject(await packProject(snapshot, [...media, original], signal(), progress), signal(), progress);
+    expect(restored.project.source.originalAssetId).toBeTruthy();
+    expect(restored.project.source.originalAssetId).not.toBe(original.id);
+    expect(restored.project.source.originalAssetId).not.toBe(restored.project.source.assetId);
+    expect(await restored.assets.find(asset => asset.id === restored.project.source.originalAssetId)!.blob.text()).toBe('original bytes');
+    await expect(packProject(snapshot, media, signal(), progress)).rejects.toThrow(/missing/);
+  });
+  it('round-trips binary assets, metadata and subtitles without remote or session URLs', async () => {
+    const blob = await packProject(project, media, signal(), progress);
+    const reader = new ZipReader(new BlobReader(blob));
+    const entry = (await reader.getEntries()).find(entry => entry.filename === 'project.json')!;
+    const manifest = entry.directory ? '' : await entry.getData(new TextWriter()); await reader.close();
+    expect(manifest).not.toMatch(/https:|blob:/);
+    const restored = await unpackProject(blob, signal(), progress);
+    expect(restored.project.id).not.toBe(project.id);
+    expect(restored.project.interstitials[0]).toEqual(project.interstitials[0]);
+    expect(restored.project.interstitials[1].result).toMatchObject({ start: 2, duration: 5, totalDuration: 9 });
+    expect(restored.project.source.assetId).not.toBe(sourceId);
+    expect(restored.assets.map(asset => asset.id)).toContain(restored.project.source.assetId);
+    for (let i = 0; i < media.length; i++) expect(await restored.assets[i].blob.arrayBuffer()).toEqual(await media[i].blob.arrayBuffer());
+  });
+  it('rejects missing media, unsupported versions and invalid frame boundaries', async () => {
+    const blob = await packProject(project, media, signal(), progress);
+    await expect(unpackProject(await rewrite(blob, () => {}, `assets/${sceneId}`), signal(), progress)).rejects.toThrow(/missing|duplicate/i);
+    await expect(unpackProject(await rewrite(blob, value => { value.version = 99; }), signal(), progress)).rejects.toThrow(/version/);
+    await expect(unpackProject(await rewrite(blob, value => { value.project.interstitials[1].result.start = 100; }), signal(), progress)).rejects.toThrow(/boundaries/);
+  });
+  it('rejects corrupt asset bytes instead of silently importing them', async () => {
+    const blob = await packProject(project, media, signal(), progress);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const index = bytes.findIndex((value, i) => value === 1 && bytes[i + 1] === 2 && bytes[i + 2] === 0 && bytes[i + 3] === 255);
+    expect(index).toBeGreaterThan(0); bytes[index] ^= 0xff;
+    await expect(unpackProject(new Blob([bytes]), signal(), progress)).rejects.toThrow();
+  });
+  it('retains queued jobs and turns interrupted preparation back into a draft', async () => {
+    const snapshot = structuredClone(project);
+    snapshot.interstitials[0].phase = 'preparing';
+    snapshot.interstitials.push({ ...project.interstitials[0], id: 'queued', phase: 'queued', requestId: 'pending-job-1234' });
+    const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
+    expect(restored.project.interstitials[0].phase).toBe('draft');
+    expect(restored.project.interstitials[2]).toMatchObject({ phase: 'queued', requestId: 'pending-job-1234' });
+  });
+  it('supports cancelling export and import', async () => {
+    const abort = new AbortController(); abort.abort();
+    await expect(packProject(project, media, abort.signal, progress)).rejects.toThrow();
+    await expect(unpackProject(new Blob(), abort.signal, progress)).rejects.toThrow();
+  });
+});

@@ -101,3 +101,5 @@ kbd{font-size:9px;font-family:var(--mono);color:#8791a1;border:1px solid #42464e
 .sidebar{container-type:inline-size}
 .tabs button{min-width:0;padding:0 4px;gap:4px}
 @container(max-width:275px){.tabs svg,.tabs .count{display:none}}
+.project-status{display:flex;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid var(--line);font-size:11px;flex-shrink:0}.project-status>span:nth-child(2){flex:1}
+.project-opening{display:grid;place-items:center;flex:1;color:var(--muted);font-size:11px}

@@ -4,6 +4,7 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { AI_MODELS } from './shared/constants.ts';
 
 export default defineConfig({
+  optimizeDeps: { include: ['@zip.js/zip.js', 'zod'] },
   plugins: [react(), viteStaticCopy({ targets: [
     { src: 'node_modules/@ricky0123/vad-web/dist/vad.worklet.bundle.min.js', dest: 'voice-assets', rename: { stripBase: true } },
     { src: `node_modules/@ricky0123/vad-web/dist/silero_vad_${AI_MODELS.voiceActivity}.onnx`, dest: 'voice-assets', rename: { stripBase: true } },

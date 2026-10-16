@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -22,21 +22,22 @@ test('default video, playback, seeking, settings and persistent pins', async ({ 
   await page.getByRole('slider', { name: 'Video timeline' }).fill('12.5');
   await expect(page.locator('.timeline-track')).toHaveCSS('outline-style', 'none');
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(12.5, 1);
-  await page.getByRole('button', { name: /Pin current time/ }).click();
-  await page.getByRole('textbox', { name: 'Pin 1 label' }).fill('Opening moment');
+  await page.getByRole('button', { name: 'Add draft P' }).click();
+  await page.getByRole('textbox', { name: 'Interstitial prompt' }).fill('Opening moment');
   await page.locator('.video-stage').hover();
   await page.getByRole('combobox', { name: 'Playback speed' }).selectOption('1.5');
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.playbackRate)).toBe(1.5);
   await page.getByRole('button', { name: 'Mute', exact: true }).click();
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.muted)).toBe(true);
   await page.getByRole('button', { name: 'Loop video' }).click();
-  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.loop)).toBe(true);
+  await expect(page.getByRole('button', { name: 'Loop video' })).toHaveClass(/active/);
   await page.reload();
-  await expect(page.getByRole('textbox', { name: 'Pin 1 label' })).toHaveValue('Opening moment');
-  await page.getByRole('button', { name: 'Jump to pin 1' }).click();
+  await page.getByRole('button', { name: 'Select Interstitial 1', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Interstitial prompt' })).toHaveValue('Opening moment');
+  await page.getByRole('button', { name: /^Select Interstitial 1 at/ }).click();
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(12.5, 1);
-  await page.getByRole('button', { name: 'Remove pin 1' }).click();
-  await expect(page.getByText('No pins yet')).toBeVisible();
+  await page.getByRole('button', { name: 'Remove Interstitial 1' }).click();
+  await expect(page.getByText('No interstitials yet')).toBeVisible();
   await expect(page.locator('.filmstrip img')).toHaveCount(12, { timeout: 60_000 });
   await page.screenshot({ path: 'test-results/player-desktop.png', fullPage: true });
   expect(errors).toEqual([]);
@@ -47,7 +48,7 @@ test('keyboard shortcuts, subtitles and mobile layout', async ({ page }) => {
   await page.keyboard.press('l');
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(10, 0);
   await page.keyboard.press('p');
-  await expect(page.getByRole('textbox', { name: 'Pin 1 label' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Interstitial prompt' })).toBeVisible();
   await page.getByLabel('Choose subtitle file').setInputFiles({ name: 'test.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:00:00.000 --> 00:00:20.000\nTest subtitle\n') });
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.textTracks[0]?.mode)).toBe('showing');
   await page.locator('.video-stage').hover();
@@ -96,14 +97,14 @@ test('panel dividers resize and persist without page scrolling', async ({ page }
   await expect(page.locator('.sidebar')).toHaveCSS('width', '394px');
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(page.viewportSize()!.height);
   await page.getByRole('slider', { name: 'Video timeline' }).fill('30');
-  await page.getByRole('button', { name: /Pin current time/ }).click();
+  await page.getByRole('button', { name: 'Add draft P' }).click();
   await page.getByRole('slider', { name: 'Video timeline' }).fill('60');
-  await page.getByRole('button', { name: /Pin current time/ }).click();
+  await page.getByRole('button', { name: 'Add draft P' }).click();
   await expect(page.locator('.timeline-pin')).toHaveCount(2);
   await page.screenshot({ path: 'test-results/resizable-panels.png' });
 });
 
-test('AI panels prepare real frames/audio and real MP4 segments; fal submits source and times', async ({ page }) => {
+test('AI panels prepare real frames/audio and real MP4 segments', async ({ page }) => {
   const sent: { url: string; bytes: number; data: string }[] = [];
   await page.route('**/api/analyze/*', async route => {
     const data = route.request().postDataBuffer();
@@ -120,14 +121,4 @@ test('AI panels prepare real frames/audio and real MP4 segments; fal submits sou
   await page.getByRole('button', { name: 'Generate description' }).click();
   await expect.poll(() => sent.length, { timeout: 60_000 }).toBe(2);
   expect(sent[1].data).toContain('segment.mp4'); expect(sent[1].data).toContain('ftyp');
-  await page.route('**/api/fal/jobs', async route => {
-    expect(route.request().postData()).toContain('name="source"\r\n\r\ndefault');
-    await route.fulfill({ status: 202, json: { requestId: 'test-job-1234', status: 'IN_QUEUE' } });
-  });
-  await page.route('**/api/fal/jobs/test-job-1234', route => route.fulfill({ json: { requestId: 'test-job-1234', status: 'COMPLETED', videoUrl: 'https://example.com/result.mp4' } }));
-  await page.getByRole('tab', { name: 'fal.ai' }).click();
-  await page.getByRole('spinbutton', { name: 'Insert at', exact: true }).fill('1');
-  await page.getByRole('spinbutton', { name: 'Resume at', exact: true }).fill('2');
-  await page.getByRole('button', { name: 'Upload & generate' }).click();
-  await expect(page.getByRole('link', { name: 'Open generated video' })).toBeVisible();
 });

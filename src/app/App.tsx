@@ -1,35 +1,42 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { FolderOpen, Mic, Pin as PinIcon, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { Clapperboard, Download, FolderOpen, Mic, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
 import Player from '../features/player/Player';
 import AiPanel from '../features/video-analysis/AiPanel';
-import FalPanel from '../features/video-insertion/FalPanel';
 import VoicePanel from '../features/voice-input/VoicePanel';
-import PinsPanel from '../features/timeline/PinsPanel';
+import InterstitialPanel from '../features/interstitials/InterstitialPanel';
+import { InterstitialController } from '../features/interstitials/InterstitialController';
+import { ProjectController } from '../features/project/ProjectController';
+import { TimelineComposition } from '../media/TimelineComposition';
 import ResizeHandle from '../shared/ResizeHandle';
 import { MediaEngine } from '../media/MediaEngine';
 import { VideoPlayerController } from '../features/player/VideoPlayerController';
 import type { MediaInfo, MediaSource, Thumbnail } from '../media/media';
-import { loadPins, savePins, type Pin } from '../features/timeline/pins';
 import { getStatus, request } from '../shared/api';
 import type { AppStatus, Slice } from '../../shared/contracts';
+import { emptyAnalysis } from '../features/project/types';
 
 const defaultSource: MediaSource = { id: 'default:episode_mock.mp4', name: 'episode_mock.mp4', url: '/media/episode_mock.mp4' };
-type Tab = 'pins' | 'ai' | 'voice' | 'fal';
+type Tab = 'interstitials' | 'ai' | 'voice';
 function savedSize(key: string, fallback: number) {
   try { const value = Number(localStorage.getItem(key)); return value > 0 && Number.isFinite(value) ? value : fallback; } catch { return fallback; }
 }
 export default function App() {
   const [controller] = useState(() => new VideoPlayerController());
   const player = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const [source, setSource] = useState<MediaSource>(defaultSource);
   const [engine, setEngine] = useState<MediaEngine | null>(null);
   const [info, setInfo] = useState<MediaInfo | null>(null);
   const [thumbnails, setThumbnails] = useState<Thumbnail[]>([]);
-  const [pins, setPins] = useState<Pin[]>(() => loadPins(defaultSource.id));
-  const [tab, setTab] = useState<Tab>('pins');
+  const [interstitials] = useState(() => new InterstitialController());
+  const interstitialState = useSyncExternalStore(interstitials.subscribe, interstitials.getSnapshot);
+  const [projects] = useState(() => new ProjectController(interstitials));
+  const projectState = useSyncExternalStore(projects.subscribe, projects.getSnapshot);
+  const source = projectState.source || defaultSource;
+  const analysis = projectState.project?.analysis || emptyAnalysis();
+  const slice = analysis.slice;
+  const setSlice = (slice: Slice) => projects.updateAnalysis({ ...analysis, slice });
+  const [tab, setTab] = useState<Tab>('interstitials');
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [error, setError] = useState('');
-  const [slice, setSlice] = useState<Slice>({ start: 0, end: 10 });
   const [shortcuts, setShortcuts] = useState(false);
   const [login, setLogin] = useState(false);
   const [password, setPassword] = useState('');
@@ -49,9 +56,14 @@ export default function App() {
     try { localStorage.setItem('sparko:side-width', String(sideWidth)); localStorage.setItem('sparko:timeline-height', String(timelineHeight)); } catch { /* The layout still works without persistence. */ }
   }, [sideWidth, timelineHeight]);
   const fileInput = useRef<HTMLInputElement>(null);
+  const projectInput = useRef<HTMLInputElement>(null);
   const fileMenu = useRef<HTMLDetailsElement>(null);
   const defaultUrl = useRef(defaultSource.url);
   const sourceVersion = useRef(0);
+  const readyKey = JSON.stringify(interstitialState.items.filter(item => item.phase === 'ready').map(({ id, label, time, result }) => ({ id, label, time, result })));
+  const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items) : null, [source, info, readyKey]);
+  useEffect(() => { if (composition) controller.setComposition(composition); }, [composition, controller]);
+  useEffect(() => () => { interstitials.dispose(); projects.dispose(); }, [interstitials, projects]);
   useEffect(() => {
     const open = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'o') { event.preventDefault(); fileInput.current?.click(); }
@@ -60,72 +72,91 @@ export default function App() {
     return () => window.removeEventListener('keydown', open);
   }, []);
 
-  useEffect(() => { void getStatus().then(data => {
+  useEffect(() => { let active = true; void getStatus().then(data => {
+    if (!active) return;
     setStatus(data); defaultUrl.current = data.defaultVideo.url;
     if (data.requiresPassword && !sessionStorage.getItem('sparko:password')) setLogin(true);
-    if (data.defaultVideo.url !== defaultSource.url) setSource(current => current.id === defaultSource.id ? { ...current, url: data.defaultVideo.url } : current);
-  }).catch(err => setError(err.message)); }, []);
+    return projects.init({ ...defaultSource, url: data.defaultVideo.url });
+  }).catch(err => { if (active) { setError(err.message); void projects.init(defaultSource); } });
+    return () => { active = false; };
+  }, [projects]);
   useEffect(() => {
     const show = () => setLogin(true);
     window.addEventListener('sparko:auth-required', show);
     return () => window.removeEventListener('sparko:auth-required', show);
   }, []);
   useEffect(() => {
+    if (!projectState.source) return;
     const version = ++sourceVersion.current;
     const media = new MediaEngine(source);
     setEngine(media); setInfo(null); setThumbnails([]); setError('');
-    setPins(loadPins(source.id)); setSlice({ start: 0, end: 10 }); controller.load(source);
+    controller.load(source);
     void media.inspect().then(metadata => {
       if (sourceVersion.current !== version) return;
-      setInfo(metadata); setSlice({ start: 0, end: Math.min(10, metadata.duration) });
+      setInfo(metadata);
+      const current = projects.getSnapshot().project;
+      if (current?.id === source.id && current.analysis.slice.end > metadata.duration) projects.updateAnalysis({ ...current.analysis, slice: { start: 0, end: metadata.duration } });
       return media.thumbnails().then(frames => { if (sourceVersion.current === version) setThumbnails(frames); });
     }).catch(err => { if (sourceVersion.current === version && err.name !== 'AbortError') setError(err.message || 'Unable to read video metadata.'); });
     return () => { sourceVersion.current++; media.dispose(); };
-  }, [source, controller]);
-  useEffect(() => () => { if (source.file) URL.revokeObjectURL(source.url); }, [source]);
-  const updatePins = (next: Pin[]) => {
-    const sorted = [...next].sort((a, b) => a.time - b.time); setPins(sorted);
-    if (!savePins(source.id, sorted)) setError('Pins are available in this session, but browser storage could not save them.');
+  }, [source, controller, projects, projectState.source]);
+  const selectInterstitial = (id: string | null) => {
+    interstitials.select(id); setTab('interstitials');
+    const item = interstitialState.items.find(item => item.id === id);
+    if (item) { controller.pause(); controller.seek(composition?.itemTime(item) ?? item.time); }
   };
-  const addPin = () => {
-    if (!player.duration) return;
-    const time = controller.video?.currentTime || 0;
-    if (pins.some(pin => Math.abs(pin.time - time) < 0.03)) { setTab('pins'); return; }
-    updatePins([...pins, { id: crypto.randomUUID(), time, label: `Pin ${pins.length + 1}` }]);
+  const addInterstitial = () => {
+    if (!info || !projectState.project) return;
+    const item = interstitials.add(controller.getSourceTime(), info.duration);
+    setTab('interstitials'); controller.pause(); controller.seek(composition?.itemTime(item) ?? item.time);
   };
-  const movePin = (id: string, time: number) => updatePins(pins.map(pin => pin.id === id ? { ...pin, time: Math.max(0, Math.min(player.duration, time)) } : pin));
-  const removePin = (id: string) => updatePins(pins.filter(pin => pin.id !== id));
+  const moveInterstitial = (id: string, time: number) => {
+    if (!info) return;
+    // Removing the moved scene from this mapping lets its start follow the drop position,
+    // including arrow-key moves within the space its old rendered block occupied.
+    const remaining = new TimelineComposition(source, info, interstitialState.items.filter(item => item.id !== id));
+    interstitials.move(id, Math.max(0, Math.min(remaining.sourceDuration, Math.round(remaining.sourceTime(time) * remaining.fps) / remaining.fps)));
+  };
   const openFile = (file: File) => {
-    if (!file.type.startsWith('video/') && !/\.(mp4|webm|mov|mkv|m4v)$/i.test(file.name)) { setError('Choose a video file.'); return; }
-    setSource({ id: `file:${file.name}:${file.size}:${file.lastModified}`, name: file.name, url: URL.createObjectURL(file), file });
+    if (/\.sparko$/i.test(file.name)) void projects.importProject(file); else void projects.openVideo(file);
   };
-  const visibleError = error || player.error;
+  const exportProject = async () => {
+    const result = await projects.exportProject(); if (!result) return;
+    const url = URL.createObjectURL(result.blob), link = document.createElement('a');
+    link.href = url; link.download = result.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+  const visibleError = projectState.error || error || player.error || interstitialState.error;
   return <div className="app-shell" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) openFile(file); }}>
     <header className="menubar" aria-label="Application menu">
       <details className="file-menu" ref={fileMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }} onKeyDown={event => { if (event.key === 'Escape') event.currentTarget.open = false; }}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
-        <button role="menuitem" onClick={() => { if (fileMenu.current) fileMenu.current.open = false; fileInput.current?.click(); }}><FolderOpen size={14} />Open video<span>Ctrl O</span></button>
-        <button role="menuitem" disabled={!source.file} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; setSource({ ...defaultSource, url: defaultUrl.current }); }}><RotateCcw size={14} />Open default video</button>
+        <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; fileInput.current?.click(); }}><FolderOpen size={14} />Open video<span>Ctrl O</span></button>
+        <button role="menuitem" disabled={projectState.busy || projectState.source?.id === defaultSource.id} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void projects.openDefault({ ...defaultSource, url: defaultUrl.current }).catch(err => setError(err.message)); }}><RotateCcw size={14} />Open default video</button>
+        <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; projectInput.current?.click(); }}><Upload size={14} />Import project</button>
+        <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>
       <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button>
       <span className="menu-document">{source.name}</span><span className="menu-app-name">SPARKO</span>
     </header>
     <main className="workspace">
-      {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); }}><X size={16} /></button></div>}
+      {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }}><X size={16} /></button></div>}
+      {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
       <div className="workspace-grid" style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
-        <Player source={source} info={info} thumbnails={thumbnails} pins={pins} controller={controller} onPin={addPin} onSeek={time => controller.seek(time)} onError={setError} selection={tab === 'ai' ? slice : null}
-          onMovePin={movePin} onRemovePin={removePin}
-          timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} />
-        {shortcuts && <div className="shortcuts"><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>P</kbd> Add pin</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
+        {projectState.source ? <Player source={source} info={info} thumbnails={thumbnails} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
+          subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
+          controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={tab === 'ai' ? slice : null}
+          onMoveInterstitial={moveInterstitial} onRemoveInterstitial={id => void interstitials.remove(id)} onSelectInterstitial={selectInterstitial}
+          timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} /> : <div className="project-opening" role="status">{projectState.busy ? 'Preparing video…' : 'Open a video from the File menu.'}</div>}
+        {shortcuts && <div className="shortcuts"><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>P</kbd> New interstitial</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
       </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar">
-        <div className="tabs" role="tablist" aria-label="Video tools">{([{ id: 'pins', label: 'Pins', icon: PinIcon }, { id: 'ai', label: 'Describe', icon: Sparkles }, { id: 'voice', label: 'Voice', icon: Mic }, { id: 'fal', label: 'fal.ai', icon: Upload }] as const).map(item => <button key={item.id} role="tab" id={`tab-${item.id}`} aria-controls={`panel-${item.id}`} aria-selected={tab === item.id} className={tab === item.id ? 'selected' : ''} onClick={() => setTab(item.id)}><item.icon size={15} />{item.label}{item.id === 'pins' && <span className="count">{pins.length}</span>}</button>)}</div>
-        <div role="tabpanel" id="panel-pins" aria-labelledby="tab-pins" hidden={tab !== 'pins'}><PinsPanel pins={pins} time={player.time} duration={player.duration} onAdd={addPin} onSeek={time => controller.seek(time)} onRemove={removePin}
-          onRename={(id, label) => updatePins(pins.map(pin => pin.id === id ? { ...pin, label } : pin))} /></div>
-        <div role="tabpanel" id="panel-ai" aria-labelledby="tab-ai" hidden={tab !== 'ai'}><AiPanel engine={engine} controller={controller} status={status} slice={slice} onSlice={setSlice} /></div>
+        <div className="tabs" role="tablist" aria-label="Video tools">{([{ id: 'interstitials', label: 'Interstitials', icon: Clapperboard }, { id: 'ai', label: 'Describe', icon: Sparkles }, { id: 'voice', label: 'Voice', icon: Mic }] as const).map(item => <button key={item.id} role="tab" id={`tab-${item.id}`} aria-controls={`panel-${item.id}`} aria-selected={tab === item.id} className={tab === item.id ? 'selected' : ''} onClick={() => setTab(item.id)}><item.icon size={15} />{item.label}{item.id === 'interstitials' && <span className="count">{interstitialState.items.length}</span>}</button>)}</div>
+        <div role="tabpanel" id="panel-interstitials" aria-labelledby="tab-interstitials" hidden={tab !== 'interstitials'}><InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
+          engine={engine} info={info} status={status} onAdd={addInterstitial} onSelect={selectInterstitial} onPreview={item => { const start = composition?.itemTime(item) ?? item.time; controller.preview(start, start + (item.result?.duration || 0)); }} /></div>
+        <div role="tabpanel" id="panel-ai" aria-labelledby="tab-ai" hidden={tab !== 'ai'}><AiPanel engine={engine} controller={controller} status={status} analysis={analysis} onAnalysis={value => projects.updateAnalysis(value)} slice={slice} onSlice={setSlice} /></div>
         <div role="tabpanel" id="panel-voice" aria-labelledby="tab-voice" hidden={tab !== 'voice'}><VoicePanel key={source.url} sourceId={source.id} controller={controller} status={status} active={tab === 'voice'} /></div>
-        <div role="tabpanel" id="panel-fal" aria-labelledby="tab-fal" hidden={tab !== 'fal'}><FalPanel source={source} controller={controller} status={status} /></div>
       </aside></div>
     </main>
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" onChange={event => { const file = event.target.files?.[0]; if (file) openFile(file); event.target.value = ''; }} />
+    <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" onChange={event => { const file = event.target.files?.[0]; if (file) void projects.importProject(file); event.target.value = ''; }} />
     {login && <div className="modal-backdrop"><div className="login-card" role="dialog" aria-modal="true" aria-labelledby="login-title"><h2 id="login-title">Unlock video tools</h2><p className="hint">Enter this workspace’s password to use its AI providers.</p><form onSubmit={event => {
       event.preventDefault(); sessionStorage.setItem('sparko:password', password); setLoginError('');
       void request('/api/session', { method: 'POST' }).then(() => { setLogin(false); setPassword(''); }).catch(err => { sessionStorage.removeItem('sparko:password'); setLoginError(err.message); });

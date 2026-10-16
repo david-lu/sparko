@@ -51,7 +51,7 @@ export default function VoicePanel({ sourceId, controller, status, active, scene
 
   const start = () => {
     preview.current?.pause(); controller.pause();
-    setContext({ ...scene, sourceId, videoTime: controller.video?.currentTime ?? controller.getSnapshot().time });
+    setContext({ ...scene, sourceId, videoTime: controller.getSourceTime() });
     setResult(null); setError('');
     void microphone.enable();
   };

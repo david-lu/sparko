@@ -4,12 +4,12 @@ import {
 } from 'mediabunny';
 import { validateSlice, type Slice } from '../../shared/contracts';
 
-export type MediaSource = { id: string; name: string; url: string; file?: File };
+export type MediaSource = { id: string; name: string; url: string; file?: File; assetId?: string };
 export type MediaInfo = { duration: number; width: number; height: number; codec: string; fps: number; hasAudio: boolean };
 export type Thumbnail = { time: number; url: string };
 type TaskOptions = { signal?: AbortSignal; onProgress?: (progress: number) => void };
 
-function openInput(source: MediaSource): Input {
+export function openInput(source: MediaSource): Input {
   return new Input({
     formats: ALL_FORMATS,
     source: source.file ? new BlobSource(source.file) : new UrlSource(new URL(source.url, location.href).href),
@@ -68,7 +68,7 @@ export async function sampleFrames(source: MediaSource, slice: Slice, count: num
 }
 
 let audioReady: Promise<void> | undefined;
-async function ensureAac() {
+export async function ensureAac() {
   audioReady ??= (async () => {
     if (!await canEncodeAudio('aac')) {
       const { registerAacEncoder } = await import('@mediabunny/aac-encoder');
@@ -100,7 +100,7 @@ async function runConversion(input: Input, output: Output<OutputFormat, BufferTa
 }
 
 /** Export an arbitrary range to H.264/AAC MP4. Deliberately has no download or editing UI. */
-export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { maxHeight?: number } = {}): Promise<Blob> {
+export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { maxHeight?: number; frameRate?: number } = {}): Promise<Blob> {
   options.signal?.throwIfAborted();
   await ensureAac();
   const input = openInput(source);
@@ -114,7 +114,7 @@ export async function exportMp4(source: MediaSource, slice: Slice, options: Task
     const conversion = await Conversion.init({
       input, output, tracks: 'primary', trim: slice,
       // Re-encode to honor arbitrary boundaries instead of expanding to nearby keyframes.
-      video: { codec: 'avc', forceTranscode: true,
+      video: { codec: 'avc', forceTranscode: true, frameRate: options.frameRate,
         ...(options.maxHeight && sourceHeight > options.maxHeight ? { height: options.maxHeight } : {}) },
       audio: { codec: 'aac', forceTranscode: true },
     });

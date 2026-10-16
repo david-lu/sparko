@@ -1,18 +1,20 @@
 import './styles.css';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Minus, Pin as PinIcon, Plus, SkipBack, SkipForward } from 'lucide-react';
+import { Clapperboard, Minus, Plus, SkipBack, SkipForward } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, Thumbnail } from '../../media/media';
-import type { Pin } from './pins';
+import type { Interstitial } from '../../../shared/interstitials';
+import type { TimelineComposition } from '../../media/TimelineComposition';
+import { TIMELINE_FPS } from '../../../shared/constants';
 import ResizeHandle from '../../shared/ResizeHandle';
-import TimelinePin from './TimelinePin';
+import InterstitialMarker from './InterstitialMarker';
 
 const MAX_ZOOM = 32;
-export default function Timeline({ name, info, thumbnails, pins, time, duration, buffered, selection, height, maxHeight, onHeight, onPin, onMovePin, onRemovePin, onSeek }: {
-  name: string; info: MediaInfo | null; thumbnails: Thumbnail[]; pins: Pin[]; time: number; duration: number;
+export default function Timeline({ name, info, thumbnails, interstitials, selectedId, composition, time, duration, buffered, selection, height, maxHeight, onHeight, onAddInterstitial, onMoveInterstitial, onRemoveInterstitial, onSelectInterstitial, onSeek }: {
+  name: string; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[]; selectedId: string | null; composition: TimelineComposition | null; time: number; duration: number;
   buffered: { start: number; end: number }[]; selection: Slice | null; height: number; maxHeight: number;
-  onHeight: (height: number) => void; onPin: () => void; onMovePin: (id: string, time: number) => void;
-  onRemovePin: (id: string) => void; onSeek: (time: number) => void;
+  onHeight: (height: number) => void; onAddInterstitial: () => void; onMoveInterstitial: (id: string, time: number) => void;
+  onRemoveInterstitial: (id: string) => void; onSelectInterstitial: (id: string | null) => void; onSeek: (time: number) => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
@@ -22,6 +24,8 @@ export default function Timeline({ name, info, thumbnails, pins, time, duration,
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<{ time: number; x: number } | null>(null);
   const anchor = useRef<{ ratio: number; x: number } | null>(null);
+  const markers = interstitials.map(item => ({ ...item, time: composition?.itemTime(item) ?? item.time }));
+  const sourceHover = hover ? composition?.sourceTime(hover.time) ?? hover.time : 0;
   const changeZoom = useCallback((value: number, x?: number) => {
     const scroll = viewport.current;
     const next = Math.max(1, Math.min(MAX_ZOOM, value));
@@ -64,11 +68,11 @@ export default function Timeline({ name, info, thumbnails, pins, time, duration,
   const tickStep = ([1, 2, 5, 10].find(multiplier => multiplier * power >= rawStep) || 10) * power;
   const ticks = duration ? Array.from({ length: Math.ceil(duration / tickStep) }, (_, index) => index * tickStep)
     .filter(value => value === 0 || (duration - value) / duration * contentWidth > 65).concat(duration) : [0];
-  const hoveredFrame = hover === null ? null : thumbnails.reduce<Thumbnail | null>((nearest, frame) => !nearest || Math.abs(frame.time - hover.time) < Math.abs(nearest.time - hover.time) ? frame : nearest, null);
+  const hoveredFrame = hover === null || composition?.at(hover.time)?.kind === 'interstitial' ? null : thumbnails.reduce<Thumbnail | null>((nearest, frame) => !nearest || Math.abs(frame.time - sourceHover) < Math.abs(nearest.time - sourceHover) ? frame : nearest, null);
 
   return <div className="timeline-section" ref={section} style={{ height }}>
     <ResizeHandle orientation="horizontal" label="Resize timeline" value={height} min={118} max={maxHeight} onChange={onHeight} />
-    <div className="timeline-heading"><span className="eyebrow">TIMELINE <span className="subtle">/ 1 VIDEO</span></span>
+    <div className="timeline-heading"><span className="eyebrow">TIMELINE <span className="subtle">/ {interstitials.filter(item => item.phase === 'ready').length} INTERSTITIALS</span></span>
       <div className="timeline-actions">
         <div className="timeline-zoom" role="group" aria-label="Timeline zoom">
           <button className="icon-button small" aria-label="Zoom out timeline" title="Zoom out" disabled={zoom <= 1 || !duration} onClick={() => zoomAtPlayhead(zoom / 1.5)}><Minus size={13} /></button>
@@ -76,9 +80,9 @@ export default function Timeline({ name, info, thumbnails, pins, time, duration,
           <button className="text-button zoom-fit" aria-label="Fit timeline" title="Fit entire video · Ctrl + wheel to zoom" onClick={() => changeZoom(1)}>{zoom === 1 ? 'Fit' : `${Number(zoom.toFixed(1))}×`}</button>
           <button className="icon-button small" aria-label="Zoom in timeline" title="Zoom in" disabled={zoom >= MAX_ZOOM || !duration} onClick={() => zoomAtPlayhead(zoom * 1.5)}><Plus size={13} /></button>
         </div>
-        <button className="icon-button small" aria-label="Previous pin" disabled={!pins.some(pin => pin.time < time - 0.05)} onClick={() => onSeek([...pins].reverse().find(pin => pin.time < time - 0.05)?.time || 0)}><SkipBack size={14} /></button>
-        <button className="icon-button small" aria-label="Next pin" disabled={!pins.some(pin => pin.time > time + 0.05)} onClick={() => onSeek(pins.find(pin => pin.time > time + 0.05)?.time || 0)}><SkipForward size={14} /></button>
-        <button className="button small" disabled={!duration} onClick={onPin}><PinIcon size={13} /> Add pin <kbd>P</kbd></button>
+        <button className="icon-button small" aria-label="Previous interstitial" disabled={!markers.some(item => item.time < time - 0.05)} onClick={() => onSelectInterstitial([...markers].reverse().find(item => item.time < time - 0.05)?.id ?? null)}><SkipBack size={14} /></button>
+        <button className="icon-button small" aria-label="Next interstitial" disabled={!markers.some(item => item.time > time + 0.05)} onClick={() => onSelectInterstitial(markers.find(item => item.time > time + 0.05)?.id ?? null)}><SkipForward size={14} /></button>
+        <button className="button small" disabled={!info} onClick={onAddInterstitial}><Clapperboard size={13} /> Add draft <kbd>P</kbd></button>
       </div>
     </div>
     <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label="Scrollable timeline" data-zoom={zoom} onScroll={() => setHover(null)}>
@@ -90,18 +94,20 @@ export default function Timeline({ name, info, thumbnails, pins, time, duration,
           setHover({ time: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration,
             x: event.clientX - (section.current?.getBoundingClientRect().left || 0) });
         }} onPointerLeave={() => setHover(null)}>
-          <div className="filmstrip" aria-hidden="true">{thumbnails.length ? thumbnails.map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />) : <div className="filmstrip-placeholder">{duration ? name : 'Loading video…'}</div>}</div>
+          <div className="filmstrip" aria-hidden="true">{composition?.hasInsertions ? composition.segments.filter(segment => segment.kind === 'source').map(segment => <div className="source-segment" key={segment.id} style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }}>{thumbnails.filter(frame => frame.time >= segment.sourceStart && frame.time < segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps).map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />)}</div>) : thumbnails.length ? thumbnails.map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />) : <div className="filmstrip-placeholder">{duration ? name : 'Loading video…'}</div>}</div>
           <div className="timeline-shade" style={{ width: `${progress}%` }} />
-          {selection && duration > 0 && selection.end > selection.start && <div className="selection-overlay" style={{ left: `${selection.start / duration * 100}%`, width: `${(selection.end - selection.start) / duration * 100}%` }} />}
+          {selection && duration > 0 && selection.end > selection.start && <div className="selection-overlay" style={{ left: `${(composition?.timelineTime(selection.start) ?? selection.start) / duration * 100}%`, width: `${((composition?.timelineTime(selection.end) ?? selection.end) - (composition?.timelineTime(selection.start) ?? selection.start)) / duration * 100}%` }} />}
           <div className="buffer-track" aria-hidden="true">{buffered.map((range, index) => <span key={index} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }} />)}</div>
-          <input className="timeline-input" type="range" aria-label="Video timeline" aria-valuetext={`${formatTime(time)} of ${formatTime(duration)}`} min="0" max={duration || 1} step="0.01" value={Math.min(time, duration || 1)} disabled={!duration} onChange={event => onSeek(Number(event.target.value))} />
+          <input className="timeline-input" type="range" aria-label="Video timeline" aria-valuetext={`${formatTime(time)} of ${formatTime(duration)}`} min="0" max={duration || 1} step={1 / TIMELINE_FPS} value={Math.min(time, duration || 1)} disabled={!duration} onChange={event => onSeek(Number(event.target.value))} />
+          {composition?.segments.filter(segment => segment.kind === 'interstitial').map(segment => <button key={segment.id} className={`rendered-interstitial ${selectedId === segment.id ? 'selected' : ''}`} aria-label={`Select rendered ${segment.label}`} title={`${segment.label} · ${((segment.endFrame - segment.startFrame) / composition.fps).toFixed(2)}s`}
+            style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }} onClick={() => onSelectInterstitial(segment.id)}><Clapperboard size={12} /><span>{segment.label}</span></button>)}
           <div className="playhead" style={{ left: `${progress}%` }} aria-hidden="true"><span /></div>
-          {duration > 0 && pins.filter(pin => pin.time <= duration).map((pin, index) => <TimelinePin key={pin.id} pin={pin} number={index + 1} duration={duration} fps={info?.fps || 30} track={track} viewport={viewport} onMove={onMovePin} onRemove={onRemovePin} onSeek={onSeek} />)}
+          {duration > 0 && markers.filter(item => item.time <= duration).map((item, index) => <InterstitialMarker key={item.id} pin={item} selected={selectedId === item.id} number={index + 1} duration={duration} fps={TIMELINE_FPS} track={track} viewport={viewport} onMove={onMoveInterstitial} onRemove={onRemoveInterstitial} onSelect={onSelectInterstitial} />)}
         </div>
       </div>
     </div>
     {hover && hoveredFrame && <div className="hover-preview" style={{ left: Math.max(75, Math.min(width - 55, hover.x)) }}><img src={hoveredFrame.url} alt="Timeline preview" /><span>{formatTime(hover.time)}</span></div>}
-    <span id="pin-help" className="sr-only">Drag to move. Arrow keys move one frame, Shift moves one second. Delete or Backspace removes the pin. Escape cancels a drag.</span>
-    <div className="timeline-footer"><span className="source-name">{name}</span><span>{info ? `${info.width} × ${info.height} · ${info.fps.toFixed(2)} fps · ${info.codec.toUpperCase()}` : 'Reading media…'}</span></div>
+    <span id="pin-help" className="sr-only">Select to edit. Drag to move unless generation is in progress. Arrow keys move one frame, Shift moves one second. Delete or Backspace removes the interstitial. Escape cancels a drag.</span>
+    <div className="timeline-footer"><span className="source-name">{name}</span><span>{info ? `${info.width} × ${info.height} · ${TIMELINE_FPS} fps · ${info.codec.toUpperCase()}` : 'Reading media…'}</span></div>
   </div>;
 }

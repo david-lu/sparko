@@ -8,10 +8,22 @@ export const AI_MODELS = {
 } as const;
 
 export const MAX_ANALYSIS_SECONDS = 120;
+// Project playback, editing and composed exports share this frame clock.
+export const TIMELINE_FPS = 24;
+// Cap newly converted working videos; the untouched original remains in the project.
+// Set maxHeight to 0 to keep the original resolution during preparation.
+export const VIDEO_PREPARATION = { maxHeight: 1080 } as const;
 export const MAX_VOICE_SECONDS = 60;
 // Keeps microphone requests below Vercel's function body limit, without public Blob uploads.
 export const MAX_VOICE_BYTES = 2 * 1024 * 1024;
 export const VOICE_DETECTION = {
   positiveSpeechThreshold: 0.5, negativeSpeechThreshold: 0.35,
   minSpeechMs: 250, preSpeechPadMs: 400, redemptionMs: 1600,
+} as const;
+
+export const INTERSTITIAL = {
+  defaultRange: 2, maxRange: 4, minStartRange: 1.625, minEndRange: 0.1,
+  generatedSeconds: 6, resolution: '768p', maxReferenceBytes: 50 * 1024 * 1024,
+  referenceFps: TIMELINE_FPS, // H3 Max validates insertion times at 24 fps.
+  pollMilliseconds: 2500,
 } as const;

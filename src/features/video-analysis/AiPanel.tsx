@@ -7,20 +7,24 @@ import { MAX_ANALYSIS_SECONDS } from '../../../shared/constants';
 import { analyzeVideo } from './api';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { VideoPlayerController } from '../player/VideoPlayerController';
+import type { AnalysisState } from '../project/types';
 
-export default function AiPanel({ engine, controller, status, slice, onSlice }: {
+export default function AiPanel({ engine, controller, status, slice, onSlice, analysis, onAnalysis }: {
   engine: MediaEngine | null; controller: VideoPlayerController; status: AppStatus | null;
   slice: Slice; onSlice: (value: Slice) => void;
+  analysis: AnalysisState; onAnalysis: (value: AnalysisState) => void;
 }) {
-  const [provider, setProvider] = useState<Provider>('openai');
-  const [instructions, setInstructions] = useState('');
-  const [result, setResult] = useState<CaptionResult | null>(null);
+  const { provider, instructions, result } = analysis;
+  const setProvider = (provider: Provider) => onAnalysis({ ...analysis, provider });
+  const setInstructions = (instructions: string) => onAnalysis({ ...analysis, instructions });
+  const latest = useRef({ analysis, onAnalysis }); latest.current = { analysis, onAnalysis };
+  const setResult = (result: CaptionResult | null) => latest.current.onAnalysis({ ...latest.current.analysis, result });
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const task = useRef<AbortController | null>(null);
   useEffect(() => {
-    setResult(null); setError(''); setProgress('');
+    setError(''); setProgress('');
     return () => { task.current?.abort(); task.current = null; };
   }, [engine]);
   const busy = !!progress;
@@ -29,7 +33,7 @@ export default function AiPanel({ engine, controller, status, slice, onSlice }: 
     setError(''); setResult(null);
     const operation = new AbortController(); task.current = operation;
     try {
-      validateSlice(slice, controller.getSnapshot().duration, MAX_ANALYSIS_SECONDS);
+      validateSlice(slice, controller.getSourceDuration(), MAX_ANALYSIS_SECONDS);
       const response = await analyzeVideo(engine, slice, provider, instructions, operation.signal,
         text => { if (task.current === operation) setProgress(text); });
       if (task.current === operation) setResult(response);
@@ -44,11 +48,11 @@ export default function AiPanel({ engine, controller, status, slice, onSlice }: 
         <label className="field">Provider<select value={provider} onChange={event => setProvider(event.target.value as Provider)} aria-label="AI provider"><option value="openai">ChatGPT / OpenAI</option><option value="gemini">Google Gemini</option></select></label>
         <div className="provider-status"><span className={`status-dot ${status?.providers[provider] ? 'ready' : ''}`} />{status?.providers[provider] ? 'API key configured' : 'API key missing'}<span className="model-name">{status?.models[provider]}</span></div>
         <div className="range-fields">
-          <label className="field">Start <span className="unit">seconds</span><input aria-label="Analysis start" type="number" min="0" step="0.001" required value={Number.isNaN(slice.start) ? '' : slice.start} onChange={event => onSlice({ ...slice, start: event.target.valueAsNumber })} /><button className="text-button" type="button" onClick={() => onSlice({ ...slice, start: Number(controller.getSnapshot().time.toFixed(3)) })}>Set at playhead</button></label>
-          <label className="field">End <span className="unit">seconds</span><input aria-label="Analysis end" type="number" min="0" step="0.001" required value={Number.isNaN(slice.end) ? '' : slice.end} onChange={event => onSlice({ ...slice, end: event.target.valueAsNumber })} /><button className="text-button" type="button" onClick={() => onSlice({ ...slice, end: Number(controller.getSnapshot().time.toFixed(3)) })}>Set at playhead</button></label>
+          <label className="field">Start <span className="unit">seconds</span><input aria-label="Analysis start" type="number" min="0" step="0.001" required value={Number.isNaN(slice.start) ? '' : slice.start} onChange={event => onSlice({ ...slice, start: event.target.valueAsNumber })} /><button className="text-button" type="button" onClick={() => onSlice({ ...slice, start: Number(controller.getSourceTime().toFixed(3)) })}>Set at playhead</button></label>
+          <label className="field">End <span className="unit">seconds</span><input aria-label="Analysis end" type="number" min="0" step="0.001" required value={Number.isNaN(slice.end) ? '' : slice.end} onChange={event => onSlice({ ...slice, end: event.target.valueAsNumber })} /><button className="text-button" type="button" onClick={() => onSlice({ ...slice, end: Number(controller.getSourceTime().toFixed(3)) })}>Set at playhead</button></label>
         </div>
         <div className="range-summary"><span>{Math.max(0, slice.end - slice.start).toFixed(2)}s selected · max {MAX_ANALYSIS_SECONDS}s</span><button className="text-button" type="button" onClick={() => {
-          try { validateSlice(slice, controller.getSnapshot().duration, MAX_ANALYSIS_SECONDS); controller.preview(slice.start, slice.end); setError(''); }
+          try { validateSlice(slice, controller.getSourceDuration(), MAX_ANALYSIS_SECONDS); controller.previewSource(slice.start, slice.end); setError(''); }
           catch (err) { setError((err as Error).message); }
         }}><Play size={12} /> Preview</button></div>
         <label className="field">Focus <span className="unit">optional</span><textarea rows={3} maxLength={2000} placeholder="e.g. Describe the action and camera movement" value={instructions} onChange={event => setInstructions(event.target.value)} /></label>

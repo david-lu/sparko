@@ -102,4 +102,23 @@ describe('server API boundaries', () => {
       .attach('audio', wavFixture(), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(429);
     expect(result.text).not.toContain('secret-value');
   });
+  it('submits a bounded reference clip using local insertion times and the fixed scene settings', async () => {
+    vi.mocked(providers.falSubmit).mockClear();
+    await post('/api/interstitials').field('start', '2').field('resume', String(49 / 24)).field('fps', '24').field('prompt', 'A new interstitial')
+      .attach('video', 'tests/fixtures/interstitial-reference.mp4', { contentType: 'video/mp4' }).expect(202);
+    expect(providers.falSubmit).toHaveBeenCalledWith({ video_url: 'https://fal.media/test.mp4', start_time: 2, resume_time: 49 / 24,
+      duration: 6, resolution: '768p', prompt: 'A new interstitial', enable_prompt_expansion: true, color_match: true });
+  });
+  it('rejects invalid interstitial reference bounds before provider submission', async () => {
+    vi.mocked(providers.falSubmit).mockClear();
+    await request(app).post('/api/interstitials').expect(403);
+    await post('/api/interstitials').field('start', '2').field('resume', '2.08').field('fps', '25').field('prompt', 'A scene').expect(400);
+    await post('/api/interstitials').field('start', '2').field('resume', '2.08').field('fps', '25').field('prompt', 'Old reference')
+      .attach('video', 'tests/fixtures/interstitial-reference.mp4', { contentType: 'video/mp4' }).expect(400);
+    for (const [start, resume, prompt] of [['1', '1.08', 'A scene'], ['2', '2', 'A scene'], ['2', '2.04', 'A scene'], ['2', '3', 'A scene'], ['4', '4.08', 'A scene'], ['2', '2.08', '']]) {
+      await post('/api/interstitials').field('start', start).field('resume', resume).field('fps', '24').field('prompt', prompt)
+        .attach('video', 'tests/fixtures/interstitial-reference.mp4', { contentType: 'video/mp4' }).expect(400);
+    }
+    expect(providers.falSubmit).not.toHaveBeenCalled();
+  });
 });
