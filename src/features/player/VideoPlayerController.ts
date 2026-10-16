@@ -1,4 +1,4 @@
-import type { MediaSource } from './media';
+import type { MediaSource } from '../../media/media';
 
 export type PlayerState = {
   time: number; duration: number; playing: boolean; buffering: boolean;

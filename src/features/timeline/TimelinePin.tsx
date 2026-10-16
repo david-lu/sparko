@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { X } from 'lucide-react';
-import { formatTime } from '../../shared/contracts';
-import type { Pin } from '../lib/pins';
+import { formatTime } from '../../../shared/contracts';
+import type { Pin } from './pins';
 
 export default function TimelinePin({ pin, number, duration, fps, track, viewport, onMove, onRemove, onSeek }: {
   pin: Pin; number: number; duration: number; fps: number;

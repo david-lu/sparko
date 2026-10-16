@@ -1,0 +1,26 @@
+.player-card{display:flex;flex-direction:column;flex:1;min-height:0;background:#17191c;overflow:hidden}
+.video-stage{position:relative;flex:1;min-height:0;background:#08090b;display:flex;align-items:center;justify-content:center}
+.video-stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;cursor:pointer}
+.center-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);height:44px;width:54px;display:grid;place-items:center;color:#fff;background:#17191bc9;border:1px solid #ffffff26}
+.center-play svg{width:20px;margin-left:2px}
+.center-play:hover{background:#252a34eb}
+.buffering{position:absolute;display:flex;align-items:center;gap:8px;background:#15171be6;padding:8px 12px;font-size:11px}
+.transport{height:38px;min-height:38px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #2a2d32;border-bottom:1px solid var(--line);padding:0 8px;gap:8px;background:#202226}
+.transport-group{display:flex;align-items:center;gap:4px}
+.play-button{color:#f1f3f7;margin-right:3px}
+.time-display{font:10px var(--mono);display:flex;gap:7px;color:#7d8594;margin-left:8px;white-space:nowrap}
+.time-display strong{font-weight:400;color:#d0d6e1}
+.volume-slider{width:62px;height:2px;accent-color:#b8c0d0;cursor:pointer;margin:0 8px 0 2px}
+.speed-select{width:48px;border:0;background:transparent;padding:3px 0;font-size:10px;cursor:pointer}
+.speed-select option{background:#24262b}
+.player-card:fullscreen{display:flex;flex-direction:column;background:#08090b}
+.player-card:fullscreen .video-stage{flex:1;min-height:0}
+.player-card:fullscreen .transport,.player-card:fullscreen .timeline-section{flex-shrink:0}
+@media(max-width:900px){.transport{padding:0 4px;gap:2px}.transport-group{gap:1px}.volume-slider{width:36px;margin-right:3px}.time-display{font-size:9px;gap:4px;margin-left:4px}.pip-button{display:none}}
+@media(max-width:660px){.transport{padding:0 6px;gap:6px}.transport-group{gap:3px}.time-display{font-size:9px;gap:5px}.transport-options{gap:0}.volume-slider{display:none}.speed-select{width:42px}.center-play{height:36px;width:44px}.center-play svg{width:17px}}
+.transport{position:absolute;bottom:0;left:0;right:0;z-index:6;height:42px;min-height:42px;border:0;background:linear-gradient(transparent,#080b11ed);padding:8px 10px 4px;opacity:0;pointer-events:none;transition:opacity .12s}
+.video-stage:hover .transport,.video-stage:has(:focus-visible) .transport{opacity:1;pointer-events:auto}
+.transport .icon-button{color:#d1d7e2}
+.transport .icon-button.active{color:var(--accent)}
+@media(hover:none){.transport{opacity:1;pointer-events:auto}}
+@media(prefers-reduced-motion:reduce){.transport{transition:none}}

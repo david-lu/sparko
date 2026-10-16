@@ -1,10 +1,11 @@
+import './styles.css';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Mic, Play, Send, Square, X } from 'lucide-react';
-import { MAX_VOICE_SECONDS } from '../../shared/constants';
-import { formatTime, type AppStatus, type Provider, type VoiceAnswer, type VoiceContext } from '../../shared/contracts';
-import { isMicrophoneEnabled, MicrophoneController } from '../lib/MicrophoneController';
-import type { VideoPlayerController } from '../lib/VideoPlayerController';
-import { sendVoiceAnswer } from '../lib/api';
+import { MAX_VOICE_SECONDS } from '../../../shared/constants';
+import { formatTime, type AppStatus, type Provider, type VoiceAnswer, type VoiceContext } from '../../../shared/contracts';
+import { isMicrophoneEnabled, MicrophoneController } from './MicrophoneController';
+import type { VideoPlayerController } from '../player/VideoPlayerController';
+import { sendVoiceAnswer } from './api';
 
 export default function VoicePanel({ sourceId, controller, status, active, scene }: {
   sourceId: string; controller: VideoPlayerController; status: AppStatus | null; active: boolean;

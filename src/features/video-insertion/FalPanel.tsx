@@ -1,10 +1,12 @@
+import './styles.css';
 import { useEffect, useState } from 'react';
 import { ExternalLink, Upload } from 'lucide-react';
-import type { AppStatus, FalJob } from '../../shared/contracts';
-import type { MediaSource } from '../lib/media';
-import type { VideoPlayerController } from '../lib/VideoPlayerController';
-import { request, submitFal } from '../lib/api';
-import { AI_MODELS } from '../../shared/constants';
+import type { AppStatus, FalJob } from '../../../shared/contracts';
+import type { MediaSource } from '../../media/media';
+import type { VideoPlayerController } from '../player/VideoPlayerController';
+import { request } from '../../shared/api';
+import { submitFal } from './api';
+import { AI_MODELS } from '../../../shared/constants';
 
 function savedJob(): FalJob | null {
   try {

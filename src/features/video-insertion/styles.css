@@ -1,0 +1,6 @@
+.source-box{border-left:2px solid #536788;background:#a7bcf106;padding:8px 9px;margin-bottom:16px}
+.source-box .eyebrow{font-size:8px}
+.source-box strong{display:block;font-weight:400;font-size:10px;margin-top:5px;overflow:hidden;text-overflow:ellipsis}
+.endpoint-link{display:flex;align-items:center;gap:4px;font:8px var(--mono);color:#65738b;margin-top:15px;overflow-wrap:anywhere}
+.job-id{font:8px var(--mono);color:#71819b;word-break:break-all;margin-bottom:12px}
+.danger{color:#c68d88;margin-top:10px}

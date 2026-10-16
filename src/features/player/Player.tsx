@@ -1,10 +1,11 @@
+import './styles.css';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Captions, Maximize, Minimize, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
-import { formatTime, type Slice } from '../../shared/contracts';
-import type { MediaInfo, MediaSource, Thumbnail } from '../lib/media';
-import type { Pin } from '../lib/pins';
-import type { VideoPlayerController } from '../lib/VideoPlayerController';
-import Timeline from './Timeline';
+import { formatTime, type Slice } from '../../../shared/contracts';
+import type { MediaInfo, MediaSource, Thumbnail } from '../../media/media';
+import type { Pin } from '../timeline/pins';
+import type { VideoPlayerController } from './VideoPlayerController';
+import Timeline from '../timeline/Timeline';
 
 type Props = {
   source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; pins: Pin[];

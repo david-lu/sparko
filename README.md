@@ -42,8 +42,8 @@ Answers are mono 16 kHz PCM WAV, capped at 60 seconds and 2 MB, and sent directl
 Future scene code can call the same API without changing recording or provider adapters:
 
 ```ts
-import { MicrophoneController } from './src/lib/MicrophoneController';
-import { sendVoiceAnswer } from './src/lib/api';
+import { MicrophoneController } from './src/features/voice-input/MicrophoneController';
+import { sendVoiceAnswer } from './src/features/voice-input/api';
 
 const microphone = new MicrophoneController();
 const unsubscribe = microphone.subscribe(() => {
@@ -68,7 +68,7 @@ The endpoint is `POST /api/voice/:provider`, with multipart `audio` and JSON `co
 ## MP4 export API — intentionally no UI
 
 ```ts
-import { MediaEngine } from './src/lib/MediaEngine';
+import { MediaEngine } from './src/media/MediaEngine';
 
 const media = new MediaEngine({
   id: 'episode',
@@ -91,17 +91,29 @@ Exports re-encode to H.264/AAC MP4, retaining source resolution by default and h
 
 ## Architecture
 
-| File | Responsibility |
+Code is grouped by feature. Each frontend feature owns its UI, behavior, styles and feature-specific API calls. Server features own request validation and provider adapters; shared modules supply infrastructure. The app and server entry points compose these pieces.
+
+| Folder / file | Responsibility |
 | --- | --- |
-| `src/lib/VideoPlayerController.ts` | Media element lifecycle, transport commands, playback state subscriptions, segment preview |
-| `src/lib/MicrophoneController.ts` | Local speech detection, utterance capture, permission and microphone cleanup |
-| `src/lib/MediaEngine.ts` | Source-bound processing API, metadata caching, cancellation and disposal |
-| `src/lib/media.ts` | Mediabunny reading, frame sampling, WAV conversion, MP4 conversion |
-| `src/components/` | Player, analysis tools, fal jobs, accessible resizing |
-| `server/app.ts` | Same-origin API, validation, range-enabled local video serving, temporary uploads |
-| `server/providers.ts` | OpenAI, Gemini and fal adapters |
+| `src/app/` | Workspace composition, menus, sidebar tabs, layout and common styles |
+| `src/features/player/` | Video UI, transport, shortcuts, captions, and VideoPlayerController |
+| `src/features/timeline/` | Timeline zoom/scroll, draggable pins, pin sidebar and persistence |
+| `src/features/voice-input/` | Voice panel, MicrophoneController, local speech detection, recording and submission |
+| `src/features/video-analysis/` | Segment selection, captions/descriptions and analysis requests |
+| `src/features/video-insertion/` | fal.ai scene insertion UI, submission and job tracking |
+| `src/media/` | MediaEngine and Mediabunny metadata, frame sampling, WAV and MP4 conversion |
+| `src/shared/` | Shared HTTP/upload transport and accessible resize control |
+| `server/features/voice-input/` | Audio/context validation and OpenAI/Gemini spoken-answer adapters |
+| `server/features/video-analysis/` | Clip/frame validation and OpenAI/Gemini caption adapters |
+| `server/features/video-insertion/` | fal.ai source validation, upload, submission, polling and cancellation |
+| `server/shared/` | HTTP protection/errors, temporary uploads, media validation and SDK clients |
+| `server/app.ts`, `server/providers.ts` | Route and provider composition; no feature implementations |
 | `server/hosting.ts` | Vercel authentication, direct upload tokens, bounded downloads and cleanup |
-| `shared/constants.ts` | AI model IDs and analysis limit |
+| `shared/contracts.ts` | API contracts and time/range helpers shared by browser and server |
+| `shared/constants.ts` | All AI model IDs, limits and voice detection settings |
+| `tests/voice-input/`, `tests/browser/`, `tests/fixtures/` | Voice unit tests, browser coverage and reusable test audio |
+
+Feature APIs use shared HTTP transport; shared transport does not import feature code. Browser code never imports server implementations. Model IDs remain centralized in `shared/constants.ts`.
 
 ## Vercel deployment
 

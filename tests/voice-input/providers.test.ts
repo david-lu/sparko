@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AI_MODELS } from '../shared/constants';
-import { createProviders, type VoiceInput } from '../server/providers';
+import { AI_MODELS } from '../../shared/constants';
+import { createProviders } from '../../server/providers';
+import type { VoiceInput } from '../../server/features/voice-input/provider';
 
 const calls = vi.hoisted(() => ({ transcribe: vi.fn(), respond: vi.fn(), gemini: vi.fn() }));
 vi.mock('openai', async importOriginal => ({

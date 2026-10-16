@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { wavFixture } from '../audio-fixture';
+import { wavFixture } from '../fixtures/audio';
 
 declare global {
   interface Window {

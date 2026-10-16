@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { Pin } from '../../src/lib/pins';
+import type { Pin } from '../../src/features/timeline/pins';
 
 const savedPins = (page: Page): Promise<Pin[]> => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:pins:v1:default:episode_mock.mp4') || '[]'));
 const videoTime = (page: Page) => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime);

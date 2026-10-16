@@ -61,7 +61,7 @@ test('keyboard shortcuts, subtitles and mobile layout', async ({ page }) => {
 test('Mediabunny exports a non-keyframe MP4 cut with video and audio', async ({ page }) => {
   const result = await page.evaluate(async () => {
     // Import through Vite to exercise the public code-only API in a real WebCodecs browser.
-    const { MediaEngine } = await import('/src/lib/MediaEngine.ts' as string);
+    const { MediaEngine } = await import('/src/media/MediaEngine.ts' as string);
     const { Input, BlobSource, ALL_FORMATS } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const engine = new MediaEngine({ id: 'test', name: 'episode_mock.mp4', url: '/media/episode_mock.mp4' });
     try {

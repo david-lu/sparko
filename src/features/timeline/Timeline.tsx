@@ -1,9 +1,10 @@
+import './styles.css';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Minus, Pin as PinIcon, Plus, SkipBack, SkipForward } from 'lucide-react';
-import { formatTime, type Slice } from '../../shared/contracts';
-import type { MediaInfo, Thumbnail } from '../lib/media';
-import type { Pin } from '../lib/pins';
-import ResizeHandle from './ResizeHandle';
+import { formatTime, type Slice } from '../../../shared/contracts';
+import type { MediaInfo, Thumbnail } from '../../media/media';
+import type { Pin } from './pins';
+import ResizeHandle from '../../shared/ResizeHandle';
 import TimelinePin from './TimelinePin';
 
 const MAX_ZOOM = 32;

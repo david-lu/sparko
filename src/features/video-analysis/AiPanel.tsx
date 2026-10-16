@@ -1,11 +1,12 @@
+import './styles.css';
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Play, Sparkles, X } from 'lucide-react';
-import type { AppStatus, CaptionResult, Provider, Slice } from '../../shared/contracts';
-import { formatTime, validateSlice } from '../../shared/contracts';
-import { MAX_ANALYSIS_SECONDS } from '../../shared/constants';
-import { analyzeVideo } from '../lib/api';
-import type { MediaEngine } from '../lib/MediaEngine';
-import type { VideoPlayerController } from '../lib/VideoPlayerController';
+import type { AppStatus, CaptionResult, Provider, Slice } from '../../../shared/contracts';
+import { formatTime, validateSlice } from '../../../shared/contracts';
+import { MAX_ANALYSIS_SECONDS } from '../../../shared/constants';
+import { analyzeVideo } from './api';
+import type { MediaEngine } from '../../media/MediaEngine';
+import type { VideoPlayerController } from '../player/VideoPlayerController';
 
 export default function AiPanel({ engine, controller, status, slice, onSlice }: {
   engine: MediaEngine | null; controller: VideoPlayerController; status: AppStatus | null;

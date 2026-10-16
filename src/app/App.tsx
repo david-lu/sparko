@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { FolderOpen, Mic, Pin as PinIcon, Plus, RotateCcw, Sparkles, Trash2, Upload, X } from 'lucide-react';
-import Player from './components/Player';
-import AiPanel from './components/AiPanel';
-import FalPanel from './components/FalPanel';
-import VoicePanel from './components/VoicePanel';
-import ResizeHandle from './components/ResizeHandle';
-import { MediaEngine } from './lib/MediaEngine';
-import { VideoPlayerController } from './lib/VideoPlayerController';
-import type { MediaInfo, MediaSource, Thumbnail } from './lib/media';
-import { loadPins, savePins, type Pin } from './lib/pins';
-import { getStatus, request } from './lib/api';
-import { formatTime, type AppStatus, type Slice } from '../shared/contracts';
+import { FolderOpen, Mic, Pin as PinIcon, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
+import Player from '../features/player/Player';
+import AiPanel from '../features/video-analysis/AiPanel';
+import FalPanel from '../features/video-insertion/FalPanel';
+import VoicePanel from '../features/voice-input/VoicePanel';
+import PinsPanel from '../features/timeline/PinsPanel';
+import ResizeHandle from '../shared/ResizeHandle';
+import { MediaEngine } from '../media/MediaEngine';
+import { VideoPlayerController } from '../features/player/VideoPlayerController';
+import type { MediaInfo, MediaSource, Thumbnail } from '../media/media';
+import { loadPins, savePins, type Pin } from '../features/timeline/pins';
+import { getStatus, request } from '../shared/api';
+import type { AppStatus, Slice } from '../../shared/contracts';
 
 const defaultSource: MediaSource = { id: 'default:episode_mock.mp4', name: 'episode_mock.mp4', url: '/media/episode_mock.mp4' };
 type Tab = 'pins' | 'ai' | 'voice' | 'fal';
@@ -117,11 +118,8 @@ export default function App() {
         {shortcuts && <div className="shortcuts"><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>P</kbd> Add pin</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
       </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar">
         <div className="tabs" role="tablist" aria-label="Video tools">{([{ id: 'pins', label: 'Pins', icon: PinIcon }, { id: 'ai', label: 'Describe', icon: Sparkles }, { id: 'voice', label: 'Voice', icon: Mic }, { id: 'fal', label: 'fal.ai', icon: Upload }] as const).map(item => <button key={item.id} role="tab" id={`tab-${item.id}`} aria-controls={`panel-${item.id}`} aria-selected={tab === item.id} className={tab === item.id ? 'selected' : ''} onClick={() => setTab(item.id)}><item.icon size={15} />{item.label}{item.id === 'pins' && <span className="count">{pins.length}</span>}</button>)}</div>
-        <div role="tabpanel" id="panel-pins" aria-labelledby="tab-pins" hidden={tab !== 'pins'}><div className="panel-content">
-          <div className="panel-intro"><h2>Timeline pins</h2></div>
-          <button className="button full-width" disabled={!player.duration} onClick={addPin}><Plus size={16} /> Pin current time<span className="button-trailing">{formatTime(player.time)}</span></button>
-          {!pins.length ? <div className="empty-state"><h3>No pins yet</h3><p>Press <kbd>P</kbd> to mark the playhead.<br />Pins are saved in this browser.</p></div> : <ol className="pin-list">{pins.map((pin, i) => <li key={pin.id} className={Math.abs(pin.time - player.time) < 0.2 ? 'current' : ''}><button className="pin-number" aria-label={`Jump to pin ${i + 1}`} onClick={() => controller.seek(pin.time)}>{i + 1}</button><div className="pin-details"><input aria-label={`Pin ${i + 1} label`} value={pin.label} maxLength={80} onChange={event => updatePins(pins.map(item => item.id === pin.id ? { ...item, label: event.target.value } : item))} /><button className="text-button pin-time" onClick={() => controller.seek(pin.time)}>{formatTime(pin.time, true)}</button></div><button className="icon-button small delete-pin" aria-label={`Remove pin ${i + 1}`} onClick={() => updatePins(pins.filter(item => item.id !== pin.id))}><Trash2 size={14} /></button></li>)}</ol>}
-        </div></div>
+        <div role="tabpanel" id="panel-pins" aria-labelledby="tab-pins" hidden={tab !== 'pins'}><PinsPanel pins={pins} time={player.time} duration={player.duration} onAdd={addPin} onSeek={time => controller.seek(time)} onRemove={removePin}
+          onRename={(id, label) => updatePins(pins.map(pin => pin.id === id ? { ...pin, label } : pin))} /></div>
         <div role="tabpanel" id="panel-ai" aria-labelledby="tab-ai" hidden={tab !== 'ai'}><AiPanel engine={engine} controller={controller} status={status} slice={slice} onSlice={setSlice} /></div>
         <div role="tabpanel" id="panel-voice" aria-labelledby="tab-voice" hidden={tab !== 'voice'}><VoicePanel key={source.url} sourceId={source.id} controller={controller} status={status} active={tab === 'voice'} /></div>
         <div role="tabpanel" id="panel-fal" aria-labelledby="tab-fal" hidden={tab !== 'fal'}><FalPanel source={source} controller={controller} status={status} /></div>

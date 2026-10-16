@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MicVAD } from '@ricky0123/vad-web';
-import { MicrophoneController } from '../src/lib/MicrophoneController';
-import { MAX_VOICE_SECONDS } from '../shared/constants';
+import { MicrophoneController } from '../../src/features/voice-input/MicrophoneController';
+import { MAX_VOICE_SECONDS } from '../../shared/constants';
 
 const vad = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock('@ricky0123/vad-web', () => ({ MicVAD: { new: vad.create }, utils: { encodeWAV: (audio: Float32Array) => new ArrayBuffer(44 + audio.length * 2) } }));

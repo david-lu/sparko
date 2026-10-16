@@ -1,4 +1,5 @@
-import { createApp, errorHandler } from '../server/app';
+import { createApp } from '../server/app';
+import { errorHandler } from '../server/shared/http';
 
 const app = await createApp();
 app.use(errorHandler);

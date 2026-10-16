@@ -1,5 +1,5 @@
 import type { MicVAD } from '@ricky0123/vad-web';
-import { AI_MODELS, MAX_VOICE_SECONDS, VOICE_DETECTION } from '../../shared/constants';
+import { AI_MODELS, MAX_VOICE_SECONDS, VOICE_DETECTION } from '../../../shared/constants';
 
 export type MicrophoneState = {
   phase: 'idle' | 'requesting' | 'loading' | 'listening' | 'recording' | 'stopping' | 'ready';

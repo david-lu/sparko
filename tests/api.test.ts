@@ -1,9 +1,10 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
-import { createApp, errorHandler } from '../server/app';
+import { createApp } from '../server/app';
+import { errorHandler } from '../server/shared/http';
 import type { Providers } from '../server/providers';
 import type { Express } from 'express';
-import { wavFixture } from './audio-fixture';
+import { wavFixture } from './fixtures/audio';
 
 const providers: Providers = {
   configured: { openai: true, gemini: true, fal: true }, models: { openai: 'test-openai', gemini: 'test-gemini' },
