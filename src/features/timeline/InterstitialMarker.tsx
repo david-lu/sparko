@@ -3,8 +3,8 @@ import { formatTime } from '../../../shared/contracts';
 import { isGenerating, playableResult, type Interstitial } from '../../../shared/interstitials';
 import { phaseLabel } from '../interstitials/status';
 
-export default function InterstitialMarker({ pin, selected, number, duration, fps, track, viewport, onMove, onRemove, onSelect }: {
-  pin: Interstitial; selected: boolean; number: number; duration: number; fps: number;
+export default function InterstitialMarker({ pin, selected, number, sceneDuration, duration, fps, track, viewport, onMove, onRemove, onSelect }: {
+  pin: Interstitial; selected: boolean; number: number; sceneDuration: number; duration: number; fps: number;
   track: RefObject<HTMLDivElement | null>; viewport: RefObject<HTMLDivElement | null>;
   onMove: (id: string, time: number) => void; onRemove: (id: string) => void; onSelect: (id: string) => void;
 }) {
@@ -16,6 +16,8 @@ export default function InterstitialMarker({ pin, selected, number, duration, fp
   const clamp = (value: number) => Math.max(0, Math.min(duration, Math.round(value * fps) / fps));
   const locked = isGenerating(pin);
   const displayTime = draftTime ?? pin.time;
+  // Center the badge over the rendered scene without changing its insertion anchor.
+  const position = (displayTime + sceneDuration / 2) / duration * 100;
   const clearAnimation = () => { if (animation.current !== null) cancelAnimationFrame(animation.current); animation.current = null; };
   useEffect(() => clearAnimation, []);
 
@@ -45,7 +47,7 @@ export default function InterstitialMarker({ pin, selected, number, duration, fp
     if (commit && current.moved && current.time !== pin.time) onMove(pin.id, current.time);
   };
 
-  return <div className={`timeline-marker ${selected ? 'selected' : ''} ${playableResult(pin) ? 'ready' : ''} ${isGenerating(pin) ? 'generating' : ''} ${draftTime !== null ? 'dragging' : ''}`} style={{ left: `clamp(12px, ${displayTime / duration * 100}%, calc(100% - 12px))` }}>
+  return <div className={`timeline-marker ${selected ? 'selected' : ''} ${playableResult(pin) ? 'ready' : ''} ${isGenerating(pin) ? 'generating' : ''} ${draftTime !== null ? 'dragging' : ''}`} style={{ left: sceneDuration ? `${position}%` : `clamp(12px, ${position}%, calc(100% - 12px))` }}>
     <button ref={button} className="timeline-pin" aria-label={`Select ${pin.label} at ${formatTime(displayTime)}`} aria-describedby="pin-help" aria-pressed={selected}
       title={`${pin.label} · ${formatTime(displayTime, true)} · ${locked ? phaseLabel(pin) : 'Drag to move'} · Delete to remove`} draggable={false}
       onPointerDown={event => {

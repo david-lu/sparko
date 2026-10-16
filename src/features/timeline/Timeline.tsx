@@ -8,6 +8,7 @@ import type { TimelineComposition } from '../../media/TimelineComposition';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import ResizeHandle from '../../shared/ResizeHandle';
 import InterstitialMarker from './InterstitialMarker';
+import InterstitialThumbnail from './InterstitialThumbnail';
 import { phaseLabel } from '../interstitials/status';
 
 const MAX_ZOOM = 32;
@@ -72,7 +73,7 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
   const hoveredFrame = hover === null || composition?.at(hover.time)?.kind === 'interstitial' ? null : thumbnails.reduce<Thumbnail | null>((nearest, frame) => !nearest || Math.abs(frame.time - sourceHover) < Math.abs(nearest.time - sourceHover) ? frame : nearest, null);
 
   return <div className="timeline-section" ref={section} style={{ height }}>
-    <ResizeHandle orientation="horizontal" label="Resize timeline" value={height} min={118} max={maxHeight} onChange={onHeight} />
+    <ResizeHandle orientation="horizontal" label="Resize timeline" value={height} min={134} max={maxHeight} onChange={onHeight} />
     <div className="timeline-heading"><span className="eyebrow">TIMELINE <span className="subtle">/ {interstitials.filter(item => playableResult(item)).length} INTERSTITIALS</span></span>
       <div className="timeline-actions">
         <div className="timeline-zoom" role="group" aria-label="Timeline zoom">
@@ -110,10 +111,14 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
               if (event.detail === 0 || !rect?.width) { onSelectInterstitial(segment.id); return; }
               const frame = Math.round((event.clientX - rect.left) / rect.width * duration * composition.fps);
               onSelectInterstitial(segment.id, Math.max(segment.startFrame, Math.min(segment.endFrame - 1, frame)) / composition.fps);
-            }}>{busy ? <span className="spinner timeline-generation-spinner" role="status" aria-label={`${segment.label}: ${phaseLabel(item)}`} /> : <Clapperboard size={12} />}<span>{segment.label}</span></button>;
+            }}><InterstitialThumbnail url={segment.source.url} time={segment.sourceStart} /><span className="interstitial-caption">{busy ? <span className="spinner timeline-generation-spinner" role="status" aria-label={`${segment.label}: ${phaseLabel(item)}`} /> : <Clapperboard size={12} />}<span>{segment.label}</span></span></button>;
           })}
           <div className="playhead" style={{ left: `${progress}%` }} aria-hidden="true"><span /></div>
-          {duration > 0 && markers.filter(item => item.time <= duration).map((item, index) => <InterstitialMarker key={item.id} pin={item} selected={selectedId === item.id} number={index + 1} duration={duration} fps={TIMELINE_FPS} track={track} viewport={viewport} onMove={onMoveInterstitial} onRemove={onRemoveInterstitial} onSelect={onSelectInterstitial} />)}
+          {duration > 0 && markers.filter(item => item.time <= duration).map((item, index) => {
+            const segment = composition?.segments.find(segment => segment.kind === 'interstitial' && segment.id === item.id);
+            const sceneDuration = segment && composition ? (segment.endFrame - segment.startFrame) / composition.fps : 0;
+            return <InterstitialMarker key={item.id} pin={item} selected={selectedId === item.id} number={index + 1} sceneDuration={sceneDuration} duration={duration} fps={TIMELINE_FPS} track={track} viewport={viewport} onMove={onMoveInterstitial} onRemove={onRemoveInterstitial} onSelect={onSelectInterstitial} />;
+          })}
         </div>
       </div>
     </div>

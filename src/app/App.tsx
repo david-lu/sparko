@@ -56,9 +56,9 @@ export default function App() {
   const [timelineHeight, setTimelineHeight] = useState(() => savedSize('sparko:timeline-height', 134));
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const maxSideWidth = Math.max(220, Math.min(700, viewport.width - 340));
-  const maxTimelineHeight = Math.max(118, Math.floor(viewport.height * (viewport.width <= 660 ? 0.28 : 0.55)));
+  const maxTimelineHeight = Math.max(134, Math.floor(viewport.height * (viewport.width <= 660 ? 0.28 : 0.55)));
   const actualSideWidth = Math.max(220, Math.min(maxSideWidth, sideWidth));
-  const actualTimelineHeight = Math.max(118, Math.min(maxTimelineHeight, timelineHeight));
+  const actualTimelineHeight = Math.max(134, Math.min(maxTimelineHeight, timelineHeight));
   useEffect(() => {
     const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize);

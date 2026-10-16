@@ -128,6 +128,18 @@ test('draft editor, preparation, generation and a progressively buffered interst
   }, submitted);
   expect(normalizedReference).toBeCloseTo(24, 5);
   await expect(page.locator('.rendered-interstitial')).toHaveCount(1);
+  const thumbnail = page.locator('.interstitial-thumbnail');
+  await expect(thumbnail).toBeVisible();
+  // The fixture's reference footage is red; the actual inserted scene starts green at 2s.
+  const firstFrame = await thumbnail.evaluate(async element => {
+    const image = new Image();
+    image.src = getComputedStyle(element).backgroundImage.match(/url\(["']?(.*?)["']?\)/)![1];
+    await image.decode();
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d')!; context.drawImage(image, 0, 0, 1, 1);
+    return [...context.getImageData(0, 0, 1, 1).data];
+  });
+  expect(firstFrame[1]).toBeGreaterThan(180); expect(firstFrame[0]).toBeLessThan(20);
   await expect.poll(() => page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max')).toBe(String(Math.round(originalDuration * 24) / 24 + 5));
   await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
   await expect(page.locator('video')).toHaveAttribute('src', /^blob:/);
@@ -150,6 +162,7 @@ test('draft editor, preparation, generation and a progressively buffered interst
   let remoteReads = 0;
   await page.route('https://fal.media/**', route => { remoteReads++; return route.abort(); });
   await page.reload(); await expect(page.locator('.rendered-interstitial')).toHaveCount(1);
+  await expect(thumbnail).toBeVisible();
   await page.getByRole('button', { name: 'Select rendered Interstitial 1' }).click();
   await expect(page.getByLabel('Interstitial prompt')).toHaveValue('A green interstitial scene');
   await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('5');
@@ -199,10 +212,12 @@ test('draft editor, preparation, generation and a progressively buffered interst
   const marker = page.locator('.timeline-pin');
   const pin = (await marker.boundingBox())!;
   const track = (await page.locator('.timeline-track').boundingBox())!;
+  const scene = (await rendered.boundingBox())!;
   const duration = Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max'));
   const beforeMove = (await saved(page))[0];
   await page.mouse.move(pin.x + pin.width / 2, pin.y + pin.height / 2); await page.mouse.down();
-  await page.mouse.move(track.x + track.width * 16 / duration, pin.y + pin.height / 2, { steps: 8 }); await page.mouse.up();
+  // The handle now sits at the scene's center; move its insertion anchor to 16 seconds.
+  await page.mouse.move(track.x + track.width * 16 / duration + scene.width / 2, pin.y + pin.height / 2, { steps: 8 }); await page.mouse.up();
   expect((await saved(page))[0].time).toBeCloseTo(16, 1);
   expect((await saved(page))[0]).toMatchObject({ phase: 'ready', requestId: beforeMove.requestId, result: beforeMove.result });
   const movedTime = (await saved(page))[0].time;
@@ -292,6 +307,9 @@ test('completed scenes retry without removing the current video, survive failure
   await addDraft(page); await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.getByText('5.00s interstitial · ready in the timeline')).toBeVisible({ timeout: 60_000 });
   const original = (await saved(page))[0];
+  const thumbnail = page.locator('.interstitial-thumbnail');
+  await expect(thumbnail).toBeVisible();
+  const oldThumbnail = await thumbnail.evaluate(element => getComputedStyle(element).backgroundImage);
   const oldUrl = await page.getByRole('link', { name: 'Download full video' }).getAttribute('href');
   await page.getByLabel('Interstitial prompt').fill('A replacement scene');
   await page.getByRole('spinbutton', { name: 'Duration', exact: true }).fill('6');
@@ -304,6 +322,7 @@ test('completed scenes retry without removing the current video, survive failure
   await expect(page.locator('.rendered-interstitial .timeline-generation-spinner')).toBeVisible();
   await expect(page.locator('.rendered-interstitial')).toHaveAttribute('title', /Generating scene/);
   await expect(page.locator('.timeline-pin .timeline-generation-spinner')).toHaveCount(0);
+  await expect(thumbnail).toHaveCSS('background-image', oldThumbnail);
   await page.getByLabel('Interstitial prompt').fill('Edited while generating');
   await page.getByRole('slider', { name: 'Duration slider', exact: true }).fill('7');
   await page.getByRole('checkbox', { name: 'Prompt expansion', exact: true }).uncheck();

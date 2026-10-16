@@ -39,6 +39,26 @@ function jpeg(canvas: HTMLCanvasElement | OffscreenCanvas): string {
   return target.toDataURL('image/jpeg', 0.75);
 }
 
+/** Decode the frame displayed at an exact media timestamp. */
+export async function sampleFrame(source: MediaSource, time: number, width = 180, signal?: AbortSignal): Promise<Thumbnail> {
+  signal?.throwIfAborted();
+  const input = openInput(source);
+  const abort = () => input.dispose();
+  signal?.addEventListener('abort', abort, { once: true });
+  try {
+    const video = await input.getPrimaryVideoTrack();
+    if (!video || !await video.canDecode()) throw new Error('This browser cannot decode a thumbnail for this video.');
+    const sink = new CanvasSink(video, { width, fit: 'contain', poolSize: 1 });
+    const frame = await sink.getCanvas(time);
+    signal?.throwIfAborted();
+    if (!frame) throw new Error('No readable frame was found at this timestamp.');
+    return { time, url: jpeg(frame.canvas) };
+  } finally {
+    signal?.removeEventListener('abort', abort);
+    input.dispose();
+  }
+}
+
 export async function sampleFrames(source: MediaSource, slice: Slice, count: number, width = 768, signal?: AbortSignal): Promise<Thumbnail[]> {
   const input = openInput(source);
   const abort = () => input.dispose();
