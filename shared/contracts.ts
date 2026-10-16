@@ -1,5 +1,18 @@
 export type Slice = { start: number; end: number };
 export type Provider = 'openai' | 'gemini';
+export type VoiceContext = {
+  sourceId: string;
+  videoTime: number;
+  sceneId?: string;
+  question?: string;
+};
+export type VoiceAnswer = {
+  transcript: string;
+  response: string;
+  provider: Provider;
+  model: string;
+  context: VoiceContext;
+};
 export type CaptionResult = {
   caption: string;
   description: string;

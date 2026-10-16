@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
 import { createProviders, type Providers, type Frame } from './providers';
+import { MAX_VOICE_BYTES, MAX_VOICE_SECONDS } from '../shared/constants';
 import { addHostingRoutes, authenticate, hosted, remoteDefault, receiveHosted, validateBlobUrl, downloadRemote } from './hosting';
 
 class HttpError extends Error {
@@ -21,6 +22,10 @@ const framesSchema = z.array(z.object({
   time: z.number().finite().nonnegative(),
   dataUrl: z.string().max(1_500_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/),
 })).min(1).max(24);
+const voiceContextSchema = z.object({
+  sourceId: z.string().min(1).max(1000), videoTime: z.number().finite().nonnegative(),
+  sceneId: z.string().min(1).max(200).optional(), question: z.string().trim().max(2000).optional(),
+});
 const falSchema = z.object({
   start: z.coerce.number().finite().nonnegative(), resume: z.coerce.number().finite().nonnegative(),
   duration: z.coerce.number().finite().positive().max(30), resolution: z.enum(['480p', '768p']).default('768p'),
@@ -117,6 +122,36 @@ export async function createApp(options: { root?: string; providers?: Providers 
       res.off('close', abort);
     }
   });
+  const voiceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_VOICE_BYTES, files: 1, fields: 1, fieldSize: 16_384, parts: 2 } });
+  app.post('/api/voice/:provider', authenticate, (req, _res, next) => {
+    if (req.params.provider !== 'openai' && req.params.provider !== 'gemini') return next(new HttpError(404, 'Unknown voice provider.'));
+    return requireProvider(req.params.provider)(req, _res, next);
+  }, voiceUpload.single('audio'), async (req, res) => {
+    let rawContext: unknown;
+    try { rawContext = JSON.parse(req.body?.context || 'null'); } catch { throw new HttpError(400, 'Invalid voice context.'); }
+    const context = voiceContextSchema.parse(rawContext);
+    const mimeType = req.file?.mimetype.split(';')[0];
+    if (!req.file?.size || !mimeType || !['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'].includes(mimeType)) {
+      throw new HttpError(400, 'Upload a WebM, MP4, Ogg or WAV audio recording smaller than 2 MB.');
+    }
+    const media = new Input({ source: new BlobSource(new Blob([Uint8Array.from(req.file.buffer)])), formats: ALL_FORMATS });
+    try {
+      if (!await media.getPrimaryAudioTrack() || await media.getPrimaryVideoTrack()) throw new Error('Audio only');
+      const duration = await media.computeDuration();
+      if (!Number.isFinite(duration) || duration < 0.2 || duration > MAX_VOICE_SECONDS + 0.75) throw new Error('Invalid duration');
+    } catch { throw new HttpError(400, `Record an audio answer between 0.2 and ${MAX_VOICE_SECONDS} seconds.`); }
+    finally { media.dispose(); }
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    res.once('close', abort);
+    const timeout = setTimeout(abort, 240_000);
+    try {
+      if (res.destroyed) controller.abort();
+      res.json(await providers.voice(req.params.provider === 'openai' ? 'openai' : 'gemini', {
+        audio: req.file.buffer, mimeType, context, signal: controller.signal,
+      }));
+    } finally { clearTimeout(timeout); res.off('close', abort); }
+  });
   app.post('/api/fal/jobs', authenticate, requireProvider('fal'), ...receive('video'), async (req, res) => {
     const input = falSchema.parse(req.body);
     if (input.source === 'upload' && !req.file) throw new HttpError(400, 'Choose a video to upload.');
@@ -152,12 +187,12 @@ export async function createApp(options: { root?: string; providers?: Providers 
   return app;
 }
 
-export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   if (res.headersSent || res.destroyed) return;
   let status = 500;
   let message = 'The request failed. Please try again.';
   if (error instanceof z.ZodError) { status = 400; message = error.issues.map(issue => issue.message).join(' '); }
-  else if (error instanceof multer.MulterError) { status = 400; message = error.code === 'LIMIT_FILE_SIZE' ? 'The video exceeds the 256 MB upload limit.' : 'The upload could not be read.'; }
+  else if (error instanceof multer.MulterError) { status = 400; message = error.code === 'LIMIT_FILE_SIZE' ? (req.path.startsWith('/api/voice/') ? 'The recording exceeds the 2 MB upload limit.' : 'The video exceeds the 256 MB upload limit.') : 'The upload could not be read.'; }
   else if (error instanceof HttpError) { status = error.status; message = error.message; }
   else if (error?.name === 'AbortError' || error?.name === 'TimeoutError') { status = 504; message = 'The request timed out or was cancelled. Try a shorter segment.'; }
   else if (error?.status === 401 || error?.status === 403) { status = 502; message = 'The provider rejected the API key or model access. Check your .env configuration.'; }

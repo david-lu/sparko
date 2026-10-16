@@ -3,11 +3,13 @@ import request from 'supertest';
 import { createApp, errorHandler } from '../server/app';
 import type { Providers } from '../server/providers';
 import type { Express } from 'express';
+import { wavFixture } from './audio-fixture';
 
 const providers: Providers = {
   configured: { openai: true, gemini: true, fal: true }, models: { openai: 'test-openai', gemini: 'test-gemini' },
   openai: vi.fn<Providers['openai']>(async input => ({ caption: 'A caption', description: 'A description', provider: 'openai', model: 'test-openai', start: input.start, end: input.end, basis: 'Sampled frames' })),
   gemini: vi.fn(), falUpload: vi.fn(async () => 'https://fal.media/test.mp4'),
+  voice: vi.fn<Providers['voice']>(async (provider, input) => ({ transcript: 'My spoken answer', response: 'Answer received.', provider, model: `test-${provider}`, context: input.context })),
   falSubmit: vi.fn(async () => 'test-job-1234'), falStatus: vi.fn<Providers['falStatus']>(async requestId => ({ requestId, status: 'COMPLETED', videoUrl: 'https://fal.media/result.mp4' })),
   falCancel: vi.fn(async () => undefined),
 };
@@ -64,6 +66,39 @@ describe('server API boundaries', () => {
     await request(missing).post('/api/analyze/openai').set('x-sparko-request', '1').expect(503);
     vi.mocked(providers.openai).mockRejectedValueOnce({ status: 429, headers: { authorization: 'secret-value' } });
     const result = await post('/api/analyze/openai').field('start', '0').field('end', '1').field('frames', JSON.stringify([{ time: 0.5, dataUrl: 'data:image/jpeg;base64,YQ==' }])).expect(429);
+    expect(result.text).not.toContain('secret-value');
+  });
+  it('accepts bounded voice audio with optional scene context for either provider', async () => {
+    const context = { sourceId: 'episode', videoTime: 12.5, sceneId: 'scene-1', question: 'What happened?' };
+    for (const provider of ['openai', 'gemini']) {
+      const result = await post(`/api/voice/${provider}`).field('context', JSON.stringify(context))
+        .attach('audio', wavFixture(), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(200);
+      expect(result.body.context).toEqual(context);
+      expect(result.body.provider).toBe(provider);
+      expect(providers.voice).toHaveBeenCalledWith(provider, expect.objectContaining({ context, mimeType: 'audio/wav', audio: wavFixture(), signal: expect.any(AbortSignal) }));
+    }
+  });
+  it('rejects missing, malformed, oversized or overlong voice input before inference', async () => {
+    vi.mocked(providers.voice).mockClear();
+    const context = JSON.stringify({ sourceId: 'episode', videoTime: 5 });
+    await post('/api/voice/openai').field('context', context).expect(400);
+    await post('/api/voice/openai').field('context', '{bad').expect(400);
+    await post('/api/voice/openai').field('context', JSON.stringify({ sourceId: 'episode', videoTime: -1 })).expect(400);
+    await post('/api/voice/openai').field('context', context).attach('audio', Buffer.from('bad'), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(400);
+    await post('/api/voice/openai').field('context', context).attach('audio', wavFixture(61), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(400);
+    const oversized = await post('/api/voice/openai').field('context', context).attach('audio', Buffer.alloc(2 * 1024 * 1024 + 1), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(400);
+    expect(oversized.body.error).toContain('2 MB');
+    expect(providers.voice).not.toHaveBeenCalled();
+  });
+  it('protects voice requests and handles provider errors without exposing credentials', async () => {
+    await request(app).post('/api/voice/openai').expect(403);
+    await post('/api/voice/openai').set('Origin', 'https://untrusted.example').expect(403);
+    await post('/api/voice/unknown').expect(404);
+    const missing = await createApp({ providers: { ...providers, configured: { openai: false, gemini: false, fal: false } } }); missing.use(errorHandler);
+    await request(missing).post('/api/voice/openai').set('x-sparko-request', '1').expect(503);
+    vi.mocked(providers.voice).mockRejectedValueOnce({ status: 429, message: 'secret-value' });
+    const result = await post('/api/voice/openai').field('context', JSON.stringify({ sourceId: 'episode', videoTime: 1 }))
+      .attach('audio', wavFixture(), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(429);
     expect(result.text).not.toContain('secret-value');
   });
 });

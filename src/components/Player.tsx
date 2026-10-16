@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Captions, Maximize, Minimize, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX, Pin as PinIcon, SkipBack, SkipForward } from 'lucide-react';
+import { Captions, Maximize, Minimize, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import { formatTime, type Slice } from '../../shared/contracts';
 import type { MediaInfo, MediaSource, Thumbnail } from '../lib/media';
 import type { Pin } from '../lib/pins';
 import type { VideoPlayerController } from '../lib/VideoPlayerController';
-import ResizeHandle from './ResizeHandle';
+import Timeline from './Timeline';
 
 type Props = {
   source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; pins: Pin[];
   controller: VideoPlayerController;
   onPin: () => void; onSeek: (time: number) => void; onError: (error: string) => void;
+  onMovePin: (id: string, time: number) => void; onRemovePin: (id: string) => void;
   selection: Slice | null;
   timelineHeight: number; maxTimelineHeight: number; onTimelineHeight: (value: number) => void;
 };
@@ -22,7 +23,6 @@ export default function Player(props: Props) {
   const [fullscreen, setFullscreen] = useState(false);
   const [subtitle, setSubtitle] = useState<{ url: string; name: string } | null>(null);
   const [captions, setCaptions] = useState(true);
-  const [hover, setHover] = useState<number | null>(null);
 
   useEffect(() => {
     setSubtitle(null);
@@ -55,9 +55,16 @@ export default function Player(props: Props) {
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      if (target.closest('input, textarea, select, button, a, [contenteditable="true"]') || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || target.isContentEditable
+        || target.closest('textarea, select, input:not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"])')) return;
       const video = controller.video;
       if (!video || !duration) return;
+      if (event.code === 'Space' || event.key === ' ') {
+        event.preventDefault();
+        if (!event.repeat) playPause();
+        return;
+      }
+      if (target.closest('input, button, a, summary, [role="separator"]')) return;
       const key = event.key.toLowerCase();
       if ([' ', 'k', 'j', 'l', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'm', 'f', 'p', ',', '.', 'home', 'end', 'c'].includes(key) || /^[0-9]$/.test(key)) event.preventDefault();
       switch (key) {
@@ -82,9 +89,6 @@ export default function Player(props: Props) {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   });
-
-  const progress = duration ? Math.min(100, time / duration * 100) : 0;
-  const hoveredFrame = hover === null ? null : thumbnails.reduce<Thumbnail | null>((nearest, frame) => !nearest || Math.abs(frame.time - hover) < Math.abs(nearest.time - hover) ? frame : nearest, null);
 
   return <div className="player-card" ref={container}>
     <div className="video-stage" onDoubleClick={() => void toggleFullscreen()}>
@@ -114,28 +118,8 @@ export default function Player(props: Props) {
     </div>
     </div>
 
-    <div className="timeline-section" style={{ height: props.timelineHeight }}>
-      <ResizeHandle orientation="horizontal" label="Resize timeline" value={props.timelineHeight} min={118} max={props.maxTimelineHeight} onChange={props.onTimelineHeight} />
-      <div className="timeline-heading"><span className="eyebrow">TIMELINE <span className="subtle">/ 1 VIDEO</span></span>
-        <div className="timeline-actions">
-          <button className="icon-button small" aria-label="Previous pin" disabled={!pins.some(pin => pin.time < time - 0.05)} onClick={() => onSeek([...pins].reverse().find(pin => pin.time < time - 0.05)?.time || 0)}><SkipBack size={14} /></button>
-          <button className="icon-button small" aria-label="Next pin" disabled={!pins.some(pin => pin.time > time + 0.05)} onClick={() => onSeek(pins.find(pin => pin.time > time + 0.05)?.time || 0)}><SkipForward size={14} /></button>
-          <button className="button small" disabled={!duration} onClick={onPin}><PinIcon size={13} /> Add pin <kbd>P</kbd></button>
-        </div>
-      </div>
-      <div className="timeline-ruler" aria-hidden="true">{Array.from({ length: 6 }, (_, i) => <span key={i}>{formatTime(duration * i / 5)}</span>)}</div>
-      <div className="timeline-track" onPointerMove={event => { const rect = event.currentTarget.getBoundingClientRect(); setHover(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration); }} onPointerLeave={() => setHover(null)}>
-        <div className="filmstrip" aria-hidden="true">{thumbnails.length ? thumbnails.map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />) : <div className="filmstrip-placeholder">{duration ? source.name : 'Loading video…'}</div>}</div>
-        <div className="timeline-shade" style={{ width: `${progress}%` }} />
-        {selection && duration > 0 && selection.end > selection.start && <div className="selection-overlay" style={{ left: `${selection.start / duration * 100}%`, width: `${(selection.end - selection.start) / duration * 100}%` }} />}
-        <div className="buffer-track" aria-hidden="true">{buffered.map((range, i) => <span key={i} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }} />)}</div>
-        <input className="timeline-input" type="range" aria-label="Video timeline" aria-valuetext={`${formatTime(time)} of ${formatTime(duration)}`} min="0" max={duration || 1} step="0.01" value={Math.min(time, duration || 1)} disabled={!duration} onChange={event => onSeek(Number(event.target.value))} />
-        <div className="playhead" style={{ left: `${progress}%` }} aria-hidden="true"><span /></div>
-        {duration > 0 && pins.filter(pin => pin.time <= duration).map((pin, index) => <button key={pin.id} className="timeline-pin" style={{ left: `${Math.max(0.8, Math.min(99.2, pin.time / duration * 100))}%` }} aria-label={`Go to ${pin.label} at ${formatTime(pin.time)}`} title={`${pin.label} · ${formatTime(pin.time, true)}`} onClick={() => onSeek(pin.time)}>{index + 1}</button>)}
-        {hover !== null && hoveredFrame && <div className="hover-preview" style={{ left: `${Math.max(9, Math.min(91, hover / duration * 100))}%` }}><img src={hoveredFrame.url} alt="Timeline preview" /><span>{formatTime(hover)}</span></div>}
-      </div>
-      <div className="timeline-footer"><span className="source-name">{source.name}</span><span>{info ? `${info.width} × ${info.height} · ${info.fps.toFixed(2)} fps · ${info.codec.toUpperCase()}` : 'Reading media…'}</span></div>
-    </div>
+    <Timeline key={source.url} name={source.name} info={info} thumbnails={thumbnails} pins={pins} time={time} duration={duration} buffered={buffered} selection={selection}
+      height={props.timelineHeight} maxHeight={props.maxTimelineHeight} onHeight={props.onTimelineHeight} onPin={onPin} onSeek={onSeek} onMovePin={props.onMovePin} onRemovePin={props.onRemovePin} />
     <input ref={captionInput} className="sr-only" type="file" accept=".vtt,text/vtt" aria-label="Choose subtitle file" onChange={event => {
       const file = event.target.files?.[0];
       if (!file) return;

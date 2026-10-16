@@ -4,6 +4,14 @@ export const AI_MODELS = {
   transcription: 'gpt-4o-mini-transcribe',
   gemini: 'gemini-3.8-flash',
   fal: 'minimax/h3-max/insert-video',
+  voiceActivity: 'v5', // Silero, evaluated locally in the browser.
 } as const;
 
 export const MAX_ANALYSIS_SECONDS = 120;
+export const MAX_VOICE_SECONDS = 60;
+// Keeps microphone requests below Vercel's function body limit, without public Blob uploads.
+export const MAX_VOICE_BYTES = 2 * 1024 * 1024;
+export const VOICE_DETECTION = {
+  positiveSpeechThreshold: 0.5, negativeSpeechThreshold: 0.35,
+  minSpeechMs: 250, preSpeechPadMs: 400, redemptionMs: 1600,
+} as const;
