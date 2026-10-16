@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+episode_mock.mp4
+.data
+.npm-cache
+node_modules
+test-results
+playwright-report
+.git
+tests
