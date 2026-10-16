@@ -23,6 +23,11 @@ async function generatedFixture(page: Page) {
   return buffer;
 }
 const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:episode_mock.mp4') || '[]'));
+async function openTimeSlider(page: Page, label: string) {
+  const name = label === 'Start range' ? 'start_range' : label === 'End range' ? 'end_range' : 'Duration';
+  await page.getByRole('spinbutton', { name, exact: true }).click();
+  return page.getByRole('slider', { name: `${label} slider`, exact: true });
+}
 async function addDraft(page: Page, time = 5) {
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill(String(time));
   await page.getByRole('button', { name: 'Add draft P' }).click();
@@ -41,15 +46,24 @@ test('time sliders and number inputs stay synchronized and survive reopening a d
   const expansion = page.getByRole('checkbox', { name: 'Prompt expansion', exact: true });
   await expect(expansion).not.toBeChecked();
   await expansion.focus(); await expansion.press('Space'); await expect(expansion).toBeChecked();
-  await expect(page.locator('video')).toHaveJSProperty('paused', true);
+  await expect(page.locator('.video-stage video')).toHaveJSProperty('paused', true);
   await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6');
+  await expect(page.locator('.interstitial-time-popover')).toHaveCount(0);
+  await page.getByRole('separator', { name: 'Resize side panel' }).press('Home');
+  const fields = await page.locator('.interstitial-time-field').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
+  expect(new Set(fields).size).toBe(1);
   for (const [sliderName, inputName, fromSlider, fromNumber] of [
     ['Start range slider', 'start_range', '1.625', '3.51'],
     ['End range slider', 'end_range', '0.1', '2.54'],
     ['Duration slider', 'Duration', '13', '7.33'],
   ]) {
-    const slider = page.getByRole('slider', { name: sliderName, exact: true });
+    const slider = await openTimeSlider(page, sliderName.replace(' slider', ''));
     const number = page.getByRole('spinbutton', { name: inputName, exact: true });
+    await expect(page.locator('.interstitial-time-popover')).toHaveCount(1);
+    const popup = (await page.locator('.interstitial-time-popover').boundingBox())!;
+    const sidebar = (await page.locator('.sidebar').boundingBox())!;
+    expect(popup.x).toBeGreaterThanOrEqual(sidebar.x);
+    expect(popup.x + popup.width).toBeLessThanOrEqual(sidebar.x + sidebar.width);
     await slider.fill(fromSlider); await expect(number).toHaveValue(fromSlider);
     await number.fill(fromNumber); await expect(slider).toHaveValue(fromNumber);
   }
@@ -63,13 +77,16 @@ test('time sliders and number inputs stay synchronized and survive reopening a d
   }
   await duration.fill('7.5'); await expect(slider).toHaveValue('7.5');
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
-  await expect(page.getByText(/Adds a 7.5s scene/)).toBeVisible();
+  await slider.press('Escape'); await expect(page.locator('.interstitial-time-popover')).toHaveCount(0);
+  await expect(duration).toBeFocused();
+  await duration.click(); await expect(slider).toBeVisible();
+  await page.getByLabel('Interstitial prompt').click(); await expect(page.locator('.interstitial-time-popover')).toHaveCount(0);
   await expect.poll(async () => (await saved(page))[0]).toMatchObject({ start_range: 3.51, end_range: 2.54, duration: 7.5, enable_prompt_expansion: true });
   await page.reload();
   await page.getByRole('button', { name: 'Select Interstitial 1', exact: true }).click();
   await expect(page.getByLabel('start_range')).toHaveValue('3.51');
   await expect(page.getByLabel('end_range')).toHaveValue('2.54');
-  await expect(duration).toHaveValue('7.5'); await expect(slider).toHaveValue('7.5');
+  await expect(duration).toHaveValue('7.5'); await expect(await openTimeSlider(page, 'Duration')).toHaveValue('7.5');
   await expect(expansion).toBeChecked();
   await page.screenshot({ path: 'test-results/interstitial-sliders.png' });
   await addDraft(page, 12); await expect(expansion).not.toBeChecked();
@@ -92,20 +109,24 @@ test('draft editor, preparation, generation and a progressively buffered interst
   let submitted = '', polls = 0;
   await page.route('**/api/interstitials', async route => { submitted = route.request().postDataBuffer()!.toString('latin1'); await route.fulfill({ status: 202, json: { requestId: 'fixture-job-1234', status: 'IN_QUEUE' } }); });
   await page.route('**/api/fal/jobs/fixture-job-1234', route => route.fulfill({ json: ++polls < 2 ? { requestId: 'fixture-job-1234', status: 'IN_PROGRESS' } : { requestId: 'fixture-job-1234', status: 'COMPLETED', videoUrl: 'https://fal.media/interstitial-fixture.mp4', insertion: { start: 2, duration: 5, totalDuration: 9 } } }));
-  const originalDuration = await page.locator('video').evaluate(video => (video as HTMLVideoElement).duration);
+  const originalDuration = await page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).duration);
   await page.getByLabel('Choose subtitle file').setInputFiles({ name: 'source.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:00:04.000 --> 00:00:06.000\nSource dialogue across the cut\n') });
-  const cues = () => page.locator('video').evaluate(video => Array.from((video as HTMLVideoElement).textTracks[0]?.cues || []).map(cue => [cue.startTime, cue.endTime]));
+  const cues = () => page.locator('.video-stage video').evaluate(video => Array.from((video as HTMLVideoElement).textTracks[0]?.cues || []).map(cue => [cue.startTime, cue.endTime]));
   await expect.poll(cues).toEqual([[4, 6]]);
   await addDraft(page);
   await expect(page.getByRole('link', { name: 'Download full video', exact: true })).toHaveCount(0);
-  await page.getByRole('slider', { name: 'Duration slider', exact: true }).fill('5');
+  await (await openTimeSlider(page, 'Duration')).fill('5');
   await page.getByLabel('start_range').fill('5'); await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
   await page.getByLabel('start_range').fill('2'); await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Generating scene' })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.timeline-pin .timeline-generation-spinner')).toBeVisible();
   await expect(page.locator('.timeline-pin')).toHaveAttribute('title', /Generating scene/);
-  await expect(page.getByText('5.00s interstitial · ready in the timeline')).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText('Includes the start and end reference footage · 9.00s total.')).toBeVisible();
+  await expect.poll(async () => (await saved(page))[0]?.phase, { timeout: 60_000 }).toBe('ready');
+  const preview = page.getByLabel('Generated video for Interstitial 1', { exact: true });
+  await expect(preview).toBeVisible();
+  await expect(preview).toHaveJSProperty('controls', true);
+  await expect.poll(() => preview.evaluate(video => (video as HTMLVideoElement).duration)).toBeCloseTo(9, 2);
+  await expect(page.getByRole('button', { name: 'Play interstitial', exact: true })).toHaveCount(0);
   await downloadFullVideo();
   expect(submitted).toContain('interstitial-reference.mp4'); expect(submitted).toContain('ftyp');
   expect(submitted).toContain('name="start"\r\n\r\n2'); expect(submitted).toContain(`name="resume"\r\n\r\n${49 / 24}`);
@@ -113,7 +134,7 @@ test('draft editor, preparation, generation and a progressively buffered interst
   expect(submitted).toContain('name="duration"\r\n\r\n5');
   expect(submitted).toContain('name="enable_prompt_expansion"\r\n\r\nfalse');
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion', exact: true })).toBeEnabled();
-  await expect(page.getByRole('slider', { name: 'Duration slider', exact: true })).toBeEnabled();
+  await expect(await openTimeSlider(page, 'Duration')).toBeEnabled();
   await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled();
   await expect(page.locator('.timeline-generation-spinner')).toHaveCount(0);
@@ -141,19 +162,35 @@ test('draft editor, preparation, generation and a progressively buffered interst
   });
   expect(firstFrame[1]).toBeGreaterThan(180); expect(firstFrame[0]).toBeLessThan(20);
   await expect.poll(() => page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max')).toBe(String(Math.round(originalDuration * 24) / 24 + 5));
-  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
-  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/);
+  await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
+  await expect(page.locator('.video-stage video')).toHaveAttribute('src', /^blob:/);
   await expect.poll(cues).toEqual([[4, 5], [10, 11]]);
-  const green = () => page.locator('video').evaluate(video => { const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1; const ctx = canvas.getContext('2d')!; ctx.drawImage(video as HTMLVideoElement, 0, 0, 1, 1); return [...ctx.getImageData(0, 0, 1, 1).data]; });
+  const green = () => page.locator('.video-stage video').evaluate(video => { const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1; const ctx = canvas.getContext('2d')!; ctx.drawImage(video as HTMLVideoElement, 0, 0, 1, 1); return [...ctx.getImageData(0, 0, 1, 1).data]; });
   await expect.poll(async () => (await green())[1], { timeout: 60_000 }).toBeGreaterThan(180);
+  const mainVideo = page.locator('.video-stage video');
+  const mainTime = await mainVideo.evaluate(video => (video as HTMLVideoElement).currentTime);
+  await preview.evaluate(async video => { (video as HTMLVideoElement).muted = true; await (video as HTMLVideoElement).play(); });
+  await expect.poll(() => preview.evaluate(video => (video as HTMLVideoElement).currentTime)).toBeGreaterThan(0.1);
+  await expect(mainVideo).toHaveJSProperty('paused', true);
+  expect(await mainVideo.evaluate(video => (video as HTMLVideoElement).currentTime)).toBe(mainTime);
+  await preview.focus(); await preview.press('Space'); await expect(preview).toHaveJSProperty('paused', true);
+  await expect(mainVideo).toHaveJSProperty('paused', true);
+  await preview.press('Space'); await expect(preview).toHaveJSProperty('paused', false);
+  await page.getByRole('tab', { name: 'Describe', exact: true }).click();
+  await expect(preview).toHaveJSProperty('paused', true);
+  await page.getByRole('tab', { name: /Interstitials/ }).click();
+  await preview.evaluate(video => (video as HTMLVideoElement).play());
+  await page.locator('.video-stage').hover(); await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(preview).toHaveJSProperty('paused', true);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('10');
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).press('ArrowRight');
-  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).currentTime), { timeout: 60_000 }).toBeCloseTo(10.04, 2);
+  await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).currentTime), { timeout: 60_000 }).toBeCloseTo(10.04, 2);
   await expect.poll(async () => { const [r, g, b] = await green(); return g > 180 && r < 20 && b < 20; }).toBe(false);
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('5');
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).press('ArrowLeft');
   await page.locator('.video-stage').hover(); await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).currentTime), { timeout: 60_000 }).toBeGreaterThan(5.2);
+  await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).currentTime), { timeout: 60_000 }).toBeGreaterThan(5.2);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   expect((await green())[1]).toBeGreaterThan(180);
   await page.getByRole('button', { name: 'All interstitials' }).click();
@@ -179,9 +216,9 @@ test('draft editor, preparation, generation and a progressively buffered interst
     const tolerance = duration / track.width + 1 / 24;
     await page.mouse.click(x, clip.y + clip.height * 0.75);
     await expect.poll(async () => Math.abs(Number(await timelineInput.inputValue()) - (5 + 5 * fraction))).toBeLessThanOrEqual(tolerance);
-    await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).currentTime), { timeout: 60_000 })
+    await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).currentTime), { timeout: 60_000 })
       .toBeCloseTo(Number(await timelineInput.inputValue()), 5);
-    await expect(page.locator('video')).toHaveJSProperty('paused', true);
+    await expect(page.locator('.video-stage video')).toHaveJSProperty('paused', true);
     const head = (await page.locator('.playhead').boundingBox())!;
     expect(Math.abs(head.x - x)).toBeLessThanOrEqual(track.width / duration / 24 + 1);
     // The playhead is drawn above the clip while allowing pointer clicks through it.
@@ -226,8 +263,8 @@ test('draft editor, preparation, generation and a progressively buffered interst
   await expect.poll(() => page.locator('.rendered-interstitial').evaluate(element => parseFloat((element as HTMLElement).style.left))).toBeCloseTo((movedTime + 1 / 24) / duration * 100, 3);
   await page.getByRole('button', { name: 'Remove Interstitial 1' }).click();
   await expect(page.locator('.rendered-interstitial')).toHaveCount(0);
-  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/);
-  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(originalDuration);
+  await expect(page.locator('.video-stage video')).toHaveAttribute('src', /^blob:/);
+  await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(originalDuration);
   await expect(page.getByText('No interstitials yet')).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -262,10 +299,10 @@ test('a failed interstitial remains editable and retries directly with its chang
   await page.getByLabel('Interstitial prompt').fill('A corrected interstitial scene');
   await page.getByLabel('start_range').fill('3');
   await page.getByLabel('end_range').fill('1.5');
-  await page.getByRole('slider', { name: 'Duration slider', exact: true }).fill('7.5');
+  await (await openTimeSlider(page, 'Duration')).fill('7.5');
   await expect(page.getByRole('alert')).toHaveText(rejection);
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
-  await expect(page.getByText('5.00s interstitial · ready in the timeline')).toBeVisible({ timeout: 60_000 });
+  await expect.poll(async () => (await saved(page))[0]?.phase, { timeout: 60_000 }).toBe('ready');
   expect(submissions).toHaveLength(2); expect(cancellations).toBe(1);
   expect(submissions[1]).toContain('name="start"\r\n\r\n3');
   expect(submissions[1]).toContain('name="duration"\r\n\r\n7.5');
@@ -305,7 +342,7 @@ test('completed scenes retry without removing the current video, survive failure
   const timeline = page.getByRole('slider', { name: 'Video timeline', exact: true });
   const sourceDuration = Number(await timeline.getAttribute('max'));
   await addDraft(page); await page.getByRole('button', { name: 'Generate', exact: true }).click();
-  await expect(page.getByText('5.00s interstitial · ready in the timeline')).toBeVisible({ timeout: 60_000 });
+  await expect.poll(async () => (await saved(page))[0]?.phase, { timeout: 60_000 }).toBe('ready');
   const original = (await saved(page))[0];
   const thumbnail = page.locator('.interstitial-thumbnail');
   await expect(thumbnail).toBeVisible();
@@ -314,7 +351,7 @@ test('completed scenes retry without removing the current video, survive failure
   await page.getByLabel('Interstitial prompt').fill('A replacement scene');
   await page.getByRole('spinbutton', { name: 'Duration', exact: true }).fill('6');
   await page.getByRole('checkbox', { name: 'Prompt expansion', exact: true }).check();
-  const videoUrl = await page.locator('video').getAttribute('src');
+  const videoUrl = await page.locator('.video-stage video').getAttribute('src');
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Generating scene' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByLabel('Interstitial prompt')).toBeEnabled();
@@ -324,12 +361,12 @@ test('completed scenes retry without removing the current video, survive failure
   await expect(page.locator('.timeline-pin .timeline-generation-spinner')).toHaveCount(0);
   await expect(thumbnail).toHaveCSS('background-image', oldThumbnail);
   await page.getByLabel('Interstitial prompt').fill('Edited while generating');
-  await page.getByRole('slider', { name: 'Duration slider', exact: true }).fill('7');
+  await (await openTimeSlider(page, 'Duration')).fill('7');
   await page.getByRole('checkbox', { name: 'Prompt expansion', exact: true }).uncheck();
-  await expect(page.getByText('Changes saved for the next generation.')).toBeVisible();
+  await expect(page.getByText('Edited', { exact: true })).toBeVisible();
   await expect(page.locator('.rendered-interstitial')).toHaveCount(1);
   await expect(timeline).toHaveAttribute('max', String(sourceDuration + 5));
-  await expect(page.locator('video')).toHaveAttribute('src', videoUrl!);
+  await expect(page.locator('.video-stage video')).toHaveAttribute('src', videoUrl!);
   await expect(page.getByRole('link', { name: 'Download full video' })).toHaveAttribute('href', oldUrl!);
   expect((await saved(page))[0].previousResult).toEqual(original.result);
   expect(submissions).toHaveLength(2);
@@ -369,7 +406,7 @@ test('completed scenes retry without removing the current video, survive failure
   await expect(page.locator('.rendered-interstitial')).toHaveAttribute('title', /Loading generated video/);
   await page.getByLabel('Interstitial prompt').fill('Edited while loading');
   finishDownload();
-  await expect(page.getByText('6.00s interstitial · ready in the timeline')).toBeVisible({ timeout: 60_000 });
+  await expect.poll(async () => (await saved(page))[0]?.phase, { timeout: 60_000 }).toBe('ready');
   await expect(timeline).toHaveAttribute('max', String(sourceDuration + 6));
   await expect(page.locator('.rendered-interstitial')).toHaveCount(1);
   const final = (await saved(page))[0];
@@ -386,7 +423,7 @@ test('completed scenes retry without removing the current video, survive failure
   await page.reload(); await expect(page.locator('.rendered-interstitial')).toHaveCount(1);
   await page.getByRole('button', { name: 'Select rendered Interstitial 1' }).click();
   await expect(page.getByLabel('Interstitial prompt')).toHaveValue('Another completed-scene edit');
-  await expect(page.getByText('Changes saved for the next generation.')).toBeVisible();
+  await expect(page.getByText('Edited', { exact: true })).toBeVisible();
   expect(submissions).toHaveLength(4); expect(errors).toEqual([]);
 });
 

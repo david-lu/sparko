@@ -79,7 +79,7 @@ export default function Player(props: Props) {
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || target.isContentEditable
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || target.isContentEditable || target.closest('video[controls]')
         || target.closest('textarea, select, input:not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"])')) return;
       if ((event.key === 'Delete' || event.key === 'Backspace') && props.selectedId) {
         event.preventDefault();

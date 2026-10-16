@@ -8,7 +8,7 @@ async function openVideo(page: Page) {
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
   await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
-  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
+  await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
 }
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); const body = await response.json(); await route.fulfill({ json: { ...body, providers: { openai: true, gemini: true, fal: true } } }); });
@@ -85,9 +85,9 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await restored.route('http://127.0.0.1:3000/media/**', route => route.abort());
   await restored.reload();
   await expect(restored.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
-  await expect.poll(() => restored.locator('video').evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => restored.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
   expect(remoteReads).toBe(0);
-  await expect.poll(() => restored.locator('video').evaluate(video => Array.from((video as HTMLVideoElement).textTracks[0]?.cues || []).map(cue => [cue.startTime, cue.endTime]))).toEqual([[1, 2], [4, 5]]);
+  await expect.poll(() => restored.locator('.video-stage video').evaluate(video => Array.from((video as HTMLVideoElement).textTracks[0]?.cues || []).map(cue => [cue.startTime, cue.endTime]))).toEqual([[1, 2], [4, 5]]);
   await restored.screenshot({ path: 'test-results/project-imported.png' });
   await context.close(); expect(errors).toEqual([]);
 });
@@ -98,7 +98,7 @@ test('reopens a local video after reload and leaves it intact when import or sto
   await page.route('http://127.0.0.1:3000/media/**', route => route.abort());
   await page.reload();
   await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
-  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
+  await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
   await page.getByLabel('Choose project file').setInputFiles({ name: 'broken.sparko', mimeType: 'application/zip', buffer: Buffer.from('not a project') });
   await expect(page.getByRole('alert')).toBeVisible();
   expect((await activeProject(page)).id).toBe(original.id);
