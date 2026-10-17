@@ -348,9 +348,9 @@ test('completed scenes retry without removing the current video, survive failure
   await addDraft(page); await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect.poll(async () => (await saved(page))[0]?.phase, { timeout: 60_000 }).toBe('ready');
   const original = (await saved(page))[0];
-  const thumbnail = page.locator('.interstitial-thumbnail');
+  const thumbnail = page.locator('.rendered-interstitial .video-filmstrip img').first();
   await expect(thumbnail).toBeVisible();
-  const oldThumbnail = await thumbnail.evaluate(element => getComputedStyle(element).backgroundImage);
+  const oldThumbnail = await thumbnail.getAttribute('src');
   const oldUrl = await page.getByRole('link', { name: 'Download full video' }).getAttribute('href');
   await page.getByLabel('Interstitial prompt').fill('A replacement scene');
   await page.getByRole('spinbutton', { name: 'Duration', exact: true }).fill('6');
@@ -363,7 +363,7 @@ test('completed scenes retry without removing the current video, survive failure
   await expect(page.locator('.rendered-interstitial .timeline-generation-spinner')).toBeVisible();
   await expect(page.locator('.rendered-interstitial')).toHaveAttribute('title', /Generating scene/);
   await expect(page.locator('.timeline-pin .timeline-generation-spinner')).toHaveCount(0);
-  await expect(thumbnail).toHaveCSS('background-image', oldThumbnail);
+  await expect(thumbnail).toHaveAttribute('src', oldThumbnail!);
   await page.getByLabel('Interstitial prompt').fill('Edited while generating');
   await (await openTimeSlider(page, 'Duration')).fill('7');
   await page.getByRole('checkbox', { name: 'Prompt expansion', exact: true }).uncheck();
@@ -405,9 +405,9 @@ test('completed scenes retry without removing the current video, survive failure
   await expect(timeline).toHaveAttribute('max', String(sourceDuration + 5));
   mode = 'ready'; holdDownload = true;
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Loading generated video' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('status').filter({ hasText: 'Downloading generated video' })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.rendered-interstitial .timeline-generation-spinner')).toBeVisible();
-  await expect(page.locator('.rendered-interstitial')).toHaveAttribute('title', /Loading generated video/);
+  await expect(page.locator('.rendered-interstitial')).toHaveAttribute('title', /Downloading generated video/);
   await page.getByLabel('Interstitial prompt').fill('Edited while loading');
   finishDownload();
   await expect.poll(async () => (await saved(page))[0]?.phase, { timeout: 60_000 }).toBe('ready');

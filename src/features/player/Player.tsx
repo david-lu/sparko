@@ -130,7 +130,7 @@ export default function Player(props: Props) {
         {subtitle && <track key={subtitle.url} src={subtitle.url} kind="subtitles" label={subtitle.name} srcLang="en" default />}
       </video>
       {!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
-      {buffering && <div className="buffering" role="status"><span className="spinner" /> Buffering</div>}
+      {buffering && <div className="buffering" role="status"><span className="spinner" /><span className="sr-only">Buffering</span></div>}
       {flow && activeScene?.clip.kind === 'idle' && <div className="player-branch-controls" role="group" aria-label="Debug response branches" onDoubleClick={event => event.stopPropagation()}>
         {flow.flow.edges.filter(edge => edge.from === activeScene.id && flow.flow.interaction.answers.some(answer => answer.id === edge.when)).map(edge => <button key={edge.id}
           aria-label={`Take ${answerLabel(flow.flow, edge.when)} branch`} title={`Debug: take the ${answerLabel(flow.flow, edge.when)} branch at the next loop boundary`}

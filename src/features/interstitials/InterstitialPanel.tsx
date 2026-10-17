@@ -56,7 +56,7 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
           <button className={`interstitial-row interstitial-group-heading ${groupReady ? 'ready' : ''}`} disabled={!members.length}
             aria-label={`Select ${callResponse.flow.interstitial.label}`} onClick={callResponse.onSelectInterstitial}>
             <span className="interstitial-number">1</span><span className="interstitial-row-content"><strong>{callResponse.flow.interstitial.label}</strong><span>{formatTime(callResponse.flow.interstitial.time, true)} · {members.length} clips</span></span>
-            {groupReady && <Clapperboard size={14} />}
+            <span className="status-icon">{groupReady && <Clapperboard size={14} />}</span>
           </button>
           <button className="icon-button small" aria-label={`Remove ${callResponse.flow.interstitial.label}`} onClick={callResponse.onRemoveInterstitial}><Trash2 size={14} /></button>
         </div>
@@ -66,15 +66,15 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
             return <li key={scene.clip.id}><button className="interstitial-row" aria-label={`Select ${clipTypeLabel(scene.clip, callResponse.flow)} clip`} onClick={() => callResponse.onSelectScene(scene.id)}>
               {scene.clip.kind === 'idle' ? <Repeat2 size={14} /> : <Clapperboard size={14} />}
               <span className="interstitial-row-content"><strong>{clipTypeLabel(scene.clip, callResponse.flow)}</strong><span>{scene.label}</span></span>
-              {item && isGenerating(item) && <span className="spinner" />}
+              <span className="status-icon">{item && isGenerating(item) && <span className="spinner" />}</span>
             </button></li>;
           })}
         </ol>
       </li>}
       {standaloneItems.map((item, i) => <li key={item.id}>
       <button className={`interstitial-row ${playableResult(item) ? 'ready' : ''}`} onClick={() => onSelect(item.id)} aria-label={`Select ${item.label}`}>
-        <span className="interstitial-number">{i + 1 + (callResponse ? 1 : 0)}</span><span className="interstitial-row-content"><strong>{item.label}</strong><span>{formatTime(item.time, true)} · {phaseLabel(item)}</span></span>
-        {isGenerating(item) && <span className="spinner" />}{playableResult(item) && <Clapperboard size={14} />}
+        <span className="interstitial-number">{i + 1 + (callResponse ? 1 : 0)}</span><span className="interstitial-row-content"><strong title={item.label}>{item.label}</strong><span title={`${formatTime(item.time, true)} · ${phaseLabel(item)}`}>{formatTime(item.time, true)} · {phaseLabel(item)}</span></span>
+        <span className="status-icon">{isGenerating(item) ? <span className="spinner" /> : playableResult(item) ? <Clapperboard size={14} /> : null}</span>
       </button><RemoveInterstitialButton item={item} controller={controller} disabled={connectedIds.includes(item.id)} />
     </li>)}</ol>}
   </div>;

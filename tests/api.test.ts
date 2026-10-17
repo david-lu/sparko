@@ -13,6 +13,7 @@ const providers: Providers = {
   voice: vi.fn<Providers['voice']>(async (provider, input) => ({ transcript: 'My spoken answer', response: 'Answer received.', provider, model: `test-${provider}`, context: input.context })),
   falSubmit: vi.fn(async () => 'test-job-1234'), falStatus: vi.fn<Providers['falStatus']>(async requestId => ({ requestId, status: 'COMPLETED', videoUrl: 'https://fal.media/result.mp4' })),
   falCancel: vi.fn(async () => undefined),
+  enhancePrompt: vi.fn(),
 };
 let app: Express;
 beforeAll(async () => { app = await createApp({ providers }); app.use(errorHandler); });

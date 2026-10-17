@@ -6,6 +6,7 @@ import { formatTime, type AppStatus, type Provider, type VoiceAnswer, type Voice
 import { isMicrophoneEnabled, MicrophoneController } from './MicrophoneController';
 import type { VideoPlayerController } from '../player/VideoPlayerController';
 import { sendVoiceAnswer } from './api';
+import TaskStatus from '../../shared/TaskStatus';
 
 export default function VoicePanel({ sourceId, controller, status, active, scene }: {
   sourceId: string; controller: VideoPlayerController; status: AppStatus | null; active: boolean;
@@ -59,7 +60,7 @@ export default function VoicePanel({ sourceId, controller, status, active, scene
     if (!recording.audio || !context || task.current) return;
     preview.current?.pause();
     const operation = new AbortController(); task.current = operation;
-    setBusy(true); setError(''); setResult(null);
+    setBusy(true); setError('');
     try {
       const answer = await sendVoiceAnswer(recording.audio, provider, context, operation.signal);
       if (task.current === operation) setResult(answer);
@@ -75,10 +76,12 @@ export default function VoicePanel({ sourceId, controller, status, active, scene
       <Mic size={14} /><span>{recording.phase === 'recording' ? 'Recording speech' : recording.phase === 'listening' ? 'Listening for speech' : recording.phase === 'loading' ? 'Loading speech detection' : recording.phase === 'requesting' ? 'Waiting for microphone access' : recording.phase === 'stopping' ? 'Finishing answer' : 'Mic off'}</span>
       <time>{formatTime(recording.seconds)} / {formatTime(MAX_VOICE_SECONDS)}</time>
     </div>
-    {capturing ? <div className="voice-actions">
+    <div className="voice-actions voice-capture-actions">
+    {capturing ? <>
       {recording.phase === 'recording' ? <button className="button full-width" onClick={() => void microphone.stop()}><Square size={13} /> Finish answer</button> : <button className="button full-width" onClick={() => microphone.cancel()}><X size={15} /> Disable mic</button>}
-      {recording.phase === 'recording' && <button className="icon-button" aria-label="Cancel recording" onClick={() => microphone.cancel()}><X size={15} /></button>}
-    </div> : <button className="button full-width" disabled={busy} onClick={start}><Mic size={15} />{recording.audio ? 'Record again' : 'Enable mic'}</button>}
+    </> : <button className="button full-width" disabled={busy} onClick={start}><Mic size={15} />{recording.audio ? 'Record again' : 'Enable mic'}</button>}
+      <button className="icon-button" aria-label="Cancel recording" aria-hidden={recording.phase !== 'recording'} disabled={recording.phase !== 'recording'} onClick={() => microphone.cancel()}><X size={15} /></button>
+    </div>
     <p className="hint voice-hint">Starts with speech and finishes after a pause. Up to {MAX_VOICE_SECONDS} seconds. Detection stays on this device; only Send uploads your answer.</p>
     {recording.audio && <div className="voice-review">
       <audio ref={preview} src={audioUrl || undefined} preload="metadata" onPlay={() => setPreviewing(true)} onPause={() => setPreviewing(false)} onEnded={() => setPreviewing(false)} hidden />
@@ -89,7 +92,7 @@ export default function VoicePanel({ sourceId, controller, status, active, scene
       }}>{previewing ? <Square size={12} /> : <Play size={12} />}{previewing ? 'Stop preview' : 'Play recording'}</button><span>Video {formatTime(context?.videoTime || 0, true)}</span></div>
       <div className="voice-actions"><button className="button primary full-width" disabled={busy || !status?.providers[provider]} onClick={() => void send()}><Send size={14} /> Send to LLM</button><button className="icon-button" disabled={busy} aria-label="Discard recording" onClick={() => { microphone.cancel(); setResult(null); setError(''); }}><X size={15} /></button></div>
     </div>}
-    {busy && <div className="task-status" role="status"><span className="spinner" /><span>Processing spoken answer…</span><button className="icon-button small" aria-label="Cancel voice request" onClick={() => { task.current?.abort(); task.current = null; setBusy(false); }}><X size={16} /></button></div>}
+    <TaskStatus active={busy} message="Processing spoken answer…" cancelLabel="Cancel voice request" onCancel={() => { task.current?.abort(); task.current = null; setBusy(false); }} />
     {(error || recording.error) && <p className="inline-error" role="alert">{error || recording.error}</p>}
     {result && <article className="analysis-result" aria-label="Voice result"><h3>Your answer</h3><p>{result.transcript || 'No speech detected.'}</p><h3>Model response</h3><p>{result.response}</p><div className="result-meta">Video {formatTime(result.context.videoTime, true)}<br />{result.model}</div></article>}
   </div>;

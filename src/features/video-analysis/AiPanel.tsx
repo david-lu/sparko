@@ -1,6 +1,6 @@
 import './styles.css';
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Play, Sparkles, X } from 'lucide-react';
+import { Copy, Play, Sparkles } from 'lucide-react';
 import type { AppStatus, CaptionResult, Provider, Slice } from '../../../shared/contracts';
 import { formatTime, validateSlice } from '../../../shared/contracts';
 import { MAX_ANALYSIS_SECONDS } from '../../../shared/constants';
@@ -8,6 +8,7 @@ import { analyzeVideo } from './api';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { VideoPlayerController } from '../player/VideoPlayerController';
 import type { AnalysisState } from '../project/types';
+import TaskStatus from '../../shared/TaskStatus';
 
 export default function AiPanel({ engine, controller, status, slice, onSlice, analysis, onAnalysis }: {
   engine: MediaEngine | null; controller: VideoPlayerController; status: AppStatus | null;
@@ -30,7 +31,7 @@ export default function AiPanel({ engine, controller, status, slice, onSlice, an
   const busy = !!progress;
   const analyze = async () => {
     if (!engine) return;
-    setError(''); setResult(null);
+    setError('');
     const operation = new AbortController(); task.current = operation;
     try {
       validateSlice(slice, controller.getSourceDuration(), MAX_ANALYSIS_SECONDS);
@@ -60,7 +61,7 @@ export default function AiPanel({ engine, controller, status, slice, onSlice, an
         <button className="button primary full-width" type="submit" disabled={!engine || !status?.providers[provider]}><Sparkles size={15} /> Generate description</button>
       </fieldset>
     </form>
-    {busy && <div className="task-status" role="status"><span className="spinner" /><span>{progress}</span><button className="icon-button small" aria-label="Cancel analysis" onClick={() => { task.current?.abort(); task.current = null; setProgress(''); }}><X size={16} /></button></div>}
+    <TaskStatus active={busy} message={progress} cancelLabel="Cancel analysis" onCancel={() => { task.current?.abort(); task.current = null; setProgress(''); }} />
     {error && <p className="inline-error" role="alert">{error}</p>}
     {result && <article className="analysis-result" aria-label="Analysis result">
       <div className="result-heading"><span className="eyebrow">RESULT</span><button className="text-button" onClick={() => { void navigator.clipboard.writeText(`${result.caption}\n\n${result.description}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => setError('Clipboard access is unavailable. Select and copy the result text.')); }}><Copy size={13} />{copied ? 'Copied' : 'Copy'}</button></div>

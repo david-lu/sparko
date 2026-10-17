@@ -11,6 +11,7 @@ import { addVoiceRoutes } from './features/voice-input/routes.js';
 import { addInsertionRoutes } from './features/video-insertion/routes.js';
 import { addInterstitialRoutes } from './features/interstitials/routes.js';
 import { addComfyRoutes } from './features/comfy/routes.js';
+import { addPromptEnhancementRoutes } from './features/interstitials/prompt-enhancement.js';
 
 export async function createApp(options: { root?: string; providers?: Providers } = {}) {
   const root = options.root || process.cwd();
@@ -41,6 +42,7 @@ export async function createApp(options: { root?: string; providers?: Providers 
   addAnalysisRoutes(app, providers, receive);
   addVoiceRoutes(app, providers);
   addInterstitialRoutes(app, providers, receive);
+  addPromptEnhancementRoutes(app, providers);
   addComfyRoutes(app, providers, receive);
   addInsertionRoutes(app, providers, receive, defaultPath, uploadDir);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Unknown API route.' }));

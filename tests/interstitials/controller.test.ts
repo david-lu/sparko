@@ -8,12 +8,16 @@ import { hasUnsubmittedChanges, interstitialSettings, playableResult } from '../
 import { addAnswer, changeClipKind, createTimelineExample, responseInterstitialIds } from '../../src/features/call-response/model';
 import { generationSource } from '../../src/features/call-response/generation';
 import { watchComfyJob } from '../../src/features/interstitials/progress-stream';
+import { phaseLabel } from '../../src/features/interstitials/status';
 
 vi.mock('../../src/features/interstitials/api', () => ({ generateInterstitial: vi.fn(), getInterstitialJob: vi.fn(), cancelInterstitialJob: vi.fn() }));
 vi.mock('../../src/features/interstitials/progress-stream', () => ({ watchComfyJob: vi.fn() }));
 vi.mock('../../src/features/call-response/generation', () => ({ generationSource: vi.fn() }));
 vi.mock('../../src/media/MediaEngine', () => ({ MediaEngine: class { inspect() { return Promise.resolve({ duration: 9, fps: 25 }); } dispose() {} } }));
-vi.mock('../../src/features/project/assets', () => ({ assets: { download: async () => ({ id: 'stored-asset' }), open: async () => ({ url: 'blob:local-asset' }) } }));
+vi.mock('../../src/features/project/assets', () => ({ assets: {
+  fetch: async () => ({ id: 'fetched-asset', name: 'video.mp4', blob: new Blob(['video']) }),
+  save: async () => ({ id: 'stored-asset' }), open: async () => ({ url: 'blob:local-asset' }),
+} }));
 const info = { duration: 20, fps: 25, width: 320, height: 180, codec: 'avc', hasAudio: true };
 const media = {} as MediaEngine;
 let controller: InterstitialController;
@@ -36,7 +40,7 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
-  it('shows live Comfy steps without stale polls overwriting them and detaches on completion', async () => {
+  it.each([0, 6_000])('keeps newer Comfy steps when a poll is delayed %i ms and reconciles subsequent polls', async delay => {
     const id = add(); controller.edit(id, { method: 'comfy' });
     vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE', insertion: completed.insertion });
     let read!: (job: Awaited<ReturnType<typeof getInterstitialJob>>) => void;
@@ -47,10 +51,17 @@ describe('interstitial lifecycle', () => {
     update({ type: 'progress', progress: .4, progressDetails: { stage: 'Generating video and audio', step: 8, steps: 20 } });
     vi.useFakeTimers();
     try {
+      // The old request can remain in flight longer than the SSE freshness window.
+      await vi.advanceTimersByTimeAsync(delay);
       read({ requestId: completed.requestId, status: 'IN_QUEUE', progress: 0 });
       await vi.advanceTimersByTimeAsync(0);
       expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'rendering', progress: .4, progressDetails: { step: 8 } });
       controller.edit(id, { method: 'fal' });
+      await vi.advanceTimersByTimeAsync(2500);
+      read({ requestId: completed.requestId, status: 'IN_PROGRESS', progress: .9, progressDetails: { stage: 'Decoding video' } });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'rendering', progress: .9, progressDetails: { stage: 'Decoding video' } });
+      expect(controller.getSnapshot().items[0].progressDetails?.step).toBeUndefined();
       await vi.advanceTimersByTimeAsync(2500);
       read(completed); await generation;
       expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', method: 'fal', requestMethod: 'comfy', progressDetails: undefined });
@@ -59,6 +70,36 @@ describe('interstitial lifecycle', () => {
       expect(controller.getSnapshot().items[0].phase).toBe('ready');
       expect(cancelInterstitialJob).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
+  });
+  it.each([1_000, 0])('separates download, storage and video checks with a reported file size of %i', async total => {
+    const id = add(), labels: string[] = [];
+    controller.subscribe(() => labels.push(phaseLabel(controller.getSnapshot().items[0])));
+    vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
+    vi.mocked(getInterstitialJob).mockResolvedValue(completed);
+    const asset = { id: 'stored-asset', name: 'video.mp4', blob: new Blob(['video']) };
+    let finishDownload!: (value: typeof asset) => void, finishSave!: (value: typeof asset) => void;
+    vi.spyOn(assets, 'fetch').mockImplementationOnce((_url, _name, _signal, progress) => {
+      progress?.(250, total);
+      return new Promise(resolve => { finishDownload = resolve; });
+    });
+    vi.spyOn(assets, 'save').mockImplementationOnce(() => new Promise(resolve => { finishSave = resolve; }));
+    vi.spyOn(assets, 'open').mockImplementationOnce(async () => {
+      expect(phaseLabel(controller.getSnapshot().items[0])).toBe('Checking generated video');
+      return { asset, url: 'blob:local-asset' };
+    });
+    const generation = controller.generate(id, media, info);
+    await vi.waitFor(() => expect(assets.fetch).toHaveBeenCalledOnce());
+    expect(phaseLabel(controller.getSnapshot().items[0])).toBe(`Downloading generated video${total ? ' · 25%' : ''}`);
+    expect(controller.getSnapshot().items[0].progress).toBe(total ? .25 : undefined);
+    expect(assets.save).not.toHaveBeenCalled();
+    finishDownload(asset);
+    await vi.waitFor(() => expect(assets.save).toHaveBeenCalledOnce());
+    expect(phaseLabel(controller.getSnapshot().items[0])).toBe('Saving generated video');
+    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'loading', progress: undefined });
+    expect(assets.open).not.toHaveBeenCalled();
+    finishSave(asset); await generation;
+    expect(labels).toEqual(expect.arrayContaining(['Saving generated video', 'Checking generated video', 'Ready']));
+    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', progress: undefined, progressDetails: undefined });
   });
   it('gives added answers independent media jobs, Idle references and shared duration settings', () => {
     const example = createTimelineExample(crypto.randomUUID(), 12);
@@ -304,7 +345,7 @@ describe('interstitial lifecycle', () => {
     const original = interstitialSettings(controller.getSnapshot().items[0]);
     vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
     vi.mocked(getInterstitialJob).mockResolvedValue(completed);
-    vi.spyOn(assets, 'download').mockImplementationOnce(async () => {
+    vi.spyOn(assets, 'fetch').mockImplementationOnce(async () => {
       controller.edit(id, { prompt: 'Edited while downloading' });
       throw new Error('Download interrupted');
     });
@@ -324,7 +365,7 @@ describe('interstitial lifecycle', () => {
     controller.edit(original.id, changes);
     expect(playableResult(controller.getSnapshot().items[0])).toEqual(original.result);
     let finish!: (asset: { id: string }) => void;
-    vi.spyOn(assets, 'download').mockReturnValueOnce(new Promise(resolve => { finish = resolve as typeof finish; }));
+    vi.spyOn(assets, 'save').mockReturnValueOnce(new Promise(resolve => { finish = resolve as typeof finish; }));
     vi.mocked(generateInterstitial).mockResolvedValue({ requestId: replacement.requestId, status: 'IN_QUEUE' });
     vi.mocked(getInterstitialJob).mockResolvedValue(replacement);
     const retry = controller.generate(original.id, media, info);
@@ -359,7 +400,7 @@ describe('interstitial lifecycle', () => {
     const original = await readyScene();
     vi.mocked(generateInterstitial).mockResolvedValue({ requestId: replacement.requestId, status: 'IN_QUEUE' });
     vi.mocked(getInterstitialJob).mockResolvedValue(replacement);
-    vi.spyOn(assets, 'download').mockRejectedValueOnce(new Error('Download interrupted'));
+    vi.spyOn(assets, 'fetch').mockRejectedValueOnce(new Error('Download interrupted'));
     await controller.generate(original.id, media, info);
     expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'error', previousResult: original.result, result: { url: replacement.videoUrl } });
     expect(playableResult(controller.getSnapshot().items[0])).toEqual(original.result);
@@ -432,7 +473,7 @@ describe('interstitial lifecycle', () => {
     vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
     vi.mocked(getInterstitialJob).mockResolvedValue(completed);
     vi.mocked(cancelInterstitialJob).mockResolvedValue({ requestId: completed.requestId, status: 'CANCELLED' });
-    const download = vi.spyOn(assets, 'download').mockRejectedValueOnce(new Error('Download interrupted'));
+    const download = vi.spyOn(assets, 'fetch').mockRejectedValueOnce(new Error('Download interrupted'));
     await controller.generate(id, media, info);
     expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'error', error: 'Download interrupted', result: { url: completed.videoUrl } });
     if (edited) controller.edit(id, { prompt: 'A different scene' });

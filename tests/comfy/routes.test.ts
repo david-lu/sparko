@@ -13,7 +13,7 @@ vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: cla
 } }));
 const comfy = { check: vi.fn(), submit: vi.fn(), status: vi.fn(), events: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn() };
 const providers: Providers = { configured: { openai: false, gemini: false, fal: true, comfy: true }, models: { openai: 'test', gemini: 'test' },
-  openai: vi.fn(), gemini: vi.fn(), voice: vi.fn(), falUpload: vi.fn(), falSubmit: vi.fn(), falCancel: vi.fn(), falStatus: vi.fn(), comfy };
+  openai: vi.fn(), gemini: vi.fn(), voice: vi.fn(), falUpload: vi.fn(), falSubmit: vi.fn(), falCancel: vi.fn(), falStatus: vi.fn(), enhancePrompt: vi.fn(), comfy };
 let app: Express;
 beforeAll(async () => { app = await createApp({ providers }); app.use(errorHandler); });
 beforeEach(() => {
@@ -75,5 +75,14 @@ describe('Comfy API boundaries', () => {
     expect(response.headers['content-range']).toBe('bytes 0-2/10');
     expect(response.body).toEqual(Buffer.from([1, 2, 3]));
     expect(transport.mock.calls[0][1]?.headers).toEqual({ Range: 'bytes=0-2' });
+  });
+  it('reports failed media connections as recoverable downloads instead of generic server errors', async () => {
+    comfy.assetUrl.mockResolvedValue('https://storage.example/video.mp4?signed=private');
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed')));
+    const response = await request(app).get('/api/comfy/assets/comfy-asset-123/content').expect(502);
+    expect(response.body.error).toContain('downloading the generated video');
+    expect(response.body.error).toContain('no new generation is needed');
+    expect(response.text).not.toContain('signed=private');
+    expect(comfy.submit).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,7 @@
 export type Slice = { start: number; end: number };
 export type Provider = 'openai' | 'gemini';
+export type PromptClipKind = 'interstitial' | 'call' | 'idle' | 'response';
+export type PromptEnhancement = { prompt: string; model: string };
 export type VoiceContext = {
   sourceId: string;
   videoTime: number;

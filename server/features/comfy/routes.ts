@@ -11,6 +11,7 @@ import { authenticate } from '../../hosting.js';
 import { HttpError, requireProvider } from '../../shared/http.js';
 import type { Providers } from '../../providers.js';
 import type { UploadReceiver } from '../../shared/uploads.js';
+import { comfyRequestError } from './errors.js';
 
 const frameRange = z.coerce.number().finite().min(COMFY.minContextFrames / TIMELINE_FPS).max(4)
   .refine(value => Math.abs(value * TIMELINE_FPS - Math.round(value * TIMELINE_FPS)) < 1e-6, 'Reference ranges must use whole 24 fps frames.');
@@ -80,7 +81,11 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     if (range && !/^bytes=\d*-\d*$/.test(range)) throw new HttpError(400, 'Invalid media range.');
     const operation = new AbortController();
     res.once('close', () => operation.abort());
-    const upstream = await fetch(await provider().assetUrl(assetId), { headers: range ? { Range: range } : {}, redirect: 'error', signal: AbortSignal.any([operation.signal, AbortSignal.timeout(120_000)]) });
+    const url = await provider().assetUrl(assetId);
+    let upstream: Response;
+    try {
+      upstream = await fetch(url, { headers: range ? { Range: range } : {}, redirect: 'error', signal: AbortSignal.any([operation.signal, AbortSignal.timeout(120_000)]) });
+    } catch (error) { throw comfyRequestError(error, 'downloading the generated video', 'Retry loading this result; no new generation is needed.'); }
     if (!upstream.ok || !upstream.body) throw new HttpError(502, `Comfy media download failed (${upstream.status}). Retry loading.`);
     res.status(upstream.status).set({ 'Content-Type': 'video/mp4', 'Cache-Control': 'private, no-store' });
     for (const name of ['content-length', 'content-range', 'accept-ranges']) { const value = upstream.headers.get(name); if (value) res.set(name, value); }

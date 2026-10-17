@@ -1,6 +1,6 @@
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
 import { frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, playableResult, type Interstitial, type InterstitialSettings, type GenerationMethod } from '../../../shared/interstitials';
-import type { InsertionRange } from '../../../shared/contracts';
+import type { InsertionRange, PromptClipKind } from '../../../shared/contracts';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from './api';
@@ -78,6 +78,10 @@ export class InterstitialController {
     const scene = this.callResponse?.scenes.find(scene => scene.interstitialId === id && scene.clip.kind !== 'video');
     return scene && this.callResponse ? clipDependency(this.callResponse, this.state.items, scene.id) : undefined;
   }
+  clipKind(id: string): PromptClipKind {
+    const kind = this.callResponse?.scenes.find(scene => scene.interstitialId === id)?.clip.kind;
+    return kind === 'call' || kind === 'idle' || kind === 'response' ? kind : 'interstitial';
+  }
   add(time: number, duration: number) {
     const fps = TIMELINE_FPS;
     const anchor = Math.max(0, Math.min(frameTime(duration, fps), frameTime(time, fps)));
@@ -142,7 +146,7 @@ export class InterstitialController {
     if (!item || this.tasks.has(id)) return;
     const operation = new AbortController(); this.tasks.set(id, operation);
     try {
-      this.patch(id, { phase: item.result ? 'loading' : 'queued', error: undefined });
+      this.patch(id, { phase: item.result ? 'loading' : 'queued', error: undefined, progress: undefined, progressDetails: undefined, queuePosition: undefined });
       if (item.result) await this.loadResult(id, item.result, operation.signal);
       else if (item.requestId) await this.poll(id, item.requestId, operation.signal, requestMethod(item), item.requestInsertion);
       else throw new Error('No generation job was saved. Retry to generate the scene.');
@@ -151,15 +155,17 @@ export class InterstitialController {
   }
   private async poll(id: string, requestId: string, signal: AbortSignal, method: GenerationMethod, submittedInsertion?: InsertionRange) {
     const stream = new AbortController(), streamSignal = AbortSignal.any([signal, stream.signal]);
-    let liveAt = -Infinity;
+    let liveRevision = 0;
     if (method === 'comfy') void watchComfyJob(requestId, streamSignal, event => {
       if (streamSignal.aborted) return;
-      liveAt = Date.now();
+      liveRevision++;
       if (event.type === 'progress') this.patch(id, { phase: 'rendering', progress: event.progress, progressDetails: event.progressDetails, queuePosition: undefined });
-      if (event.type === 'status') this.patch(id, { phase: event.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: event.queuePosition });
+      if (event.type === 'status') this.patch(id, { phase: event.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: event.queuePosition,
+        ...(event.status === 'IN_QUEUE' ? { progress: undefined, progressDetails: undefined } : {}) });
     });
     try { for (;;) {
       signal.throwIfAborted();
+      const revisionAtRequest = liveRevision;
       const job = await getInterstitialJob(requestId, signal, method);
       signal.throwIfAborted();
       if (job.status === 'CANCELLED') { this.patch(id, { phase: 'cancelled' }); return; }
@@ -171,18 +177,31 @@ export class InterstitialController {
         this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined, progressDetails: undefined });
         await this.loadResult(id, result, signal); return;
       }
-      // A slow status response must not overwrite newer live steps. Polling takes over on disconnect.
-      if (Date.now() - liveAt > 5_000) this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition, progress: job.progress, progressDetails: job.progressDetails });
+      // Discard a snapshot requested before a newer live update, however long the request took.
+      // A subsequent poll still reconciles the state, including when the stream is silent.
+      if (revisionAtRequest === liveRevision) this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition,
+        progress: job.status === 'IN_QUEUE' ? undefined : job.progress, progressDetails: job.status === 'IN_QUEUE' ? undefined : job.progressDetails });
       await wait(signal);
     } } finally { stream.abort(); }
   }
   private async loadResult(id: string, result: NonNullable<Interstitial['result']>, signal: AbortSignal) {
     if (!result.assetId) {
-      const asset = await assets.download(result.url, `${id}.mp4`, signal);
+      this.patch(id, { phase: 'loading', progress: undefined, progressDetails: { stage: 'Downloading generated video' } });
+      let lastPercent: number | undefined;
+      const fetched = await assets.fetch(result.url, `${id}.mp4`, signal, (received, total) => {
+        if (signal.aborted) return;
+        const progress = Number.isFinite(total) && total > 0 ? Math.min(1, received / total) : undefined;
+        const percent = progress === undefined ? undefined : Math.floor(progress * 100);
+        if (percent !== lastPercent) { lastPercent = percent; this.patch(id, { progress }); }
+      });
+      signal.throwIfAborted();
+      this.patch(id, { progress: undefined, progressDetails: { stage: 'Saving generated video' } });
+      const asset = await assets.save(fetched.blob, fetched.name, signal);
       signal.throwIfAborted();
       result = { ...result, assetId: asset.id };
       this.patch(id, { result });
     }
+    this.patch(id, { phase: 'loading', progress: undefined, progressDetails: { stage: 'Checking generated video' } });
     const { url } = await assets.open(result.assetId!);
     signal.throwIfAborted();
     const media = new MediaEngine({ id, name: 'Interstitial', url });
@@ -192,7 +211,7 @@ export class InterstitialController {
       const info = await media.inspect();
       signal.throwIfAborted();
       if (result.start < 0 || result.duration <= 0 || result.start + result.duration > info.duration + 1 / info.fps) throw new Error('The returned video does not contain the full interstitial.');
-      this.patch(id, { phase: 'ready', result, previousResult: undefined, error: undefined });
+      this.patch(id, { phase: 'ready', result, previousResult: undefined, error: undefined, progress: undefined, progressDetails: undefined });
     } finally { signal.removeEventListener('abort', abort); media.dispose(); }
   }
   async cancel(id: string) {

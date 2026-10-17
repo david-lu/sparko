@@ -1,10 +1,12 @@
-.mic-status{display:flex;align-items:center;gap:6px;font-size:10px;min-height:30px;margin-bottom:8px;color:var(--muted)}
+.mic-status{display:flex;align-items:center;gap:6px;font-size:10px;height:30px;margin-bottom:8px;color:var(--muted)}
+.mic-status>span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mic-status.recording{color:#ff8b80}
-.mic-status time{margin-left:auto;white-space:nowrap;font:9px var(--mono)}
+.mic-status time{margin-left:auto;flex-shrink:0;white-space:nowrap;font:9px var(--mono)}
 .voice-actions{display:flex;align-items:center;gap:5px}
+.voice-capture-actions>.icon-button{width:27px;min-width:27px;flex-shrink:0}.voice-capture-actions>[aria-hidden=true]{visibility:hidden}
 .voice-hint{margin-top:10px}
 .voice-review{border-top:1px solid var(--line);padding-top:10px}
 .voice-review-heading{display:flex;justify-content:space-between;align-items:center;gap:5px;margin-bottom:10px}
 .voice-review-heading>span{font:8px var(--mono);color:var(--muted)}
 .voice-panel .analysis-result p{overflow-wrap:anywhere}
-@container(max-width:275px){.mic-status{flex-wrap:wrap}.mic-status time{font-size:8px}}
+@container(max-width:275px){.mic-status time{font-size:8px}}

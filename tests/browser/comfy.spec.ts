@@ -3,7 +3,7 @@ import { expect, test } from './fixtures';
 test('Comfy generation, provider changes during a job, reload recovery, and Fal regeneration', async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, fal: true, comfy: true } } }); });
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
-  let complete = false, comfySubmissions = 0, falSubmissions = 0;
+  let complete = false, failStatus = false, comfySubmissions = 0, falSubmissions = 0;
   const progressDetails = { stage: 'Generating video and audio', step: 8, steps: 20 };
   await page.route('**/api/comfy/jobs/comfy-test-job/events', route => route.fulfill({ contentType: 'text/event-stream',
     body: `event: progress\ndata: ${JSON.stringify({ type: 'progress', progress: .4, progressDetails })}\n\n` }));
@@ -14,9 +14,11 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
     expect(form.get('prompt')).toBe('Continue the motion'); expect((form.get('video') as File).size).toBeGreaterThan(1000);
     await route.fulfill({ status: 202, json: { requestId: 'comfy-test-job', status: 'IN_QUEUE', insertion: { start: 39 / 24, duration: 148 / 24, totalDuration: 226 / 24 } } });
   });
-  await page.route('**/api/comfy/jobs/comfy-test-job', route => route.fulfill({ json: complete
-    ? { requestId: 'comfy-test-job', status: 'COMPLETED', videoUrl: '/api/comfy/assets/comfy-test-asset/content' }
-    : { requestId: 'comfy-test-job', status: 'IN_PROGRESS', progress: .4, progressDetails } }));
+  await page.route('**/api/comfy/jobs/comfy-test-job', route => failStatus
+    ? route.fulfill({ status: 500, json: { error: 'The request failed. Please try again.' } })
+    : route.fulfill({ json: complete
+      ? { requestId: 'comfy-test-job', status: 'COMPLETED', videoUrl: '/api/comfy/assets/comfy-test-asset/content' }
+      : { requestId: 'comfy-test-job', status: 'IN_PROGRESS', progress: .4, progressDetails } }));
   await page.route('**/api/interstitials', route => { falSubmissions++; return route.fulfill({ status: 202, json: { requestId: 'fal-next-job', status: 'IN_QUEUE' } }); });
   await page.route('**/api/fal/jobs/fal-next-job', route => route.fulfill({ json: { requestId: 'fal-next-job', status: 'COMPLETED', videoUrl: 'https://fal.media/comfy-test-fal.mp4', insertion: { start: 2, duration: 6, totalDuration: 226 / 24 } } }));
   await page.goto('/');
@@ -30,8 +32,11 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
     for (let frame = 0; frame < 226; frame++) { ctx.fillStyle = frame >= 39 && frame < 187 ? '#00ee00' : '#ee0000'; ctx.fillRect(0, 0, 160, 96); await video.add(frame / 24, 1 / 24); }
     video.close(); await output.finalize(); return [...new Uint8Array(output.target.buffer)];
   });
-  await page.route('**/api/comfy/assets/comfy-test-asset/content', route => {
+  let releaseDownload!: () => void;
+  const downloading = new Promise<void>(resolve => { releaseDownload = resolve; });
+  await page.route('**/api/comfy/assets/comfy-test-asset/content', async route => {
     expect(route.request().headers()['x-sparko-request']).toBe('1');
+    await downloading;
     return route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) });
   });
   await page.route('https://fal.media/comfy-test-fal.mp4', route => route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) }));
@@ -45,14 +50,24 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', '0.4', { timeout: 60_000 });
   await expect(page.locator('.timeline-generation-spinner')).toHaveCount(1);
-  await expect(page.locator('.task-status')).toContainText('Generating video and audio · step 8/20 · 40%');
+  await expect(page.locator('.task-status')).toContainText('Generating video and audio · step 8/20 · 40% overall');
   await expect(page.locator('.timeline-generation-spinner')).toHaveAttribute('aria-label', /step 8\/20/);
+  failStatus = true;
+  await expect(page.getByRole('alert')).toHaveText('The request failed. Please try again.');
+  await expect(page.getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled();
+  failStatus = false;
+  await page.getByRole('button', { name: 'Check result', exact: true }).click();
+  await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', '0.4');
+  expect(comfySubmissions).toBe(1);
   await method.selectOption('fal');
   await page.reload();
   await page.getByRole('button', { name: 'Select Untitled', exact: true }).click();
   await expect(method).toHaveValue('fal');
   await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toBeVisible();
   complete = true;
+  await expect(page.locator('.task-status')).toContainText('Downloading generated video');
+  await expect(page.getByRole('progressbar', { name: 'Downloading generated video' })).toHaveJSProperty('position', -1);
+  releaseDownload();
   const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:episode_mock.mp4')!)[0]);
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);

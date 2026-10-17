@@ -5,12 +5,14 @@ import { createAnalysisProviders, type AnalysisProviders } from './features/vide
 import { createVoiceProvider, type VoiceProvider } from './features/voice-input/provider.js';
 import { createFalProvider, type FalProvider } from './features/video-insertion/provider.js';
 import { createComfyProvider, type ComfyProvider } from './features/comfy/provider.js';
+import { createPromptEnhancer, type PromptEnhancementProvider } from './features/interstitials/prompt-enhancement.js';
 
 export interface Providers extends AnalysisProviders, FalProvider {
   configured: AppStatus['providers'];
   models: AppStatus['models'];
   voice: VoiceProvider;
   comfy?: ComfyProvider;
+  enhancePrompt: PromptEnhancementProvider;
 }
 
 export function createProviders(env: NodeJS.ProcessEnv): Providers {
@@ -22,5 +24,6 @@ export function createProviders(env: NodeJS.ProcessEnv): Providers {
     voice: createVoiceProvider(clients),
     ...createFalProvider(env),
     comfy: createComfyProvider(env),
+    enhancePrompt: createPromptEnhancer(clients),
   };
 }

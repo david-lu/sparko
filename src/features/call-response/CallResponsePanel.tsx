@@ -21,12 +21,13 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
         const item = items.find(item => item.id === scene.interstitialId), open = value.selectedSceneId === scene.id;
         const dependency = item && editor.controller.dependency(item.id);
         const label = clipTypeLabel(scene.clip, value.flow);
+        const stage = item && isGenerating(item) ? phaseLabel(item) : dependency?.stale ? 'Needs regeneration' : item ? phaseLabel(item) : scene.label;
         return <section className={`clip-subpanel ${open ? 'selected' : ''}`} key={scene.clip.id} aria-label={`${label} clip`}>
           <button className="clip-subpanel-heading" aria-expanded={open} aria-controls={`clip-panel-${scene.id}`}
             onClick={() => open ? value.onSelectInterstitial() : value.onSelectScene(scene.id)}>
             {scene.clip.kind === 'idle' ? <Repeat2 size={14} /> : <Clapperboard size={14} />}
-            <span><strong>{label}</strong><small>{item && isGenerating(item) ? phaseLabel(item) : dependency?.stale ? 'Needs regeneration' : item ? phaseLabel(item) : scene.label}</small></span>
-            {item && isGenerating(item) ? <span className="spinner" /> : <ChevronDown size={14} />}
+            <span className="clip-subpanel-label"><strong title={label}>{label}</strong><small title={stage}>{stage}</small></span>
+            <span className="status-icon">{item && isGenerating(item) ? <span className="spinner" /> : <ChevronDown size={14} />}</span>
           </button>
           {open && <div className="clip-subpanel-body" id={`clip-panel-${scene.id}`}>
             {renderControls(scene.id)}
