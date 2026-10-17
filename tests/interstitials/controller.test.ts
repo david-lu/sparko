@@ -5,7 +5,7 @@ import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from 
 import type { MediaEngine } from '../../src/media/MediaEngine';
 import { assets } from '../../src/features/project/assets';
 import { hasUnsubmittedChanges, interstitialSettings, playableResult } from '../../shared/interstitials';
-import { changeClipKind, createTimelineExample } from '../../src/features/call-response/model';
+import { addAnswer, changeClipKind, createTimelineExample, responseInterstitialIds } from '../../src/features/call-response/model';
 import { generationSource } from '../../src/features/call-response/generation';
 import { watchComfyJob } from '../../src/features/interstitials/progress-stream';
 
@@ -59,6 +59,89 @@ describe('interstitial lifecycle', () => {
       expect(controller.getSnapshot().items[0].phase).toBe('ready');
       expect(cancelInterstitialJob).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
+  });
+  it('gives added answers independent media jobs, Idle references and shared duration settings', () => {
+    const example = createTimelineExample(crypto.randomUUID(), 12);
+    controller.load('arbitrary', example.interstitials, responseInterstitialIds(example.flow), example.flow);
+    controller.edit('call-response-correct', { duration: 8 });
+    const expanded = addAnswer(example.flow), answer = expanded.interaction.answers.at(-1)!;
+    controller.setCallResponse(expanded);
+    const scene = expanded.scenes.find(scene => scene.id === answer.sceneId)!, id = scene.interstitialId!;
+    expect(controller.getSnapshot().items.find(item => item.id === id)).toMatchObject({ duration: 8, result: { assetId: scene.clip.assetId } });
+    expect(controller.dependency(id)).toMatchObject({ stale: false, reference: { before: { sceneId: 'wait' }, after: { sceneId: 'continue' } } });
+    controller.edit(id, { duration: 7, prompt: 'A third reaction' });
+    expect(controller.getSnapshot().items.filter(item => responseInterstitialIds(expanded).includes(item.id)).map(item => item.duration)).toEqual([7, 7, 7]);
+    expect(controller.getSnapshot().items.find(item => item.id === 'call-response-correct')!.prompt).toBe(example.interstitials[2].prompt);
+    expect(generateInterstitial).not.toHaveBeenCalled();
+  });
+  const edits = () => controller.getSnapshot().items.map(({ id, label, time, ...item }) => ({ id, label, time, ...interstitialSettings(item) }));
+  it('undoes an edit during generation without losing the running job or its completed render', async () => {
+    const original = await readyScene();
+    const before = edits();
+    controller.edit(original.id, { prompt: 'New instructions' });
+    let finish!: (job: typeof replacement) => void;
+    vi.mocked(generateInterstitial).mockResolvedValue({ requestId: replacement.requestId, status: 'IN_QUEUE' });
+    vi.mocked(getInterstitialJob).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const generation = controller.generate(original.id, media, info);
+    await vi.waitFor(() => expect(controller.getSnapshot().items[0].requestId).toBe(replacement.requestId));
+    await controller.restoreEdits(before, undefined, new AbortController().signal);
+    expect(controller.getSnapshot().items[0]).toMatchObject({ prompt: original.prompt, phase: 'queued', requestId: replacement.requestId,
+      generationSettings: { prompt: 'New instructions' } });
+    finish(replacement); await generation;
+    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', prompt: original.prompt, result: { duration: 6 } });
+    expect(cancelInterstitialJob).not.toHaveBeenCalled();
+    expect(generateInterstitial).toHaveBeenCalledTimes(2);
+  });
+  it('restores a deleted render from history without starting another job', async () => {
+    const original = await readyScene(), before = edits();
+    await controller.remove(original.id);
+    await controller.restoreEdits(before, undefined, new AbortController().signal);
+    expect(controller.getSnapshot().items[0]).toEqual(original);
+    expect(controller.getSnapshot().selectedId).toBe(original.id);
+    expect(generateInterstitial).toHaveBeenCalledTimes(1);
+  });
+  it('restores a deleted call-response group with its latest media and duration links', async () => {
+    const example = createTimelineExample('source', 8);
+    controller.load('flow', example.interstitials, [], example.flow);
+    await vi.waitFor(() => expect(controller.getSnapshot().items.every(item => item.phase === 'ready')).toBe(true));
+    const before = edits(), results = controller.getSnapshot().items.map(item => item.result);
+    await controller.removeMany(before.map(item => item.id)); controller.setCallResponse(undefined);
+    await controller.restoreEdits(before, example.flow, new AbortController().signal);
+    expect(controller.getSnapshot().items.map(item => item.result)).toEqual(results);
+    expect(controller.getSnapshot().selectedId).toBe(example.flow.interstitial.id);
+    expect(controller.hasLinkedDuration('call-response-correct')).toBe(true);
+    expect(controller.dependency('call-response-wait')?.blocked).toBeUndefined();
+    expect(generateInterstitial).not.toHaveBeenCalled();
+  });
+  it('removes a group together after cancelling its jobs, preserves unrelated drafts and ignores late results', async () => {
+    const first = add(), second = controller.add(8, 20).id, unrelated = controller.add(12, 20).id;
+    const items = controller.getSnapshot().items;
+    let finish!: (job: typeof completed) => void;
+    vi.mocked(getInterstitialJob).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    controller.load('source', items.map(item => item.id === second ? { ...item, phase: 'queued', requestId: completed.requestId } : item));
+    controller.select('parent');
+    vi.mocked(cancelInterstitialJob).mockResolvedValue({ requestId: completed.requestId, status: 'CANCELLED' });
+    expect(await controller.removeMany(['parent', first, second])).toBe(true);
+    expect(cancelInterstitialJob).toHaveBeenCalledExactlyOnceWith(completed.requestId, 'fal');
+    finish(completed);
+    await Promise.resolve();
+    expect(controller.getSnapshot().items.map(item => item.id)).toEqual([unrelated]);
+    expect(controller.getSnapshot().selectedId).toBeNull();
+    expect(loadInterstitials('source').map(item => item.id)).toEqual([unrelated]);
+  });
+  it('retains every child if cancelling one group job fails, and allows retrying removal', async () => {
+    const first = add(), second = controller.add(8, 20).id;
+    controller.load('source', controller.getSnapshot().items.map(item => item.id === second
+      ? { ...item, phase: 'error', requestId: completed.requestId } : item));
+    controller.select('parent');
+    vi.mocked(cancelInterstitialJob).mockRejectedValueOnce(new Error('Network unavailable'));
+    expect(await controller.removeMany(['parent', first, second])).toBe(false);
+    expect(controller.getSnapshot().items.map(item => item.id)).toEqual([first, second]);
+    expect(controller.getSnapshot().selectedId).toBe('parent');
+    expect(loadInterstitials('source').map(item => item.id)).toEqual([first, second]);
+    vi.mocked(cancelInterstitialJob).mockResolvedValueOnce({ requestId: completed.requestId, status: 'CANCELLED' });
+    expect(await controller.removeMany(['parent', first, second])).toBe(true);
+    expect(controller.getSnapshot().items).toEqual([]);
   });
   it('gives a newly converted child its own settings and retained video', () => {
     const example = createTimelineExample(crypto.randomUUID(), 8);

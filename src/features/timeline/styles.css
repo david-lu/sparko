@@ -1,6 +1,7 @@
 .timeline-section{flex-shrink:0;padding:8px 12px 6px;background:#191b1f}
 .timeline-heading{display:flex;align-items:center;justify-content:space-between;height:23px;gap:10px}
 .timeline-actions{display:flex;align-items:center;gap:5px}
+.interstitial-add-actions{display:flex;align-items:center;gap:2px;flex-shrink:0}
 .timeline-ruler{display:flex;justify-content:space-between;font:9px var(--mono);color:#6f798a;padding:10px 0 9px;position:relative}
 .timeline-ruler span:after{content:'';display:block;height:4px;width:1px;background:#4b515d;position:absolute;bottom:3px}
 .timeline-track{height:45px;position:relative;border:1px solid #4e5f81;background:#252c3a;isolation:isolate}
@@ -83,6 +84,7 @@
 .timeline-heading{gap:5px}
 .timeline-actions{min-width:0}
 @container(max-width:500px){.timeline-heading .subtle,.timeline-actions .button kbd{display:none}.timeline-zoom-slider{width:48px;margin:0 2px}.timeline-actions{gap:2px}.timeline-zoom{padding-right:3px;margin-right:1px}.timeline-heading>.eyebrow{font-size:8px}.timeline-actions>.button{padding:3px 5px}}
+@container(max-width:500px){.timeline-actions>.icon-button{display:none}.interstitial-add-actions>.button{padding:3px 5px}}
 .source-segment{position:absolute;top:0;bottom:0;display:flex;background:#303642;overflow:hidden}.source-segment img{width:0;flex:1;object-fit:cover}
 .rendered-interstitial{position:absolute;top:0;bottom:0;z-index:3;display:flex;align-items:center;gap:5px;padding:4px;overflow:hidden;white-space:nowrap;background:repeating-linear-gradient(135deg,#24574f 0,#24574f 7px,#2b6359 7px,#2b6359 14px);color:#c2f8e9;border-left:2px solid #7fddc5;border-right:1px solid #7fddc5;font-size:9px;text-align:left}
 .rendered-interstitial.selected{background:#397e6e}.rendered-interstitial:focus-visible{outline:1px solid #b8ffe9;outline-offset:-2px}.timeline-marker.selected .timeline-pin{box-shadow:0 0 0 2px #fff1c8}.timeline-marker.ready .timeline-pin{background:#62c8b5;border-color:#9be3d4;color:#082d24}.timeline-marker.ready .timeline-pin:before{border-top-color:#62c8b5}.timeline-marker.ready .timeline-pin:after{background:#62c8b5}

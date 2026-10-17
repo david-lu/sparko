@@ -70,10 +70,12 @@ export class FlowPlayback {
   }
   seek(time: number) {
     const layout = flowLayout(this.flow), frame = Math.max(0, time * this.flow.fps);
-    const branch = this.session.outcome ?? (this.session.sceneId === 'incorrect' ? 'incorrect' : 'correct');
+    const answer = this.flow.interaction.answers.find(answer => answer.id === this.session.outcome || answer.sceneId === this.session.sceneId);
+    const branch = answer?.sceneId ?? this.flow.interaction.answers[0].sceneId;
     const path: SceneId[] = ['intro', 'call', 'wait', branch, 'continue'];
     const id = [...path].reverse().find(id => frame >= layout.starts[id]) ?? 'intro';
     this.seekScene(id, frame - layout.starts[id], this.session.playing);
+    if (answer && getScene(this.flow, id).clip.kind !== 'idle') { this.session = { ...this.session, outcome: answer.id }; this.emit(); }
   }
   answer(answer: string) { this.session = answerSession(this.flow, this.session, answer); this.emit(); }
   branch(id: SceneId, outcome: Outcome) {

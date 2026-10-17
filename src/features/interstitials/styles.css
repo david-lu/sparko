@@ -1,9 +1,14 @@
 .interstitial-back{margin-bottom:10px}.interstitial-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.interstitial-name{flex:1;min-width:0;width:100%;margin-right:6px;padding:5px 6px;border:1px solid #363d49;background:#121518;font-size:12px;font-weight:550}
+.interstitial-help-popover{position:fixed;z-index:100;width:260px;max-width:calc(100vw - 24px);padding:12px;border:1px solid #495363;background:#20252d;box-shadow:0 3px 12px #0008;font-size:11px;line-height:1.6}
+.interstitial-help-popover p{margin-top:5px;color:#adb6c5}
 .interstitial-list{list-style:none;margin:12px 0 0;padding:0}.interstitial-list li{display:flex;align-items:center;border-bottom:1px solid var(--line)}
 .interstitial-list>.interstitial-group{display:block;padding:0 0 12px}.interstitial-group-heading{width:100%}
+.interstitial-group-title{display:flex;align-items:center;gap:8px}
 .interstitial-clips{list-style:none;margin:8px 0 0 6px;padding:0 0 0 12px;border-left:1px solid #62759866}.interstitial-clips li:last-child{border-bottom:0}.interstitial-clips .interstitial-row{padding:9px 0}.interstitial-clips .interstitial-row>svg{color:#9aabc5;flex-shrink:0}
 .interstitial-parent-label{font-size:10px;line-height:1.6;color:#9aabc5;margin:0 0 8px}
 .call-response-panel .call-response-controls{padding:10px 0}.clip-subpanel{border:1px solid var(--line);margin-top:9px;background:#171a1e}.clip-subpanel.selected{border-color:#62c8b580}
+.add-answer{margin-top:12px}.answer-editor{margin-bottom:12px}.remove-answer{display:flex;align-items:center;gap:5px;margin:4px 0 12px}
 .clip-subpanel-heading{display:flex;align-items:center;gap:8px;padding:10px;width:100%;text-align:left;background:transparent}.clip-subpanel-heading>span:first-of-type{flex:1;display:flex;flex-direction:column;gap:5px}.clip-subpanel-heading strong{font-size:11px;font-weight:500}.clip-subpanel-heading small{font:9px var(--mono);color:var(--muted)}.clip-subpanel-heading[aria-expanded=true]>svg:last-child{transform:rotate(180deg)}
 .clip-subpanel-body{padding:0 10px 10px}.clip-subpanel-body .interstitial-editor{padding-top:10px}.clip-stale{font-size:10px;line-height:1.6;color:#e1c17b;margin:8px 0}.clip-dependency{margin-bottom:8px}
 .interstitial-row{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:12px 0;background:transparent;text-align:left}.interstitial-row:hover{background:#ffffff05}

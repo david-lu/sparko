@@ -1,6 +1,7 @@
 import { AudioSample, AudioSampleSink, AudioSampleSource, CanvasSink, CanvasSource, Output, Quality, type Input } from 'mediabunny';
 import { ensureAac, openInput } from './media';
 import type { TimelineComposition, TimelineSegment } from './TimelineComposition';
+import { AudioNormalizer, COMPOSITION_AUDIO_CHANNELS, COMPOSITION_AUDIO_RATE } from './AudioNormalizer';
 
 export const COMPOSITION_MIME = 'video/mp4; codecs="avc1.42002a, mp4a.40.2"';
 type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
@@ -14,7 +15,8 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) throw new Error('Unable to create the timeline renderer.');
   const video = new CanvasSource(canvas, { codec: 'avc', ...(options.preview ? { fullCodecString: 'avc1.42002a' } : {}), quality: new Quality('medium'), keyFrameInterval: 1, latencyMode: 'quality' });
-  const audio = new AudioSampleSource({ codec: 'aac', quality: new Quality('medium'), transform: { sampleRate: 48000, numberOfChannels: 2 } });
+  const audio = new AudioSampleSource({ codec: 'aac', quality: new Quality('medium') });
+  const normalizedAudio = new AudioNormalizer(async sample => { options.signal.throwIfAborted(); await audio.add(sample); });
   output.addVideoTrack(video, { frameRate: composition.fps });
   output.addAudioTrack(audio);
   const inputs = new Map<string, Input>();
@@ -23,7 +25,10 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
     if (!input) { input = openInput(segment.source); inputs.set(segment.source.url, input); }
     return input;
   };
-  const cancel = () => { for (const input of inputs.values()) input.dispose(); void output.cancel().catch(() => undefined); };
+  const cancel = () => {
+    for (const input of inputs.values()) input.dispose();
+    void normalizedAudio.cancel().catch(() => undefined); void output.cancel().catch(() => undefined);
+  };
   options.signal.addEventListener('abort', cancel, { once: true });
   const firstFrame = Math.round(options.start * composition.fps);
   const lastFrame = Math.round(options.end * composition.fps);
@@ -52,14 +57,15 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
       video.close();
     };
     const silence = async (from: number, to: number) => {
-      let position = Math.round(from * 48000);
-      const end = Math.round(to * 48000);
+      let position = Math.round(from * COMPOSITION_AUDIO_RATE);
+      const end = Math.round(to * COMPOSITION_AUDIO_RATE);
       while (position < end) {
         options.signal.throwIfAborted();
-        await options.beforeFrame?.(origin + position / 48000);
-        const frames = Math.min(4800, end - position);
-        const sample = new AudioSample({ data: new Float32Array(frames * 2), format: 'f32-planar', sampleRate: 48000, numberOfChannels: 2, timestamp: position / 48000 });
-        try { await audio.add(sample); } finally { sample.close(); }
+        await options.beforeFrame?.(origin + position / COMPOSITION_AUDIO_RATE);
+        const frames = Math.min(COMPOSITION_AUDIO_RATE / 10, end - position);
+        const sample = new AudioSample({ data: new Float32Array(frames * COMPOSITION_AUDIO_CHANNELS), format: 'f32-planar',
+          sampleRate: COMPOSITION_AUDIO_RATE, numberOfChannels: COMPOSITION_AUDIO_CHANNELS, timestamp: position / COMPOSITION_AUDIO_RATE });
+        try { await normalizedAudio.add(sample); } finally { sample.close(); }
         position += frames;
       }
     };
@@ -86,7 +92,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
                 const timestamp = from - origin + sample.timestamp - sourceStart;
                 if (timestamp > cursor + 1 / raw.sampleRate) await silence(cursor, timestamp);
                 sample.setTimestamp(Math.max(cursor, timestamp));
-                await audio.add(sample);
+                await normalizedAudio.add(sample);
                 cursor = sample.timestamp + sample.duration;
               } finally { sample.close(); }
             } finally { raw.close(); }
@@ -94,6 +100,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
         }
         await silence(cursor, to - origin);
       }
+      await normalizedAudio.flush();
       audio.close();
     };
     await Promise.all([writeVideo(), writeAudio()]);

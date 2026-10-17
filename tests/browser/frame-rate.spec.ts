@@ -16,7 +16,7 @@ test('prepares a 25 fps source once, plays the stored 24 fps file directly, and 
     };
   });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
   await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
@@ -74,7 +74,7 @@ test('prepares a 25 fps source once, plays the stored 24 fps file directly, and 
 
 test('cancelling preparation preserves the active project and leaves no partial assets', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   const before = await page.evaluate(async () => {
     const { readActiveProject } = await import('/src/features/project/database.ts' as string);
     return readActiveProject();
@@ -110,7 +110,7 @@ test('cancelling preparation preserves the active project and leaves no partial 
 
 test('normalizes variable frame spacing even when its average is 24 fps', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   const result = await page.evaluate(async () => {
     const { Input, BlobSource, ALL_FORMATS, Output, BufferTarget, Mp4OutputFormat, CanvasSource, EncodedPacketSink } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const { prepareVideo } = await import('/src/media/prepareVideo.ts' as string);
@@ -139,7 +139,7 @@ test('normalizes variable frame spacing even when its average is 24 fps', async 
 
 test('prepares a legacy saved source without moving its drafts', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   const legacy = await page.evaluate(async () => {
     const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
     const saved = await readActiveProject();
@@ -170,7 +170,7 @@ test('prepares a legacy saved source without moving its drafts', async ({ page }
 
 test('prepares a large source at 1080p while preserving aspect ratio and the 24 fps clock', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   const result = await page.evaluate(async () => {
     const { Input, BlobSource, ALL_FORMATS, Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const { prepareVideo } = await import('/src/media/prepareVideo.ts' as string);

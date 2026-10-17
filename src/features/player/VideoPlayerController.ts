@@ -110,6 +110,8 @@ export class VideoPlayerController {
   }
   setFlow(flow: CallResponseFlow) {
     if (!this.element || !this.source || this.flowPlayback?.flow === flow) return;
+    // Renaming the parent changes its editor metadata, not the current scene or playhead.
+    if (this.flowPlayback && JSON.stringify({ ...this.flowPlayback.flow, interstitial: undefined }) === JSON.stringify({ ...flow, interstitial: undefined })) return;
     this.flowPlayback?.dispose(); this.flowPlayback = null;
     this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose(); this.stream = null;
     this.composition = null; this.pendingSeek = null; this.wantsPlayback = false;

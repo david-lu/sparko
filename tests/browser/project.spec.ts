@@ -7,13 +7,13 @@ const activeProject = (page: Page) => page.evaluate(async () => {
 async function openVideo(page: Page) {
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
-  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
 }
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); const body = await response.json(); await route.fulfill({ json: { ...body, providers: { openai: true, gemini: true, fal: true } } }); });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
 });
 
 test('exports a complete project and restores assets, drafts, subtitles and analysis in a fresh browser', async ({ page, browser, preparedDefault }) => {
@@ -24,13 +24,15 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await page.route('**/api/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'project-test-job', status: 'IN_QUEUE' } }));
   await page.route('**/api/fal/jobs/project-test-job', route => route.fulfill({ json: { requestId: 'project-test-job', status: 'COMPLETED', videoUrl: 'https://fal.media/project-test.mp4', insertion: { start: 1, duration: 2, totalDuration: 4 } } }));
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
-  await page.getByRole('button', { name: /^Add draft/ }).click();
+  await page.getByRole('button', { name: /^Add interstitial/ }).click();
   await page.getByLabel('Interstitial prompt').fill('The embedded scene');
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('1');
-  await page.getByRole('button', { name: /^Add draft/ }).click();
+  await page.getByRole('button', { name: /^Add interstitial/ }).click();
   await page.getByLabel('Interstitial prompt').fill('Unfinished draft');
+  await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).fill('Unfinished draft');
+  await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).press('Enter');
   await page.getByLabel('start_range').fill('3');
   await page.getByLabel('end_range').fill('1.5');
   await page.getByLabel('Choose subtitle file').setInputFiles({ name: 'dialogue.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nEmbedded dialogue\n') });
@@ -56,11 +58,11 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   let remoteReads = 0;
   await restored.route('https://fal.media/**', route => { remoteReads++; return route.abort(); });
   await restored.goto('/');
-  await expect(restored.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(restored.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   await restored.getByLabel('Choose project file').setInputFiles({ name: download.suggestedFilename(), mimeType: 'application/zip', buffer: await readFile(path) });
   await expect(restored.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
   await expect(restored.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
-  await restored.getByRole('button', { name: 'Select Interstitial 2', exact: true }).click();
+  await restored.getByRole('button', { name: 'Select Unfinished draft', exact: true }).click();
   await expect(restored.getByLabel('Interstitial prompt')).toHaveValue('Unfinished draft');
   await expect(restored.getByLabel('start_range')).toHaveValue('3');
   await expect(restored.getByLabel('end_range')).toHaveValue('1.5');

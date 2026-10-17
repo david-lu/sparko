@@ -1,6 +1,6 @@
 import './styles.css';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Captions, Check, Maximize, Minimize, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX, X } from 'lucide-react';
+import { Captions, Check, Maximize, Minimize, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, MediaSource, Thumbnail } from '../../media/media';
 import type { Interstitial } from '../../../shared/interstitials';
@@ -9,7 +9,7 @@ import type { VideoPlayerController } from './VideoPlayerController';
 import Timeline from '../timeline/Timeline';
 import { remapSubtitles } from './subtitles';
 import type { FlowTimeline } from '../timeline/FlowTracks';
-import { getScene, type Outcome } from '../call-response/model';
+import { answerLabel, getScene, type Outcome } from '../call-response/model';
 
 type Props = {
   source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[];
@@ -132,10 +132,10 @@ export default function Player(props: Props) {
       {!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
       {buffering && <div className="buffering" role="status"><span className="spinner" /> Buffering</div>}
       {flow && activeScene?.clip.kind === 'idle' && <div className="player-branch-controls" role="group" aria-label="Debug response branches" onDoubleClick={event => event.stopPropagation()}>
-        {flow.flow.edges.filter(edge => edge.from === activeScene.id && (edge.when === 'correct' || edge.when === 'incorrect')).map(edge => <button key={edge.id}
-          className={`player-branch-${edge.when}`} aria-label={`Take ${edge.when} branch`} title={`Debug: take the ${edge.when} branch at the next loop boundary`}
+        {flow.flow.edges.filter(edge => edge.from === activeScene.id && flow.flow.interaction.answers.some(answer => answer.id === edge.when)).map(edge => <button key={edge.id}
+          aria-label={`Take ${answerLabel(flow.flow, edge.when)} branch`} title={`Debug: take the ${answerLabel(flow.flow, edge.when)} branch at the next loop boundary`}
           aria-pressed={flow.session?.outcome === edge.when} onClick={() => flow.onBranch(activeScene.id, edge.when as Outcome)}>
-          <span className="player-branch-label">{edge.when === 'correct' ? <Check size={15} /> : <X size={15} />}{edge.when === 'correct' ? 'Correct' : 'Incorrect'}</span>
+          <span className="player-branch-label">{flow.session?.outcome === edge.when && <Check size={15} />}{answerLabel(flow.flow, edge.when)}</span>
           <span className="player-branch-selection" aria-hidden="true">{flow.session?.outcome === edge.when ? 'Selected' : ''}</span>
         </button>)}
       </div>}

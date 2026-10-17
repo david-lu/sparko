@@ -29,7 +29,7 @@ const activeProject = (page: Page) => page.evaluate(async () => {
 });
 const ready = async (page: Page) => {
   await expect(page.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   await expect(page.getByLabel('Cancel project operation')).toHaveCount(0);
 };
 

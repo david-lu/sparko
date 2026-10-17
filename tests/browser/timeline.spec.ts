@@ -6,7 +6,9 @@ const videoTime = (page: Page) => page.locator('video').evaluate((video: HTMLVid
 const paused = (page: Page) => page.locator('video').evaluate((video: HTMLVideoElement) => video.paused);
 async function addPin(page: Page, time: number) {
   await page.getByRole('slider', { name: 'Video timeline' }).fill(String(time));
-  await page.getByRole('button', { name: /^Add draft/ }).click();
+  await page.getByRole('button', { name: /^Add interstitial/ }).click();
+  await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).fill(`Interstitial ${await page.locator('.timeline-pin').count()}`);
+  await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).press('Enter');
   await expect.poll(() => videoTime(page), { timeout: 30_000 }).toBeCloseTo(time, 5);
 }
 test.beforeEach(async ({ page }) => {
@@ -53,7 +55,7 @@ test('failed generation pins can move while preserving the job, and Delete respe
     ? route.fulfill({ json: { requestId: 'failed-job-1234', status: 'CANCELLED' } })
     : route.fulfill({ status: 422, json: { error: 'fal.ai rejected the reference timing.' } }));
   await page.reload();
-  await expect(page.getByRole('button', { name: /^Add draft/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   await addPin(page, 20);
   const prompt = page.getByRole('textbox', { name: 'Interstitial prompt' });
   await prompt.fill('A scene');
@@ -155,7 +157,7 @@ test('pin drag cancellation, bounds, keyboard adjustments and edge scrolling', a
 
 test('Space toggles playback from controls and the timeline, but preserves text editing', async ({ page }) => {
   await addPin(page, 20);
-  for (const control of [page.getByRole('button', { name: 'Add draft P' }), page.locator('.timeline-pin'), page.getByRole('button', { name: 'All interstitials' }), page.getByRole('slider', { name: 'Video timeline' }), page.getByRole('button', { name: 'Zoom in timeline' })]) {
+  for (const control of [page.getByRole('button', { name: 'Add interstitial P' }), page.locator('.timeline-pin'), page.getByRole('button', { name: 'All interstitials' }), page.getByRole('slider', { name: 'Video timeline' }), page.getByRole('button', { name: 'Zoom in timeline' })]) {
     await control.focus();
     await page.keyboard.press('Space'); await expect.poll(() => paused(page)).toBe(false);
     await page.keyboard.press('Space'); await expect.poll(() => paused(page)).toBe(true);

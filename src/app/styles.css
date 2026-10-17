@@ -24,6 +24,7 @@ fieldset:disabled{opacity:.55}
 .menu-items button span{margin-left:auto;font-size:10px;color:#858d9c}
 .menu-document{font-size:10px;color:#a1a5af;border-left:1px solid #42454b;padding-left:15px;margin-left:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .menu-app-name{margin-left:auto;font-size:9px;font-weight:600;letter-spacing:1.4px;color:#747984;padding:0 7px 0 20px}
+.history-controls{display:flex;align-items:center;flex-shrink:0;gap:2px;margin:0 4px}
 .workspace{display:flex;flex-direction:column;flex:1;min-height:0}
 .workspace-grid{display:grid;grid-template-columns:minmax(0,1fr) 294px;gap:0;flex:1;min-height:0}
 .main-column{min-width:0;min-height:0;display:flex;flex-direction:column;position:relative}

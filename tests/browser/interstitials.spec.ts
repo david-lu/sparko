@@ -30,7 +30,9 @@ async function openTimeSlider(page: Page, label: string) {
 }
 async function addDraft(page: Page, time = 5) {
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill(String(time));
-  await page.getByRole('button', { name: 'Add draft P' }).click();
+  await page.getByRole('button', { name: 'Add interstitial P' }).click();
+  await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).fill(`Interstitial ${await page.locator('.timeline-pin').count()}`);
+  await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).press('Enter');
   await expect(page.getByLabel('start_range')).toHaveValue('2');
   await expect(page.getByLabel('end_range')).toHaveValue('2');
   await page.getByLabel('Interstitial prompt').fill('A green interstitial scene');
@@ -38,7 +40,7 @@ async function addDraft(page: Page, time = 5) {
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); const status = await response.json(); await route.fulfill({ json: { ...status, providers: { ...status.providers, fal: true } } }); });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Add draft P' })).toBeEnabled({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Add interstitial P' })).toBeEnabled({ timeout: 60_000 });
 });
 
 test('time sliders and number inputs stay synchronized and survive reopening a draft', async ({ page }) => {

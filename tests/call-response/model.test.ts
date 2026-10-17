@@ -1,10 +1,51 @@
 import { describe, expect, it } from 'vitest';
-import { advanceSession, answerSession, branchSession, changeClipKind, createTestFlow, createTimelineExample, flowLayout, getScene, interstitialScenes, previewScene, reconnectEdge, responseInterstitialIds, sceneFrames, startSession } from '../../src/features/call-response/model';
+import { addAnswer, advanceSession, answerSession, branchSession, changeClipKind, createTestFlow, createTimelineExample, editAnswer, flowLayout, getScene, interstitialScenes, previewScene, reconnectEdge, removeAnswer, responseInterstitialIds, sceneFrames, startSession } from '../../src/features/call-response/model';
 
 describe('call-response example playback', () => {
+  it('routes arbitrary labels and alternative text to independent response clips at loop boundaries', () => {
+    let flow = addAnswer(createTestFlow());
+    const added = flow.interaction.answers.at(-1)!;
+    flow = editAnswer(flow, added.id, { label: 'Tell me more', values: ['Explain', 'WHY'] });
+    flow = { ...flow, interaction: { ...flow.interaction, fallbackAnswerId: null } };
+    const waiting = { ...previewScene(flow, 'wait'), playing: true, frame: 12 };
+    for (const text of ['Tell me more', '  explain! ', 'why?']) {
+      const answered = answerSession(flow, waiting, text);
+      expect(answered.outcome).toBe(added.id);
+      expect(advanceSession(flow, answered, 35).sceneId).toBe('wait');
+      const response = advanceSession(flow, answered, 36);
+      expect(response.sceneId).toBe(added.sceneId);
+      expect(advanceSession(flow, response, sceneFrames(getScene(flow, added.sceneId))).sceneId).toBe('continue');
+    }
+    const unmatched = answerSession(flow, waiting, 'Something else');
+    expect(unmatched.outcome).toBeNull();
+    expect(advanceSession(flow, unmatched, 48 * 4).sceneId).toBe('wait');
+    expect(branchSession(flow, waiting, 'unknown')).toBe(waiting);
+    expect(branchSession(flow, waiting, added.id).outcome).toBe(added.id);
+    const layout = flowLayout(flow);
+    expect(layout.starts[added.sceneId]).toBe(layout.starts.correct);
+    expect(layout.starts.continue - layout.starts[added.sceneId]).toBe(sceneFrames(getScene(flow, added.sceneId)));
+    expect(interstitialScenes(flow).map(scene => scene.id)).toContain(added.sceneId);
+    const changed = changeClipKind(flow, 'call', 'idle');
+    expect(changed.edges.some(edge => edge.from === 'call' && edge.when === added.id && edge.to === added.sceneId)).toBe(true);
+  });
+  it('removes branches and repairs connections, with one answer retained as the minimum', () => {
+    let flow = addAnswer(createTestFlow());
+    const added = flow.interaction.answers.at(-1)!;
+    flow = reconnectEdge(flow, 'correct-continue', added.sceneId);
+    flow = { ...flow, interaction: { ...flow.interaction, fallbackAnswerId: added.id } };
+    const removed = removeAnswer(flow, added.id);
+    expect(removed.interaction.fallbackAnswerId).toBeNull();
+    expect(removed.edges.find(edge => edge.id === 'correct-continue')?.to).toBe('continue');
+    expect(removed.edges.some(edge => edge.from === added.sceneId || edge.to === added.sceneId || edge.when === added.id)).toBe(false);
+    expect(removed.interstitial.clipIds).not.toContain(getScene(flow, added.sceneId).clip.id);
+    const one = removeAnswer(removed, 'correct');
+    expect(flowLayout(one).starts.incorrect).toBe(216);
+    expect(removeAnswer(one, 'incorrect')).toBe(one);
+    expect(answerSession(one, previewScene(one, 'wait'), 'Incorrect').outcome).toBe('incorrect');
+  });
   it('owns all non-video clips in one stable interstitial as clip types change', () => {
     const { flow } = createTimelineExample('source-asset', 8);
-    expect(flow.interstitial).toMatchObject({ kind: 'call-response', label: 'Call Response Interstitial', time: 3 });
+    expect(flow.interstitial).toMatchObject({ kind: 'call-response', label: 'Untitled', time: 3 });
     expect(interstitialScenes(flow).map(scene => scene.id)).toEqual(['call', 'wait', 'correct', 'incorrect']);
     const ordinary = changeClipKind(flow, 'wait', 'video');
     expect(interstitialScenes(ordinary).map(scene => scene.id)).toEqual(['call', 'correct', 'incorrect']);

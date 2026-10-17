@@ -38,7 +38,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
       else referenceRange(input, duration);
     }
   } catch (error) { validationError = (error as Error).message; }
-  return <div className="interstitial-editor">
+  return <div className="interstitial-editor" data-project-edit>
     {dependency && <p className="hint clip-dependency">Uses {dependency.label} as its reference.</p>}
     {dependency?.stale && <p className="clip-stale" role="status">Previous clip updated. Regenerate this clip to match.</p>}
     {dependency?.blocked && <p className="hint">{dependency.blocked}</p>}
@@ -56,7 +56,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
           <InterstitialTimeField name="end_range" label="End range" value={selected.end_range} min={method === 'comfy' ? COMFY.minContextFrames / TIMELINE_FPS : INTERSTITIAL.minEndRange} max={INTERSTITIAL.maxRange} step={0.1} onChange={value => controller.edit(selected.id, { end_range: value })} />
           <InterstitialTimeField name="Duration" label="Duration" value={selected.duration} min={INTERSTITIAL.minDuration} max={INTERSTITIAL.maxDuration} step={0.25} onChange={value => controller.edit(selected.id, { duration: value })} />
         </div>
-        {controller.hasLinkedDuration(selected.id) && <p className="hint">Shared duration for both response branches. Changes apply to their next generation.</p>}
+        {controller.hasLinkedDuration(selected.id) && <p className="hint">Shared duration for all response branches. Changes apply to their next generation.</p>}
         {comfyPlan && <p className="hint">{comfyPlan.insertion.duration.toFixed(3)}s generated · {(comfyPlan.prefixFrames / TIMELINE_FPS).toFixed(3)}s / {(comfyPlan.suffixFrames / TIMELINE_FPS).toFixed(3)}s context</p>}
         {method === 'fal' && <label className="interstitial-option"><input type="checkbox" checked={selected.enable_prompt_expansion}
           onChange={event => controller.edit(selected.id, { enable_prompt_expansion: event.target.checked })} /> Prompt expansion</label>}

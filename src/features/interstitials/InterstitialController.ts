@@ -10,6 +10,7 @@ import { assets } from '../project/assets';
 import { responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
 import { baselineReferences, clipDependency } from '../call-response/dependencies';
 import { generationSource } from '../call-response/generation';
+import type { InterstitialEdit } from '../project/ProjectHistory';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null };
 const requestMethod = (item: Interstitial): GenerationMethod => item.requestMethod ?? item.generationSettings?.method ?? 'fal';
@@ -27,10 +28,12 @@ export class InterstitialController {
   private state: State = { items: [], selectedId: null, error: null };
   private listeners = new Set<() => void>();
   private tasks = new Map<string, AbortController>();
+  private retained = new Map<string, Interstitial>();
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private update(patch: Partial<State>, persist = false) {
     this.state = { ...this.state, ...patch };
+    if (patch.items) for (const item of patch.items) this.retained.set(item.id, item);
     if (persist && !saveInterstitials(this.sourceId, this.state.items)) this.state.error = 'Interstitial changes could not be saved in this browser.';
     this.listeners.forEach(listener => listener());
   }
@@ -39,6 +42,7 @@ export class InterstitialController {
   }
   load(sourceId: string, items?: Interstitial[], linkedDurationIds: string[] = [], callResponse?: CallResponseFlow) {
     this.dispose(); this.sourceId = sourceId;
+    this.retained.clear();
     this.callResponse = callResponse;
     this.linkedDurationIds = linkedDurationIds;
     const loaded = (items ?? loadInterstitials(sourceId)).map(item => {
@@ -55,8 +59,9 @@ export class InterstitialController {
   select(id: string | null) { this.update({ selectedId: id }); }
   clearError() { this.update({ error: null }); }
   hasLinkedDuration(id: string) { return this.linkedDurationIds.length > 1 && this.linkedDurationIds.includes(id); }
-  setCallResponse(flow: CallResponseFlow) {
+  setCallResponse(flow?: CallResponseFlow) {
     this.callResponse = flow;
+    if (!flow) { this.linkedDurationIds = []; return; }
     this.linkedDurationIds = responseInterstitialIds(flow);
     const added: Interstitial[] = flow.scenes.filter(scene => scene.clip.kind !== 'video' && scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({
       id: scene.interstitialId!, label: scene.label, time: flow.interstitial.time, method: 'fal', phase: 'ready',
@@ -78,8 +83,7 @@ export class InterstitialController {
     const anchor = Math.max(0, Math.min(frameTime(duration, fps), frameTime(time, fps)));
     const existing = this.state.items.find(item => Math.abs(item.time - anchor) < 0.5 / fps);
     if (existing) { this.select(existing.id); return existing; }
-    const number = Math.max(0, ...this.state.items.map(item => Number(item.label.match(/^Interstitial (\d+)$/)?.[1]) || 0)) + 1;
-    const item: Interstitial = { id: crypto.randomUUID(), label: `Interstitial ${number}`, time: anchor,
+    const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
       enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, method: 'fal', prompt: '', phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
@@ -88,6 +92,10 @@ export class InterstitialController {
   move(id: string, time: number) {
     const item = this.state.items.find(item => item.id === id);
     if (item && !isGenerating(item) && Number.isFinite(time) && time >= 0) this.patch(id, { time: frameTime(time, TIMELINE_FPS) });
+  }
+  rename(id: string, name: string) {
+    const label = name.trim().slice(0, 1000) || 'Untitled';
+    if (this.state.items.some(item => item.id === id && item.label !== label)) this.patch(id, { label });
   }
   edit(id: string, values: Partial<InterstitialSettings>) {
     const item = this.state.items.find(item => item.id === id);
@@ -202,10 +210,31 @@ export class InterstitialController {
     }
   }
   async remove(id: string) {
-    const source = this.sourceId, item = this.state.items.find(item => item.id === id);
-    if (item && (isGenerating(item) || item.phase === 'error' && item.requestId && !item.result) && !await this.cancel(id)) return;
-    if (source !== this.sourceId) return;
-    this.update({ items: this.state.items.filter(item => item.id !== id), selectedId: this.state.selectedId === id ? null : this.state.selectedId }, true);
+    return this.removeMany([id]);
+  }
+  async removeMany(ids: string[], signal?: AbortSignal) {
+    const source = this.sourceId, removed = new Set(ids);
+    const items = this.state.items.filter(item => removed.has(item.id));
+    // Retain the whole group if any active job cannot be cancelled.
+    for (const item of items) {
+      if (signal?.aborted || source !== this.sourceId) return false;
+      if ((isGenerating(item) || item.phase === 'error' && item.requestId && !item.result) && !await this.cancel(item.id)) return false;
+    }
+    if (signal?.aborted || source !== this.sourceId) return false;
+    this.update({ items: this.state.items.filter(item => !removed.has(item.id)), selectedId: this.state.selectedId && removed.has(this.state.selectedId) ? null : this.state.selectedId }, true);
+    return true;
+  }
+  async restoreEdits(edits: InterstitialEdit[], flow: CallResponseFlow | undefined, signal: AbortSignal) {
+    const ids = new Set(edits.map(item => item.id)), previousIds = new Set(this.state.items.map(item => item.id));
+    if (edits.some(item => !this.retained.has(item.id))) throw new Error('This edit is no longer available in the current project.');
+    const removed = this.state.items.filter(item => !ids.has(item.id)).map(item => item.id);
+    if (removed.length && !await this.removeMany(removed, signal)) throw new Error('Could not cancel a generation job. Retry undo or redo.');
+    signal.throwIfAborted();
+    const selectedId = this.state.selectedId && (ids.has(this.state.selectedId) || this.state.selectedId === flow?.interstitial.id)
+      ? this.state.selectedId : flow?.interstitial.id ?? edits.find(item => !previousIds.has(item.id))?.id ?? null;
+    this.callResponse = flow; this.linkedDurationIds = flow ? responseInterstitialIds(flow) : [];
+    // Preserve the latest job and render even when the corresponding edit predates them.
+    this.update({ items: edits.map(edit => ({ ...this.retained.get(edit.id)!, ...edit })), selectedId, error: null }, true);
   }
   dispose() { this.tasks.forEach(task => task.abort()); this.tasks.clear(); }
 }

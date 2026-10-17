@@ -7,14 +7,18 @@ import { assets } from './assets';
 import { readActiveProject, readAsset, readProject, storageError, writeProject } from './database';
 import { assetIds, emptyAnalysis, type AnalysisState, type Asset, type Project } from './types';
 import { TIMELINE_FPS } from '../../../shared/constants';
-import { createTimelineExample, groupCallResponse, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
+import { createTimelineExample, groupCallResponse, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
+import { ProjectHistory } from './ProjectHistory';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
-  busy: boolean; message: string; progress: number | null; error: string | null };
+  busy: boolean; message: string; progress: number | null; error: string | null;
+  undoLabel: string | null; redoLabel: string | null; historyRevision: number };
 
 /** Owns project persistence and portable snapshots; media and job controllers stay independent. */
 export class ProjectController {
-  private state: State = { project: null, source: null, subtitle: null, busy: false, message: '', progress: null, error: null };
+  private state: State = { project: null, source: null, subtitle: null, busy: false, message: '', progress: null, error: null,
+    undoLabel: null, redoLabel: null, historyRevision: 0 };
+  private history = new ProjectHistory();
   private listeners = new Set<() => void>();
   private unsubscribe?: () => void;
   private switching = false;
@@ -25,8 +29,9 @@ export class ProjectController {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private update(patch: Partial<State>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
   clearError() { this.update({ error: null }); }
-  private save(project: Project) {
-    this.update({ project });
+  private save(project: Project, record = true) {
+    if (record && this.state.project?.id === project.id) this.history.record(this.state.project, project);
+    this.update({ project, undoLabel: this.history.undoLabel, redoLabel: this.history.redoLabel });
     this.writes = this.writes.catch(() => undefined).then(() => writeProject(project));
     void this.writes.catch(error => this.update({ error: storageError(error) }));
   }
@@ -64,11 +69,12 @@ export class ProjectController {
       .filter((id): id is string => !!id))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
-    this.update({ project, source, subtitle, error: null });
+    this.history.clear();
+    this.update({ project, source, subtitle, error: null, undoLabel: null, redoLabel: null, historyRevision: this.state.historyRevision + 1 });
     this.interstitials.load(project.id, project.interstitials, project.callResponse ? responseInterstitialIds(project.callResponse) : [], project.callResponse);
     assets.releaseExcept(new Set(assetIds(project)));
     this.switching = false;
-    this.save({ ...project, interstitials: this.interstitials.getSnapshot().items });
+    this.save({ ...project, interstitials: this.interstitials.getSnapshot().items }, false);
   }
   private async prepareSource(project: Project, pendingAssets: Asset[], signal: AbortSignal) {
     let original = pendingAssets.find(asset => asset.id === project.source.assetId);
@@ -122,10 +128,86 @@ export class ProjectController {
     });
   }
   updateCallResponse(callResponse: CallResponseFlow) {
+    if (this.operation) return;
     callResponse = groupCallResponse({ ...callResponse, scenes: callResponse.scenes.map(scene => scene.clip.kind !== 'video' && !scene.interstitialId
       ? { ...scene, interstitialId: `call-response-${scene.id}` } : scene) });
-    this.interstitials.setCallResponse(callResponse);
-    if (this.state.project) this.save({ ...this.state.project, callResponse: groupCallResponse(callResponse), updatedAt: Date.now() });
+    this.switching = true;
+    try {
+      this.interstitials.setCallResponse(callResponse);
+      for (const answer of callResponse.interaction.answers) {
+        const previous = this.state.project?.callResponse?.interaction.answers.find(item => item.id === answer.id);
+        const scene = callResponse.scenes.find(scene => scene.id === answer.sceneId);
+        if (previous && previous.label !== answer.label && scene?.interstitialId) this.interstitials.rename(scene.interstitialId, answer.label);
+      }
+    }
+    finally { this.switching = false; }
+    if (this.state.project) this.save({ ...this.state.project, interstitials: this.interstitials.getSnapshot().items, callResponse, updatedAt: Date.now() });
+  }
+  endHistoryGroup() { this.history.endGroup(); }
+  async removeAnswer(id: string) {
+    return this.task('Removing answer', async signal => {
+      const project = this.state.project, flow = project?.callResponse;
+      if (!project || !flow) return false;
+      const next = removeAnswer(flow, id);
+      if (next === flow) return false;
+      const ids = flow.scenes.filter(scene => !next.scenes.some(remaining => remaining.id === scene.id))
+        .flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []);
+      let removed = false;
+      this.switching = true;
+      try {
+        removed = await this.interstitials.removeMany(ids, signal);
+        if (removed) this.interstitials.setCallResponse(next);
+      } finally {
+        this.switching = false;
+        if (this.state.project?.id === project.id) this.save({ ...this.state.project,
+          callResponse: removed ? next : flow, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() });
+      }
+      if (!removed && !signal.aborted) throw new Error('Could not remove the answer because its generation job could not be cancelled. Try again.');
+      return removed;
+    });
+  }
+  undo() { return this.restoreHistory('undo'); }
+  redo() { return this.restoreHistory('redo'); }
+  private async restoreHistory(direction: 'undo' | 'redo') {
+    if (this.operation || !this.history.target(direction)) return;
+    await this.task(direction === 'undo' ? 'Undoing edit' : 'Redoing edit', async signal => {
+      const target = this.history.target(direction), project = this.state.project;
+      if (!target || !project) return;
+      const subtitle = target.subtitle ? { name: target.subtitle.name, url: (await assets.open(target.subtitle.assetId)).url } : null;
+      signal.throwIfAborted();
+      let restored = false;
+      this.switching = true;
+      try {
+        await this.interstitials.restoreEdits(target.interstitials, target.callResponse, signal);
+        restored = true; this.history.commit(direction);
+        this.update({ subtitle, historyRevision: this.state.historyRevision + 1 });
+      } finally {
+        this.switching = false;
+        if (this.state.project?.id === project.id) this.save({ ...this.state.project,
+          ...(restored ? { callResponse: target.callResponse, subtitle: target.subtitle } : {}),
+          interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() }, false);
+      }
+    });
+  }
+  async removeCallResponse() {
+    return this.task('Removing call-response interstitial', async signal => {
+      const project = this.state.project;
+      if (!project?.callResponse) return false;
+      const ids = [project.callResponse.interstitial.id, ...project.callResponse.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : [])];
+      let removed = false;
+      this.switching = true;
+      try {
+        removed = await this.interstitials.removeMany(ids, signal);
+        if (removed) this.interstitials.setCallResponse(undefined);
+      } finally {
+        this.switching = false;
+        if (this.state.project?.id === project.id) this.save({ ...this.state.project,
+          callResponse: removed ? undefined : project.callResponse,
+          interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() });
+      }
+      if (!removed && !signal.aborted) throw new Error('Could not remove the call-response interstitial because a generation job could not be cancelled. Try again.');
+      return removed;
+    });
   }
   private async loadExample(url: string, signal: AbortSignal) {
     this.update({ message: 'Downloading example project', progress: null });

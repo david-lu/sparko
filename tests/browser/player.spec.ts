@@ -26,7 +26,7 @@ test('default video, playback, seeking, settings and persistent pins', async ({ 
   await page.getByRole('slider', { name: 'Video timeline' }).fill('12.5');
   await expect(page.locator('.timeline-track')).toHaveCSS('outline-style', 'none');
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(12.5, 1);
-  await page.getByRole('button', { name: 'Add draft P' }).click();
+  await page.getByRole('button', { name: 'Add interstitial P' }).click();
   await page.getByRole('textbox', { name: 'Interstitial prompt' }).fill('Opening moment');
   await page.locator('.video-stage').hover();
   await page.getByRole('combobox', { name: 'Playback speed' }).selectOption('1.5');
@@ -36,11 +36,11 @@ test('default video, playback, seeking, settings and persistent pins', async ({ 
   await page.getByRole('button', { name: 'Loop video' }).click();
   await expect(page.getByRole('button', { name: 'Loop video' })).toHaveClass(/active/);
   await page.reload();
-  await page.getByRole('button', { name: 'Select Interstitial 1', exact: true }).click();
+  await page.getByRole('button', { name: 'Select Untitled', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Interstitial prompt' })).toHaveValue('Opening moment');
-  await page.getByRole('button', { name: /^Select Interstitial 1 at/ }).click();
+  await page.getByRole('button', { name: /^Select Untitled at/ }).click();
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(12.5, 1);
-  await page.getByRole('button', { name: 'Remove Interstitial 1' }).click();
+  await page.getByRole('button', { name: 'Remove Untitled' }).click();
   await expect(page.getByText('No interstitials yet')).toBeVisible();
   await expect(page.locator('.filmstrip img')).toHaveCount(12, { timeout: 60_000 });
   await page.screenshot({ path: 'test-results/player-desktop.png', fullPage: true });
@@ -101,9 +101,9 @@ test('panel dividers resize and persist without page scrolling', async ({ page }
   await expect(page.locator('.sidebar')).toHaveCSS('width', '394px');
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(page.viewportSize()!.height);
   await page.getByRole('slider', { name: 'Video timeline' }).fill('30');
-  await page.getByRole('button', { name: 'Add draft P' }).click();
+  await page.getByRole('button', { name: 'Add interstitial P' }).click();
   await page.getByRole('slider', { name: 'Video timeline' }).fill('60');
-  await page.getByRole('button', { name: 'Add draft P' }).click();
+  await page.getByRole('button', { name: 'Add interstitial P' }).click();
   await expect(page.locator('.timeline-pin')).toHaveCount(2);
   await page.screenshot({ path: 'test-results/resizable-panels.png' });
 });

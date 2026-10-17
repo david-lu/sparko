@@ -12,6 +12,7 @@ import InterstitialEditor from './InterstitialEditor';
 import { clipTypeLabel, interstitialScenes, type SceneId } from '../call-response/model';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import CallResponsePanel from '../call-response/CallResponsePanel';
+import InterstitialName from './InterstitialName';
 
 function RemoveInterstitialButton({ item, controller, disabled = false }: { item: Interstitial; controller: InterstitialController; disabled?: boolean }) {
   const handledTouch = useRef(false);
@@ -49,19 +50,22 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
   if (!selected) return <div className="panel-content interstitial-panel">
     <div className="panel-intro"><h2>Interstitials</h2></div>
     <button className="button full-width" disabled={!info || connectedIds.length > 0} onClick={onAdd}><Plus size={14} /> New interstitial at playhead</button>
-    {!items.length && !callResponse ? <div className="empty-state"><h3>No interstitials yet</h3><p>Press <kbd>P</kbd> to add a draft at the playhead.</p></div> : <ol className="interstitial-list">
+    {!items.length && !callResponse ? <div className="empty-state"><h3>No interstitials yet</h3><p>Press <kbd>P</kbd> to add an interstitial at the playhead.</p></div> : <ol className="interstitial-list">
       {callResponse && <li className="interstitial-group" data-interstitial-id={callResponse.flow.interstitial.id}>
-        <button className={`interstitial-row interstitial-group-heading ${groupReady ? 'ready' : ''}`} disabled={!members.length}
-          aria-label={`Select ${callResponse.flow.interstitial.label}`} onClick={callResponse.onSelectInterstitial}>
-          <span className="interstitial-number">1</span><span className="interstitial-row-content"><strong>{callResponse.flow.interstitial.label}</strong><span>{formatTime(callResponse.flow.interstitial.time, true)} · {members.length} clips</span></span>
-          {groupReady && <Clapperboard size={14} />}
-        </button>
+        <div className="interstitial-group-title">
+          <button className={`interstitial-row interstitial-group-heading ${groupReady ? 'ready' : ''}`} disabled={!members.length}
+            aria-label={`Select ${callResponse.flow.interstitial.label}`} onClick={callResponse.onSelectInterstitial}>
+            <span className="interstitial-number">1</span><span className="interstitial-row-content"><strong>{callResponse.flow.interstitial.label}</strong><span>{formatTime(callResponse.flow.interstitial.time, true)} · {members.length} clips</span></span>
+            {groupReady && <Clapperboard size={14} />}
+          </button>
+          <button className="icon-button small" aria-label={`Remove ${callResponse.flow.interstitial.label}`} onClick={callResponse.onRemoveInterstitial}><Trash2 size={14} /></button>
+        </div>
         <ol className="interstitial-clips" aria-label={`Clips in ${callResponse.flow.interstitial.label}`}>
           {members.map(scene => {
             const item = items.find(item => item.id === scene.interstitialId);
-            return <li key={scene.clip.id}><button className="interstitial-row" aria-label={`Select ${clipTypeLabel(scene.clip)} clip`} onClick={() => callResponse.onSelectScene(scene.id)}>
+            return <li key={scene.clip.id}><button className="interstitial-row" aria-label={`Select ${clipTypeLabel(scene.clip, callResponse.flow)} clip`} onClick={() => callResponse.onSelectScene(scene.id)}>
               {scene.clip.kind === 'idle' ? <Repeat2 size={14} /> : <Clapperboard size={14} />}
-              <span className="interstitial-row-content"><strong>{clipTypeLabel(scene.clip)}</strong><span>{scene.label}</span></span>
+              <span className="interstitial-row-content"><strong>{clipTypeLabel(scene.clip, callResponse.flow)}</strong><span>{scene.label}</span></span>
               {item && isGenerating(item) && <span className="spinner" />}
             </button></li>;
           })}
@@ -76,7 +80,7 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
   </div>;
   return <div className="panel-content interstitial-panel">
     <button className="text-button interstitial-back" onClick={() => onSelect(null)}><ArrowLeft size={13} /> All interstitials</button>
-    <div className="interstitial-title"><h2>{selected.label}</h2><RemoveInterstitialButton item={selected} controller={controller} disabled={connectedIds.includes(selected.id)} /></div>
+    <div className="interstitial-title"><InterstitialName key={selected.id} name={selected.label} onChange={name => controller.rename(selected.id, name)} /><RemoveInterstitialButton item={selected} controller={controller} disabled={connectedIds.includes(selected.id)} /></div>
     <InterstitialEditor selected={selected} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />
   </div>;
 }

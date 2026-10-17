@@ -1,7 +1,9 @@
 import { playableResult, type CallResponseInterstitial, type Interstitial } from '../../../shared/interstitials';
 /** Clip types and connections shared by the project, timeline and video player. */
-export type SceneId = 'intro' | 'call' | 'wait' | 'correct' | 'incorrect' | 'continue';
-export type Outcome = 'correct' | 'incorrect';
+export type SceneId = string;
+/** Stable answer IDs, independent of the text displayed to the user. */
+export type Outcome = string;
+export type AnswerOption = { id: Outcome; label: string; values: string[]; sceneId: SceneId };
 type ClipMedia = { id: string; assetId: string; inFrame: number; outFrame: number };
 export type VideoClip = ClipMedia & { kind: 'video' };
 export type CallClip = ClipMedia & { kind: 'call' };
@@ -25,27 +27,83 @@ export type FlowEdge = {
   transitionFrames: number;
 };
 export type CallResponseFlow = {
-  version: 1;
+  version: 2;
   interstitial: CallResponseInterstitial;
   fps: number;
   entrySceneId: SceneId;
   scenes: TimelineScene[];
   edges: FlowEdge[];
-  interaction: { question: string; acceptedAnswers: string[]; waitSceneId: SceneId };
+  interaction: { question: string; answers: AnswerOption[]; fallbackAnswerId: Outcome | null; waitSceneId: SceneId };
 };
 
 /** Older examples had separate child jobs but no saved parent interstitial. */
-export function groupCallResponse(flow: Omit<CallResponseFlow, 'interstitial'> & { interstitial?: CallResponseInterstitial }): CallResponseFlow {
+export function groupCallResponse(flow: Omit<CallResponseFlow, 'interstitial' | 'version' | 'interaction'> & {
+  version: 1 | 2; interstitial?: CallResponseInterstitial;
+  interaction: { question: string; waitSceneId: SceneId; answers?: AnswerOption[]; fallbackAnswerId?: Outcome | null; acceptedAnswers?: string[] };
+}): CallResponseFlow {
   const intro = flow.scenes.find(scene => scene.id === 'intro');
-  return { ...flow, interstitial: {
+  const { question, waitSceneId, answers, fallbackAnswerId, acceptedAnswers } = flow.interaction;
+  return { ...flow, version: 2, interaction: { question, waitSceneId,
+    answers: answers ?? [
+      { id: 'correct', label: 'Correct', values: acceptedAnswers ?? ['4', 'four'], sceneId: 'correct' },
+      { id: 'incorrect', label: 'Incorrect', values: [], sceneId: 'incorrect' },
+    ], fallbackAnswerId: answers ? fallbackAnswerId ?? null : 'incorrect',
+  }, interstitial: {
     id: flow.interstitial?.id ?? crypto.randomUUID(), kind: 'call-response',
-    label: flow.interstitial?.label ?? 'Call Response Interstitial', time: flow.interstitial?.time ?? (intro ? (intro.clip.outFrame - intro.clip.inFrame) / flow.fps : 0),
+    label: flow.interstitial?.label ?? 'Untitled', time: flow.interstitial?.time ?? (intro ? (intro.clip.outFrame - intro.clip.inFrame) / flow.fps : 0),
     clipIds: flow.scenes.filter(scene => scene.clip.kind !== 'video').map(scene => scene.clip.id),
   } };
 }
-export const clipTypeLabel = (clip: TimelineClip) => clip.kind === 'video' ? '' : clip.kind === 'response'
-  ? `${clip.outcome === 'correct' ? 'Correct' : 'Incorrect'} Response` : clip.kind === 'idle' ? 'Idle' : 'Call';
+export const answerLabel = (flow: CallResponseFlow, id: Outcome) => flow.interaction.answers.find(answer => answer.id === id)?.label ?? id;
+export const clipTypeLabel = (clip: TimelineClip, flow: CallResponseFlow) => clip.kind === 'video' ? '' : clip.kind === 'response'
+  ? `${answerLabel(flow, clip.outcome)} Response` : clip.kind === 'idle' ? 'Idle' : 'Call';
 export const interstitialScenes = (flow: CallResponseFlow) => flow.scenes.filter(scene => flow.interstitial.clipIds.includes(scene.clip.id));
+/** The response column stays in place even when a child is converted to another clip type. */
+export const branchScenes = (flow: CallResponseFlow) => flow.scenes.filter(scene => !['intro', 'call', 'wait', 'continue'].includes(scene.id));
+export const normalizeAnswer = (value: string) => value.trim().toLowerCase().replace(/[.!?]+$/, '').trim();
+
+export function addAnswer(flow: CallResponseFlow): CallResponseFlow {
+  if (flow.interaction.answers.length >= 100) return flow;
+  const id = crypto.randomUUID(), sceneId = `response:${id}`;
+  let index = flow.interaction.answers.length + 1;
+  while (flow.interaction.answers.some(answer => answer.label === `Answer ${index}`)) index++;
+  const answer: AnswerOption = { id, sceneId, label: `Answer ${index}`, values: [] };
+  const previous = branchScenes(flow)[0] ?? getScene(flow, flow.interaction.waitSceneId);
+  const scene: TimelineScene = { id: sceneId, label: answer.label, role: 'response', dialogue: '',
+    interstitialId: `call-response-${id}`, clip: { ...previous.clip, id: `clip:${id}`, kind: 'response', outcome: id } };
+  return groupCallResponse({ ...flow, interaction: { ...flow.interaction, answers: [...flow.interaction.answers, answer] },
+    scenes: [...flow.scenes.filter(scene => scene.id !== 'continue'), scene, getScene(flow, 'continue')],
+    edges: [...flow.edges,
+      ...flow.scenes.filter(scene => scene.clip.kind === 'idle').map(idle => ({ id: `${idle.id}-${id}`, from: idle.id, to: sceneId,
+        when: id, label: answer.label, transitionFrames: 6 })),
+      { id: `${sceneId}-continue`, from: sceneId, to: 'continue', when: 'ended', label: 'Rejoin', transitionFrames: 6 }],
+  });
+}
+
+export function editAnswer(flow: CallResponseFlow, id: Outcome, patch: Partial<Pick<AnswerOption, 'label' | 'values'>>): CallResponseFlow {
+  const answer = flow.interaction.answers.find(answer => answer.id === id);
+  if (!answer) return flow;
+  const label = patch.label === undefined ? answer.label : patch.label.trim().slice(0, 200) || answer.label;
+  const values = patch.values ? [...new Set(patch.values.map(value => value.trim().slice(0, 200)).filter(Boolean))].slice(0, 100) : answer.values;
+  return { ...flow, interaction: { ...flow.interaction, answers: flow.interaction.answers.map(answer => answer.id === id ? { ...answer, label, values } : answer) },
+    scenes: label === answer.label ? flow.scenes : flow.scenes.map(scene => scene.id === answer.sceneId ? { ...scene, label } : scene),
+    edges: flow.edges.map(edge => edge.when === id ? { ...edge, label } : edge) };
+}
+
+/** Remove the owned response and repair incoming connections without leaving dangling edges. */
+export function removeAnswer(flow: CallResponseFlow, id: Outcome): CallResponseFlow {
+  const answer = flow.interaction.answers.find(answer => answer.id === id);
+  if (!answer || flow.interaction.answers.length <= 1) return flow;
+  return groupCallResponse({ ...flow,
+    interaction: { ...flow.interaction, answers: flow.interaction.answers.filter(answer => answer.id !== id),
+      fallbackAnswerId: flow.interaction.fallbackAnswerId === id ? null : flow.interaction.fallbackAnswerId },
+    scenes: flow.scenes.filter(scene => scene.id !== answer.sceneId).map(scene => scene.clip.kind === 'response' && scene.clip.outcome === id
+      ? { ...scene, clip: { ...scene.clip, outcome: flow.interaction.answers.find(answer => answer.id !== id)!.id } } : scene),
+    edges: flow.edges.filter(edge => edge.from !== answer.sceneId && edge.when !== id)
+      .map(edge => edge.to === answer.sceneId ? { ...edge, to: 'continue' } : edge)
+      .filter(edge => edge.from !== edge.to || edge.when === 'pending'),
+  });
+}
 
 export function createTestFlow(): CallResponseFlow {
   const scene = (id: SceneId, label: string, role: TimelineScene['role'], dialogue: string, frames: number, assetId = `mock:${id}`, inFrame = 0): TimelineScene =>
@@ -54,8 +112,11 @@ export function createTestFlow(): CallResponseFlow {
         : role === 'wait' ? { kind: 'idle' as const, repeat: 'until-answer' as const, exitAt: 'loop-boundary' as const }
         : { kind: 'response' as const, outcome: id === 'correct' ? 'correct' as const : 'incorrect' as const }) } });
   return groupCallResponse({
-    version: 1, fps: 24, entrySceneId: 'intro',
-    interaction: { question: 'What is 2 + 2?', acceptedAnswers: ['4', 'four'], waitSceneId: 'wait' },
+    version: 2, fps: 24, entrySceneId: 'intro',
+    interaction: { question: 'What is 2 + 2?', waitSceneId: 'wait', fallbackAnswerId: 'incorrect', answers: [
+      { id: 'correct', label: 'Correct', values: ['4', 'four'], sceneId: 'correct' },
+      { id: 'incorrect', label: 'Incorrect', values: [], sceneId: 'incorrect' },
+    ] },
     scenes: [
       scene('intro', 'Meet Sparko', 'source', 'Hi! Let’s solve a little puzzle together.', 72, 'mock:original'),
       scene('call', 'Ask a question', 'call', 'What is 2 + 2?', 96),
@@ -101,10 +162,12 @@ export const responseInterstitialIds = (flow: CallResponseFlow) => flow.scenes.f
 
 /** A submitted answer is latched; branching happens only at the end of a complete loop. */
 export function answerSession(flow: CallResponseFlow, session: PlaybackSession, answer: string): PlaybackSession {
-  const normalized = answer.trim().toLowerCase().replace(/[.!?]+$/, '').trim();
+  const normalized = normalizeAnswer(answer);
   if (getScene(flow, session.sceneId).clip.kind !== 'idle' || session.outcome || !normalized) return session;
+  const outcome = flow.interaction.answers.find(option => [option.label, ...option.values].some(value => normalizeAnswer(value) === normalized))?.id
+    ?? flow.interaction.fallbackAnswerId;
   return { ...session, answer: answer.trim(), attempts: session.attempts + 1,
-    outcome: flow.interaction.acceptedAnswers.includes(normalized) ? 'correct' : 'incorrect' };
+    outcome: outcome && flow.edges.some(edge => edge.from === session.sceneId && edge.when === outcome) ? outcome : null };
 }
 
 export function nextEdge(flow: CallResponseFlow, session: PlaybackSession) {
@@ -137,7 +200,9 @@ export function advanceSession(flow: CallResponseFlow, session: PlaybackSession,
 
 /** Debug controls use the same queued outcome and loop boundary as a submitted answer. */
 export function branchSession(flow: CallResponseFlow, session: PlaybackSession, outcome: Outcome): PlaybackSession {
-  if (getScene(flow, session.sceneId).clip.kind !== 'idle' || session.outcome) return session;
+  if (getScene(flow, session.sceneId).clip.kind !== 'idle' || session.outcome
+    || !flow.interaction.answers.some(answer => answer.id === outcome)
+    || !flow.edges.some(edge => edge.from === session.sceneId && edge.when === outcome)) return session;
   return { ...session, outcome, answer: `[Debug: ${outcome}]`, attempts: session.attempts + 1 };
 }
 
@@ -146,7 +211,7 @@ export function createTimelineExample(assetId: string, duration: number) {
   if (total < 4) throw new Error('Open a video with at least four frames to create the example.');
   const split = Math.min(72, Math.floor(total / 2));
   flow.interstitial.time = split / flow.fps;
-  const excerptPosition = { intro: 0, call: .2, wait: .4, correct: .6, incorrect: .8, continue: 0 };
+  const excerptPosition: Record<SceneId, number> = { intro: 0, call: .2, wait: .4, correct: .6, incorrect: .8, continue: 0 };
   flow.scenes = flow.scenes.map(scene => {
     const frames = scene.role === 'source' ? split : Math.min(total, sceneFrames(scene));
     const inFrame = scene.role === 'source' ? scene.id === 'continue' ? split : 0 : Math.floor((total - frames) * excerptPosition[scene.id]);
@@ -176,11 +241,12 @@ export function resolveFlow(flow: CallResponseFlow, interstitials: Interstitial[
 
 /** One idle cycle and the longer branch are shown; actual elapsed time stays variable. */
 export function flowLayout(flow: CallResponseFlow) {
-  const starts = {} as Record<SceneId, number>;
+  const starts: Record<SceneId, number> = Object.create(null);
   let cursor = 0;
   for (const id of ['intro', 'call', 'wait'] as const) { starts[id] = cursor; cursor += sceneFrames(getScene(flow, id)); }
-  starts.correct = starts.incorrect = cursor;
-  cursor += Math.max(sceneFrames(getScene(flow, 'correct')), sceneFrames(getScene(flow, 'incorrect')));
+  const branches = branchScenes(flow);
+  for (const scene of branches) starts[scene.id] = cursor;
+  cursor += Math.max(0, ...branches.map(sceneFrames));
   starts.continue = cursor;
   return { starts, totalFrames: cursor + sceneFrames(getScene(flow, 'continue')) };
 }
@@ -204,18 +270,19 @@ export function changeClipKind(flow: CallResponseFlow, id: SceneId, kind: Timeli
   const { assetId, inFrame, outFrame, id: clipId } = scene.clip;
   const clip: TimelineClip = { id: clipId, assetId, inFrame, outFrame,
     ...(kind === 'idle' ? { kind, repeat: 'until-answer', exitAt: 'loop-boundary' }
-      : kind === 'response' ? { kind, outcome: id === 'incorrect' ? 'incorrect' : 'correct' } : { kind }) };
+      : kind === 'response' ? { kind, outcome: flow.interaction.answers.find(answer => answer.sceneId === id)?.id ?? flow.interaction.answers[0].id } : { kind }) };
   let edges = flow.edges;
   if (kind === 'idle') {
     edges = edges.filter(edge => edge.from !== id || edge.when !== 'ended');
-    for (const when of ['pending', 'correct', 'incorrect'] as const) {
+    for (const when of ['pending', ...flow.interaction.answers.map(answer => answer.id)]) {
       if (edges.some(edge => edge.from === id && edge.when === when)) continue;
+      const destination = flow.interaction.answers.find(answer => answer.id === when)?.sceneId ?? 'continue';
       edges = [...edges, { id: `${id}-${when}`, from: id,
-        to: when === 'pending' ? id : id === when ? 'continue' : when, when,
-        label: when === 'pending' ? 'No answer · repeat' : `answer = ${when}`, transitionFrames: 0 }];
+        to: when === 'pending' ? id : id === destination ? 'continue' : destination, when,
+        label: when === 'pending' ? 'No answer · repeat' : answerLabel(flow, when), transitionFrames: 0 }];
     }
   } else if (scene.clip.kind === 'idle') {
-    const next = edges.find(edge => edge.from === id && edge.when === 'correct')?.to ?? 'continue';
+    const next = edges.find(edge => edge.from === id && flow.interaction.answers.some(answer => answer.id === edge.when))?.to ?? 'continue';
     edges = [...edges.filter(edge => edge.from !== id), ...(next === id ? [] : [{ id: `${id}-next`, from: id, to: next, when: 'ended' as const, label: 'Next', transitionFrames: 0 }])];
   }
   return groupCallResponse({ ...flow, edges, scenes: flow.scenes.map(scene => scene.id === id ? { ...scene, clip } : scene) });

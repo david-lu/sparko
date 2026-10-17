@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { Download, FolderOpen, GitBranch, RotateCcw, Upload, X } from 'lucide-react';
+import { Download, FolderOpen, GitBranch, Redo2, RotateCcw, Undo2, Upload, X } from 'lucide-react';
 import CallResponseControls from '../features/call-response/CallResponseControls';
-import { reconnectEdge, resolveFlow, type SceneId } from '../features/call-response/model';
+import { addAnswer, branchScenes, reconnectEdge, resolveFlow, type SceneId } from '../features/call-response/model';
 import type { FlowTimeline } from '../features/timeline/FlowTracks';
 import Player from '../features/player/Player';
 import InterstitialPanel from '../features/interstitials/InterstitialPanel';
@@ -56,7 +56,8 @@ export default function App() {
   const maxSideWidth = Math.max(220, Math.min(700, viewport.width - 340));
   const maxTimelineHeight = Math.max(savedFlow ? 290 : 134, Math.floor(viewport.height * (viewport.width <= 660 ? savedFlow ? 0.4 : 0.28 : 0.55)));
   const actualSideWidth = Math.max(220, Math.min(maxSideWidth, sideWidth));
-  const actualTimelineHeight = savedFlow ? Math.max(290, Math.min(maxTimelineHeight, timelineHeight)) : Math.max(134, Math.min(maxTimelineHeight, timelineHeight));
+  const minimumTimelineHeight = savedFlow ? Math.min(maxTimelineHeight, Math.max(290, branchScenes(savedFlow).length * 76 + 138)) : 134;
+  const actualTimelineHeight = Math.max(minimumTimelineHeight, Math.min(maxTimelineHeight, timelineHeight));
   useEffect(() => {
     const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize);
@@ -73,6 +74,25 @@ export default function App() {
   const flow = useMemo(() => savedFlow ? resolveFlow(savedFlow, interstitialState.items) : undefined, [savedFlow, readyKey]);
   const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items) : null, [source, info, readyKey]);
   useEffect(() => { if (flow && info) controller.setFlow(flow); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info]);
+  useEffect(() => {
+    controller.pause(); setSelectedFlowScene(null); setSelectedFlowEdge(null);
+  }, [controller, projectState.historyRevision]);
+  useEffect(() => {
+    const historyKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      const target = event.target as HTMLElement;
+      const textInput = target.closest('textarea, input:not([type="range"]):not([type="checkbox"]):not([type="button"]):not([type="submit"]):not([type="reset"])');
+      if ((target.isContentEditable || textInput) && !target.closest('[data-project-edit]')) return;
+      event.preventDefault();
+      if (event.repeat || projects.getSnapshot().busy) return;
+      controller.pause();
+      if (key === 'y' || event.shiftKey) void projects.redo(); else void projects.undo();
+    };
+    window.addEventListener('keydown', historyKey);
+    return () => window.removeEventListener('keydown', historyKey);
+  }, [controller, projects]);
   useEffect(() => () => { interstitials.dispose(); projects.dispose(); }, [interstitials, projects]);
   useEffect(() => {
     const open = (event: KeyboardEvent) => {
@@ -117,16 +137,25 @@ export default function App() {
     if (item) { controller.pause(); controller.seek(time ?? composition?.itemTime(item) ?? item.time); }
   };
   const addInterstitial = () => {
-    if (!info || !projectState.project || flow) return;
+    if (!info || !projectState.project || projectState.busy || flow) return;
     const item = interstitials.add(controller.getSourceTime(), info.duration);
     controller.pause(); controller.seek(composition?.itemTime(item) ?? item.time);
   };
   const moveInterstitial = (id: string, time: number) => {
-    if (!info) return;
+    if (!info || projectState.busy) return;
     // Removing the moved scene from this mapping lets its start follow the drop position,
     // including arrow-key moves within the space its old rendered block occupied.
     const remaining = new TimelineComposition(source, info, interstitialState.items.filter(item => item.id !== id));
     interstitials.move(id, Math.max(0, Math.min(remaining.sourceDuration, Math.round(remaining.sourceTime(time) * remaining.fps) / remaining.fps)));
+  };
+  const removeInterstitial = (id: string) => {
+    if (projectState.busy) return;
+    if (id === flow?.interstitial.id) {
+      controller.pause();
+      void projects.removeCallResponse().then(removed => {
+        if (removed) { setSelectedFlowScene(null); setSelectedFlowEdge(null); }
+      });
+    } else if (!flow?.scenes.some(scene => scene.interstitialId === id)) void interstitials.remove(id);
   };
   const openFile = (file: File) => {
     if (/\.sparko$/i.test(file.name)) void projects.importProject(file); else void projects.openVideo(file);
@@ -138,10 +167,21 @@ export default function App() {
   };
   const visibleError = projectState.error || error || player.error || interstitialState.error;
   const flowTimeline: FlowTimeline | undefined = flow ? { flow, session: player.flow,
-    selectedSceneId: flow.scenes.find(scene => scene.interstitialId === interstitialState.selectedId)?.id ?? selectedFlowScene,
+    selectedSceneId: flow.scenes.find(scene => scene.interstitialId === interstitialState.selectedId)?.id ?? (flow.scenes.some(scene => scene.id === selectedFlowScene) ? selectedFlowScene : null),
     selectedEdgeId: selectedFlowEdge,
     selectedInterstitial: interstitialState.selectedId === flow.interstitial.id,
     onSelectInterstitial: () => { interstitials.select(flow.interstitial.id); setSelectedFlowScene(null); setSelectedFlowEdge(null); controller.pause(); },
+    onRemoveInterstitial: () => removeInterstitial(flow.interstitial.id),
+    onRenameInterstitial: name => { if (savedFlow) projects.updateCallResponse({ ...savedFlow, interstitial: { ...savedFlow.interstitial, label: name } }); },
+    onAddAnswer: () => {
+      const next = addAnswer(flow), answer = next.interaction.answers.at(-1)!;
+      controller.pause(); projects.updateCallResponse(next); setSelectedFlowScene(answer.sceneId); setSelectedFlowEdge(null);
+      interstitials.select(next.scenes.find(scene => scene.id === answer.sceneId)!.interstitialId!);
+    },
+    onRemoveAnswer: id => {
+      controller.pause(); setSelectedFlowScene(null); setSelectedFlowEdge(null); interstitials.select(flow.interstitial.id);
+      void projects.removeAnswer(id);
+    },
     onSelectScene: (id, frame) => { setSelectedFlowScene(id); setSelectedFlowEdge(null); interstitials.select(flow.scenes.find(scene => scene.id === id)?.interstitialId ?? null); controller.seekFlowScene(id, frame); },
     onSelectEdge: id => { const scene = flow.scenes.find(scene => scene.id === flow.edges.find(edge => edge.id === id)?.from); setSelectedFlowEdge(id); setSelectedFlowScene(scene?.id ?? null); interstitials.select(scene?.interstitialId ?? null); },
     onBranch: (id, outcome) => { setSelectedFlowScene(id); setSelectedFlowEdge(null); interstitials.select(flow.scenes.find(scene => scene.id === id)?.interstitialId ?? null); controller.branchFlow(id, outcome); },
@@ -150,8 +190,8 @@ export default function App() {
   const parentPanelOpen = !!flowTimeline && (flowTimeline.selectedInterstitial || flow?.scenes.some(scene => scene.clip.kind !== 'video' && (scene.interstitialId === interstitialState.selectedId || scene.id === flowTimeline.selectedSceneId)));
   const clipControls = (id: SceneId) => flowTimeline && <CallResponseControls flow={flowTimeline.flow}
     selectedSceneId={id} selectedEdgeId={selectedFlowEdge} onChange={value => projects.updateCallResponse(value)}
-    onSelectEdge={flowTimeline.onSelectEdge} />;
-  return <div className="app-shell" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) openFile(file); }}>
+    onSelectEdge={flowTimeline.onSelectEdge} onRemoveAnswer={flowTimeline.onRemoveAnswer} />;
+  return <div className="app-shell" onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) openFile(file); }}>
     <header className="menubar" aria-label="Application menu">
       <details className="file-menu" ref={fileMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }} onKeyDown={event => { if (event.key === 'Escape') event.currentTarget.open = false; }}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
         <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; fileInput.current?.click(); }}><FolderOpen size={14} />Open video<span>Ctrl O</span></button>
@@ -160,22 +200,28 @@ export default function App() {
         <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; projectInput.current?.click(); }}><Upload size={14} />Import project</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>
+      <div className="history-controls" role="group" aria-label="Edit history">
+        <button className="icon-button small" aria-label="Undo" aria-keyshortcuts="Control+Z Meta+Z" title={`${projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo'} (Ctrl/Cmd+Z)`}
+          disabled={projectState.busy || !projectState.undoLabel} onClick={() => { controller.pause(); void projects.undo(); }}><Undo2 size={14} /></button>
+        <button className="icon-button small" aria-label="Redo" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y" title={`${projectState.redoLabel ? `Redo: ${projectState.redoLabel}` : 'Redo'} (Ctrl/Cmd+Shift+Z)`}
+          disabled={projectState.busy || !projectState.redoLabel} onClick={() => { controller.pause(); void projects.redo(); }}><Redo2 size={14} /></button>
+      </div>
       <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button>
       <span className="menu-document">{savedFlow ? projectState.project?.name : source.name}</span><span className="menu-app-name">SPARKO</span>
     </header>
     <main className="workspace">
       {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }}><X size={16} /></button></div>}
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
-      <div className="workspace-grid" style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
+      <div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
         {projectState.source ? <Player source={source} info={info} thumbnails={thumbnails} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
           callResponse={flowTimeline}
           subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
           controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
-          onMoveInterstitial={moveInterstitial} onRemoveInterstitial={id => { if (!flow?.scenes.some(scene => scene.interstitialId === id)) void interstitials.remove(id); }} onSelectInterstitial={selectInterstitial}
+          onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
           timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} /> : <div className="project-opening" role="status">{projectState.busy ? 'Preparing video…' : 'Open a video from the File menu.'}</div>}
-        {shortcuts && <div className="shortcuts"><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>P</kbd> New interstitial</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
+        {shortcuts && <div className="shortcuts"><span><kbd>Ctrl/Cmd Z</kbd> Undo</span><span><kbd>Ctrl/Cmd Shift Z</kbd> / <kbd>Ctrl Y</kbd> Redo</span><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>P</kbd> New interstitial</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
       </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Interstitials">
-        {flowTimeline && !parentPanelOpen && <CallResponseControls flow={flowTimeline.flow} selectedSceneId={flowTimeline.selectedSceneId} selectedEdgeId={selectedFlowEdge} onChange={value => projects.updateCallResponse(value)} onSelectEdge={flowTimeline.onSelectEdge} />}
+        {flowTimeline && !parentPanelOpen && <CallResponseControls flow={flowTimeline.flow} selectedSceneId={flowTimeline.selectedSceneId} selectedEdgeId={selectedFlowEdge} onChange={value => projects.updateCallResponse(value)} onSelectEdge={flowTimeline.onSelectEdge} onRemoveAnswer={flowTimeline.onRemoveAnswer} />}
         <InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
           callResponse={flowTimeline}
           renderClipControls={clipControls}

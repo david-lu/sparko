@@ -12,6 +12,7 @@ import VideoFilmstrip from './VideoFilmstrip';
 import { phaseLabel } from '../interstitials/status';
 import FlowTracks, { type FlowTimeline } from './FlowTracks';
 import { flowLayout } from '../call-response/model';
+import InterstitialHelp from '../interstitials/InterstitialHelp';
 
 const MAX_ZOOM = 32;
 export default function Timeline({ name, info, thumbnails, interstitials, selectedId, composition, time, duration, buffered, selection, height, maxHeight, onHeight, onAddInterstitial, onMoveInterstitial, onRemoveInterstitial, onSelectInterstitial, onSeek, callResponse }: {
@@ -89,11 +90,20 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
         </div>
         <button className="icon-button small" aria-label="Previous interstitial" disabled={!markers.some(item => item.time < time - 0.05)} onClick={() => onSelectInterstitial([...markers].reverse().find(item => item.time < time - 0.05)?.id ?? null)}><SkipBack size={14} /></button>
         <button className="icon-button small" aria-label="Next interstitial" disabled={!markers.some(item => item.time > time + 0.05)} onClick={() => onSelectInterstitial(markers.find(item => item.time > time + 0.05)?.id ?? null)}><SkipForward size={14} /></button>
-        <button className="button small" disabled={!info || !!callResponse} onClick={onAddInterstitial}><Clapperboard size={13} /> Add draft <kbd>P</kbd></button>
+        <div className="interstitial-add-actions">
+          <button className="button small" disabled={!info || !!callResponse} onClick={onAddInterstitial}><Clapperboard size={13} /> Add interstitial <kbd>P</kbd></button>
+          <InterstitialHelp />
+        </div>
       </div>
     </div>
     <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label="Scrollable timeline" data-zoom={zoom} onScroll={() => setHover(null)}>
-      <div className="timeline-content" style={{ width: callResponse ? contentWidth : `${zoom * 100}%` }}>
+      <div className="timeline-content" style={{ width: callResponse ? contentWidth : `${zoom * 100}%` }} onClick={event => {
+        if (!duration || event.detail === 0) return;
+        const control = (event.target as HTMLElement).closest('button, input, a, [role="button"]');
+        if (control && !control.classList.contains('timeline-interstitial-container')) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        if (rect.width) onSeek(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration);
+      }}>
         <div className="timeline-ruler" aria-hidden="true">{ticks.map((value, index) => <span key={value} style={{ left: `${duration ? value / duration * 100 : 0}%`, transform: `translateX(${index === 0 ? 0 : index === ticks.length - 1 ? -100 : -50}%)` }}>{formatTime(value, tickStep < 1)}</span>)}</div>
         {callResponse ? <FlowTracks value={callResponse} width={contentWidth} /> : <div className="timeline-track-space"><div className="timeline-track" ref={track} onPointerMove={event => {
           if (!duration || (event.target as HTMLElement).closest('.timeline-marker')) { setHover(null); return; }
