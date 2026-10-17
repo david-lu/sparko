@@ -5,9 +5,11 @@ import type { InterstitialController } from '../interstitials/InterstitialContro
 import { loadInterstitials } from '../interstitials/storage';
 import { assets } from './assets';
 import { readActiveProject, readAsset, readProject, storageError, writeProject } from './database';
-import { assetIds, emptyAnalysis, type AnalysisState, type Asset, type Project } from './types';
+import { activeFlows, projectFlows, withFlows, assetIds, emptyAnalysis, type AnalysisState, type Asset, type Project } from './types';
 import { TIMELINE_FPS } from '../../../shared/constants';
-import { createTimelineExample, groupCallResponse, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
+import { createTimelineExample, groupCallResponse, lockCallResponseStructure, migrateDefaultAnswerLabels, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
+import { createCallResponseDraft, reanchorFlow } from '../call-response/draft';
+import { isGenerating } from '../../../shared/interstitials';
 import { ProjectHistory } from './ProjectHistory';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
@@ -50,14 +52,22 @@ export class ProjectController {
   }
   private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = []) {
     signal.throwIfAborted();
-    if (project.callResponse) {
-      const existing = project.callResponse.interstitial;
-      const grouped = groupCallResponse(project.callResponse);
-      if (!existing) grouped.interstitial.time = project.interstitials.find(item => grouped.scenes.some(scene => scene.interstitialId === item.id))?.time ?? grouped.interstitial.time;
-      project = { ...project, callResponse: grouped };
-    }
+    const renamedClips = new Map<string, { before: string; after: string }>();
+    if (projectFlows(project).length) project = withFlows(project, projectFlows(project).map(flow => {
+      const grouped = lockCallResponseStructure(migrateDefaultAnswerLabels(groupCallResponse(flow)));
+      for (const scene of grouped.scenes) {
+        const previous = flow.scenes.find(previous => previous.id === scene.id);
+        if (scene.interstitialId && previous && previous.label !== scene.label) renamedClips.set(scene.interstitialId, { before: previous.label, after: scene.label });
+      }
+      if (!flow.interstitial) grouped.interstitial.time = project.interstitials.find(item => grouped.scenes.some(scene => scene.interstitialId === item.id))?.time ?? grouped.interstitial.time;
+      return grouped;
+    }));
+    project = { ...project, interstitials: project.interstitials.map(item => {
+      const rename = renamedClips.get(item.id);
+      return rename && item.label === rename.before ? { ...item, label: rename.after } : item;
+    }) };
     ({ project, pendingAssets } = await this.prepareSource(project, pendingAssets, signal));
-    project = { ...project, interstitials: project.interstitials.map(item => ['preparing', 'uploading'].includes(item.phase) ? { ...item, phase: 'draft' } : item) };
+    project = { ...project, interstitials: project.interstitials.map(item => ({ ...item, groupId: projectFlows(project).find(flow => flow.scenes.some(scene => scene.interstitialId === item.id))?.interstitial.id, phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase })) };
     this.update({ message: 'Saving prepared project', progress: null });
     await this.writes;
     await writeProject(project, pendingAssets, true, signal);
@@ -65,13 +75,14 @@ export class ProjectController {
     const source: MediaSource = { id: project.id, name: project.source.name, url, assetId: asset.id, file: new File([asset.blob], project.source.name, { type: asset.blob.type }) };
     const subtitle = project.subtitle ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
     // Restore retained renders before publishing the timeline, including failed/cancelled retries.
-    await Promise.all([...new Set([...project.interstitials.flatMap(item => [item.previousResult?.assetId, ...(project.callResponse ? [item.result?.assetId] : [])]), ...(project.callResponse?.scenes.map(scene => scene.clip.assetId) ?? [])]
+    await Promise.all([...new Set([...project.interstitials.flatMap(item => [item.previousResult?.assetId, ...(project.callResponse ? [item.result?.assetId] : [])]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
       .filter((id): id is string => !!id))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
     this.history.clear();
     this.update({ project, source, subtitle, error: null, undoLabel: null, redoLabel: null, historyRevision: this.state.historyRevision + 1 });
-    this.interstitials.load(project.id, project.interstitials, project.callResponse ? responseInterstitialIds(project.callResponse) : [], project.callResponse);
+    this.interstitials.load(project.id, project.interstitials, project.callResponse ? responseInterstitialIds(project.callResponse) : [], projectFlows(project));
+    this.interstitials.setCallResponses(activeFlows(project));
     assets.releaseExcept(new Set(assetIds(project)));
     this.switching = false;
     this.save({ ...project, interstitials: this.interstitials.getSnapshot().items }, false);
@@ -122,31 +133,70 @@ export class ProjectController {
       if (!current?.source.assetId) throw new Error('Open a video first.');
       const example = createTimelineExample(current.source.assetId, duration);
       const project: Project = { ...current, id: `project:${crypto.randomUUID()}`, name: 'Test call response',
-        updatedAt: Date.now(), interstitials: example.interstitials, callResponse: example.flow, subtitle: null };
+        updatedAt: Date.now(), interstitials: example.interstitials, callResponse: example.flow, callResponses: [example.flow], subtitle: null };
       await this.activate(project, signal);
       this.interstitials.select(example.flow.interstitial.id);
     });
   }
   updateCallResponse(callResponse: CallResponseFlow) {
     if (this.operation) return;
+    callResponse = lockCallResponseStructure(callResponse);
     callResponse = groupCallResponse({ ...callResponse, scenes: callResponse.scenes.map(scene => scene.clip.kind !== 'video' && !scene.interstitialId
       ? { ...scene, interstitialId: `call-response-${scene.id}` } : scene) });
     this.switching = true;
     try {
       this.interstitials.setCallResponse(callResponse);
+      this.interstitials.rename(callResponse.interstitial.id, callResponse.interstitial.label);
       for (const answer of callResponse.interaction.answers) {
-        const previous = this.state.project?.callResponse?.interaction.answers.find(item => item.id === answer.id);
+        const previous = projectFlows(this.state.project).find(flow => flow.interstitial.id === callResponse.interstitial.id)?.interaction.answers.find(item => item.id === answer.id);
         const scene = callResponse.scenes.find(scene => scene.id === answer.sceneId);
-        if (previous && previous.label !== answer.label && scene?.interstitialId) this.interstitials.rename(scene.interstitialId, answer.label);
+        if (previous && (previous.label !== answer.label || previous.sceneId !== answer.sceneId) && scene?.interstitialId) this.interstitials.rename(scene.interstitialId, answer.label);
       }
     }
     finally { this.switching = false; }
-    if (this.state.project) this.save({ ...this.state.project, interstitials: this.interstitials.getSnapshot().items, callResponse, updatedAt: Date.now() });
+    if (this.state.project) {
+      const project = withFlows({ ...this.state.project, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() },
+        [...projectFlows(this.state.project).filter(flow => flow.interstitial.id !== callResponse.interstitial.id), callResponse].sort((a, b) => a.interstitial.time - b.interstitial.time));
+      this.interstitials.setCallResponses(activeFlows(project)); this.save(project);
+    }
+  }
+  async setInterstitialType(id: string, kind: 'regular' | 'call-response', duration: number) {
+    return this.task('Changing interstitial type', async signal => {
+      let project = this.state.project;
+      if (!project?.source.assetId) return;
+      let pin = project.interstitials.find(item => item.id === id);
+      const existing = projectFlows(project).find(flow => flow.interstitial.id === id);
+      // Older example projects stored the parent only in the flow.
+      if (!pin && existing) pin = { id, label: existing.interstitial.label, time: existing.interstitial.time,
+        kind: 'call-response', method: 'comfy', phase: 'draft', prompt: '', start_range: 2, end_range: 2, duration: 6, enable_prompt_expansion: false };
+      if (!pin || pin.groupId) return;
+      const owned = [pin.id, ...existing?.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []) ?? []];
+      if (!await this.interstitials.cancelSequence()) throw new Error('Cancel the active generation before changing interstitial type.');
+      for (const item of project.interstitials.filter(item => owned.includes(item.id) && (isGenerating(item) || item.phase === 'error' && item.requestId))) {
+        if (!await this.interstitials.cancel(item.id)) throw new Error('Could not cancel the active clip. Try again.');
+        signal.throwIfAborted();
+      }
+      let flows = projectFlows(project);
+      if (kind === 'call-response' && !existing) flows = [...flows, createCallResponseDraft(pin, project.source.assetId, duration).flow];
+      else if (kind === 'call-response' && existing) flows = flows.map(flow => flow === existing ? reanchorFlow(flow, pin!, duration) : flow);
+      this.switching = true;
+      try {
+        if (!this.interstitials.getSnapshot().items.some(item => item.id === id)) {
+          this.interstitials.ensureItem(pin);
+        }
+        this.interstitials.setType(id, kind);
+        const flow = flows.find(flow => flow.interstitial.id === id);
+        if (kind === 'call-response' && flow) this.interstitials.setCallResponse(flow);
+        project = withFlows({ ...project, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() }, flows);
+        this.interstitials.setCallResponses(activeFlows(project));
+      } finally { this.switching = false; }
+      this.save(project); this.interstitials.select(id);
+    });
   }
   endHistoryGroup() { this.history.endGroup(); }
-  async removeAnswer(id: string) {
+  async removeAnswer(id: string, groupId?: string) {
     return this.task('Removing answer', async signal => {
-      const project = this.state.project, flow = project?.callResponse;
+      const project = this.state.project, flow = projectFlows(project).find(flow => !groupId || flow.interstitial.id === groupId);
       if (!project || !flow) return false;
       const next = removeAnswer(flow, id);
       if (next === flow) return false;
@@ -159,8 +209,9 @@ export class ProjectController {
         if (removed) this.interstitials.setCallResponse(next);
       } finally {
         this.switching = false;
-        if (this.state.project?.id === project.id) this.save({ ...this.state.project,
-          callResponse: removed ? next : flow, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() });
+        if (this.state.project?.id === project.id) this.save(withFlows({ ...this.state.project,
+          interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() },
+          projectFlows(project).map(group => group.interstitial.id === flow.interstitial.id && removed ? next : group)));
       }
       if (!removed && !signal.aborted) throw new Error('Could not remove the answer because its generation job could not be cancelled. Try again.');
       return removed;
@@ -179,30 +230,33 @@ export class ProjectController {
       this.switching = true;
       try {
         await this.interstitials.restoreEdits(target.interstitials, target.callResponse, signal);
+        this.interstitials.setCallResponses(activeFlows({ ...project, callResponse: target.callResponse, callResponses: target.callResponses, interstitials: this.interstitials.getSnapshot().items }));
         restored = true; this.history.commit(direction);
         this.update({ subtitle, historyRevision: this.state.historyRevision + 1 });
       } finally {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
-          ...(restored ? { callResponse: target.callResponse, subtitle: target.subtitle } : {}),
+          ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, subtitle: target.subtitle } : {}),
           interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() }, false);
       }
     });
   }
-  async removeCallResponse() {
+  async removeCallResponse(groupId?: string) {
     return this.task('Removing call-response interstitial', async signal => {
       const project = this.state.project;
-      if (!project?.callResponse) return false;
-      const ids = [project.callResponse.interstitial.id, ...project.callResponse.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : [])];
+      const flow = projectFlows(project).find(flow => !groupId || flow.interstitial.id === groupId);
+      if (!project || !flow) return false;
+      const ids = [flow.interstitial.id, ...flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : [])];
       let removed = false;
       this.switching = true;
       try {
         removed = await this.interstitials.removeMany(ids, signal);
-        if (removed) this.interstitials.setCallResponse(undefined);
+        if (removed) this.interstitials.setCallResponses(activeFlows(project).filter(group => group.interstitial.id !== flow.interstitial.id));
       } finally {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
-          callResponse: removed ? undefined : project.callResponse,
+          callResponse: removed ? projectFlows(project).find(group => group.interstitial.id !== flow.interstitial.id) : project.callResponse,
+          callResponses: removed ? projectFlows(project).filter(group => group.interstitial.id !== flow.interstitial.id) : projectFlows(project),
           interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() });
       }
       if (!removed && !signal.aborted) throw new Error('Could not remove the call-response interstitial because a generation job could not be cancelled. Try again.');
@@ -283,10 +337,10 @@ export class ProjectController {
     const byId = new Map(imported.assets.map(asset => [asset.id, asset]));
     const source = await this.validateVideo(byId.get(imported.project.source.assetId!)!.blob, signal);
       const clipInfo = new Map([[imported.project.source.assetId!, source]]);
-      for (const scene of imported.project.callResponse?.scenes ?? []) {
+      for (const scene of projectFlows(imported.project).flatMap(flow => flow.scenes)) {
         let info = clipInfo.get(scene.clip.assetId);
         if (!info) { info = await this.validateVideo(byId.get(scene.clip.assetId)!.blob, signal); clipInfo.set(scene.clip.assetId, info); }
-        if (scene.clip.outFrame / imported.project.callResponse!.fps > info.duration + 1 / info.fps) throw new Error('A scene clip extends beyond its media.');
+        if (scene.clip.outFrame / TIMELINE_FPS > info.duration + 1 / info.fps) throw new Error('A scene clip extends beyond its media.');
       }
     for (const item of imported.project.interstitials) {
       if (item.time > source.duration + Math.max(1 / source.fps, 1 / TIMELINE_FPS)) throw new Error('An interstitial anchor lies outside the source video.');

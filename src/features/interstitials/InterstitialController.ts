@@ -1,6 +1,6 @@
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
-import { frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, playableResult, type Interstitial, type InterstitialSettings, type GenerationMethod } from '../../../shared/interstitials';
-import type { InsertionRange, PromptClipKind } from '../../../shared/contracts';
+import { frameTime, generationProvider, hasUnsubmittedChanges, interstitialSettings, isGenerating, playableResult, promptOnlySettings, type Interstitial, type InterstitialSettings, type GenerationMethod } from '../../../shared/interstitials';
+import type { AppStatus, InsertionRange, PromptClipKind } from '../../../shared/contracts';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from './api';
@@ -8,11 +8,14 @@ import { watchComfyJob } from './progress-stream';
 import { loadInterstitials, saveInterstitials } from './storage';
 import { assets } from '../project/assets';
 import { responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
-import { baselineReferences, clipDependency } from '../call-response/dependencies';
+import { baselineReferences, clipDependency, sameReference } from '../call-response/dependencies';
 import { generationSource } from '../call-response/generation';
+import { generationOrder, sequenceActive, sequenceStructure, type GenerationSequence } from '../call-response/sequence';
 import type { InterstitialEdit } from '../project/ProjectHistory';
+import { draftClip } from '../call-response/draft';
+import { finishLoop } from '../call-response/finishLoop';
 
-type State = { items: Interstitial[]; selectedId: string | null; error: string | null };
+type State = { items: Interstitial[]; selectedId: string | null; error: string | null; sequence: GenerationSequence | null };
 const requestMethod = (item: Interstitial): GenerationMethod => item.requestMethod ?? item.generationSettings?.method ?? 'fal';
 const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   const abort = () => { clearTimeout(timer); reject(signal.reason); };
@@ -25,10 +28,13 @@ export class InterstitialController {
   private sourceId = '';
   private linkedDurationIds: string[] = [];
   private callResponse?: CallResponseFlow;
-  private state: State = { items: [], selectedId: null, error: null };
+  private callResponses: CallResponseFlow[] = [];
+  private state: State = { items: [], selectedId: null, error: null, sequence: null };
   private listeners = new Set<() => void>();
   private tasks = new Map<string, AbortController>();
   private retained = new Map<string, Interstitial>();
+  private sequenceOperation?: AbortController;
+  private cancelling = new Map<string, Promise<boolean>>();
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private update(patch: Partial<State>, persist = false) {
@@ -40,46 +46,62 @@ export class InterstitialController {
   private patch(id: string, patch: Partial<Interstitial>) {
     this.update({ items: this.state.items.map(item => item.id === id ? { ...item, ...patch } : item).sort((a, b) => a.time - b.time) }, true);
   }
-  load(sourceId: string, items?: Interstitial[], linkedDurationIds: string[] = [], callResponse?: CallResponseFlow) {
+  load(sourceId: string, items?: Interstitial[], linkedDurationIds: string[] = [], callResponse?: CallResponseFlow | CallResponseFlow[]) {
     this.dispose(); this.sourceId = sourceId;
     this.retained.clear();
-    this.callResponse = callResponse;
+    this.callResponses = Array.isArray(callResponse) ? callResponse : callResponse ? [callResponse] : [];
+    this.callResponse = this.callResponses[0];
     this.linkedDurationIds = linkedDurationIds;
     const loaded = (items ?? loadInterstitials(sourceId)).map(item => {
-      const restored = { ...item, method: item.method ?? 'fal' as const, duration: item.duration ?? INTERSTITIAL.defaultDuration,
+      const restored = { ...promptOnlySettings(item), method: item.method ?? 'fal' as const, duration: item.duration ?? INTERSTITIAL.defaultDuration,
         enable_prompt_expansion: item.enable_prompt_expansion ?? INTERSTITIAL.enablePromptExpansion };
-      return { ...restored, generationSettings: item.generationSettings ?? (item.result || item.requestId ? interstitialSettings(restored) : undefined) };
+      return { ...restored, generationSettings: item.generationSettings ? promptOnlySettings(item.generationSettings) : (item.result || item.requestId ? interstitialSettings(restored) : undefined) };
     });
-    const linked = loaded.filter(item => linkedDurationIds.includes(item.id));
+    const linked = loaded.filter(item => this.callResponse?.interstitial.linkResponseDurations !== false && linkedDurationIds.includes(item.id));
     const duration = Math.max(...linked.map(item => item.duration));
     const normalized = loaded.map(item => linked.includes(item) ? { ...item, duration } : item);
-    this.update({ items: callResponse ? baselineReferences(callResponse, normalized) : normalized, selectedId: null, error: null });
+    // Initialize every group's legacy references before resuming any downloads.
+    const referenced = this.callResponses.reduce<Interstitial[]>((items, flow) => baselineReferences(flow, items), normalized);
+    this.update({ items: referenced, selectedId: null, error: null, sequence: null });
     for (const item of this.state.items) if (['queued', 'rendering', 'loading', 'ready'].includes(item.phase)) void this.resume(item.id);
   }
   select(id: string | null) { this.update({ selectedId: id }); }
   clearError() { this.update({ error: null }); }
-  hasLinkedDuration(id: string) { return this.linkedDurationIds.length > 1 && this.linkedDurationIds.includes(id); }
+  hasLinkedDuration(id: string) { const flow = this.flowFor(id); if (flow?.interstitial.linkResponseDurations === false) return false; const ids = flow ? responseInterstitialIds(flow) : this.linkedDurationIds; return ids.length > 1 && ids.includes(id); }
   setCallResponse(flow?: CallResponseFlow) {
+    if (sequenceStructure(flow) !== sequenceStructure(this.callResponses.find(group => group.interstitial.id === flow?.interstitial.id)) && sequenceActive(this.state.sequence)
+      && (!flow || generationOrder(flow).some(id => this.state.sequence!.ids.includes(id)))) {
+      void this.cancelSequence('Clip structure changed. Start a new sequence to include the updated clips.');
+    }
+    const previous = this.callResponses.find(group => group.interstitial.id === flow?.interstitial.id);
     this.callResponse = flow;
+    this.callResponses = flow ? [...this.callResponses.filter(group => group.interstitial.id !== flow.interstitial.id), flow] : [];
     if (!flow) { this.linkedDurationIds = []; return; }
     this.linkedDurationIds = responseInterstitialIds(flow);
-    const added: Interstitial[] = flow.scenes.filter(scene => scene.clip.kind !== 'video' && scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({
-      id: scene.interstitialId!, label: scene.label, time: flow.interstitial.time, method: 'fal', phase: 'ready',
-      start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange,
-      duration: this.state.items.find(item => this.linkedDurationIds.includes(item.id))?.duration ?? INTERSTITIAL.defaultDuration,
-      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, prompt: scene.dialogue,
-      result: { url: `asset:${scene.clip.assetId}`, assetId: scene.clip.assetId, start: scene.clip.inFrame / flow.fps,
-        duration: (scene.clip.outFrame - scene.clip.inFrame) / flow.fps,
-        totalDuration: Math.max(scene.clip.outFrame / flow.fps, ...this.state.items.flatMap(item => item.result?.assetId === scene.clip.assetId ? [item.result.totalDuration] : [])) },
-    }));
-    if (added.length) this.update({ items: baselineReferences(flow, [...this.state.items, ...added]) }, true);
+    const added = flow.scenes.filter(scene => scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({ ...draftClip(flow, scene),
+      ...(scene.clip.kind === 'response' && flow.interstitial.linkResponseDurations !== false ? { duration: this.state.items.find(item => responseInterstitialIds(flow).includes(item.id))?.duration ?? 6 } : {}) }));
+    const items = [...this.state.items, ...added].map(item => {
+      const scene = flow.scenes.find(scene => scene.interstitialId === item.id);
+      if (!scene) return item;
+      return { ...item, groupId: flow.interstitial.id, time: flow.interstitial.time,
+        ...(flow.interstitial.linkResponseDurations && previous?.interstitial.linkResponseDurations === false && scene.clip.kind === 'response'
+          ? { duration: Math.max(INTERSTITIAL.minDuration, ...this.state.items.filter(item => responseInterstitialIds(flow).includes(item.id)).map(item => item.duration)) } : {}),
+        ...(previous && previous.interstitial.brief !== flow.interstitial.brief ? { continuity: flow.interstitial.brief } : {}) };
+    });
+    if (added.length || JSON.stringify(items) !== JSON.stringify(this.state.items)) this.update({ items: baselineReferences(flow, items) }, true);
   }
+  setCallResponses(flows: CallResponseFlow[]) {
+    const active = this.callResponses.find(flow => generationOrder(flow).some(id => this.state.sequence?.ids.includes(id)));
+    if (sequenceActive(this.state.sequence) && (!active || sequenceStructure(active) !== sequenceStructure(flows.find(flow => flow.interstitial.id === active.interstitial.id)))) void this.cancelSequence('The interstitial type or structure changed.');
+    this.callResponses = flows; this.callResponse = flows[0];
+  }
+  private flowFor(id: string) { return this.callResponses.find(flow => flow.scenes.some(scene => scene.interstitialId === id)); }
   dependency(id: string) {
-    const scene = this.callResponse?.scenes.find(scene => scene.interstitialId === id && scene.clip.kind !== 'video');
-    return scene && this.callResponse ? clipDependency(this.callResponse, this.state.items, scene.id) : undefined;
+    const flow = this.flowFor(id), scene = flow?.scenes.find(scene => scene.interstitialId === id);
+    return scene && flow ? clipDependency(flow, this.state.items, scene.id) : undefined;
   }
   clipKind(id: string): PromptClipKind {
-    const kind = this.callResponse?.scenes.find(scene => scene.interstitialId === id)?.clip.kind;
+    const kind = this.flowFor(id)?.scenes.find(scene => scene.interstitialId === id)?.clip.kind;
     return kind === 'call' || kind === 'idle' || kind === 'response' ? kind : 'interstitial';
   }
   add(time: number, duration: number) {
@@ -89,7 +111,7 @@ export class InterstitialController {
     if (existing) { this.select(existing.id); return existing; }
     const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
-      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, method: 'fal', prompt: '', phase: 'draft' };
+      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, method: 'comfy', prompt: '', phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
     return item;
   }
@@ -101,20 +123,90 @@ export class InterstitialController {
     const label = name.trim().slice(0, 1000) || 'Untitled';
     if (this.state.items.some(item => item.id === id && item.label !== label)) this.patch(id, { label });
   }
+  setType(id: string, kind: 'regular' | 'call-response') { this.patch(id, { kind }); }
+  ensureItem(item: Interstitial) { if (!this.state.items.some(current => current.id === item.id)) this.update({ items: [...this.state.items, item] }, true); }
   edit(id: string, values: Partial<InterstitialSettings>) {
     const item = this.state.items.find(item => item.id === id);
     // The editor always stays usable. Jobs and media retain the inputs they were submitted with.
     if (!item) return;
     if (values.duration !== undefined && this.hasLinkedDuration(id)) {
+      const linked = this.flowFor(id) ? responseInterstitialIds(this.flowFor(id)!) : this.linkedDurationIds;
       this.update({ items: this.state.items.map(current => current.id === id ? { ...current, ...values }
-        : this.linkedDurationIds.includes(current.id) ? { ...current, duration: values.duration! } : current) }, true);
+        : linked.includes(current.id) ? { ...current, duration: values.duration! } : current) }, true);
     } else this.patch(id, values);
   }
-  async generate(id: string, engine: MediaEngine, info: MediaInfo) {
+  canRecover(id: string) {
     const item = this.state.items.find(item => item.id === id);
-    if (!item || isGenerating(item) || this.tasks.has(id)) return;
+    if (!item || hasUnsubmittedChanges(item)) return false;
+    const reference = this.dependency(id)?.reference, submitted = item.result?.reference ?? item.requestReference;
+    return !reference || !!submitted && sameReference(reference, submitted);
+  }
+  async generateAll(engine: MediaEngine, info: MediaInfo, providers?: AppStatus['providers'], remaining = false, groupId?: string) {
+    const flow = groupId ? this.callResponses.find(flow => flow.interstitial.id === groupId) : this.callResponse;
+    if (!flow || sequenceActive(this.state.sequence)) return;
+    const ids = generationOrder(flow);
+    if (!ids.length || ids.some(id => {
+      const item = this.state.items.find(item => item.id === id);
+      return !item || this.tasks.has(id) || this.cancelling.has(id) || isGenerating(item);
+    })) return;
+    const previous = this.state.sequence;
+    const completedIds = remaining && previous?.ids.join('|') === ids.join('|') ? previous.completedIds.filter(id => {
+      const item = this.state.items.find(item => item.id === id);
+      return item && playableResult(item) && !hasUnsubmittedChanges(item) && !this.dependency(id)?.stale;
+    }) : [];
+    const operation = new AbortController(); this.sequenceOperation = operation;
+    this.update({ sequence: { ids, completedIds, phase: 'running' }, error: null });
+    try {
+      for (const id of ids) {
+        if (completedIds.includes(id)) continue;
+        operation.signal.throwIfAborted();
+        const item = this.state.items.find(item => item.id === id);
+        if (!item) throw new Error('A clip was removed. Start a new sequence.');
+        this.update({ sequence: { ids, completedIds: [...completedIds], activeId: id, phase: 'running' } });
+        if (!item.prompt.trim()) throw new Error(`Add a prompt for ${item.label} to continue.`);
+        if (providers && !providers[generationProvider(item.method)]) throw new Error(`${item.label}: ${generationProvider(item.method) === 'comfy' ? 'Comfy Cloud' : 'fal.ai'} is not connected.`);
+        const blocked = this.dependency(id)?.blocked;
+        if (blocked) throw new Error(blocked);
+        // Read editable fields and references only when this clip's turn starts.
+        await this.generateClip(id, engine, info);
+        operation.signal.throwIfAborted();
+        const result = this.state.items.find(item => item.id === id);
+        if (result?.phase !== 'ready') throw new Error(`${item.label}: ${result?.error || 'Generation stopped. Retry this clip or continue the sequence.'}`);
+        if (this.dependency(id)?.stale) throw new Error(`${item.label}'s reference changed. Regenerate it before continuing.`);
+        completedIds.push(id);
+        this.update({ sequence: { ids, completedIds: [...completedIds], phase: 'running' } });
+      }
+      this.update({ sequence: { ids, completedIds, phase: 'ready' } });
+    } catch (error) {
+      if (!operation.signal.aborted) this.update({ sequence: { ...this.state.sequence!, phase: 'error', activeId: undefined,
+        message: error instanceof Error ? error.message : 'Sequence stopped. Try again.' } });
+    } finally {
+      if (!operation.signal.aborted && this.sequenceOperation === operation) this.sequenceOperation = undefined;
+    }
+  }
+  async cancelSequence(message?: string) {
+    const sequence = this.state.sequence;
+    if (!sequenceActive(sequence)) return true;
+    const source = this.sourceId, operation = this.sequenceOperation;
+    operation?.abort();
+    this.update({ sequence: { ...sequence!, phase: 'cancelling' } });
+    const cancelled = sequence?.activeId ? await this.cancelClip(sequence.activeId) : true;
+    if (source === this.sourceId && this.sequenceOperation === operation) {
+      this.sequenceOperation = undefined;
+      this.update({ sequence: { ...sequence!, activeId: undefined, phase: cancelled ? 'cancelled' : 'error',
+        message: cancelled ? message : 'The sequence stopped, but its remote job could not be cancelled. Retry cancellation on the clip.' } });
+    }
+    return cancelled;
+  }
+  async generate(id: string, engine: MediaEngine, info: MediaInfo) {
+    if (sequenceActive(this.state.sequence) && this.state.sequence!.ids.includes(id)) return;
+    return this.generateClip(id, engine, info);
+  }
+  private async generateClip(id: string, engine: MediaEngine, info: MediaInfo) {
+    const item = this.state.items.find(item => item.id === id);
+    if (!item || isGenerating(item) || this.tasks.has(id) || this.cancelling.has(id)) return;
     // An unchanged scene that only failed to download can reuse its existing render.
-    if (item.result && item.phase !== 'ready' && !hasUnsubmittedChanges(item)) return this.resume(id);
+    if (item.result && item.phase !== 'ready' && this.canRecover(id)) return this.resumeClip(id);
     const dependency = this.dependency(id);
     if (dependency?.blocked) { this.update({ error: dependency.blocked }); return; }
     const operation = new AbortController(); this.tasks.set(id, operation);
@@ -142,8 +234,12 @@ export class InterstitialController {
     if (!operation.signal.aborted) this.patch(id, { phase: 'error', progress: undefined, error: error instanceof Error ? error.message : 'Generation failed. Try again.' });
   }
   async resume(id: string) {
+    if (sequenceActive(this.state.sequence) && this.state.sequence!.ids.includes(id)) return;
+    return this.resumeClip(id);
+  }
+  private async resumeClip(id: string) {
     const item = this.state.items.find(item => item.id === id);
-    if (!item || this.tasks.has(id)) return;
+    if (!item || this.tasks.has(id) || this.cancelling.has(id)) return;
     const operation = new AbortController(); this.tasks.set(id, operation);
     try {
       this.patch(id, { phase: item.result ? 'loading' : 'queued', error: undefined, progress: undefined, progressDetails: undefined, queuePosition: undefined });
@@ -156,7 +252,7 @@ export class InterstitialController {
   private async poll(id: string, requestId: string, signal: AbortSignal, method: GenerationMethod, submittedInsertion?: InsertionRange) {
     const stream = new AbortController(), streamSignal = AbortSignal.any([signal, stream.signal]);
     let liveRevision = 0;
-    if (method === 'comfy') void watchComfyJob(requestId, streamSignal, event => {
+    if (generationProvider(method) === 'comfy') void watchComfyJob(requestId, streamSignal, event => {
       if (streamSignal.aborted) return;
       liveRevision++;
       if (event.type === 'progress') this.patch(id, { phase: 'rendering', progress: event.progress, progressDetails: event.progressDetails, queuePosition: undefined });
@@ -195,8 +291,13 @@ export class InterstitialController {
         if (percent !== lastPercent) { lastPercent = percent; this.patch(id, { progress }); }
       });
       signal.throwIfAborted();
+      let blob = fetched.blob;
+      if (result.reference?.mode === 'loop') {
+        this.patch(id, { progress: undefined, progressDetails: { stage: 'Matching loop boundaries' } });
+        const loop = await finishLoop(blob, result, signal, this.state.items.find(item => item.id === id)?.generationSettings?.loopAudio); blob = loop.blob; result = loop.result;
+      }
       this.patch(id, { progress: undefined, progressDetails: { stage: 'Saving generated video' } });
-      const asset = await assets.save(fetched.blob, fetched.name, signal);
+      const asset = await assets.save(blob, fetched.name, signal);
       signal.throwIfAborted();
       result = { ...result, assetId: asset.id };
       this.patch(id, { result });
@@ -215,8 +316,21 @@ export class InterstitialController {
     } finally { signal.removeEventListener('abort', abort); media.dispose(); }
   }
   async cancel(id: string) {
+    if (sequenceActive(this.state.sequence) && this.state.sequence?.activeId === id) return this.cancelSequence();
+    return this.cancelClip(id);
+  }
+  private async cancelClip(id: string) {
+    const pending = this.cancelling.get(id);
+    if (pending) return pending;
+    const cancellation = this.performCancellation(id);
+    this.cancelling.set(id, cancellation);
+    try { return await cancellation; }
+    finally { if (this.cancelling.get(id) === cancellation) this.cancelling.delete(id); }
+  }
+  private async performCancellation(id: string) {
     const item = this.state.items.find(item => item.id === id);
     if (!item) return false;
+    if (item.phase === 'ready') return true;
     this.tasks.get(id)?.abort(); this.tasks.delete(id);
     const source = this.sourceId;
     try {
@@ -233,6 +347,7 @@ export class InterstitialController {
   }
   async removeMany(ids: string[], signal?: AbortSignal) {
     const source = this.sourceId, removed = new Set(ids);
+    if (sequenceActive(this.state.sequence) && this.state.sequence!.ids.some(id => removed.has(id)) && !await this.cancelSequence('A clip was removed. Start a new sequence to include the remaining clips.')) return false;
     const items = this.state.items.filter(item => removed.has(item.id));
     // Retain the whole group if any active job cannot be cancelled.
     for (const item of items) {
@@ -251,9 +366,13 @@ export class InterstitialController {
     signal.throwIfAborted();
     const selectedId = this.state.selectedId && (ids.has(this.state.selectedId) || this.state.selectedId === flow?.interstitial.id)
       ? this.state.selectedId : flow?.interstitial.id ?? edits.find(item => !previousIds.has(item.id))?.id ?? null;
+    if (sequenceStructure(flow) !== sequenceStructure(this.callResponse) && !await this.cancelSequence('Clip structure changed. Start a new sequence to include the updated clips.')) throw new Error('Could not cancel generation. Retry undo or redo.');
     this.callResponse = flow; this.linkedDurationIds = flow ? responseInterstitialIds(flow) : [];
     // Preserve the latest job and render even when the corresponding edit predates them.
     this.update({ items: edits.map(edit => ({ ...this.retained.get(edit.id)!, ...edit })), selectedId, error: null }, true);
   }
-  dispose() { this.tasks.forEach(task => task.abort()); this.tasks.clear(); }
+  dispose() {
+    this.sequenceOperation?.abort(); this.sequenceOperation = undefined;
+    this.tasks.forEach(task => task.abort()); this.tasks.clear(); this.cancelling.clear();
+  }
 }

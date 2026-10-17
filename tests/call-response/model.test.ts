@@ -1,7 +1,62 @@
 import { describe, expect, it } from 'vitest';
-import { addAnswer, advanceSession, answerSession, branchSession, changeClipKind, createTestFlow, createTimelineExample, editAnswer, flowLayout, getScene, interstitialScenes, previewScene, reconnectEdge, removeAnswer, responseInterstitialIds, sceneFrames, startSession } from '../../src/features/call-response/model';
+import { addAnswer, advanceSession, answerSession, assignResponseButton, branchSession, changeClipKind, createTestFlow, createTimelineExample, defaultAnswerLabel, editAnswer, flowLayout, getScene, interstitialScenes, lockCallResponseStructure, migrateDefaultAnswerLabels, previewScene, reconnectEdge, removeAnswer, responseInterstitialIds, sceneFrames, startSession } from '../../src/features/call-response/model';
 
 describe('call-response example playback', () => {
+  it('names new choices alphabetically, continuing beyond Z and avoiding custom label collisions', () => {
+    expect([0, 1, 25, 26, 27, 51, 52].map(defaultAnswerLabel)).toEqual(['A', 'B', 'Z', 'AA', 'AB', 'AZ', 'BA']);
+    let flow = addAnswer(createTestFlow());
+    expect(flow.interaction.answers.map(answer => answer.label)).toEqual(['A', 'B', 'C']);
+    flow = editAnswer(flow, flow.interaction.answers[2].id, { label: 'D' });
+    expect(addAnswer(flow).interaction.answers.at(-1)?.label).toBe('E');
+  });
+  it('migrates untouched example names while retaining custom answers, media and branch IDs', () => {
+    const flow = createTestFlow();
+    flow.interaction.answers[0].label = 'Correct'; flow.interaction.answers[1].label = 'Incorrect';
+    getScene(flow, 'correct').label = 'Celebrate'; getScene(flow, 'incorrect').label = 'Give a hint';
+    const migrated = migrateDefaultAnswerLabels(flow);
+    expect(migrated.interaction.answers.map(answer => answer.label)).toEqual(['A', 'B']);
+    expect(migrated.interaction.answers.map(answer => answer.id)).toEqual(['correct', 'incorrect']);
+    expect(getScene(migrated, 'correct').clip).toEqual(getScene(flow, 'correct').clip);
+    expect(getScene(migrated, 'correct').label).toBe('A');
+    expect(migrateDefaultAnswerLabels(migrated)).toBe(migrated);
+    const custom = editAnswer(flow, 'correct', { label: 'Tell me more' });
+    expect(migrateDefaultAnswerLabels(custom).interaction.answers.map(answer => answer.label)).toEqual(['Tell me more', 'B']);
+    const authored = editAnswer(editAnswer(flow, 'correct', { label: 'My answer' }), 'correct', { label: 'Correct' });
+    expect(migrateDefaultAnswerLabels(authored).interaction.answers[0].label).toBe('Correct');
+  });
+  it('restores fixed roles and connections on legacy groups without losing clip media', () => {
+    let flow = createTestFlow();
+    flow = changeClipKind(flow, 'wait', 'video');
+    flow = changeClipKind(flow, 'call', 'idle');
+    flow = reconnectEdge(flow, 'incorrect-continue', 'call');
+    const locked = lockCallResponseStructure(flow);
+    expect(locked.scenes.map(scene => scene.clip.kind)).toEqual(['video', 'call', 'idle', 'response', 'response', 'video']);
+    for (const scene of locked.scenes) expect(scene.clip).toMatchObject({ assetId: getScene(flow, scene.id).clip.assetId,
+      inFrame: getScene(flow, scene.id).clip.inFrame, outFrame: getScene(flow, scene.id).clip.outFrame });
+    expect(interstitialScenes(locked).map(scene => scene.id)).toEqual(['call', 'wait', 'correct', 'incorrect']);
+    const waiting = advanceSession(locked, startSession(locked, true), 72 + 96);
+    expect(waiting.sceneId).toBe('wait');
+    for (const answer of locked.interaction.answers) {
+      const response = advanceSession(locked, branchSession(locked, waiting, answer.id), 48);
+      expect(response.sceneId).toBe(answer.sceneId);
+      expect(advanceSession(locked, response, sceneFrames(getScene(locked, answer.sceneId))).sceneId).toBe('continue');
+    }
+    expect(lockCallResponseStructure(locked)).toEqual(locked);
+  });
+  it('swaps response button assignments with one route per answer and preserves the actual clips', () => {
+    const original = createTestFlow();
+    const flow = assignResponseButton(original, 'correct', 'incorrect');
+    expect(flow.interaction.answers.map(answer => answer.sceneId)).toEqual(['incorrect', 'correct']);
+    for (const answer of flow.interaction.answers) {
+      const scene = getScene(flow, answer.sceneId);
+      expect(scene.clip).toMatchObject({ kind: 'response', outcome: answer.id, assetId: getScene(original, scene.id).clip.assetId });
+      const queued = branchSession(flow, { ...previewScene(flow, 'wait'), playing: true }, answer.id);
+      expect(advanceSession(flow, queued, 48).sceneId).toBe(answer.sceneId);
+    }
+    expect(assignResponseButton(flow, 'call', 'incorrect')).toBe(flow);
+    expect(assignResponseButton(flow, 'correct', 'missing')).toBe(flow);
+    expect(assignResponseButton(flow, 'correct', 'incorrect')).toBe(flow);
+  });
   it('routes arbitrary labels and alternative text to independent response clips at loop boundaries', () => {
     let flow = addAnswer(createTestFlow());
     const added = flow.interaction.answers.at(-1)!;
@@ -41,7 +96,7 @@ describe('call-response example playback', () => {
     const one = removeAnswer(removed, 'correct');
     expect(flowLayout(one).starts.incorrect).toBe(216);
     expect(removeAnswer(one, 'incorrect')).toBe(one);
-    expect(answerSession(one, previewScene(one, 'wait'), 'Incorrect').outcome).toBe('incorrect');
+    expect(answerSession(one, previewScene(one, 'wait'), 'B').outcome).toBe('incorrect');
   });
   it('owns all non-video clips in one stable interstitial as clip types change', () => {
     const { flow } = createTimelineExample('source-asset', 8);

@@ -18,6 +18,7 @@ test.beforeEach(async ({ page }) => {
 
 test('pins drag without seeking, reorder, persist, and delete from the panel or keyboard', async ({ page }) => {
   await addPin(page, 20);
+  await page.getByLabel('Video generation method').selectOption('fal');
   await page.getByRole('textbox', { name: 'Interstitial prompt' }).fill('Opening');
   await addPin(page, 60);
   const duration = Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max'));

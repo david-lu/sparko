@@ -1,18 +1,21 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { answerLabel, getScene, type Outcome, type SceneId } from '../call-response/model';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { answerLabel, getScene, interactionFor, type Outcome, type SceneId } from '../call-response/model';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 
 const EXIT_MS = 220;
 const HOLD_MS = 1000;
 type Choice = { id: string; label: string; outcome: Outcome };
 type Presentation = {
-  sceneId: SceneId; choices: Choice[]; selectedId: string | null;
+  sceneId: SceneId; question: string; choices: Choice[]; selectedId: string | null;
   phase: 'choosing' | 'dismissing' | 'holding' | 'exiting' | 'done';
 };
 
 export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   const scene = value.session ? getScene(value.flow, value.session.sceneId) : null;
   const idleId = scene?.clip.kind === 'idle' ? scene.id : null;
+  const question = idleId ? interactionFor(value.flow, idleId).question : '';
+  const questionId = useId();
+  const controls = useRef<HTMLDivElement>(null);
   const outcome = value.session?.outcome;
   const choices = useMemo(() => value.flow.edges
     .filter(edge => edge.from === idleId && value.flow.interaction.answers.some(answer => answer.id === edge.when))
@@ -25,30 +28,41 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
       if (!idleId) return current?.selectedId ? current : null;
       const selectedId = choices.find(choice => choice.outcome === outcome)?.id ?? null;
       if (current?.sceneId === idleId && current.selectedId === selectedId) {
-        return current.choices === choices ? current : { ...current, choices };
+        return current.choices === choices && current.question === question ? current : { ...current, choices, question };
       }
-      return { sceneId: idleId, choices, selectedId, phase: selectedId ? 'dismissing' : 'choosing' };
+      return { sceneId: idleId, question, choices, selectedId, phase: selectedId ? 'dismissing' : 'choosing' };
     });
-  }, [idleId, outcome, choices]);
+  }, [idleId, outcome, choices, question]);
 
   const selectedId = presentation?.selectedId;
   const sceneId = presentation?.sceneId;
+  const phase = presentation?.phase;
+  useLayoutEffect(() => {
+    const group = controls.current, button = group?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
+    if (!group || !button || !selectedId) return;
+    // Measure the layout position, excluding hover and entry-animation transforms.
+    const center = () => button.style.setProperty('--choice-center-x', `${(group.clientWidth - button.offsetWidth) / 2 - button.offsetLeft + group.scrollLeft}px`);
+    center();
+    const observer = new ResizeObserver(center);
+    observer.observe(group); observer.observe(button);
+    group.addEventListener('scroll', center);
+    return () => { observer.disconnect(); group.removeEventListener('scroll', center); };
+  }, [sceneId, selectedId]);
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || !phase || phase === 'choosing' || phase === 'done') return;
     const exitMs = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : EXIT_MS;
-    const advance = (phase: Presentation['phase']) => setPresentation(current => current && { ...current, phase });
-    const timers = [
-      setTimeout(() => advance('holding'), exitMs),
-      setTimeout(() => advance('exiting'), exitMs + HOLD_MS),
-      setTimeout(() => advance('done'), exitMs * 2 + HOLD_MS),
-    ];
-    return () => timers.forEach(clearTimeout);
-  }, [selectedId, sceneId]);
+    // Start each timer after the previous phase renders, preserving the full confirmation hold.
+    const next = phase === 'dismissing' ? 'holding' : phase === 'holding' ? 'exiting' : 'done';
+    const timer = setTimeout(() => setPresentation(current => current && { ...current, phase: next }), phase === 'holding' ? HOLD_MS : exitMs);
+    return () => clearTimeout(timer);
+  }, [selectedId, sceneId, phase]);
 
   if (!presentation || !presentation.choices.length || presentation.phase === 'done') return null;
-  return <div key={presentation.sceneId} className="player-branch-controls" role="group" aria-label="Choose an answer"
+  return <div key={presentation.sceneId} ref={controls} className="player-branch-controls" role="group" aria-label="Choose an answer"
+    aria-describedby={presentation.question.trim() ? questionId : undefined}
     data-phase={presentation.phase} style={{ '--choice-columns': Math.min(3, presentation.choices.length), '--choice-exit-duration': `${EXIT_MS}ms` } as CSSProperties}
     onDoubleClick={event => event.stopPropagation()}>
+    {presentation.question.trim() && <p id={questionId} className="player-branch-question">{presentation.question}</p>}
     {presentation.choices.map((choice, index) => <button key={choice.id}
       style={{ animationDelay: selectedId ? '0ms' : `${Math.min(index, 6) * 100}ms` }}
       aria-label={`Choose ${choice.label}`} aria-pressed={selectedId === choice.id} aria-disabled={!!selectedId}

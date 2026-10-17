@@ -8,6 +8,7 @@ export type TimelineSegment = {
   sourceStart: number; startFrame: number; endFrame: number;
   /** Repeat one boundary frame, with silent audio, for a generation reference. */
   still?: boolean;
+  muted?: boolean;
 };
 
 /** Immutable 24 fps edit list. Original assets are sampled without modifying their files. */
@@ -24,7 +25,7 @@ export class TimelineComposition {
     let cursor = 0, sourceFrame = 0;
     const total = Math.max(1, Math.round(info.duration * this.fps));
     this.sourceDuration = total / this.fps;
-    const ready = items.filter(item => playableResult(item) && item.time <= Math.max(info.duration, this.sourceDuration)).sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
+    const ready = items.filter(item => !item.groupId && item.kind !== 'call-response' && playableResult(item) && item.time <= Math.max(info.duration, this.sourceDuration)).sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
     const addSource = (end: number) => {
       if (end > sourceFrame) {
         this.segments.push({ id: `source:${sourceFrame}`, kind: 'source', label: source.name, source, sourceStart: sourceFrame / this.fps, startFrame: cursor, endFrame: cursor + end - sourceFrame });

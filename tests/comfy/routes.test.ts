@@ -27,7 +27,7 @@ const submit = (before = '1.625', after = '1.625') => request(app).post('/api/co
 describe('Comfy API boundaries', () => {
   it('validates the reference and dispatches only to Comfy', async () => {
     await submit().expect(202);
-    expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 960, height: 544, hasAudio: true });
+    expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { mode: 'bridge', before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 960, height: 544, hasAudio: true });
     expect(providers.falSubmit).not.toHaveBeenCalled();
   });
   it('rejects off-grid windows, missing context, and unavailable providers before submission', async () => {

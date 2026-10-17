@@ -1,13 +1,13 @@
 import { interstitialSettings, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import type { Project } from './types';
 
-export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time'> & InterstitialSettings;
-export type ProjectEdit = Pick<Project, 'callResponse' | 'subtitle'> & { interstitials: InterstitialEdit[] };
+export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId'> & InterstitialSettings;
+export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'subtitle'> & { interstitials: InterstitialEdit[] };
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
-  return { interstitials: project.interstitials.map(({ id, label, time, ...item }) => ({ id, label, time, ...interstitialSettings(item) })),
-    callResponse: project.callResponse, subtitle: project.subtitle };
+  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item) })),
+    callResponse: project.callResponse, callResponses: project.callResponses, subtitle: project.subtitle };
 }
 function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' | 'key'> {
   if (!same(before.callResponse, after.callResponse)) {
@@ -22,6 +22,7 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
     return { label: changedType ? 'Change clip type' : 'Edit call-response connections' };
   }
   if (!same(before.subtitle, after.subtitle)) return { label: 'Change subtitles' };
+  if (!same(before.callResponses, after.callResponses)) return { label: 'Edit call-response interstitial' };
   const previous = new Map(before.interstitials.map(item => [item.id, item]));
   if (after.interstitials.some(item => !previous.has(item.id))) return { label: 'Add interstitial' };
   if (after.interstitials.length < before.interstitials.length) return { label: 'Remove interstitial' };

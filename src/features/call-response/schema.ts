@@ -15,10 +15,10 @@ export const callResponseSchema = z.object({
   version: z.union([z.literal(1), z.literal(2)]), fps: z.literal(24), entrySceneId: sceneId,
   interstitial: z.object({
     id: z.string().min(1).max(200), kind: z.literal('call-response'), label: z.string().min(1).max(1000),
-    time: z.number().finite().nonnegative(), clipIds: z.array(z.string().min(1).max(200)).max(1000),
+    brief: z.string().max(4000).optional(), linkResponseDurations: z.boolean().optional(), time: z.number().finite().nonnegative(), clipIds: z.array(z.string().min(1).max(200)).max(1000),
   }).optional(),
   scenes: z.array(z.object({ id: sceneId, label: z.string().max(1000), role: z.enum(['source', 'call', 'wait', 'response']),
-    dialogue: z.string().max(4000), clip, interstitialId: z.string().min(1).max(200).optional() })).min(5).max(104)
+    dialogue: z.string().max(4000), draft: z.boolean().optional(), plannedFrames: frame.positive().optional(), clip, interstitialId: z.string().min(1).max(200).optional() })).min(5).max(104)
     .refine(scenes => new Set(scenes.map(scene => scene.id)).size === scenes.length
       && new Set(scenes.map(scene => scene.clip.id)).size === scenes.length, 'Duplicate scene or clip IDs.'),
   edges: z.array(z.object({ id: z.string().min(1).max(200), from: sceneId, to: sceneId,

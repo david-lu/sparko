@@ -4,8 +4,26 @@ import { emptyAnalysis, type Project } from '../../src/features/project/types';
 import { addAnswer, answerSession, createTimelineExample, editAnswer, previewScene, reconnectEdge } from '../../src/features/call-response/model';
 import { callResponseSchema } from '../../src/features/call-response/schema';
 import { baselineReferences, clipDependency } from '../../src/features/call-response/dependencies';
+import { createCallResponseDraft } from '../../src/features/call-response/draft';
 
 describe('call-response project persistence', () => {
+  it('round-trips multiple draft pins, an inactive variant and short Comfy loop settings', async () => {
+    const assetId = crypto.randomUUID();
+    const pin = { id: 'first', label: 'First', time: 3, kind: 'regular' as const, method: 'comfy' as const, phase: 'draft' as const, prompt: 'Shared setting', start_range: 2, end_range: 2, duration: 6, enable_prompt_expansion: false };
+    const second = { ...pin, id: 'second', label: 'Second', time: 9, kind: 'call-response' as const };
+    const a = createCallResponseDraft(pin, assetId, 20), b = createCallResponseDraft(second, assetId, 20);
+    a.interstitials[1].loopAudio = true;
+    const project: Project = { id: 'drafts', name: 'Drafts', updatedAt: 0, source: { name: 'source.mp4', assetId },
+      callResponse: a.flow, callResponses: [a.flow, b.flow], interstitials: [pin, second, ...a.interstitials, ...b.interstitials], subtitle: null, analysis: emptyAnalysis() };
+    const signal = new AbortController().signal;
+    const { project: restored } = await unpackProject(await packProject(project, [{ id: assetId, name: 'source.mp4', blob: new Blob(['video']) }], signal, () => {}), signal, () => {});
+    expect(restored.callResponses).toHaveLength(2);
+    expect(restored.interstitials[0].kind).toBe('regular');
+    expect(restored.interstitials[3]).toMatchObject({ method: 'comfy-loop', duration: 2, loopAudio: true, continuity: 'Shared setting' });
+    expect(restored.callResponses!.every(flow => flow.scenes.every(scene => scene.clip.assetId === restored.source.assetId))).toBe(true);
+    expect(restored.callResponses![0].interstitial).toMatchObject({ brief: 'Shared setting', linkResponseDurations: false });
+    expect(restored.callResponses![0].scenes.find(scene => scene.id === 'wait')).toMatchObject({ draft: true, plannedFrames: 48 });
+  });
   it('migrates binary projects without changing answer matching, scene IDs, or saved media', () => {
     const { flow } = createTimelineExample(crypto.randomUUID(), 12);
     const legacy = { ...flow, version: 1, interaction: { question: 'What is 2 + 2?', acceptedAnswers: ['4', 'four'], waitSceneId: 'wait' } };

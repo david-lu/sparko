@@ -80,7 +80,7 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
     async submit(file, input) {
       const readiness = await check();
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
-      const plan = comfyBridgePlan(input.before, input.after, input.duration);
+      const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
       // Comfy reads multipart uploads sequentially: metadata must arrive before the file.
       const body = new FormData(); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`); body.set('file', file, 'reference.mp4');
       const uploaded = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body }));

@@ -19,7 +19,7 @@ export class PreparedSceneBuffers {
   constructor(readonly fps: number, private render: Render, private maxBytes: number = FLOW_BUFFERING.cacheBytes) {}
   get chunkFrames() { return Math.max(1, Math.round(FLOW_BUFFERING.chunkSeconds * this.fps)); }
   private key(scene: TimelineScene, first: number) {
-    return `${scene.clip.assetId}:${scene.clip.inFrame + first}:${Math.min(this.chunkFrames, sceneFrames(scene) - first)}`;
+    return `${scene.clip.assetId}:${scene.draft ? 'still:' : ''}${scene.clip.inFrame + first}:${Math.min(this.chunkFrames, sceneFrames(scene) - first)}`;
   }
   ready(scene: TimelineScene, first = 0) { return !!this.entries.get(this.key(scene, first))?.data; }
   get statistics() { return { bytes: this.bytes, active: this.active, ready: [...this.entries.values()].filter(entry => entry.data).length }; }
@@ -62,7 +62,7 @@ export function sceneBufferRenderer(source: MediaSource, info: MediaInfo, fps: n
     const media = scene.clip.assetId === source.assetId ? source : { id: scene.clip.assetId, name: scene.label, url };
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'fragmented', minimumFragmentDuration: .5 }) });
     await renderComposition({ info, fps, segments: [{ id: scene.id, kind: 'source', label: scene.label, source: media,
-      sourceStart: (scene.clip.inFrame + first) / fps, startFrame: 0, endFrame: count }], crossfade: false }, output,
+      sourceStart: (scene.clip.inFrame + (scene.draft ? 0 : first)) / fps, still: scene.draft, startFrame: 0, endFrame: count }], crossfade: false }, output,
     { start: 0, end: count / fps, signal, preview: true });
     if (!output.target.buffer) throw new Error(`No playback buffer was produced for ${scene.label}.`);
     return new Uint8Array(output.target.buffer);

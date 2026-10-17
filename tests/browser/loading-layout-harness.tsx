@@ -25,7 +25,7 @@ const status: AppStatus = { providers: { openai: true, gemini: false, fal: true 
   uploadMode: 'local', requiresPassword: false, defaultVideo: { name: '', url: '', size: 0 } };
 const value: FlowTimeline = { flow: example.flow, session: null, selectedSceneId: 'call', selectedEdgeId: null, selectedInterstitial: false,
   onSelectInterstitial: noop, onRemoveInterstitial: noop, onRenameInterstitial: noop, onAddAnswer: noop, onRemoveAnswer: noop,
-  onSelectScene: noop, onSelectEdge: noop, onBranch: noop, onReconnect: noop };
+  onSelectScene: noop, onSelectEdge: noop, onBranch: noop };
 const engine = { frames: async () => [], audio: async () => null } as unknown as MediaEngine;
 let microphone: MicrophoneController;
 MicrophoneController.prototype.enable = async function () { microphone = this; };

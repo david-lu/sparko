@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { baselineReferences, clipDependency } from '../../src/features/call-response/dependencies';
-import { createTimelineExample, reconnectEdge } from '../../src/features/call-response/model';
+import { changeClipKind, createTimelineExample, reconnectEdge } from '../../src/features/call-response/model';
 import { referenceTiming } from '../../src/features/call-response/generation';
 
 function example() {
@@ -36,6 +36,43 @@ describe('call-response generation dependencies', () => {
     expect(clipDependency(flow, items, 'wait').blocked).toContain('finish generating');
     items[0].phase = 'error';
     expect(clipDependency(flow, items, 'wait')).toMatchObject({ stale: false, blocked: undefined });
+  });
+  it('invalidates all descendants when source footage is trimmed, and only responses when the return footage changes', () => {
+    const { flow, items } = example();
+    const intro = flow.scenes.find(scene => scene.id === 'intro')!;
+    intro.clip.outFrame--;
+    for (const id of ['call', 'wait', 'correct', 'incorrect']) expect(clipDependency(flow, items, id).stale).toBe(true);
+    intro.clip.outFrame++;
+    flow.scenes.find(scene => scene.id === 'continue')!.clip.inFrame++;
+    expect(clipDependency(flow, items, 'call').stale).toBe(false);
+    expect(clipDependency(flow, items, 'wait').stale).toBe(false);
+    for (const id of ['correct', 'incorrect']) expect(clipDependency(flow, items, id).stale).toBe(true);
+  });
+  it('propagates through generated clips even after their type changes to Video', () => {
+    const { flow, items } = example();
+    const converted = changeClipKind(flow, 'wait', 'video');
+    expect(clipDependency(converted, items, 'wait').stale).toBe(false);
+    items[0].result = { ...items[0].result!, assetId: crypto.randomUUID() };
+    expect(clipDependency(converted, items, 'wait').stale).toBe(true);
+    expect(clipDependency(converted, items, 'correct')).toMatchObject({ stale: true, blocked: expect.stringContaining('Regenerate') });
+  });
+  it('does not call an unrendered draft stale but preserves stale status on retained footage', () => {
+    const { flow, items } = example();
+    items[0].result = { ...items[0].result!, assetId: crypto.randomUUID() };
+    items[2] = { ...items[2], phase: 'draft', result: undefined };
+    expect(clipDependency(flow, items, 'correct')).toMatchObject({ stale: false, blocked: expect.stringContaining('Regenerate Idle first') });
+    items[1] = { ...items[1], previousResult: items[1].result, result: undefined };
+    for (const phase of ['rendering', 'error', 'cancelled'] as const) {
+      items[1].phase = phase;
+      expect(clipDependency(flow, items, 'wait').stale).toBe(true);
+      expect(clipDependency(flow, items, 'incorrect').stale).toBe(true);
+    }
+  });
+  it('tracks rendered references independently of editable prompts and generation profiles', () => {
+    const { flow, items } = example();
+    items[0] = { ...items[0], prompt: 'A different call', duration: 9, method: 'comfy-extend' };
+    items[1] = { ...items[1], start_range: 3, end_range: 3, method: 'comfy-loop' };
+    for (const id of ['call', 'wait', 'correct', 'incorrect']) expect(clipDependency(flow, items, id).stale).toBe(false);
   });
   it('limits reference windows to real clip bounds and reserves a held return pose for Idle', () => {
     const { flow, items } = example();

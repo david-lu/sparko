@@ -22,12 +22,18 @@ function AnswerField({ label, value, multiline = false, onCommit }: {
   return <label className="field">{label}{multiline ? <textarea {...props} rows={2} maxLength={20100} placeholder="Optional alternatives, one per line" /> : <input {...props} maxLength={200} />}</label>;
 }
 
-export default function AnswerEditor({ answer, onChange, onRemove, removable }: {
-  answer: AnswerOption; onChange: (patch: Partial<Pick<AnswerOption, 'label' | 'values'>>) => void; onRemove: () => void; removable: boolean;
+export function ResponseButtonText({ answer, label = 'Response button text', onChange }: {
+  answer: AnswerOption; label?: string; onChange: (text: string) => void;
+}) {
+  return <AnswerField label={label} value={answer.label} onCommit={onChange} />;
+}
+
+export default function AnswerEditor({ answer, index, onChange, onRemove, removable }: {
+  answer: AnswerOption; index: number; onChange: (patch: Partial<Pick<AnswerOption, 'label' | 'values'>>) => void; onRemove: () => void; removable: boolean;
 }) {
   return <div className="answer-editor">
-    <AnswerField label="Answer label" value={answer.label} onCommit={label => onChange({ label })} />
-    <AnswerField label="Also accept" value={answer.values.join('\n')} multiline onCommit={value => onChange({ values: value.split('\n') })} />
+    <ResponseButtonText answer={answer} label={`Button ${index + 1} text`} onChange={label => onChange({ label })} />
+    <details className="answer-alternatives"><summary>Alternative answers</summary><AnswerField label={`Button ${index + 1} also accepts`} value={answer.values.join('\n')} multiline onCommit={value => onChange({ values: value.split('\n') })} /></details>
     <button className="text-button remove-answer" disabled={!removable} onClick={onRemove} title={removable ? 'Remove this answer and its response clip' : 'Keep at least one answer'}><Trash2 size={13} /> Remove answer</button>
   </div>;
 }

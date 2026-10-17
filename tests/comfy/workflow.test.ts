@@ -3,6 +3,24 @@ import { comfyBridgePlan, comfyDimensions, comfyReferenceRange } from '../../sha
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
 
 describe('H3 two-sided temporal bridge', () => {
+  it('extends a Call using only frozen preceding footage and generates the entire tail', () => {
+    const range = comfyReferenceRange({ method: 'comfy-extend', time: 2, start_range: 2, end_range: 2, duration: 6 }, 2);
+    expect(range.mode).toBe('extend'); expect(range.after).toBe(0);
+    expect(range.plan.insertion.start + range.plan.insertion.duration).toBe(range.plan.insertion.totalDuration);
+    const graph = bridgeWorkflow('asset', { mode: 'extend', before: 1.625, after: 0, duration: 6, width: 960, height: 544, prompt: 'Ask', hasAudio: true }, 1);
+    expect(graph.after).toBeUndefined(); expect(graph.place_after).toBeUndefined();
+    expect(graph.freeze_video.inputs.samples).toEqual(['place_before', 0]);
+    expect(graph.encode_audio.inputs.audio).toEqual(['audio_prefix', 0]);
+    expect(graph.middle_mask.inputs.ranges).toBe(`39:${range.plan.totalFrames}`);
+  });
+  it('accepts a short Idle loop with two protected context windows', () => {
+    const plan = comfyBridgePlan(2, 2, 2, 'loop');
+    expect(plan.insertion.duration).toBeGreaterThanOrEqual(2);
+    expect(plan.insertion.duration).toBeLessThan(3);
+    expect(plan.prefixFrames).toBe(plan.suffixFrames);
+    expect(() => comfyBridgePlan(2, 2, 2, 'bridge')).toThrow('5');
+    expect(() => comfyBridgePlan(2, 1, 6, 'extend')).toThrow();
+  });
   it('snaps the generated target and protected contexts to H3’s grid', () => {
     const plan = comfyBridgePlan(2, 2, 6);
     expect(plan).toEqual({ prefixFrames: 39, suffixFrames: 39, middleFrames: 148, totalFrames: 226,

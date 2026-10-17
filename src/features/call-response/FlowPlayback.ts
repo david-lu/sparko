@@ -16,7 +16,7 @@ export class FlowPlayback {
       : new NativeFlowPlayback(flow, video, source, changed);
   }
   get session() { return this.playback.session; }
-  get sourceTime() { return (getScene(this.flow, this.session.sceneId).clip.inFrame + this.session.frame) / this.flow.fps; }
+  get sourceTime() { const scene = getScene(this.flow, this.session.sceneId); return scene.sourceTime !== undefined && (scene.interstitialId || scene.groupId) ? scene.sourceTime : (scene.clip.inFrame + this.session.frame) / this.flow.fps; }
   get diagnostics() { return this.playback instanceof BufferedFlowPlayback ? this.playback.diagnostics : undefined; }
   setSubtitles(track: TextTrack | null, cues: VTTCue[]) {
     if (this.playback instanceof BufferedFlowPlayback) this.playback.setSubtitles(track, cues);

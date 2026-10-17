@@ -117,7 +117,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
         if (from >= to) continue;
         const sourceStart = segment.sourceStart + from - segment.startFrame / composition.fps;
         const sourceEnd = sourceStart + to - from;
-        const track = segment.still ? null : await inputFor(segment).getPrimaryAudioTrack();
+        const track = segment.still || segment.muted ? null : await inputFor(segment).getPrimaryAudioTrack();
         let cursor = from - origin;
         if (track) {
           if (!await track.canDecode()) throw new Error(`Unable to decode audio in ${segment.label}.`);

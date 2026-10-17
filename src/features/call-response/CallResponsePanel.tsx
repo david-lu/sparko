@@ -1,41 +1,68 @@
-import type { ReactNode } from 'react';
-import { ArrowLeft, ChevronDown, Clapperboard, Plus, Repeat2, Trash2 } from 'lucide-react';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { ArrowLeft, Clapperboard, Plus, Repeat2, Trash2 } from 'lucide-react';
 import { isGenerating, type Interstitial } from '../../../shared/interstitials';
 import InterstitialEditor, { type InterstitialEditorProps } from '../interstitials/InterstitialEditor';
 import { phaseLabel } from '../interstitials/status';
-import { clipTypeLabel, interstitialScenes, type SceneId } from './model';
+import { clipTypeLabel, editAnswer, interstitialScenes, type SceneId } from './model';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import InterstitialName from '../interstitials/InterstitialName';
+import SequenceControls from './SequenceControls';
+import { sequenceActive } from './sequence';
+import AnswerEditor from './AnswerEditor';
 
 export default function CallResponsePanel({ value, items, onBack, renderControls, ...editor }: Omit<InterstitialEditorProps, 'selected'> & {
   value: FlowTimeline; items: Interstitial[]; onBack: () => void; renderControls: (id: SceneId) => ReactNode;
 }) {
   const members = interstitialScenes(value.flow);
+  const panels = useRef<HTMLDivElement>(null);
+  const sequence = editor.controller.getSnapshot().sequence;
+  useEffect(() => {
+    const section = Array.from(panels.current?.children ?? []).find(element => (element as HTMLElement).dataset.sceneId === value.selectedSceneId);
+    section?.scrollIntoView({ block: 'nearest' });
+  }, [value.selectedSceneId]);
   return <div className="panel-content interstitial-panel call-response-panel" aria-label="Call Response Interstitial panel">
     <button className="text-button interstitial-back" onClick={onBack}><ArrowLeft size={13} /> All interstitials</button>
     <div className="interstitial-title"><InterstitialName key={value.flow.interstitial.id} name={value.flow.interstitial.label} onChange={value.onRenameInterstitial} />
-      <button className="icon-button small" aria-label={`Remove ${value.flow.interstitial.label}`} onClick={value.onRemoveInterstitial}><Trash2 size={14} /></button>
+      <button className="icon-button small" aria-label={`Remove ${value.flow.interstitial.label}`} onClick={() => value.onRemoveInterstitial()}><Trash2 size={14} /></button>
     </div>
-    <div className="call-response-subpanels">
+    <div data-project-edit>
+      <label className="field">Interstitial type<select aria-label="Interstitial type" value="call-response" onChange={event => value.onTypeChange?.(event.target.value as 'regular' | 'call-response')}><option value="regular">Regular</option><option value="call-response">Call-response</option></select></label>
+      <label className="field">Continuity brief<textarea aria-label="Continuity brief" rows={3} maxLength={1500} value={value.flow.interstitial.brief ?? ''} placeholder="Character, setting, camera, voice and shared direction" onChange={event => value.onChange?.({ ...value.flow, interstitial: { ...value.flow.interstitial, brief: event.target.value } })} /></label>
+    </div>
+    <fieldset className="response-buttons-editor" aria-label="Question and responses" data-project-edit>
+      <legend>Question and responses</legend>
+      <p className="hint">Shown together on the video while Idle waits for an answer.</p>
+      <label className="field">Question<textarea aria-label="Question" rows={2} maxLength={1000} value={value.flow.interaction.question} onChange={event => value.onChange?.({ ...value.flow, interaction: { ...value.flow.interaction, question: event.target.value } })} /></label>
+      {value.flow.interaction.answers.map((answer, index) => <AnswerEditor key={answer.id} answer={answer} index={index}
+        onChange={patch => value.onChange?.(editAnswer(value.flow, answer.id, patch))} onRemove={() => value.onRemoveAnswer(answer.id)} removable={value.flow.interaction.answers.length > 1} />)}
+      <button className="button full-width add-answer" onClick={value.onAddAnswer} disabled={value.flow.interaction.answers.length >= 100}><Plus size={14} /> Add answer</button>
+      <label className="field">Unmatched answer<select aria-label="Unmatched answer" value={value.flow.interaction.fallbackAnswerId ?? ''} onChange={event => value.onChange?.({ ...value.flow, interaction: { ...value.flow.interaction, fallbackAnswerId: event.target.value || null } })}>
+        <option value="">Keep waiting</option>{value.flow.interaction.answers.map(answer => <option key={answer.id} value={answer.id}>{answer.label}</option>)}
+      </select></label>
+    </fieldset>
+    <p className="hint">Call → Idle → Responses → Parent video</p>
+    <label className="interstitial-option" data-project-edit><input type="checkbox" checked={value.flow.interstitial.linkResponseDurations !== false} onChange={event => value.onChange?.({ ...value.flow, interstitial: { ...value.flow.interstitial, linkResponseDurations: event.target.checked } })} /> Link response durations</label>
+    <SequenceControls {...editor} flow={value.flow} items={items} />
+    <div className="call-response-subpanels" ref={panels}>
       {members.map(scene => {
-        const item = items.find(item => item.id === scene.interstitialId), open = value.selectedSceneId === scene.id;
+        const item = items.find(item => item.id === scene.interstitialId), selected = value.selectedSceneId === scene.id;
         const dependency = item && editor.controller.dependency(item.id);
         const label = clipTypeLabel(scene.clip, value.flow);
-        const stage = item && isGenerating(item) ? phaseLabel(item) : dependency?.stale ? 'Needs regeneration' : item ? phaseLabel(item) : scene.label;
-        return <section className={`clip-subpanel ${open ? 'selected' : ''}`} key={scene.clip.id} aria-label={`${label} clip`}>
-          <button className="clip-subpanel-heading" aria-expanded={open} aria-controls={`clip-panel-${scene.id}`}
-            onClick={() => open ? value.onSelectInterstitial() : value.onSelectScene(scene.id)}>
+        const waiting = sequenceActive(sequence) && item && sequence!.ids.includes(item.id) && !sequence!.completedIds.includes(item.id) && sequence!.activeId !== item.id;
+        const stage = item && isGenerating(item) ? phaseLabel(item) : waiting ? 'Waiting in sequence' : dependency?.stale ? 'Stale · Needs regeneration' : item ? phaseLabel(item) : scene.label;
+        return <section className={`clip-subpanel ${selected ? 'selected' : ''}`} key={scene.clip.id} aria-label={`${label} clip`} data-scene-id={scene.id} data-stale={!!dependency?.stale}>
+          <button className="clip-subpanel-heading" aria-pressed={selected}
+            onClick={() => value.onSelectScene(scene.id)}>
             {scene.clip.kind === 'idle' ? <Repeat2 size={14} /> : <Clapperboard size={14} />}
             <span className="clip-subpanel-label"><strong title={label}>{label}</strong><small title={stage}>{stage}</small></span>
-            <span className="status-icon">{item && isGenerating(item) ? <span className="spinner" /> : <ChevronDown size={14} />}</span>
+            {item && isGenerating(item) && <span className="status-icon"><span className="spinner" /></span>}
           </button>
-          {open && <div className="clip-subpanel-body" id={`clip-panel-${scene.id}`}>
+          <div className="clip-subpanel-body" id={`clip-panel-${scene.id}`}>
             {renderControls(scene.id)}
             {item ? <InterstitialEditor {...editor} selected={item} /> : <p className="hint">This source clip has no generation settings.</p>}
-          </div>}
+          </div>
         </section>;
       })}
     </div>
-    <button className="button full-width add-answer" onClick={value.onAddAnswer} disabled={value.flow.interaction.answers.length >= 100}><Plus size={14} /> Add answer</button>
   </div>;
 }

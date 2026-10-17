@@ -15,8 +15,9 @@ import { comfyRequestError } from './errors.js';
 
 const frameRange = z.coerce.number().finite().min(COMFY.minContextFrames / TIMELINE_FPS).max(4)
   .refine(value => Math.abs(value * TIMELINE_FPS - Math.round(value * TIMELINE_FPS)) < 1e-6, 'Reference ranges must use whole 24 fps frames.');
-const schema = z.object({ before: frameRange, after: frameRange,
-  duration: z.coerce.number().min(INTERSTITIAL.minDuration).max(INTERSTITIAL.maxDuration), prompt: z.string().trim().min(1).max(4000) });
+const schema = z.object({ before: frameRange, after: z.union([frameRange, z.coerce.number().refine(value => value === 0)]),
+  mode: z.enum(['bridge', 'extend', 'loop']).default('bridge'),
+  duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().trim().min(1).max(8000) });
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 
 export function addComfyRoutes(app: Express, providers: Providers, receive: UploadReceiver) {
@@ -25,7 +26,9 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
   app.get('/api/comfy/status', authenticate, requireComfy, async (_req, res) => res.json(await provider().check()));
   app.post('/api/comfy/interstitials', authenticate, requireComfy, ...receive('video'), async (req, res) => {
     const settings = schema.parse(req.body);
-    const plan = comfyBridgePlan(settings.before, settings.after, settings.duration);
+    let plan;
+    try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); }
+    catch (error) { throw new HttpError(400, (error as Error).message); }
     if (Math.round(settings.before * TIMELINE_FPS) !== plan.prefixFrames || Math.round(settings.after * TIMELINE_FPS) !== plan.suffixFrames) throw new HttpError(400, 'Prepare the Comfy reference on the H3 frame grid.');
     if (!req.file || req.file.mimetype !== 'video/mp4' || req.file.size > INTERSTITIAL.maxReferenceBytes) throw new HttpError(400, 'Upload an MP4 reference smaller than 50 MB.');
     const file = await openAsBlob(req.file.path, { type: 'video/mp4' });

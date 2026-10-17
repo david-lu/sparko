@@ -79,8 +79,20 @@ describe('prompt enhancement API', () => {
     expect(enhancePrompt).toHaveBeenCalledWith({ ...body, signal: expect.any(AbortSignal) });
     expect(response.body.prompt).toContain('no cuts or position jumps');
   });
+  it('accepts a short Idle loop and retains compatibility with legacy dialogue settings', async () => {
+    await send({ ...body, kind: 'idle', duration: 2, continuity: 'Keep the room and character.', dialogue: '' }).expect(200);
+    expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ kind: 'idle', duration: 2, continuity: 'Keep the room and character.', dialogue: '' }));
+    enhancePrompt.mockClear();
+    await send({ ...body, kind: 'response', duration: 2 }).expect(400);
+    expect(enhancePrompt).not.toHaveBeenCalled();
+  });
+  it('accepts speech merged into a prompt longer than the old separate-field limit', async () => {
+    const prompt = `${'A scene. '.repeat(500)}\n\nSpoken dialogue, verbatim: What do you think?`;
+    await send({ ...body, prompt }).expect(200);
+    expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ prompt }));
+  });
   it.each([
-    { ...body, prompt: '' }, { ...body, prompt: 'x'.repeat(4001) }, { ...body, duration: 99 },
+    { ...body, prompt: '' }, { ...body, prompt: 'x'.repeat(8001) }, { ...body, duration: 99 },
     { ...body, kind: 'unknown' }, { ...body, referenceFrames: ['https://arbitrary.example/image.jpg'] },
     { ...body, referenceFrames: [...body.referenceFrames, ...body.referenceFrames, ...body.referenceFrames] },
   ])('rejects invalid input before making a paid request', async invalid => {

@@ -31,6 +31,8 @@ async function openTimeSlider(page: Page, label: string) {
 async function addDraft(page: Page, time = 5) {
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill(String(time));
   await page.getByRole('button', { name: 'Add interstitial P' }).click();
+  // This suite exercises the retained Fal integration explicitly; new drafts default to Comfy.
+  await page.getByLabel('Video generation method').selectOption('fal');
   await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).fill(`Interstitial ${await page.locator('.timeline-pin').count()}`);
   await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).press('Enter');
   await expect(page.getByLabel('start_range')).toHaveValue('2');

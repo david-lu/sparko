@@ -3,7 +3,8 @@ import path from 'node:path';
 
 const clip = (page: Page, id: string) => page.locator(`.timeline-flow-clip[data-scene-id="${id}"]`);
 const video = (page: Page) => page.locator('.video-stage > video');
-const branchButton = (page: Page, outcome: string) => page.locator('.video-stage').getByRole('button', { name: `Choose ${outcome === 'correct' ? 'Correct' : outcome === 'incorrect' ? 'Incorrect' : outcome}`, exact: true });
+const selectedEditor = (page: Page) => page.locator('.clip-subpanel.selected, .sidebar > .call-response-controls');
+const branchButton = (page: Page, outcome: string) => page.locator('.video-stage').getByRole('button', { name: `Choose ${outcome === 'correct' ? 'A' : outcome === 'incorrect' ? 'B' : outcome}`, exact: true });
 async function selectIdle(page: Page) {
   await clip(page, 'wait').getByRole('button', { name: 'Select clip Idle · waiting for an answer', exact: true }).focus();
   await page.keyboard.press('Enter');
@@ -29,11 +30,16 @@ async function openExample(page: Page, prepare?: () => Promise<void>, generation
 for (const reducedMotion of ['no-preference', 'reduce'] as const) {
   test(`answer choices dismiss in order and survive the playback transition (${reducedMotion})`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion });
+    if (reducedMotion === 'reduce') await page.setViewportSize({ width: 390, height: 844 });
     await openExample(page);
     await selectIdle(page);
     const choices = page.getByRole('group', { name: 'Choose an answer' });
+    const question = choices.locator('.player-branch-question');
+    await expect(question).toHaveText('What is 2 + 2?');
+    await expect(question).toHaveCSS('animation-name', reducedMotion === 'reduce' ? 'none' : 'question-in');
     await expect.poll(() => choices.locator('button').evaluateAll(buttons => buttons.flatMap(button => button.getAnimations()).length)).toBe(0);
-    const selected = branchButton(page, 'correct'), other = branchButton(page, 'incorrect');
+    const outcome = reducedMotion === 'reduce' ? 'incorrect' : 'correct';
+    const selected = branchButton(page, outcome), other = branchButton(page, outcome === 'correct' ? 'incorrect' : 'correct');
     const before = await selected.boundingBox();
     const end = await page.evaluate(async () => {
       const { readActiveProject } = await import('/src/features/project/database.ts' as string);
@@ -48,7 +54,8 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     }, end);
     await choices.evaluate(element => {
       (window as any).choicePhases = [];
-      const phases = new MutationObserver(() => (window as any).choicePhases.push({ phase: element.getAttribute('data-phase'), at: performance.now() }));
+      const phases = new MutationObserver(() => (window as any).choicePhases.push({ phase: element.getAttribute('data-phase'), at: performance.now(),
+        questionAnimation: getComputedStyle(element.querySelector('.player-branch-question')!).animationName }));
       phases.observe(element, { attributes: true, attributeFilter: ['data-phase'] });
       const removal = new MutationObserver(() => {
         if (element.isConnected) return;
@@ -60,15 +67,22 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     await selected.click();
     await expect(choices).toHaveAttribute('data-phase', 'holding');
     await expect(other).toBeHidden();
+    await expect(question).toBeHidden();
     await expect(selected).toBeVisible();
     await expect(selected).toHaveAttribute('aria-pressed', 'true');
     await expect(selected).toHaveAttribute('aria-disabled', 'true');
-    await expect(selected).toHaveText('Correct');
-    expect(await selected.boundingBox()).toEqual(before);
-    await expect(clip(page, 'correct')).toHaveAttribute('data-active', 'true');
+    await expect(selected).toHaveText(outcome === 'correct' ? 'A' : 'B');
+    const stage = (await page.locator('.video-stage').boundingBox())!;
+    await expect.poll(async () => { const button = (await selected.boundingBox())!; return Math.abs(button.x + button.width / 2 - stage.x - stage.width / 2); }).toBeLessThan(1);
+    const centered = (await selected.boundingBox())!;
+    expect(centered.width).toBeCloseTo(before!.width, 1);
+    expect(Math.abs(centered.x - before!.x)).toBeGreaterThan(10);
+    await page.screenshot({ path: `test-results/selected-answer-${reducedMotion}.png` });
+    await expect(clip(page, outcome)).toHaveAttribute('data-active', 'true');
     await expect(selected).toBeVisible();
     await expect(choices).toHaveCount(0);
-    const phases = await page.evaluate(() => (window as any).choicePhases as { phase: string; at: number }[]);
+    const phases = await page.evaluate(() => (window as any).choicePhases as { phase: string; at: number; questionAnimation?: string }[]);
+    expect(phases.find(event => event.phase === 'dismissing')?.questionAnimation).toBe(reducedMotion === 'reduce' ? 'none' : 'question-out');
     const holding = phases.find(event => event.phase === 'holding')!;
     const exiting = phases.find(event => event.phase === 'exiting') ?? phases.find(event => event.phase === 'done')!;
     expect(exiting.at - holding.at).toBeGreaterThanOrEqual(950);
@@ -77,6 +91,7 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     await expect(choices).toHaveAttribute('data-phase', 'choosing');
     await expect(selected).toHaveAttribute('aria-pressed', 'false');
     await expect(other).toBeVisible();
+    await expect(question).toBeVisible();
   });
 }
 
@@ -85,14 +100,22 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   const redo = page.getByRole('button', { name: 'Redo', exact: true });
   const select = async (id: string) => { await clip(page, id).locator('.flow-clip-body').focus(); await page.keyboard.press('Enter'); };
+  const buttons = page.getByRole('group', { name: 'Question and responses', exact: true });
   const rename = async (id: string, label: string) => {
     await select(id);
-    const input = page.getByRole('textbox', { name: 'Answer label', exact: true });
+    const index = id === 'correct' ? 1 : id === 'incorrect' ? 2 : 3;
+    const input = buttons.getByRole('textbox', { name: `Button ${index} text`, exact: true });
     await input.fill(label); await input.press('Enter');
-    await expect(clip(page, id).locator('.flow-clip-type')).toHaveText(`${label} Response`);
+    await expect(clip(page, id).locator('.flow-clip-type')).toContainText(`${label} Response`);
   };
-  await rename('correct', 'Forest');
+  await buttons.getByLabel('Question', { exact: true }).fill('Where should we explore?');
+  await buttons.getByLabel('Question', { exact: true }).press('Tab');
+  await buttons.getByLabel('Button 1 text').fill('Forest');
+  await buttons.getByLabel('Button 1 text').press('Enter');
+  await expect(clip(page, 'correct').locator('.flow-clip-type')).toContainText('Forest Response');
+  await expect(page.locator('.clip-subpanel[data-scene-id="correct"]').getByLabel('Response button', { exact: true })).toHaveValue('correct');
   await rename('incorrect', 'Ocean');
+  await expect(buttons.getByLabel('Button 2 text')).toHaveValue('Ocean');
   await page.getByRole('button', { name: 'Add answer', exact: true }).click();
   const third = page.locator('.timeline-flow-clip[data-clip-kind="response"]').last();
   await expect(page.locator('.timeline-flow-clip[data-clip-kind="response"]')).toHaveCount(3);
@@ -101,22 +124,27 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
   await undo.click(); await expect(clip(page, id)).toHaveCount(0);
   await redo.click(); await expect(clip(page, id)).toHaveCount(1);
   await rename(id, 'Mountains');
-  const alternatives = page.getByRole('textbox', { name: 'Also accept', exact: true });
+  const answerEditor = buttons.locator('.answer-editor').nth(2);
+  await answerEditor.getByText('Alternative answers', { exact: true }).click();
+  const alternatives = answerEditor.getByLabel('Button 3 also accepts', { exact: true });
   await alternatives.fill('Hiking\nThe mountains'); await alternatives.press('Tab');
   await expect(undo).toHaveAttribute('title', /Edit answer/);
   await undo.click(); await select(id); await expect(alternatives).toHaveValue('');
   await redo.click(); await select(id); await expect(alternatives).toHaveValue('Hiking\nThe mountains');
-  await page.getByRole('spinbutton', { name: 'Duration', exact: true }).fill('7');
-  await page.getByRole('spinbutton', { name: 'Duration', exact: true }).press('Tab');
+  await selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true }).fill('7');
+  await selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true }).press('Tab');
   for (const branch of ['correct', 'incorrect']) {
-    await select(branch); await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7');
+    await select(branch); await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7');
   }
   const rows = await Promise.all(['correct', 'incorrect', id].map(id => clip(page, id).boundingBox()));
   const idle = (await clip(page, 'wait').boundingBox())!;
   const container = (await page.locator('.timeline-interstitial-container').boundingBox())!;
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index]!;
-    expect(row.height).toBe(76); expect(row.x).toBeCloseTo(rows[0]!.x, 1); expect(row.width).toBeCloseTo(rows[0]!.width, 1);
+    expect(row.height).toBe(76); expect(row.x).toBeCloseTo(rows[0]!.x, 1);
+    // Saved clips keep their rendered lengths; the new draft previews its edited seven seconds.
+    if (index < 2) expect(row.width).toBeCloseTo(rows[0]!.width, 1);
+    else expect(row.width).toBeCloseTo(rows[0]!.width * 7 / 4, 1);
     if (index) expect(row.y).toBeCloseTo(rows[index - 1]!.y + 76, 1);
     expect(row.y).toBeGreaterThan(container.y); expect(row.y + row.height).toBeLessThan(container.y + container.height);
   }
@@ -131,7 +159,7 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
     await expect(clip(page, sceneId)).toHaveAttribute('data-active', 'true', { timeout: 7000 });
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
   }
-  await selectIdle(page); await page.getByRole('combobox', { name: 'Unmatched answer' }).selectOption('');
+  await selectIdle(page); await buttons.getByRole('combobox', { name: 'Unmatched answer' }).selectOption('');
   await expect.poll(() => page.evaluate(async () => {
     const { readActiveProject } = await import('/src/features/project/database.ts' as string);
     const project = await readActiveProject();
@@ -139,9 +167,10 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
       fallback: project.callResponse.interaction.fallbackAnswerId, jobs: project.interstitials.length };
   })).toEqual({ labels: ['Forest', 'Ocean', 'Mountains'], fallback: null, jobs: 5 });
   await page.reload(); await expect(clip(page, id)).toBeVisible();
-  await select(id); await expect(alternatives).toHaveValue('Hiking\nThe mountains');
-  await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7');
-  await page.getByRole('button', { name: 'Remove answer', exact: true }).click();
+  await select(id); await answerEditor.getByText('Alternative answers', { exact: true }).click();
+  await expect(alternatives).toHaveValue('Hiking\nThe mountains');
+  await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7');
+  await answerEditor.getByRole('button', { name: 'Remove answer', exact: true }).click();
   await expect(clip(page, id)).toHaveCount(0);
   await expect(undo).toHaveAttribute('title', /Remove answer/);
   await undo.click(); await expect(clip(page, id)).toBeVisible();
@@ -154,6 +183,8 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
   await undo.click();
   await page.setViewportSize({ width: 390, height: 844 });
   await selectIdle(page);
+  await expect(page.locator('.player-branch-question')).toHaveText('Where should we explore?');
+  await expect(page.locator('.player-branch-question')).toBeInViewport();
   for (const label of ['Forest', 'Ocean', 'Mountains']) await expect(branchButton(page, label)).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   const controls = (await page.locator('.player-branch-controls').boundingBox())!, stage = (await page.locator('.video-stage').boundingBox())!;
@@ -167,11 +198,46 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
   const mobileRow = (await clip(page, id).boundingBox())!, scrollArea = (await page.locator('.timeline-scroll').boundingBox())!;
   expect(mobileRow.y + mobileRow.height).toBeLessThanOrEqual(scrollArea.y + scrollArea.height + 1);
   await page.screenshot({ path: 'test-results/arbitrary-answers-mobile.png' });
+  await branchButton(page, 'Mountains').click();
+  await expect(page.locator('.player-branch-controls')).toHaveAttribute('data-phase', 'holding');
+  await expect.poll(async () => { const button = (await branchButton(page, 'Mountains').boundingBox())!; return Math.abs(button.x + button.width / 2 - stage.x - stage.width / 2); }).toBeLessThan(1);
+  await expect(page.locator('.player-branch-question')).toBeHidden();
+  await page.screenshot({ path: 'test-results/selected-custom-answer-mobile.png' });
+  await selectIdle(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('.timeline-scroll').evaluate(element => { element.scrollTop = 0; element.scrollLeft = 0; });
   const desktopRow = (await clip(page, id).boundingBox())!, desktopArea = (await page.locator('.timeline-scroll').boundingBox())!;
   expect(desktopRow.y + desktopRow.height).toBeLessThanOrEqual(desktopArea.y + desktopArea.height + 1);
   await page.screenshot({ path: 'test-results/arbitrary-answers-desktop.png' });
+});
+
+test('untouched legacy response names become A and B on reload without changing media or routes', async ({ page }) => {
+  await openExample(page);
+  const media = await page.evaluate(async () => {
+    const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
+    const project = await readActiveProject();
+    for (const flow of [project.callResponse, ...project.callResponses]) {
+      for (const [id, label, sceneLabel] of [['correct', 'Correct', 'Celebrate'], ['incorrect', 'Incorrect', 'Give a hint']]) {
+        flow.interaction.answers.find((answer: any) => answer.id === id).label = label;
+        const scene = flow.scenes.find((scene: any) => scene.id === id);
+        scene.label = sceneLabel;
+        project.interstitials.find((item: any) => item.id === scene.interstitialId).label = sceneLabel;
+      }
+    }
+    await writeProject(project);
+    return project.interstitials.map((item: any) => item.result.assetId);
+  });
+  await page.reload();
+  await selectIdle(page);
+  await expect(branchButton(page, 'correct')).toBeVisible();
+  await expect(branchButton(page, 'incorrect')).toBeVisible();
+  await expect(page.locator('[data-edge-id="wait-correct"]')).toHaveAttribute('data-to', 'correct');
+  await expect.poll(() => page.evaluate(async () => {
+    const { readActiveProject } = await import('/src/features/project/database.ts' as string);
+    const project = await readActiveProject();
+    return { labels: project.callResponse.interaction.answers.map((answer: any) => answer.label),
+      names: project.interstitials.slice(2).map((item: any) => item.label), media: project.interstitials.map((item: any) => item.result.assetId) };
+  })).toEqual({ labels: ['A', 'B'], names: ['A', 'B'], media });
 });
 
 test('undo and redo add, edit, move and remove drafts, group typing, and reset when opening another project', async ({ page }) => {
@@ -274,30 +340,32 @@ test('undo restores the whole deleted call-response interstitial and redo remove
   await expect(undo).toBeDisabled(); await expect(redo).toBeDisabled();
 });
 
-test('clip types, connections and shared durations undo together and the controls fit on mobile', async ({ page }) => {
+test('fixed clip roles, response assignments and shared durations support undo on mobile', async ({ page }) => {
   await openExample(page);
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   const redo = page.getByRole('button', { name: 'Redo', exact: true });
   await selectIdle(page);
-  await page.getByRole('combobox', { name: 'Clip type', exact: true }).selectOption('video');
-  await expect(clip(page, 'wait')).toHaveAttribute('data-clip-kind', 'video');
-  await undo.click(); await expect(clip(page, 'wait')).toHaveAttribute('data-clip-kind', 'idle');
-  await redo.click(); await expect(clip(page, 'wait')).toHaveAttribute('data-clip-kind', 'video');
+  await expect(page.getByRole('combobox', { name: 'Clip type', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Clip dialogue', exact: true })).toHaveCount(0);
+  await clip(page, 'incorrect').getByRole('button', { name: 'Inspect ended from B', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Connection destination', exact: true })).toHaveCount(0);
+  await selectedEditor(page).getByRole('combobox', { name: 'Response button', exact: true }).selectOption('correct');
+  const edge = page.locator('[data-edge-id="wait-correct"]');
+  await expect(edge).toHaveAttribute('data-to', 'incorrect');
+  await expect(page.locator('[data-edge-id="wait-incorrect"]')).toHaveAttribute('data-to', 'correct');
+  await expect(clip(page, 'wait')).toHaveAttribute('data-clip-kind', 'idle');
+  await expect(clip(page, 'incorrect')).toHaveAttribute('data-clip-kind', 'response');
+  await undo.click(); await expect(edge).toHaveAttribute('data-to', 'correct');
+  await redo.click(); await expect(edge).toHaveAttribute('data-to', 'incorrect');
   await undo.click();
-  await clip(page, 'incorrect').getByRole('button', { name: 'Reconnect ended from Give a hint', exact: true }).click();
-  await clip(page, 'wait').getByRole('button', { name: 'Connect to Idle · waiting for an answer', exact: true }).click();
-  const edge = page.locator('[data-edge-id="incorrect-continue"]');
-  await expect(edge).toHaveAttribute('data-to', 'wait');
-  await undo.click(); await expect(edge).toHaveAttribute('data-to', 'continue');
-  await redo.click(); await expect(edge).toHaveAttribute('data-to', 'wait');
-  await clip(page, 'correct').getByRole('button', { name: 'Select clip Celebrate', exact: true }).click();
-  await page.getByRole('spinbutton', { name: 'Duration', exact: true }).fill('8');
+  await clip(page, 'correct').getByRole('button', { name: 'Select clip A', exact: true }).click();
+  await selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true }).fill('8');
   await undo.click();
-  await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6');
-  await clip(page, 'incorrect').getByRole('button', { name: 'Select clip Give a hint', exact: true }).click();
-  await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6');
+  await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6');
+  await clip(page, 'incorrect').getByRole('button', { name: 'Select clip B', exact: true }).click();
+  await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6');
   await redo.click();
-  await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('8');
+  await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('8');
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(undo).toBeInViewport(); await expect(redo).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
@@ -325,7 +393,7 @@ test('the timeline shows footage and the player branches out of the idle clip', 
   const group = page.locator('.timeline-interstitial-group');
   await expect(group).toHaveCount(1);
   await expect(group).toHaveAccessibleName('Untitled');
-  await expect(group.locator('.flow-clip-type')).toHaveText(['Call', 'Idle', 'Correct Response', 'Incorrect Response']);
+  await expect(group.locator('.flow-clip-type')).toHaveText(['Call', 'Idle', 'A Response', 'B Response']);
   await expect(group.locator('.timeline-flow-clip')).toHaveCount(4);
   await expect(clip(page, 'intro').locator('.flow-clip-type')).toHaveCount(0);
   await expect(clip(page, 'continue').locator('.flow-clip-type')).toHaveCount(0);
@@ -344,7 +412,8 @@ test('the timeline shows footage and the player branches out of the idle clip', 
   await expect(clip(page, 'wait')).toHaveAttribute('data-clip-kind', 'idle');
   await clip(page, 'wait').getByRole('button', { name: 'Select clip Idle · waiting for an answer', exact: true }).focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('combobox', { name: 'Clip type', exact: true })).toHaveValue('idle');
+  await expect(selectedEditor(page).getByRole('combobox', { name: 'Clip type', exact: true })).toHaveCount(0);
+  await expect(page.locator('.player-branch-question')).toHaveText('What is 2 + 2?');
   await video(page).click({ position: { x: 20, y: 65 } });
   await expect(page.locator('[data-edge-id="wait-loop"]')).toHaveAttribute('data-traversed', 'true', { timeout: 8000 });
   await video(page).click({ position: { x: 20, y: 65 } });
@@ -362,26 +431,26 @@ test('the timeline shows footage and the player branches out of the idle clip', 
   expect(errors).toEqual([]);
 });
 
-test('connections persist through reload, route the real video, and the original project stays intact', async ({ page }) => {
+test('response button assignments persist, route the real video, and leave the original project intact', async ({ page }) => {
   await openExample(page, async () => {
     await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
     await page.getByRole('button', { name: /^Add interstitial/ }).click();
     await page.getByRole('textbox', { name: 'Interstitial prompt', exact: true }).fill('Keep the original draft.');
   });
-  await clip(page, 'incorrect').getByRole('button', { name: 'Reconnect ended from Give a hint', exact: true }).click();
-  await clip(page, 'wait').getByRole('button', { name: 'Connect to Idle · waiting for an answer', exact: true }).click();
-  await expect(page.locator('[data-edge-id="incorrect-continue"]')).toHaveAttribute('data-to', 'wait');
+  await clip(page, 'incorrect').locator('.flow-clip-body').click();
+  const originalPrompt = await selectedEditor(page).getByLabel('Interstitial prompt').inputValue();
+  await selectedEditor(page).getByRole('combobox', { name: 'Response button', exact: true }).selectOption('correct');
+  await expect(selectedEditor(page).getByLabel('Interstitial prompt')).toHaveValue(originalPrompt);
+  await expect(page.locator('[data-edge-id="wait-incorrect"]')).toHaveAttribute('data-to', 'correct');
   const groupId = await page.locator('.timeline-interstitial-group').getAttribute('data-interstitial-id');
   await page.reload();
   await expect(page.locator('.timeline-interstitial-group')).toHaveAttribute('data-interstitial-id', groupId!);
-  await expect(page.locator('[data-edge-id="incorrect-continue"]')).toHaveAttribute('data-to', 'wait');
+  await expect(page.locator('[data-edge-id="wait-incorrect"]')).toHaveAttribute('data-to', 'correct');
   await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
   await selectIdle(page);
   await branchButton(page, 'incorrect').click();
-  await expect(clip(page, 'incorrect')).toHaveAttribute('data-active', 'true', { timeout: 7000 });
-  await expect(clip(page, 'wait')).toHaveAttribute('data-active', 'true', { timeout: 7000 });
-  await expect(branchButton(page, 'correct')).toHaveAttribute('aria-pressed', 'false');
-  await expect(branchButton(page, 'incorrect')).toHaveAttribute('aria-pressed', 'false');
+  await expect(clip(page, 'correct')).toHaveAttribute('data-active', 'true', { timeout: 7000 });
+  await expect(clip(page, 'continue')).toHaveAttribute('data-active', 'true', { timeout: 7000 });
   await page.getByText('File', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Open default video' }).click();
   await expect(page.locator('.timeline-section.has-flow')).toHaveCount(0);
@@ -390,19 +459,17 @@ test('connections persist through reload, route the real video, and the original
   await expect(page.getByRole('textbox', { name: 'Interstitial prompt' })).toHaveValue('Keep the original draft.');
 });
 
-test('idle is a saved clip type and the player branch controls fit on a phone', async ({ page }) => {
+test('idle has a fixed role and the question and player buttons fit on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openExample(page);
   await clip(page, 'wait').getByRole('button', { name: 'Select clip Idle · waiting for an answer', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Clip type', exact: true }).selectOption('video');
-  await expect(clip(page, 'wait')).toHaveAttribute('data-clip-kind', 'video');
-  await expect(clip(page, 'wait').locator('.flow-clip-type')).toHaveCount(0);
-  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(3);
-  await expect(branchButton(page, 'correct')).toHaveCount(0);
-  await page.getByRole('combobox', { name: 'Clip type', exact: true }).selectOption('idle');
+  await expect(page.getByRole('combobox', { name: 'Clip type', exact: true })).toHaveCount(0);
+  await expect(clip(page, 'wait')).toHaveAttribute('data-clip-kind', 'idle');
   await expect(clip(page, 'wait').getByRole('img', { name: 'Loops until an answer' })).toBeVisible();
   await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(4);
   await selectIdle(page);
+  await expect(page.locator('.player-branch-question')).toHaveText('What is 2 + 2?');
+  await expect(page.locator('.player-branch-question')).toBeInViewport();
   await expect(branchButton(page, 'correct')).toBeInViewport();
   await branchButton(page, 'correct').click();
   await expect(branchButton(page, 'correct')).toHaveAttribute('aria-pressed', 'true');
@@ -449,14 +516,14 @@ test('clips stay capped and centered, branches touch, and response duration edit
   await page.getByRole('slider', { name: 'Timeline zoom', exact: true }).fill('3');
   await checkBranches();
   await page.getByRole('button', { name: 'Fit timeline' }).click();
-  await clip(page, 'correct').getByRole('button', { name: 'Select clip Celebrate', exact: true }).click();
-  await page.getByRole('spinbutton', { name: 'Duration', exact: true }).fill('7.5');
-  await clip(page, 'incorrect').getByRole('button', { name: 'Select clip Give a hint', exact: true }).click();
-  await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7.5');
-  await expect(page.getByText('Shared duration for all response branches.', { exact: false })).toBeVisible();
+  await clip(page, 'correct').getByRole('button', { name: 'Select clip A', exact: true }).click();
+  await selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true }).fill('7.5');
+  await clip(page, 'incorrect').getByRole('button', { name: 'Select clip B', exact: true }).click();
+  await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7.5');
+  await expect(selectedEditor(page).getByText('Shared duration for all response branches.', { exact: false })).toBeVisible();
   await page.reload();
-  await clip(page, 'correct').getByRole('button', { name: 'Select clip Celebrate', exact: true }).click();
-  await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7.5');
+  await clip(page, 'correct').getByRole('button', { name: 'Select clip A', exact: true }).click();
+  await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7.5');
   await page.mouse.move(20, 20);
   await page.screenshot({ path: 'test-results/call-response-stacked.png' });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -484,7 +551,8 @@ test('one timeline container opens child subpanels and regeneration follows the 
   const child = (label: string) => parent.getByRole('region', { name: `${label} clip`, exact: true });
   await expect(container).toHaveAttribute('aria-pressed', 'true');
   await expect(parent.locator('.clip-subpanel')).toHaveCount(4);
-  await expect(parent.locator('.clip-subpanel-heading[aria-expanded=true]')).toHaveCount(0);
+  await expect(parent.getByRole('textbox', { name: 'Interstitial prompt', exact: true })).toHaveCount(4);
+  for (const field of await parent.getByRole('textbox', { name: 'Interstitial prompt', exact: true }).all()) await expect(field).toBeEditable();
   const bounds = (await container.boundingBox())!;
   for (const id of ['call', 'wait', 'correct', 'incorrect']) {
     const box = (await clip(page, id).boundingBox())!;
@@ -493,6 +561,7 @@ test('one timeline container opens child subpanels and regeneration follows the 
   }
   await child('Call').locator('.clip-subpanel-heading').click();
   await child('Call').getByRole('textbox', { name: 'Interstitial prompt' }).fill('An independently edited call');
+  await expect(page.locator('.timeline-flow-clip[data-stale=true]')).toHaveCount(0);
   const previousTime = await video(page).evaluate(element => (element as HTMLVideoElement).currentTime);
   await container.focus(); await page.keyboard.press('Enter');
   await expect(container).toHaveAttribute('aria-pressed', 'true');
@@ -501,24 +570,40 @@ test('one timeline container opens child subpanels and regeneration follows the 
   await child('Call').getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect(child('Call').getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled({ timeout: 30_000 });
   expect(submissions).toBe(1);
-  await expect(child('Idle').locator('.clip-subpanel-heading small')).toHaveText('Needs regeneration');
-  await child('Correct Response').locator('.clip-subpanel-heading').click();
-  await expect(child('Correct Response').getByRole('button', { name: 'Regenerate', exact: true })).toBeDisabled();
-  await expect(child('Correct Response').getByText('Regenerate Idle first to use the updated preceding clip.')).toBeVisible();
+  await expect(child('Idle').locator('.clip-subpanel-heading small')).toHaveText('Stale · Needs regeneration');
+  await expect(clip(page, 'call')).toHaveAttribute('data-stale', 'false');
+  for (const id of ['wait', 'correct', 'incorrect']) {
+    await expect(clip(page, id)).toHaveAttribute('data-stale', 'true');
+    await expect(clip(page, id).getByText('Stale', { exact: true })).toBeVisible();
+  }
+  await expect(page.locator('.timeline-interstitial-marker')).not.toHaveClass(/ready/);
+  await parent.getByRole('button', { name: 'All interstitials' }).click();
+  await expect(page.locator('.interstitial-row[data-stale=true]')).toHaveCount(3);
+  await expect(page.locator('.interstitial-group-heading')).not.toHaveClass(/ready/);
+  await container.focus(); await page.keyboard.press('Enter');
+  await child('A Response').locator('.clip-subpanel-heading').click();
+  await expect(child('A Response').getByRole('button', { name: 'Regenerate', exact: true })).toBeDisabled();
+  await expect(child('A Response').getByText('Regenerate Idle first to use the updated preceding clip.')).toBeVisible();
   await child('Idle').locator('.clip-subpanel-heading').click();
   await child('Idle').getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect(child('Idle').getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled({ timeout: 30_000 });
   expect(submissions).toBe(2);
-  await child('Correct Response').locator('.clip-subpanel-heading').click();
-  await child('Correct Response').getByRole('button', { name: 'Regenerate', exact: true }).click();
-  await expect(child('Correct Response').getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled({ timeout: 30_000 });
+  await expect(clip(page, 'wait')).toHaveAttribute('data-stale', 'false');
+  await expect(page.locator('.timeline-flow-clip[data-stale=true]')).toHaveCount(2);
+  await child('A Response').locator('.clip-subpanel-heading').click();
+  await child('A Response').getByRole('button', { name: 'Regenerate', exact: true }).click();
+  await expect(child('A Response').getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled({ timeout: 30_000 });
   expect(submissions).toBe(3);
-  await expect(child('Correct Response').locator('.clip-subpanel-heading small')).toHaveText('Ready');
-  await expect(child('Incorrect Response').locator('.clip-subpanel-heading small')).toHaveText('Needs regeneration');
+  await expect(child('A Response').locator('.clip-subpanel-heading small')).toHaveText('Ready');
+  await expect(child('B Response').locator('.clip-subpanel-heading small')).toHaveText('Stale · Needs regeneration');
+  await expect(clip(page, 'correct')).toHaveAttribute('data-stale', 'false');
+  await expect(page.locator('.timeline-flow-clip[data-stale=true]')).toHaveCount(1);
   await page.reload();
   await container.click({ position: { x: 5, y: 5 } });
-  await expect(child('Correct Response').locator('.clip-subpanel-heading small')).toHaveText('Ready');
-  await expect(child('Incorrect Response').locator('.clip-subpanel-heading small')).toHaveText('Needs regeneration');
+  await expect(child('A Response').locator('.clip-subpanel-heading small')).toHaveText('Ready');
+  await expect(child('B Response').locator('.clip-subpanel-heading small')).toHaveText('Stale · Needs regeneration');
+  await expect(clip(page, 'incorrect')).toHaveAttribute('data-stale', 'true');
+  await expect(clip(page, 'incorrect').getByText('Stale', { exact: true })).toBeVisible();
   await child('Call').locator('.clip-subpanel-heading').click();
   await expect(child('Call').getByRole('textbox', { name: 'Interstitial prompt' })).toHaveValue('An independently edited call');
   expect(errors).toEqual([]);
@@ -563,7 +648,7 @@ test('empty timeline space and the ruler seek at the clicked position, including
     await expect.poll(() => clip(page, 'wait').locator('.flow-playhead').evaluate(element => parseFloat((element as HTMLElement).style.left))).toBeCloseTo(rulerPosition, 2);
   }
   await page.getByRole('button', { name: 'Fit timeline' }).click();
-  await clip(page, 'incorrect').getByRole('button', { name: 'Select clip Give a hint', exact: true }).focus();
+  await clip(page, 'incorrect').getByRole('button', { name: 'Select clip B', exact: true }).focus();
   await page.keyboard.press('Enter');
   const branch = (await clip(page, 'incorrect').boundingBox())!;
   const tracks = (await page.locator('.timeline-flow-tracks').boundingBox())!;

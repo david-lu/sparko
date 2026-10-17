@@ -4,7 +4,7 @@ import type { MediaInfo, MediaSource as MediaAssetSource } from '../../media/med
 import { FlowBufferPlan } from './FlowBufferPlan';
 import { PreparedSceneBuffers, sceneBufferRenderer } from './PreparedSceneBuffers';
 import { remapSubtitles } from '../player/subtitles';
-import { answerSession, branchSession, flowLayout, getScene, previewScene, sceneFrames, startSession,
+import { answerSession, branchSession, playbackPath, flowLayout, getScene, previewScene, sceneFrames, startSession,
   type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
 
 /** One continuous media stream, with a separate prepared head for each possible response. */
@@ -199,9 +199,8 @@ export class BufferedFlowPlayback {
   }
   seek(time: number) {
     const layout = flowLayout(this.flow), frame = Math.max(0, time * this.flow.fps);
-    const answer = this.flow.interaction.answers.find(answer => answer.id === this.session.outcome || answer.sceneId === this.session.sceneId);
-    const path = ['intro', 'call', 'wait', answer?.sceneId ?? this.flow.interaction.answers[0].sceneId, 'continue'];
-    const id = [...path].reverse().find(id => frame >= layout.starts[id]) ?? 'intro';
+    const path = playbackPath(this.flow, this.session);
+    const id = [...path].reverse().find(id => frame >= layout.starts[id]) ?? this.flow.entrySceneId;
     this.seekScene(id, frame - layout.starts[id], this.wanted);
   }
   answer(answer: string) { this.sync(); this.choose(answerSession(this.flow, this.session, answer)); }

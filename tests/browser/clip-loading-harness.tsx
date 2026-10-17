@@ -22,7 +22,7 @@ function Harness() {
   const example = useMemo(() => assetId ? createTimelineExample(assetId, 4) : null, [assetId]);
   const flow: FlowTimeline | null = example && { flow: example.flow, session: null, selectedSceneId: null, selectedEdgeId: null, selectedInterstitial: false,
     onSelectInterstitial: noop, onRemoveInterstitial: noop, onRenameInterstitial: noop, onAddAnswer: noop, onRemoveAnswer: noop,
-    onSelectScene: noop, onSelectEdge: noop, onBranch: noop, onReconnect: noop };
+    onSelectScene: noop, onSelectEdge: noop, onBranch: noop };
   return <main style={{ padding: 16, height: '100vh', overflow: 'auto' }}>
     <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
       <button onClick={() => setUrl('/__clips/new.mp4')}>Switch clip</button>

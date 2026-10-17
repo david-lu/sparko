@@ -33,10 +33,9 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<{ time: number; x: number } | null>(null);
   const anchor = useRef<{ ratio: number; x: number } | null>(null);
-  const markers = interstitials.map(item => ({ ...item, time: callResponse ? (() => { const scene = callResponse.flow.scenes.find(scene => scene.interstitialId === item.id); return scene ? flowLayout(callResponse.flow).starts[scene.id] / callResponse.flow.fps : item.time; })() : composition?.itemTime(item) ?? item.time }));
+  const markers = interstitials.filter(item => !item.groupId && item.kind !== 'call-response').map(item => ({ ...item, time: callResponse ? (() => { const scene = callResponse.flow.scenes.find(scene => scene.interstitialId === item.id); return scene ? flowLayout(callResponse.flow).starts[scene.id] / callResponse.flow.fps : item.time; })() : composition?.itemTime(item) ?? item.time }));
   const sourceHover = hover ? composition?.sourceTime(hover.time) ?? hover.time : 0;
-  const childIds = new Set(callResponse?.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []));
-  const interstitialCount = interstitials.filter(item => !childIds.has(item.id) && playableResult(item)).length + (callResponse ? 1 : 0);
+  const interstitialCount = interstitials.filter(item => !item.groupId && item.kind !== 'call-response' && playableResult(item)).length + (callResponse?.groups?.length ?? (callResponse ? 1 : 0));
   const changeZoom = useCallback((value: number, x?: number) => {
     const scroll = viewport.current;
     const next = Math.max(1, Math.min(MAX_ZOOM, value));
@@ -94,7 +93,7 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
         <button className="icon-button small" aria-label="Previous interstitial" disabled={!markers.some(item => item.time < time - 0.05)} onClick={() => onSelectInterstitial([...markers].reverse().find(item => item.time < time - 0.05)?.id ?? null)}><SkipBack size={14} /></button>
         <button className="icon-button small" aria-label="Next interstitial" disabled={!markers.some(item => item.time > time + 0.05)} onClick={() => onSelectInterstitial(markers.find(item => item.time > time + 0.05)?.id ?? null)}><SkipForward size={14} /></button>
         <div className="interstitial-add-actions">
-          <button className="button small" disabled={!info || !!callResponse} onClick={onAddInterstitial}><Sparkles size={13} /> Add interstitial <kbd>P</kbd></button>
+          <button className="button small" disabled={!info} onClick={onAddInterstitial}><Sparkles size={13} /> Add interstitial <kbd>P</kbd></button>
           <InterstitialHelp />
         </div>
       </div>

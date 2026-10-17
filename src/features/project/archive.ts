@@ -1,5 +1,6 @@
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { z } from 'zod';
+import { generationMethods } from '../../../shared/interstitials';
 import { INTERSTITIAL } from '../../../shared/constants';
 import { assetIds, type Asset, type Project } from './types';
 import { callResponseSchema } from '../call-response/schema';
@@ -9,23 +10,25 @@ const MAX_MANIFEST = 8 * 1024 ** 2;
 const number = z.number().finite().nonnegative();
 const text = z.string().max(50_000);
 const clipReferenceSchema = z.object({ sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
-const generationReferenceSchema = z.object({ before: clipReferenceSchema, after: clipReferenceSchema.optional() });
+const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge']).optional(), before: clipReferenceSchema, after: clipReferenceSchema.optional() });
 const resultSchema = z.object({ url: text, assetId: z.uuid(), start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
-  method: z.enum(['fal', 'comfy']).default('fal'),
+  method: z.enum(generationMethods).default('fal'),
+  continuity: text.optional(), dialogue: text.optional(), loopAudio: z.boolean().optional(),
   start_range: number.max(4), end_range: number.max(4), prompt: text,
-  duration: number.min(INTERSTITIAL.minDuration).max(INTERSTITIAL.maxDuration).default(INTERSTITIAL.defaultDuration),
+  duration: number.min(1).max(INTERSTITIAL.maxDuration).default(INTERSTITIAL.defaultDuration),
   enable_prompt_expansion: z.boolean().default(INTERSTITIAL.enablePromptExpansion),
 });
 const projectSchema = z.object({
   id: text, name: z.string().min(1).max(1000), updatedAt: number,
   callResponse: callResponseSchema.optional(),
+  callResponses: z.array(callResponseSchema).max(100).optional(),
   source: z.object({ name: z.string().min(1).max(1000), assetId: z.uuid(), originalAssetId: z.uuid().optional() }),
   interstitials: z.array(z.object({
-    id: z.string().min(1).max(200), label: z.string().max(1000), time: number,
+    id: z.string().min(1).max(200), label: z.string().max(1000), time: number, kind: z.enum(['regular', 'call-response']).optional(), groupId: text.optional(),
     ...settingsSchema.shape, generationSettings: settingsSchema.optional(),
-    requestMethod: z.enum(['fal', 'comfy']).optional(),
+    requestMethod: z.enum(generationMethods).optional(),
     requestReference: generationReferenceSchema.optional(),
     requestInsertion: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
       .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid job boundaries.').optional(),
@@ -37,7 +40,7 @@ const projectSchema = z.object({
   analysis: z.object({ slice: z.object({ start: number, end: number }), provider: z.enum(['openai', 'gemini']), instructions: text,
     result: z.object({ caption: text, description: text, provider: z.enum(['openai', 'gemini']), model: text, start: number, end: number, basis: text }).nullable(),
   }),
-}).refine(project => !project.callResponse || project.callResponse.scenes.every(scene => !scene.interstitialId || project.interstitials.some(item => item.id === scene.interstitialId)), 'A scene references a missing interstitial.');
+}).refine(project => (project.callResponses ?? (project.callResponse ? [project.callResponse] : [])).every(flow => flow.scenes.every(scene => !scene.interstitialId || project.interstitials.some(item => item.id === scene.interstitialId))), 'A scene references a missing interstitial.');
 const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2)]), project: projectSchema,
   assets: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(1000), mime: z.string().max(200), size: number.int().positive().max(MAX_BYTES) })).max(2000),
 });
@@ -94,7 +97,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const total = descriptions.reduce((sum, asset) => sum + asset.size, 0);
     if (total > MAX_BYTES) throw new Error('This project exceeds the 8 GB import limit.');
     const remap = new Map(descriptions.map(asset => [asset.id, crypto.randomUUID()]));
-    const remapReference = (input?: z.infer<typeof generationReferenceSchema>) => input ? { before: { ...input.before, assetId: remap.get(input.before.assetId)! },
+    const remapReference = (input?: z.infer<typeof generationReferenceSchema>) => input ? { mode: input.mode, before: { ...input.before, assetId: remap.get(input.before.assetId)! },
       after: input.after ? { ...input.after, assetId: remap.get(input.after.assetId)! } : undefined } : undefined;
     const assets: Asset[] = []; let read = 0;
     for (const asset of descriptions) {
@@ -110,6 +113,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     return { project: {
       ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(),
       callResponse: project.callResponse ? { ...project.callResponse, scenes: project.callResponse.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) } : undefined,
+      callResponses: project.callResponses?.map(flow => ({ ...flow, scenes: flow.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) })),
       source: { ...project.source, assetId: remap.get(project.source.assetId)!, originalAssetId: project.source.originalAssetId ? remap.get(project.source.originalAssetId)! : undefined },
       subtitle: project.subtitle ? { ...project.subtitle, assetId: remap.get(project.subtitle.assetId)! } : null,
       interstitials: project.interstitials.map(item => ({ ...item,

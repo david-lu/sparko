@@ -1,5 +1,5 @@
 import { INTERSTITIAL } from '../../../shared/constants';
-import { interstitialSettings, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
+import { generationMethods, interstitialSettings, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
 
 function readReference(value: unknown): GenerationReference | undefined {
   const validClip = (clip: ClipReference) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
@@ -11,7 +11,7 @@ function readReference(value: unknown): GenerationReference | undefined {
 function readSettings(value: unknown): InterstitialSettings | undefined {
   if (!value || typeof value !== 'object') return;
   const settings = value as InterstitialSettings;
-  if (settings.method !== undefined && settings.method !== 'fal' && settings.method !== 'comfy') return;
+  if (settings.method !== undefined && !generationMethods.includes(settings.method)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
   return interstitialSettings(settings);
@@ -37,13 +37,14 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
       ids.add(item.id);
       const phase = ['draft', 'queued', 'rendering', 'loading', 'ready', 'error', 'cancelled'].includes(item.phase) ? item.phase : 'draft';
       const result = readResult(item.result);
-      return [{ id: item.id, label: typeof item.label === 'string' ? item.label.replace(/^Pin (\d+)$/, 'Interstitial $1') : 'Interstitial', time: item.time,
+      return [{ id: item.id, label: typeof item.label === 'string' ? item.label.replace(/^Pin (\d+)$/, 'Interstitial $1') : 'Interstitial', time: item.time, kind: item.kind === 'call-response' ? 'call-response' : item.kind === 'regular' ? 'regular' : undefined, groupId: typeof item.groupId === 'string' ? item.groupId : undefined,
+        continuity: typeof item.continuity === 'string' ? item.continuity : undefined, dialogue: typeof item.dialogue === 'string' ? item.dialogue : undefined, loopAudio: typeof item.loopAudio === 'boolean' ? item.loopAudio : undefined,
         start_range: Number.isFinite(item.start_range) ? item.start_range : INTERSTITIAL.defaultRange,
         end_range: Number.isFinite(item.end_range) ? item.end_range : INTERSTITIAL.defaultRange,
         duration: Number.isFinite(item.duration) ? item.duration : INTERSTITIAL.defaultDuration,
         enable_prompt_expansion: typeof item.enable_prompt_expansion === 'boolean' ? item.enable_prompt_expansion : INTERSTITIAL.enablePromptExpansion,
-        method: item.method === 'comfy' ? 'comfy' : 'fal', generationSettings: readSettings(item.generationSettings),
-        requestMethod: item.requestMethod === 'comfy' ? 'comfy' : item.requestMethod === 'fal' ? 'fal' : undefined,
+        method: generationMethods.includes(item.method) ? item.method : 'fal', generationSettings: readSettings(item.generationSettings),
+        requestMethod: generationMethods.includes(item.requestMethod) ? item.requestMethod : undefined,
         requestReference: readReference(item.requestReference),
         requestInsertion: item.requestInsertion && [item.requestInsertion.start, item.requestInsertion.duration, item.requestInsertion.totalDuration].every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
           && item.requestInsertion.start >= 0 && item.requestInsertion.duration > 0 && item.requestInsertion.start + item.requestInsertion.duration <= item.requestInsertion.totalDuration + 0.1 ? item.requestInsertion : undefined,

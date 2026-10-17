@@ -164,6 +164,7 @@ export default function Player(props: Props) {
       <video ref={controller.attach} preload="metadata" playsInline aria-label={source.name} onClick={playPause}>
         {subtitle && <track key={subtitle.url} src={subtitle.url} kind="subtitles" label={subtitle.name} srcLang="en" default />}
       </video>
+      {flow?.session && flow.flow.scenes.find(scene => scene.id === flow.session!.sceneId)?.draft && <span className="draft-preview-label">Draft · reference frame</span>}
       {!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
       {buffering && <div className="buffering" role="status"><span className="spinner" /><span className="sr-only">Buffering</span></div>}
       {flow && <PlayerChoices key={flow.flow.interstitial.id} value={flow} />}

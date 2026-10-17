@@ -25,6 +25,7 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await page.route('**/api/fal/jobs/project-test-job', route => route.fulfill({ json: { requestId: 'project-test-job', status: 'COMPLETED', videoUrl: 'https://fal.media/project-test.mp4', insertion: { start: 1, duration: 2, totalDuration: 4 } } }));
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
   await page.getByRole('button', { name: /^Add interstitial/ }).click();
+  await page.getByLabel('Video generation method').selectOption('fal');
   await page.getByLabel('Interstitial prompt').fill('The embedded scene');
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });

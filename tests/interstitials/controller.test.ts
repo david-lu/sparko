@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InterstitialController } from '../../src/features/interstitials/InterstitialController';
+import { createCallResponseDraft } from '../../src/features/call-response/draft';
 import { loadInterstitials, interstitialKey } from '../../src/features/interstitials/storage';
 import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from '../../src/features/interstitials/api';
 import type { MediaEngine } from '../../src/media/MediaEngine';
 import { assets } from '../../src/features/project/assets';
-import { hasUnsubmittedChanges, interstitialSettings, playableResult } from '../../shared/interstitials';
+import { generationPrompt, hasUnsubmittedChanges, interstitialSettings, playableResult } from '../../shared/interstitials';
 import { addAnswer, changeClipKind, createTimelineExample, responseInterstitialIds } from '../../src/features/call-response/model';
 import { generationSource } from '../../src/features/call-response/generation';
 import { watchComfyJob } from '../../src/features/interstitials/progress-stream';
@@ -28,7 +29,7 @@ beforeEach(() => {
   controller = new InterstitialController(); controller.load('source');
 });
 afterEach(() => { controller.dispose(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-const add = () => { const item = controller.add(5, 20); controller.edit(item.id, { prompt: 'A scene' }); return item.id; };
+const add = () => { const item = controller.add(5, 20); controller.edit(item.id, { method: 'fal', prompt: 'A scene' }); return item.id; };
 const completed = { requestId: 'saved-job-1234', status: 'COMPLETED' as const, videoUrl: 'https://fal.media/result.mp4', insertion: { start: 2, duration: 5, totalDuration: 9 } };
 const replacement = { ...completed, requestId: 'replacement-job-1234', videoUrl: 'https://fal.media/replacement.mp4', insertion: { start: 2, duration: 6, totalDuration: 9 } };
 async function readyScene() {
@@ -40,6 +41,56 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
+  it('preserves stale provenance across multiple groups, converted video clips and reloads', async () => {
+    const first = createTimelineExample(crypto.randomUUID(), 8), second = createTimelineExample(crypto.randomUUID(), 8);
+    second.interstitials = second.interstitials.map(item => ({ ...item, id: `second:${item.id}` }));
+    second.flow.scenes = second.flow.scenes.map(scene => ({ ...scene, interstitialId: scene.interstitialId ? `second:${scene.interstitialId}` : undefined }));
+    controller.load('groups', [...first.interstitials, ...second.interstitials], [], [first.flow, second.flow]);
+    controller.setCallResponses([first.flow, second.flow]);
+    await vi.waitFor(() => expect(controller.getSnapshot().items.every(item => item.phase === 'ready')).toBe(true));
+    const references = controller.getSnapshot().items.map(item => item.result?.reference);
+    expect(references.every(Boolean)).toBe(true);
+    for (const item of controller.getSnapshot().items) expect(controller.dependency(item.id)?.stale).toBe(false);
+    second.flow = changeClipKind(second.flow, 'wait', 'video');
+    second.flow.scenes.find(scene => scene.id === 'intro')!.clip.outFrame--;
+    controller.setCallResponses([first.flow, second.flow]);
+    for (const item of first.interstitials) expect(controller.dependency(item.id)?.stale).toBe(false);
+    for (const item of second.interstitials) expect(controller.dependency(item.id)?.stale).toBe(true);
+    expect(controller.getSnapshot().items.map(item => item.result?.reference)).toEqual(references);
+    const saved = JSON.parse(JSON.stringify(controller.getSnapshot().items));
+    controller.load('groups', saved, [], [first.flow, second.flow]);
+    controller.setCallResponses([first.flow, second.flow]);
+    await vi.waitFor(() => expect(controller.getSnapshot().items.every(item => item.phase === 'ready')).toBe(true));
+    for (const item of first.interstitials) expect(controller.dependency(item.id)?.stale).toBe(false);
+    for (const item of second.interstitials) expect(controller.dependency(item.id)?.stale).toBe(true);
+  });
+  it('keeps prompt and duration edits independent of displayed questions and saved variants', () => {
+    const pin = controller.add(5, 20), draft = createCallResponseDraft(pin, crypto.randomUUID(), 20);
+    controller.load('variant', [pin, ...draft.interstitials], responseInterstitialIds(draft.flow), draft.flow);
+    controller.edit(draft.interstitials[0].id, { prompt: 'My independently edited prompt.' });
+    controller.edit(draft.interstitials[2].id, { duration: 8 });
+    expect(controller.getSnapshot().items.find(item => item.id === draft.interstitials[3].id)?.duration).toBe(6);
+    controller.setCallResponses([]);
+    controller.setCallResponse(draft.flow);
+    controller.setCallResponse({ ...draft.flow, interaction: { ...draft.flow.interaction, question: 'Different on-screen question?' } });
+    const call = controller.getSnapshot().items.find(item => item.id === draft.interstitials[0].id)!;
+    expect(call.prompt).toBe('My independently edited prompt.');
+    expect(call.dialogue).toBeUndefined();
+    expect(controller.getSnapshot().items.find(item => item.id === draft.interstitials[2].id)?.duration).toBe(8);
+  });
+  it('migrates saved dialogue into visible prompts without altering submitted generation text or edit status', () => {
+    const pin = controller.add(5, 20), draft = createCallResponseDraft(pin, crypto.randomUUID(), 20);
+    const legacy = { ...draft.interstitials[0], prompt: 'Ask gently.', dialogue: 'What do you think?' };
+    controller.load('legacy', [{ ...legacy, generationSettings: interstitialSettings(legacy) }], [], draft.flow);
+    const restored = controller.getSnapshot().items[0];
+    expect(restored.prompt).toContain('Spoken dialogue, verbatim: What do you think?');
+    expect(restored.dialogue).toBeUndefined();
+    expect(restored.generationSettings?.dialogue).toBeUndefined();
+    expect(generationPrompt(restored)).toBe(generationPrompt(legacy));
+    expect(hasUnsubmittedChanges(restored)).toBe(false);
+    controller.load('legacy', [restored], [], draft.flow);
+    expect(controller.getSnapshot().items[0].prompt).toBe(restored.prompt);
+  });
   it.each([0, 6_000])('keeps newer Comfy steps when a poll is delayed %i ms and reconciles subsequent polls', async delay => {
     const id = add(); controller.edit(id, { method: 'comfy' });
     vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE', insertion: completed.insertion });
@@ -108,7 +159,7 @@ describe('interstitial lifecycle', () => {
     const expanded = addAnswer(example.flow), answer = expanded.interaction.answers.at(-1)!;
     controller.setCallResponse(expanded);
     const scene = expanded.scenes.find(scene => scene.id === answer.sceneId)!, id = scene.interstitialId!;
-    expect(controller.getSnapshot().items.find(item => item.id === id)).toMatchObject({ duration: 8, result: { assetId: scene.clip.assetId } });
+    expect(controller.getSnapshot().items.find(item => item.id === id)).toMatchObject({ duration: 8, phase: 'draft', method: 'comfy' });
     expect(controller.dependency(id)).toMatchObject({ stale: false, reference: { before: { sceneId: 'wait' }, after: { sceneId: 'continue' } } });
     controller.edit(id, { duration: 7, prompt: 'A third reaction' });
     expect(controller.getSnapshot().items.filter(item => responseInterstitialIds(expanded).includes(item.id)).map(item => item.duration)).toEqual([7, 7, 7]);
@@ -163,7 +214,7 @@ describe('interstitial lifecycle', () => {
     controller.select('parent');
     vi.mocked(cancelInterstitialJob).mockResolvedValue({ requestId: completed.requestId, status: 'CANCELLED' });
     expect(await controller.removeMany(['parent', first, second])).toBe(true);
-    expect(cancelInterstitialJob).toHaveBeenCalledExactlyOnceWith(completed.requestId, 'fal');
+    expect(cancelInterstitialJob).toHaveBeenCalledExactlyOnceWith(completed.requestId, 'comfy');
     finish(completed);
     await Promise.resolve();
     expect(controller.getSnapshot().items.map(item => item.id)).toEqual([unrelated]);
@@ -184,14 +235,16 @@ describe('interstitial lifecycle', () => {
     expect(await controller.removeMany(['parent', first, second])).toBe(true);
     expect(controller.getSnapshot().items).toEqual([]);
   });
-  it('gives a newly converted child its own settings and retained video', () => {
+  it('gives a newly converted child its own editable draft settings', () => {
     const example = createTimelineExample(crypto.randomUUID(), 8);
     controller.load('flow', example.interstitials, [], example.flow);
     const flow = changeClipKind(example.flow, 'continue', 'call');
     flow.scenes.find(scene => scene.id === 'continue')!.interstitialId = 'call-response-continue';
     controller.setCallResponse(flow);
     const child = controller.getSnapshot().items.find(item => item.id === 'call-response-continue');
-    expect(child).toMatchObject({ phase: 'ready', prompt: 'Let’s keep exploring. Our next adventure awaits!', result: { assetId: flow.scenes[0].clip.assetId } });
+    expect(child).toMatchObject({ phase: 'draft', method: 'comfy' });
+    expect(child!.prompt).toContain('Let’s keep exploring. Our next adventure awaits!');
+    expect(child!.dialogue).toBeUndefined();
     controller.edit(child!.id, { prompt: 'An independent prompt' });
     expect(controller.getSnapshot().items[0].prompt).toBe('What is 2 + 2?');
   });

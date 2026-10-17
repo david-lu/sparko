@@ -40,6 +40,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
 
     await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
     await page.getByRole('button', { name: /^Add interstitial/ }).click();
+    await page.getByLabel('Video generation method').selectOption('fal');
     await page.getByLabel('Interstitial prompt').fill('Continue the dance');
     await page.locator('.sidebar').evaluate(element => { element.scrollTop = 0; });
     const idleEditor = await bounds(page, editor);
