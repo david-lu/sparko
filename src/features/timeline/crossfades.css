@@ -1,0 +1,5 @@
+.timeline-crossfades{position:absolute;inset:0;pointer-events:none;z-index:3}
+.timeline-crossfade{position:absolute;top:0;bottom:0;transform:translateX(-50%);pointer-events:auto;cursor:default}
+.timeline-crossfade svg{display:block;width:100%;height:100%;overflow:hidden}
+.timeline-crossfade path{fill:#e1e8ff38}
+.timeline-crossfade .crossfade-lines{fill:none;stroke:#eff3ff;stroke-width:1.2;vector-effect:non-scaling-stroke}

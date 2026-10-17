@@ -99,11 +99,17 @@ export class VideoPlayerController {
     if (this.composition === composition) return;
     const wasPlaying = this.wantsPlayback || this.state.playing;
     const sourceTime = this.composition?.sourceTime(this.state.time) ?? this.state.time;
+    const previous = this.composition;
+    const sameEdit = previous && previous.crossfade !== composition.crossfade && previous.fps === composition.fps && previous.duration === composition.duration
+      && previous.segments.length === composition.segments.length && previous.segments.every((segment, index) => {
+        const next = composition.segments[index];
+        return segment.id === next.id && segment.source.url === next.source.url && segment.sourceStart === next.sourceStart && segment.startFrame === next.startFrame && segment.endFrame === next.endFrame && segment.still === next.still;
+      });
     this.composition = composition;
     this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose();
     this.stream = composition.hasInsertions ? new TimelineStream(composition) : null;
     this.wantsPlayback = wasPlaying;
-    const time = composition.timelineTime(sourceTime);
+    const time = sameEdit ? this.state.time : composition.timelineTime(sourceTime);
     this.update({ time, duration: composition.duration, buffered: [], error: null });
     if (!this.element) return;
     if (this.stream) this.startStream(time); else this.startSource(time);

@@ -2,12 +2,15 @@ import { AudioSample, AudioSampleSink, AudioSampleSource, CanvasSink, CanvasSour
 import { ensureAac, openInput } from './media';
 import type { TimelineComposition, TimelineSegment } from './TimelineComposition';
 import { AudioNormalizer, COMPOSITION_AUDIO_CHANNELS, COMPOSITION_AUDIO_RATE } from './AudioNormalizer';
+import { compositionTransitions, segmentTime, transitionWeight, type CompositionTransition } from './CompositionTransitions';
+import { CompositionAudioCrossfade } from './CompositionAudioCrossfade';
+import { CompositionAudioWriter } from './CompositionAudioWriter';
 
 export const COMPOSITION_MIME = 'video/mp4; codecs="avc1.42002a, mp4a.40.2"';
 type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
 
 /** Encodes one continuous frame/sample clock, including across different source assets. */
-export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'>, output: Output, options: Options) {
+export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & { crossfade?: boolean }, output: Output, options: Options) {
   await ensureAac();
   options.signal.throwIfAborted();
   const scale = options.preview ? Math.min(1, 720 / composition.info.height) : 1;
@@ -16,7 +19,18 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
   if (!context) throw new Error('Unable to create the timeline renderer.');
   const video = new CanvasSource(canvas, { codec: 'avc', ...(options.preview ? { fullCodecString: 'avc1.42002a' } : {}), quality: new Quality('medium'), keyFrameInterval: 1, latencyMode: 'quality' });
   const audio = new AudioSampleSource({ codec: 'aac', quality: new Quality('medium') });
-  const normalizedAudio = new AudioNormalizer(async sample => { options.signal.throwIfAborted(); await audio.add(sample); });
+  const audioWriter = new CompositionAudioWriter(async sample => { options.signal.throwIfAborted(); await audio.add(sample); });
+  const transitions = composition.crossfade === false ? [] : compositionTransitions(composition.segments);
+  const normalizedAudio = new AudioNormalizer(async sample => {
+    options.signal.throwIfAborted();
+    const offset = Math.round(sample.timestamp * COMPOSITION_AUDIO_RATE);
+    const first = Math.max(0, -offset), last = Math.min(sample.numberOfFrames, Math.round((lastFrame - firstFrame) / composition.fps * COMPOSITION_AUDIO_RATE) - offset);
+    if (last <= first) return;
+    // A resampler may flush one extra sample; exports still end on the exact frame clock.
+    const trimmed = sample.trim(first, last);
+    trimmed.setTimestamp((offset + first) / COMPOSITION_AUDIO_RATE);
+    try { await crossfadeAudio.write(trimmed, origin, sample => audioWriter.add(sample)); } finally { trimmed.close(); }
+  });
   output.addVideoTrack(video, { frameRate: composition.fps });
   output.addAudioTrack(audio);
   const inputs = new Map<string, Input>();
@@ -25,6 +39,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
     if (!input) { input = openInput(segment.source); inputs.set(segment.source.url, input); }
     return input;
   };
+  const crossfadeAudio = new CompositionAudioCrossfade(transitions, composition.fps, inputFor, options.signal);
   const cancel = () => {
     for (const input of inputs.values()) input.dispose();
     void normalizedAudio.cancel().catch(() => undefined); void output.cancel().catch(() => undefined);
@@ -36,6 +51,22 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
   try {
     await output.start();
     const writeVideo = async () => {
+      let edge: CompositionTransition | undefined;
+      const edgeSinks = new Map<TimelineSegment, { sink: CanvasSink; first: number; last: number }>();
+      const edgeFrame = async (segment: TimelineSegment, frame: number) => {
+        let decoder = edgeSinks.get(segment);
+        if (!decoder) {
+          const track = await inputFor(segment).getPrimaryVideoTrack();
+          if (!track || !await track.canDecode()) throw new Error(`Unable to decode ${segment.label}.`);
+          const [first, duration] = await Promise.all([track.getFirstTimestamp(), track.computeDuration()]);
+          decoder = { sink: new CanvasSink(track, { width: canvas.width, height: canvas.height, fit: 'contain', poolSize: 1 }), first, last: Math.max(first, duration - 1 / composition.fps) };
+          edgeSinks.set(segment, decoder);
+        }
+        // Assets without spare frames hold their boundary image instead of introducing black.
+        const sample = await decoder.sink.getCanvas(Math.max(decoder.first, Math.min(decoder.last, segmentTime(segment, frame, composition.fps))) + 1e-7);
+        if (!sample) throw new Error(`A transition frame is missing from ${segment.label}.`);
+        return sample.canvas;
+      };
       for (const segment of composition.segments) {
         const first = Math.max(firstFrame, segment.startFrame), last = Math.min(lastFrame, segment.endFrame);
         if (first >= last) continue;
@@ -48,7 +79,17 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
           options.signal.throwIfAborted();
           await options.beforeFrame?.(frame / composition.fps);
           if (!sample) throw new Error(`A frame is missing from ${segment.label}.`);
-          context.drawImage(sample.canvas, 0, 0);
+          const transition = transitions.find(transition => frame >= transition.startFrame && frame < transition.endFrame);
+          if (transition !== edge) { edgeSinks.clear(); edge = transition; }
+          if (transition) {
+            const before = segment === transition.before ? sample.canvas : await edgeFrame(transition.before, frame);
+            const after = segment === transition.after ? sample.canvas : await edgeFrame(transition.after, frame);
+            options.signal.throwIfAborted();
+            context.drawImage(before, 0, 0);
+            context.globalAlpha = transitionWeight(transition, frame + .5);
+            context.drawImage(after, 0, 0);
+            context.globalAlpha = 1;
+          } else context.drawImage(sample.canvas, 0, 0);
           await video.add((frame - firstFrame) / composition.fps, 1 / composition.fps, { keyFrame: frame === first || (frame - firstFrame) % Math.max(1, Math.round(composition.fps)) === 0 });
           frame++;
           options.onProgress?.((frame - firstFrame) / (lastFrame - firstFrame));
@@ -101,6 +142,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
         await silence(cursor, to - origin);
       }
       await normalizedAudio.flush();
+      await audioWriter.flush();
       audio.close();
     };
     await Promise.all([writeVideo(), writeAudio()]);

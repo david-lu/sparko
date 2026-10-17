@@ -9,6 +9,7 @@ import { TIMELINE_FPS } from '../../../shared/constants';
 import ResizeHandle from '../../shared/ResizeHandle';
 import InterstitialMarker from './InterstitialMarker';
 import VideoFilmstrip from './VideoFilmstrip';
+import CrossfadeMarks from './CrossfadeMarks';
 import { phaseLabel } from '../interstitials/status';
 import FlowTracks, { type FlowTimeline } from './FlowTracks';
 import { flowLayout } from '../call-response/model';
@@ -128,6 +129,7 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
               onSelectInterstitial(segment.id, Math.max(segment.startFrame, Math.min(segment.endFrame - 1, frame)) / composition.fps);
             }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} width={(segment.endFrame - segment.startFrame) / composition.fps / duration * contentWidth} />{busy && <span className="spinner timeline-generation-spinner" role="status" aria-label={`${segment.label}: ${phaseLabel(item)}`} />}</button>;
           })}
+          {composition && <CrossfadeMarks composition={composition} width={contentWidth} />}
           <div className="playhead" style={{ left: `${progress}%` }} aria-hidden="true"><span /></div>
           {duration > 0 && markers.filter(item => item.time <= duration).map((item, index) => {
             const segment = composition?.segments.find(segment => segment.kind === 'interstitial' && segment.id === item.id);

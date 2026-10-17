@@ -454,7 +454,7 @@ test('queued jobs recover after reload, cancel, and preserve draft fields', asyn
   await page.getByRole('button', { name: 'Remove Interstitial 1' }).click(); await expect(page.getByText('No interstitials yet')).toBeVisible();
 });
 
-test('composition export preserves frame counts, generated-only bounds and audio through both cuts', async ({ page }) => {
+test('composition export with crossfades disabled preserves frame counts, generated-only bounds and audio through both cuts', async ({ page }) => {
   await generatedFixture(page);
   const result = await page.evaluate(async () => {
     const { TimelineComposition } = await import('/src/media/TimelineComposition.ts' as string);
@@ -462,7 +462,7 @@ test('composition export preserves frame counts, generated-only bounds and audio
     const { Input, BlobSource, ALL_FORMATS, CanvasSink } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const url = 'https://fal.media/interstitial-fixture.mp4';
     const composition = new TimelineComposition({ id: 'source', name: 'Source', url }, { duration: 3, fps: 25, width: 160, height: 90, codec: 'avc', hasAudio: true },
-      [{ id: 'insert', label: 'Insert', time: 1, phase: 'ready', result: { url, start: 2, duration: 5, totalDuration: 9 } }]);
+      [{ id: 'insert', label: 'Insert', time: 1, phase: 'ready', result: { url, start: 2, duration: 5, totalDuration: 9 } }], { crossfade: false });
     const blob = await new TimelineStream(composition).exportMp4({ start: 0, end: 8 });
     const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
     try {
@@ -477,4 +477,41 @@ test('composition export preserves frame counts, generated-only bounds and audio
   expect(result.stats.packetCount).toBe(192);
   expect(result.stats.averagePacketRate).toBeCloseTo(24, 5);
   expect(result.colors[0][0]).toBeGreaterThan(180); expect(result.colors[1][1]).toBeGreaterThan(180); expect(result.colors[2][1]).toBeGreaterThan(180); expect(result.colors[3][0]).toBeGreaterThan(180);
+});
+
+test('crossfade markers follow the Options toggle and persist after reload', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await generatedFixture(page);
+  await page.route('**/api/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'fade-job-1234', status: 'IN_QUEUE' } }));
+  await page.route('**/api/fal/jobs/fade-job-1234', route => route.fulfill({ json: {
+    requestId: 'fade-job-1234', status: 'COMPLETED', videoUrl: 'https://fal.media/interstitial-fixture.mp4', insertion: { start: 2, duration: 5, totalDuration: 9 },
+  } }));
+  await addDraft(page, 10); await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  await expect.poll(async () => (await saved(page))[0]?.phase, { timeout: 60_000 }).toBe('ready');
+  const marks = page.getByRole('img', { name: /^Crossfade:/ });
+  await expect(marks).toHaveCount(2); await expect(marks.first()).toBeVisible();
+  await expect(marks.first()).toHaveAttribute('title', /4 frames \(0\.17 s\)/);
+  expect((await marks.first().boundingBox())!.width).toBeGreaterThanOrEqual(12);
+  const duration = await page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max');
+  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('12');
+  await expect.poll(() => page.locator('.video-stage video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(12, 2);
+  await page.getByText('Options', { exact: true }).click();
+  const toggle = page.getByRole('menuitemcheckbox', { name: /Interstitial crossfades/ });
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await toggle.click(); await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(marks).toHaveCount(0);
+  await expect.poll(() => page.locator('.video-stage video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(12, 2);
+  await expect(page.getByRole('slider', { name: 'Video timeline', exact: true })).toHaveAttribute('max', duration!);
+  await page.reload(); await expect(page.locator('.rendered-interstitial')).toHaveCount(1);
+  await expect(marks).toHaveCount(0);
+  await page.getByText('Options', { exact: true }).click(); await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await toggle.focus(); await toggle.press('Space'); await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(marks).toHaveCount(2);
+  // Restart the progressive preview inside the opening dissolve, then wait for playable media.
+  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('10');
+  await expect(page.locator('.video-stage .buffering')).toHaveCount(0, { timeout: 30_000 });
+  await expect.poll(() => page.locator('.video-stage video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(10, 2);
+  await page.getByText('Options', { exact: true }).click();
+  await page.screenshot({ path: 'test-results/interstitial-crossfades.png' });
+  expect(errors).toEqual([]);
 });

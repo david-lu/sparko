@@ -4,6 +4,7 @@ import CallResponseControls from '../features/call-response/CallResponseControls
 import { addAnswer, branchScenes, reconnectEdge, resolveFlow, type SceneId } from '../features/call-response/model';
 import type { FlowTimeline } from '../features/timeline/FlowTracks';
 import Player from '../features/player/Player';
+import PlaybackOptions, { crossfadePreference, savedCrossfadePreference } from '../features/player/PlaybackOptions';
 import InterstitialPanel from '../features/interstitials/InterstitialPanel';
 import { InterstitialController } from '../features/interstitials/InterstitialController';
 import { ProjectController } from '../features/project/ProjectController';
@@ -44,6 +45,8 @@ export default function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [error, setError] = useState('');
   const [shortcuts, setShortcuts] = useState(false);
+  const [crossfade, setCrossfade] = useState(savedCrossfadePreference);
+  useEffect(() => { try { localStorage.setItem(crossfadePreference, String(crossfade)); } catch { /* Apply without persistence. */ } }, [crossfade]);
   const [selectedFlowScene, setSelectedFlowScene] = useState<SceneId | null>(null);
   const [selectedFlowEdge, setSelectedFlowEdge] = useState<string | null>(null);
   const savedFlow = projectState.project?.callResponse;
@@ -72,7 +75,7 @@ export default function App() {
   const sourceVersion = useRef(0);
   const readyKey = JSON.stringify(interstitialState.items.filter(item => playableResult(item)).map(item => ({ id: item.id, label: item.label, time: item.time, result: playableResult(item) })));
   const flow = useMemo(() => savedFlow ? resolveFlow(savedFlow, interstitialState.items) : undefined, [savedFlow, readyKey]);
-  const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items) : null, [source, info, readyKey]);
+  const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade }) : null, [source, info, readyKey, crossfade]);
   useEffect(() => { if (flow && info) controller.setFlow(flow); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info]);
   useEffect(() => {
     controller.pause(); setSelectedFlowScene(null); setSelectedFlowEdge(null);
@@ -200,6 +203,7 @@ export default function App() {
         <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; projectInput.current?.click(); }}><Upload size={14} />Import project</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>
+      <PlaybackOptions crossfade={crossfade} onCrossfade={setCrossfade} />
       <div className="history-controls" role="group" aria-label="Edit history">
         <button className="icon-button small" aria-label="Undo" aria-keyshortcuts="Control+Z Meta+Z" title={`${projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo'} (Ctrl/Cmd+Z)`}
           disabled={projectState.busy || !projectState.undoLabel} onClick={() => { controller.pause(); void projects.undo(); }}><Undo2 size={14} /></button>
