@@ -1,6 +1,6 @@
 import './styles.css';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Captions, Check, Maximize, Minimize, PanelBottomClose, PanelBottomOpen, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
+import { Captions, Maximize, Minimize, PanelBottomClose, PanelBottomOpen, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, MediaSource, Thumbnail } from '../../media/media';
 import type { Interstitial } from '../../../shared/interstitials';
@@ -9,7 +9,7 @@ import type { VideoPlayerController } from './VideoPlayerController';
 import Timeline from '../timeline/Timeline';
 import { remapSubtitles } from './subtitles';
 import type { FlowTimeline } from '../timeline/FlowTracks';
-import { answerLabel, getScene, type Outcome } from '../call-response/model';
+import PlayerChoices from './PlayerChoices';
 
 type Props = {
   source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[];
@@ -38,7 +38,6 @@ export default function Player(props: Props) {
   const subtitle = props.subtitle;
   const [captions, setCaptions] = useState(true);
   const flow = props.callResponse;
-  const activeScene = flow?.session ? getScene(flow.flow, flow.session.sceneId) : null;
   const originalCues = useRef<{ url: string; cues: VTTCue[] } | null>(null);
   useEffect(() => {
     const video = controller.video;
@@ -167,14 +166,7 @@ export default function Player(props: Props) {
       </video>
       {!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
       {buffering && <div className="buffering" role="status"><span className="spinner" /><span className="sr-only">Buffering</span></div>}
-      {flow && activeScene?.clip.kind === 'idle' && <div className="player-branch-controls" role="group" aria-label="Debug response branches" onDoubleClick={event => event.stopPropagation()}>
-        {flow.flow.edges.filter(edge => edge.from === activeScene.id && flow.flow.interaction.answers.some(answer => answer.id === edge.when)).map(edge => <button key={edge.id}
-          aria-label={`Take ${answerLabel(flow.flow, edge.when)} branch`} title={`Debug: take the ${answerLabel(flow.flow, edge.when)} branch at the next loop boundary`}
-          aria-pressed={flow.session?.outcome === edge.when} onClick={() => flow.onBranch(activeScene.id, edge.when as Outcome)}>
-          <span className="player-branch-label">{flow.session?.outcome === edge.when && <Check size={15} />}{answerLabel(flow.flow, edge.when)}</span>
-          <span className="player-branch-selection" aria-hidden="true">{flow.session?.outcome === edge.when ? 'Selected' : ''}</span>
-        </button>)}
-      </div>}
+      {flow && <PlayerChoices key={flow.flow.interstitial.id} value={flow} />}
     <div className="transport" ref={transport} onDoubleClick={event => event.stopPropagation()}>
       <div className="transport-group">
         <button className="icon-button play-button" aria-label={playing ? 'Pause' : 'Play'} title="Play / pause (Space)" disabled={!duration} onClick={playPause}>{playing ? <Pause /> : <Play fill="currentColor" />}</button>

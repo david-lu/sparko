@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const clip = (page: Page, id: string) => page.locator(`.timeline-flow-clip[data-scene-id="${id}"]`);
 const video = (page: Page) => page.locator('.video-stage > video');
-const branchButton = (page: Page, outcome: string) => page.locator('.video-stage').getByRole('button', { name: `Take ${outcome === 'correct' ? 'Correct' : outcome === 'incorrect' ? 'Incorrect' : outcome} branch`, exact: true });
+const branchButton = (page: Page, outcome: string) => page.locator('.video-stage').getByRole('button', { name: `Choose ${outcome === 'correct' ? 'Correct' : outcome === 'incorrect' ? 'Incorrect' : outcome}`, exact: true });
 async function selectIdle(page: Page) {
   await clip(page, 'wait').getByRole('button', { name: 'Select clip Idle · waiting for an answer', exact: true }).focus();
   await page.keyboard.press('Enter');
@@ -24,6 +24,58 @@ async function openExample(page: Page, prepare?: () => Promise<void>, generation
   await expect(page.locator('.timeline-section.has-flow')).toBeVisible();
   await expect(page.locator('.project-status')).toHaveCount(0, { timeout: 60_000 });
   await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
+}
+
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`answer choices dismiss in order and survive the playback transition (${reducedMotion})`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion });
+    await openExample(page);
+    await selectIdle(page);
+    const choices = page.getByRole('group', { name: 'Choose an answer' });
+    await expect.poll(() => choices.locator('button').evaluateAll(buttons => buttons.flatMap(button => button.getAnimations()).length)).toBe(0);
+    const selected = branchButton(page, 'correct'), other = branchButton(page, 'incorrect');
+    const before = await selected.boundingBox();
+    const end = await page.evaluate(async () => {
+      const { readActiveProject } = await import('/src/features/project/database.ts' as string);
+      const flow = (await readActiveProject()).callResponse;
+      return flow.scenes.find((scene: any) => scene.id === 'wait').clip.outFrame / flow.fps;
+    });
+    await video(page).evaluate(async (element: HTMLVideoElement, end: number) => {
+      const seeked = new Promise<void>(resolve => element.addEventListener('seeked', () => resolve(), { once: true }));
+      element.currentTime = end - .15; await seeked;
+    }, end);
+    await choices.evaluate(element => {
+      (window as any).choicePhases = [];
+      const phases = new MutationObserver(() => (window as any).choicePhases.push({ phase: element.getAttribute('data-phase'), at: performance.now() }));
+      phases.observe(element, { attributes: true, attributeFilter: ['data-phase'] });
+      const removal = new MutationObserver(() => {
+        if (element.isConnected) return;
+        (window as any).choicePhases.push({ phase: 'done', at: performance.now() });
+        phases.disconnect(); removal.disconnect();
+      });
+      removal.observe(element.parentElement!, { childList: true });
+    });
+    await selected.click();
+    await expect(choices).toHaveAttribute('data-phase', 'holding');
+    await expect(other).toBeHidden();
+    await expect(selected).toBeVisible();
+    await expect(selected).toHaveAttribute('aria-pressed', 'true');
+    await expect(selected).toHaveAttribute('aria-disabled', 'true');
+    await expect(selected).toHaveText('Correct');
+    expect(await selected.boundingBox()).toEqual(before);
+    await expect(clip(page, 'correct')).toHaveAttribute('data-active', 'true');
+    await expect(selected).toBeVisible();
+    await expect(choices).toHaveCount(0);
+    const phases = await page.evaluate(() => (window as any).choicePhases as { phase: string; at: number }[]);
+    const holding = phases.find(event => event.phase === 'holding')!;
+    const exiting = phases.find(event => event.phase === 'exiting') ?? phases.find(event => event.phase === 'done')!;
+    expect(exiting.at - holding.at).toBeGreaterThanOrEqual(950);
+    expect(exiting.at - holding.at).toBeLessThan(1600);
+    await selectIdle(page);
+    await expect(choices).toHaveAttribute('data-phase', 'choosing');
+    await expect(selected).toHaveAttribute('aria-pressed', 'false');
+    await expect(other).toBeVisible();
+  });
 }
 
 test('custom answers drive stacked clips, player buttons, undo and saved projects', async ({ page }) => {
@@ -72,7 +124,7 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
     await expect(page.locator('.player-branch-controls button')).toHaveCount(3);
     await branchButton(page, label).click();
     await expect(branchButton(page, label)).toHaveAttribute('aria-pressed', 'true');
-    await expect(branchButton(page, label)).toContainText('Selected');
+    await expect(branchButton(page, label)).toHaveText(label);
     await expect(page.locator('.player-branch-controls button[aria-pressed="false"]')).toHaveCount(2);
     await expect(clip(page, sceneId)).toHaveAttribute('data-active', 'true', { timeout: 7000 });
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
@@ -285,7 +337,7 @@ test('the timeline shows footage and the player branches out of the idle clip', 
   await expect(page.getByRole('region', { name: 'Idle clip', exact: true }).getByRole('button', { name: 'Regenerate', exact: true })).toBeVisible();
   await clip(page, 'intro').getByRole('button', { name: 'Select clip Source · before', exact: true }).click();
   await expect(page.locator('.flow-video-caption, .flow-video-label')).toHaveCount(0);
-  await expect(page.locator('.timeline-section').getByRole('button', { name: /Take .* branch/ })).toHaveCount(0);
+  await expect(page.locator('.timeline-section').getByRole('button', { name: /^Choose / })).toHaveCount(0);
   await expect(branchButton(page, 'correct')).toHaveCount(0);
   await expect(clip(page, 'wait')).toHaveAttribute('data-clip-kind', 'idle');
   await clip(page, 'wait').getByRole('button', { name: 'Select clip Idle · waiting for an answer', exact: true }).focus();
@@ -547,7 +599,7 @@ for (const action of ['panel', 'list', 'Delete', 'Backspace']) {
     await expect(page.locator('.timeline-section.has-flow')).toHaveCount(0);
     await expect(page.locator('.interstitial-list > li')).toHaveCount(1);
     await expect(page.getByRole('button', { name: 'Select Keep this draft', exact: true })).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Debug response branches' })).toHaveCount(0);
+    await expect(page.getByRole('group', { name: 'Choose an answer' })).toHaveCount(0);
     await expect.poll(() => page.evaluate(async () => {
       const { readActiveProject } = await import('/src/features/project/database.ts' as string);
       const project = await readActiveProject();

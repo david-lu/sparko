@@ -1,24 +1,24 @@
 .clip-loading {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   gap: 7px; overflow: hidden; padding: 4px; pointer-events: none;
-  background: repeating-linear-gradient(90deg, #242a36 0, #242a36 78px, #1d222c 78px, #1d222c 80px);
-  color: #b2bed2; font-size: 10px; font-weight: 400;
+  background: repeating-linear-gradient(90deg, #332f29 0, #332f29 78px, #2b2722 78px, #2b2722 80px);
+  color: var(--text-secondary); font-size: 10px; font-weight: 400;
 }
 .clip-loading::before {
   content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(100deg, transparent 20%, #a7bcf10e 50%, transparent 80%);
+  background: linear-gradient(100deg, transparent 20%, #dfbd9410 50%, transparent 80%);
   transform: translateX(-100%); animation: clip-shimmer 1.8s ease-in-out infinite;
 }
 .clip-loading > * { position: relative; flex-shrink: 0; }
 .clip-loading-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.clip-loading.failed { background: #20252d; color: #9da8bb; }
+.clip-loading.failed { background: var(--surface); color: var(--muted); }
 .clip-loading.failed::before { display: none; }
-.clip-preview-stage .clip-loading { background-color: #14181f; }
+.clip-preview-stage .clip-loading { background-color: var(--input); }
 .clip-job-status {
   position: absolute; bottom: 4px; left: 4px; right: 4px; z-index: 3;
   display: flex; align-items: center; gap: 5px; min-width: 0; padding: 4px 6px;
-  color: #e0e8fc; background: #172032ed; border: 1px solid #a7bcf126;
-  border-radius: 3px; font-size: 9px; line-height: 12px; pointer-events: none;
+  color: var(--text); background: var(--overlay); border: 1px solid #dfbd9433;
+  border-radius: var(--radius-sm); font-size: 9px; line-height: 12px; pointer-events: none;
 }
 .clip-job-status > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clip-job-status .timeline-generation-spinner { position: static; width: 10px; height: 10px; flex-shrink: 0; }

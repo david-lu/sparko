@@ -1,6 +1,6 @@
 import './styles.css';
 import { useRef, type ReactNode } from 'react';
-import { ArrowLeft, Clapperboard, Plus, Repeat2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Clapperboard, Repeat2, Sparkles, Trash2 } from 'lucide-react';
 import { formatTime, type AppStatus } from '../../../shared/contracts';
 import { isGenerating, playableResult, type Interstitial } from '../../../shared/interstitials';
 import type { MediaEngine } from '../../media/MediaEngine';
@@ -49,7 +49,7 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
   }
   if (!selected) return <div className="panel-content interstitial-panel">
     <div className="panel-intro"><h2>Interstitials</h2></div>
-    <button className="button full-width" disabled={!info || connectedIds.length > 0} onClick={onAdd}><Plus size={14} /> New interstitial at playhead</button>
+    <button className="button full-width" disabled={!info || connectedIds.length > 0} onClick={onAdd}><Sparkles size={14} /> New interstitial at playhead</button>
     {!items.length && !callResponse ? <div className="empty-state"><h3>No interstitials yet</h3><p>Press <kbd>P</kbd> to add an interstitial at the playhead.</p></div> : <ol className="interstitial-list">
       {callResponse && <li className="interstitial-group" data-interstitial-id={callResponse.flow.interstitial.id}>
         <div className="interstitial-group-title">
@@ -80,7 +80,11 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
   </div>;
   return <div className="panel-content interstitial-panel">
     <button className="text-button interstitial-back" onClick={() => onSelect(null)}><ArrowLeft size={13} /> All interstitials</button>
-    <div className="interstitial-title"><InterstitialName key={selected.id} name={selected.label} onChange={name => controller.rename(selected.id, name)} /><RemoveInterstitialButton item={selected} controller={controller} disabled={connectedIds.includes(selected.id)} /></div>
+    <div className="interstitial-title">
+      <InterstitialName key={selected.id} name={selected.label} onChange={name => controller.rename(selected.id, name)} />
+      {selected.phase === 'draft' && <span className="interstitial-draft">Draft</span>}
+      <RemoveInterstitialButton item={selected} controller={controller} disabled={connectedIds.includes(selected.id)} />
+    </div>
     <InterstitialEditor selected={selected} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />
   </div>;
 }

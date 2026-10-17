@@ -1,6 +1,6 @@
 import './styles.css';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Clapperboard, Minus, Plus, SkipBack, SkipForward } from 'lucide-react';
+import { Minus, Plus, SkipBack, SkipForward, Sparkles } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, Thumbnail } from '../../media/media';
 import { isGenerating, playableResult, type Interstitial } from '../../../shared/interstitials';
@@ -94,7 +94,7 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
         <button className="icon-button small" aria-label="Previous interstitial" disabled={!markers.some(item => item.time < time - 0.05)} onClick={() => onSelectInterstitial([...markers].reverse().find(item => item.time < time - 0.05)?.id ?? null)}><SkipBack size={14} /></button>
         <button className="icon-button small" aria-label="Next interstitial" disabled={!markers.some(item => item.time > time + 0.05)} onClick={() => onSelectInterstitial(markers.find(item => item.time > time + 0.05)?.id ?? null)}><SkipForward size={14} /></button>
         <div className="interstitial-add-actions">
-          <button className="button small" disabled={!info || !!callResponse} onClick={onAddInterstitial}><Clapperboard size={13} /> Add interstitial <kbd>P</kbd></button>
+          <button className="button small" disabled={!info || !!callResponse} onClick={onAddInterstitial}><Sparkles size={13} /> Add interstitial <kbd>P</kbd></button>
           <InterstitialHelp />
         </div>
       </div>
@@ -114,7 +114,13 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
           setHover({ time: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration,
             x: event.clientX - (section.current?.getBoundingClientRect().left || 0) });
         }} onPointerLeave={() => setHover(null)}>
-          <div className="filmstrip">{composition?.hasInsertions ? composition.segments.filter(segment => segment.kind === 'source').map(segment => <div className="source-segment" key={segment.id} style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} width={(segment.endFrame - segment.startFrame) / composition.fps / duration * contentWidth} /></div>) : thumbnails.length ? thumbnails.map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />) : <ClipLoading failed={thumbnailsFailed} message={thumbnailsFailed ? 'Preview unavailable' : duration ? 'Loading thumbnails…' : 'Loading video…'} />}</div>
+          <div className="filmstrip">{composition?.hasInsertions ? composition.segments.filter(segment => segment.kind === 'source').map(segment => <div className="source-segment" key={segment.id} style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }}>
+            <VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} width={(segment.endFrame - segment.startFrame) / composition.fps / duration * contentWidth} />
+            <span className="timeline-clip-label">{segment.label}</span>
+          </div>) : <div className="source-segment source-entire">
+            {thumbnails.length ? thumbnails.map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />) : <ClipLoading failed={thumbnailsFailed} message={thumbnailsFailed ? 'Preview unavailable' : duration ? 'Loading thumbnails…' : 'Loading video…'} />}
+            <span className="timeline-clip-label">{name}</span>
+          </div>}</div>
           <div className="timeline-shade" style={{ width: `${progress}%` }} />
           {selection && duration > 0 && selection.end > selection.start && <div className="selection-overlay" style={{ left: `${(composition?.timelineTime(selection.start) ?? selection.start) / duration * 100}%`, width: `${((composition?.timelineTime(selection.end) ?? selection.end) - (composition?.timelineTime(selection.start) ?? selection.start)) / duration * 100}%` }} />}
           <div className="buffer-track" aria-hidden="true">{buffered.map((range, index) => <span key={index} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }} />)}</div>
@@ -129,7 +135,7 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
               if (event.detail === 0 || !rect?.width) { onSelectInterstitial(segment.id); return; }
               const frame = Math.round((event.clientX - rect.left) / rect.width * duration * composition.fps);
               onSelectInterstitial(segment.id, Math.max(segment.startFrame, Math.min(segment.endFrame - 1, frame)) / composition.fps);
-            }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} width={(segment.endFrame - segment.startFrame) / composition.fps / duration * contentWidth} />{busy && <ClipJobStatus label={segment.label} message={phaseLabel(item)} />}</button>;
+            }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} width={(segment.endFrame - segment.startFrame) / composition.fps / duration * contentWidth} /><span className="timeline-clip-label">{segment.label}</span>{busy && <ClipJobStatus label={segment.label} message={phaseLabel(item)} />}</button>;
           })}
           {composition && <CrossfadeMarks composition={composition} width={contentWidth} />}
           <div className="playhead" style={{ left: `${progress}%` }} aria-hidden="true"><span /></div>
