@@ -71,7 +71,7 @@ test('creation uses separate fixed types and call-response drafts stay off the t
 
 test('Comfy generates in dependency order with live edits, individual regeneration and cancellation', async ({ page }) => {
   const bytes = await openDraft(page), submissions: { mode: string; prompt: string }[] = [];
-  let releaseCall = false, cancelled = false, hold = false;
+  let releaseCall = false, releaseIdle = false, releaseResponses = false, cancelled = false, hold = false;
   await page.route('**/api/comfy/jobs/*/events', route => route.fulfill({ contentType: 'text/event-stream', body: 'event: fallback\ndata: {}\n\n' }));
   await page.route('**/api/comfy/interstitials', async route => {
     const form = await new Response(Uint8Array.from(route.request().postDataBuffer()!), { headers: { 'Content-Type': route.request().headers()['content-type'] } }).formData();
@@ -83,7 +83,8 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   await page.route('**/api/comfy/jobs/*', route => {
     const id = route.request().url().split('/').at(-1)!;
     if (route.request().method() === 'DELETE') { cancelled = true; return route.fulfill({ json: { requestId: id, status: 'CANCELLED' } }); }
-    return route.fulfill({ json: { requestId: id, status: hold || id === 'comfy-job-1' && !releaseCall ? 'IN_PROGRESS' : 'COMPLETED', videoUrl: `/api/comfy/assets/${id}/content` } });
+    const waiting = hold || id === 'comfy-job-1' && !releaseCall || id === 'comfy-job-2' && !releaseIdle || id === 'comfy-job-3' && !releaseResponses;
+    return route.fulfill({ json: { requestId: id, status: waiting ? 'IN_PROGRESS' : 'COMPLETED', videoUrl: `/api/comfy/assets/${id}/content` } });
   });
   await page.route('**/api/comfy/assets/*/content', route => route.fulfill({ contentType: 'video/mp4', body: bytes }));
   const clips = page.locator('.clip-subpanel');
@@ -94,11 +95,31 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   await clips.nth(0).getByLabel('Interstitial prompt').fill('A later Call edit.');
   await clips.nth(1).getByLabel('Interstitial prompt').fill('Wait quietly, returning to the same pose.');
   releaseCall = true;
+  await expect.poll(() => submissions.length, { timeout: 30_000 }).toBe(2);
+  const finishedClips = page.locator('.timeline-interstitial-group .timeline-flow-clip:not(.draft)');
+  await expect(finishedClips).toHaveCount(1);
+  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(1);
+  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(0);
+  const callClip = page.locator('.timeline-flow-clip.clip-call');
+  await expect(callClip).toBeVisible();
+  await callClip.locator('.flow-clip-body').focus(); await page.keyboard.press('Enter');
+  await expect(callClip).toHaveAttribute('data-active', 'true');
+  await page.locator('.video-stage').hover();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect.poll(() => page.locator('.video-stage > video').evaluateAll(videos => videos.some(video => !(video as HTMLVideoElement).paused && (video as HTMLVideoElement).currentTime > 2))).toBe(true);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  releaseIdle = true;
+  await expect.poll(() => submissions.length, { timeout: 30_000 }).toBe(3);
+  await expect(finishedClips).toHaveCount(2);
+  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(2);
+  await expect(page.locator('.timeline-flow-clip.clip-idle')).not.toHaveClass(/\bdraft\b/);
+  releaseResponses = true;
   await expect(page.getByRole('status').filter({ hasText: 'All 4 clips generated.' })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(4);
   expect(submissions.map(item => item.mode)).toEqual(['extend', 'loop', 'bridge', 'bridge']);
   expect(submissions[1].prompt).toContain('Wait quietly, returning to the same pose.');
   expect(submissions[0].prompt).not.toContain('A later Call edit.');
+  await expect.poll(async () => (await saved(page)).interstitials.filter((item: any) => item.groupId && item.phase === 'ready' && item.result?.assetId).length).toBe(4);
   const project = await saved(page), children = project.interstitials.filter((item: any) => item.groupId);
   expect(children.every((item: any) => item.phase === 'ready' && item.result.assetId)).toBe(true);
   const idle = children.find((item: any) => item.method === 'comfy-loop');
@@ -129,4 +150,28 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   const labelBounds = await page.locator('.timeline-flow-clip.clip-idle .timeline-clip-label').boundingBox();
   const staleBounds = await page.locator('.timeline-flow-clip.clip-idle .flow-clip-stale').boundingBox();
   expect(staleBounds!.y).toBeGreaterThanOrEqual(labelBounds!.y + labelBounds!.height);
+  await page.getByRole('button', { name: 'Add answer', exact: true }).click();
+  await expect(finishedClips).toHaveCount(4);
+  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(4);
+  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(0);
+});
+
+test('reopening a partially generated project keeps its finished clip on the timeline', async ({ page }) => {
+  await openDraft(page);
+  await page.evaluate(async () => {
+    const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
+    const project = await readActiveProject(), group = project.callResponses[0];
+    const callId = group.scenes.find((scene: { id: string }) => scene.id === 'call').interstitialId;
+    const idleId = group.scenes.find((scene: { id: string }) => scene.id === 'wait').interstitialId;
+    await writeProject({ ...project, saved: true, name: 'Partial Call Response', interstitials: project.interstitials.map((item: { id: string }) =>
+      item.id === callId ? { ...item, phase: 'ready', result: { assetId: project.source.assetId, url: `asset:${project.source.assetId}`, start: 0, duration: 6, totalDuration: 20 } }
+        : item.id === idleId ? { ...item, phase: 'error', error: 'Generation failed' } : item) });
+  });
+  await page.reload();
+  const recent = page.getByRole('region', { name: 'Recent projects' }).locator('.project-start-row').filter({ hasText: 'Partial Call Response' });
+  await recent.getByRole('button', { name: 'Open', exact: true }).click();
+  await expect(page.locator('.timeline-flow-clip.clip-call')).toBeVisible();
+  await expect(page.locator('.timeline-flow-clip.clip-call')).not.toHaveClass(/\bdraft\b/);
+  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(1);
+  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(0);
 });

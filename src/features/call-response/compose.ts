@@ -1,12 +1,29 @@
 import { playableResult, type Interstitial } from '../../../shared/interstitials';
 import { branchScenes, getScene, resolveFlow, sceneFrames, type CallResponseFlow, type TimelineScene } from './model';
 
+/** Runtime timelines contain only finished clips; draft settings stay in the editor. */
+function playableFlow(flow: CallResponseFlow, items: Interstitial[]): CallResponseFlow {
+  const resolved = resolveFlow(flow, items);
+  if (!resolved.scenes.some(scene => scene.draft)) return resolved;
+  const scenes = resolved.scenes.filter(scene => !scene.draft), ids = new Set(scenes.map(scene => scene.id));
+  const answers = resolved.interaction.answers.filter(answer => ids.has(answer.sceneId));
+  const edges = resolved.edges.flatMap(edge => {
+    if (!ids.has(edge.from)) return [];
+    if (ids.has(edge.to)) return [edge];
+    if (edge.when !== 'ended') return [];
+    const next = resolved.scenes.slice(resolved.scenes.findIndex(scene => scene.id === edge.to)).find(scene => ids.has(scene.id));
+    return next ? [{ ...edge, to: next.id, transitionFrames: 0 }] : [];
+  });
+  return { ...resolved, scenes, edges, layout: undefined, seekPath: undefined, interaction: { ...resolved.interaction, answers,
+    fallbackAnswerId: answers.some(answer => answer.id === resolved.interaction.fallbackAnswerId) ? resolved.interaction.fallbackAnswerId : null } };
+}
+
 /** Compose pins in source order while retaining each group's independent answer routing. */
 export function composeFlows(flows: CallResponseFlow[], items: Interstitial[], assetId: string, duration: number): CallResponseFlow | undefined {
   if (!flows.length) return;
   const regular = items.filter(item => !item.groupId && item.kind !== 'call-response' && !flows.some(flow => flow.interstitial.id === item.id || flow.scenes.some(scene => scene.interstitialId === item.id)));
   // Keep legacy scene IDs stable for existing saved timelines and connections.
-  if (flows.length === 1 && !regular.length && !items.some(item => item.id === flows[0].interstitial.id)) return resolveFlow(flows[0], items);
+  if (flows.length === 1 && !regular.length && !items.some(item => item.id === flows[0].interstitial.id)) return playableFlow(flows[0], items);
   const events = [...flows.map(flow => ({ time: flow.interstitial.time, flow, item: undefined as Interstitial | undefined })),
     ...regular.map(item => ({ time: item.time, item, flow: undefined as CallResponseFlow | undefined }))].sort((a, b) => a.time - b.time);
   const scenes: TimelineScene[] = [], edges: CallResponseFlow['edges'] = [], groups: CallResponseFlow[] = [], starts: Record<string, number> = {}, seekPath: string[] = [];
@@ -22,7 +39,7 @@ export function composeFlows(flows: CallResponseFlow[], items: Interstitial[], a
       clip: { id: sourceId, kind: 'video', assetId, inFrame: Math.min(total - 1, from), outFrame: Math.max(Math.min(total, from + 1), to) } });
     const event = events[index]; if (!event) break;
     if (event.flow) {
-      const local = resolveFlow(event.flow, items), prefix = `${local.interstitial.id}/`;
+      const local = playableFlow(event.flow, items), prefix = `${local.interstitial.id}/`;
       const sceneId = (id: string) => id === 'intro' ? sourceId : id === 'continue' ? `source:${index + 1}` : prefix + id;
       const answerId = (id: string) => prefix + id;
       const group: CallResponseFlow = { ...local, entrySceneId: sourceId,
@@ -33,10 +50,11 @@ export function composeFlows(flows: CallResponseFlow[], items: Interstitial[], a
           fallbackAnswerId: local.interaction.fallbackAnswerId ? answerId(local.interaction.fallbackAnswerId) : null,
           answers: local.interaction.answers.map(answer => ({ ...answer, id: answerId(answer.id), sceneId: sceneId(answer.sceneId) })) } };
       groups.push(group); edges.push(...group.edges);
-      for (const id of ['call', 'wait']) add(getScene(group, sceneId(id)));
+      for (const id of ['call', 'wait']) { const scene = getScene(group, sceneId(id)); if (scene) add(scene); }
       const branches = branchScenes(group);
       for (const branch of branches) { starts[branch.id] = cursor; scenes.push(branch); }
-      seekPath.push(branches[0].id); cursor += Math.max(...branches.map(sceneFrames));
+      if (branches.length) seekPath.push(branches[0].id);
+      cursor += Math.max(0, ...branches.map(sceneFrames));
     } else {
       const item = event.item!, result = playableResult(item), id = `regular:${item.id}`;
       add({ id, interstitialId: item.id, label: item.label, role: 'source', dialogue: '', draft: !result,

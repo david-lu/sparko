@@ -74,9 +74,9 @@ export const interstitialScenes = (flow: CallResponseFlow) => flow.scenes.filter
 export const branchScenes = (flow: CallResponseFlow): TimelineScene[] => flow.groups ? flow.groups.flatMap(branchScenes) : flow.scenes.filter(scene => !['intro', 'call', 'wait', 'continue'].includes(scene.localId ?? scene.id));
 export const interactionFor = (flow: CallResponseFlow, sceneId: string) => flow.groups?.find(group => group.scenes.some(scene => scene.id === sceneId))?.interaction ?? flow.interaction;
 export const playbackPath = (flow: CallResponseFlow, session: PlaybackSession) => flow.seekPath?.map(id => {
-  const group = flow.groups?.find(group => group.interaction.answers[0].sceneId === id);
+  const group = flow.groups?.find(group => group.interaction.answers[0]?.sceneId === id);
   return group?.interaction.answers.find(answer => answer.id === session.outcome || answer.sceneId === session.sceneId)?.sceneId ?? id;
-}) ?? ['intro', 'call', 'wait', flow.interaction.answers.find(answer => answer.id === session.outcome || answer.sceneId === session.sceneId)?.sceneId ?? flow.interaction.answers[0].sceneId, 'continue'];
+}) ?? ['intro', 'call', 'wait', flow.interaction.answers.find(answer => answer.id === session.outcome || answer.sceneId === session.sceneId)?.sceneId ?? flow.interaction.answers[0]?.sceneId, 'continue'].filter((id): id is string => !!id && flow.scenes.some(scene => scene.id === id));
 export const normalizeAnswer = (value: string) => value.trim().toLowerCase().replace(/[.!?]+$/, '').trim();
 
 export function defaultAnswerLabel(index: number): string {
@@ -323,7 +323,10 @@ export function flowLayout(flow: CallResponseFlow) {
   if (flow.layout) return flow.layout;
   const starts: Record<SceneId, number> = Object.create(null);
   let cursor = 0;
-  for (const id of ['intro', 'call', 'wait'] as const) { starts[id] = cursor; cursor += sceneFrames(getScene(flow, id)); }
+  for (const id of ['intro', 'call', 'wait'] as const) {
+    const scene = getScene(flow, id); if (!scene) continue;
+    starts[id] = cursor; cursor += sceneFrames(scene);
+  }
   const branches = branchScenes(flow);
   for (const scene of branches) starts[scene.id] = cursor;
   cursor += Math.max(0, ...branches.map(sceneFrames));

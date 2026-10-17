@@ -74,7 +74,7 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
       const groupStart = Math.min(...members.map(scene => box(scene.id).x)), groupEnd = Math.max(...members.map(scene => box(scene.id).x + box(scene.id).width));
       const selectedParent = value.groups?.find(value => value.flow.interstitial.id === group.interstitial.id)?.selectedInterstitial ?? value.selectedInterstitial;
       const groupSelected = selectedParent || members.some(scene => scene.id === value.selectedSceneId || flow.edges.some(edge => edge.id === value.selectedEdgeId && edge.from === scene.id));
-      const groupReady = members.every(scene => !scene.draft && !!assets.url(scene.clip.assetId) && !value.staleClipIds?.has(scene.interstitialId!));
+      const groupReady = members.length === group.interstitial.clipIds.length && members.every(scene => !scene.draft && !!assets.url(scene.clip.assetId) && !value.staleClipIds?.has(scene.interstitialId!));
       return <div key={group.interstitial.id} className="timeline-interstitial-group" role="group" aria-label={group.interstitial.label}
       data-interstitial-id={group.interstitial.id} style={{ left: groupStart, width: groupEnd - groupStart }}>
       <button className={`timeline-interstitial-container ${groupSelected ? 'selected' : ''}`} aria-label={`Select entire ${group.interstitial.label}`}
