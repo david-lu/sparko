@@ -1,22 +1,25 @@
-import { AudioSample, AudioSampleSink, AudioSampleSource, CanvasSink, CanvasSource, Output, Quality, type Input } from 'mediabunny';
+import { AudioSample, AudioSampleSink, AudioSampleSource, CanvasSink, CanvasSource, Output, Quality, type Input, type InputVideoTrack } from 'mediabunny';
 import { ensureAac, openInput } from './media';
 import type { TimelineComposition, TimelineSegment } from './TimelineComposition';
 import { AudioNormalizer, COMPOSITION_AUDIO_CHANNELS, COMPOSITION_AUDIO_RATE } from './AudioNormalizer';
 import { compositionTransitions, segmentTime, transitionWeight, type CompositionTransition } from './CompositionTransitions';
 import { CompositionAudioCrossfade } from './CompositionAudioCrossfade';
 import { CompositionAudioWriter } from './CompositionAudioWriter';
+import { generatedClipFit } from './videoFraming';
 
 export const COMPOSITION_MIME = 'video/mp4; codecs="avc1.42002a, mp4a.40.2"';
 type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
 
 /** Encodes one continuous frame/sample clock, including across different source assets. */
-export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & { crossfade?: boolean }, output: Output, options: Options) {
+export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & { crossfade?: boolean; matchFraming?: boolean }, output: Output, options: Options) {
   await ensureAac();
   options.signal.throwIfAborted();
   const scale = options.preview ? Math.min(1, 720 / composition.info.height) : 1;
   const canvas = new OffscreenCanvas(Math.max(2, Math.round(composition.info.width * scale / 2) * 2), Math.max(2, Math.round(composition.info.height * scale / 2) * 2));
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) throw new Error('Unable to create the timeline renderer.');
+  const fitFor = async (segment: TimelineSegment, track: InputVideoTrack) => composition.matchFraming && segment.kind === 'interstitial'
+    ? generatedClipFit(await track.getDisplayWidth(), await track.getDisplayHeight(), canvas.width, canvas.height) : 'contain' as const;
   const video = new CanvasSource(canvas, { codec: 'avc', ...(options.preview ? { fullCodecString: 'avc1.42002a' } : {}), quality: new Quality('medium'), keyFrameInterval: 1, latencyMode: 'quality' });
   const audio = new AudioSampleSource({ codec: 'aac', quality: new Quality('medium') });
   const audioWriter = new CompositionAudioWriter(async sample => { options.signal.throwIfAborted(); await audio.add(sample); });
@@ -59,7 +62,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
           const track = await inputFor(segment).getPrimaryVideoTrack();
           if (!track || !await track.canDecode()) throw new Error(`Unable to decode ${segment.label}.`);
           const [first, duration] = await Promise.all([track.getFirstTimestamp(), track.computeDuration()]);
-          decoder = { sink: new CanvasSink(track, { width: canvas.width, height: canvas.height, fit: 'contain', poolSize: 1 }), first, last: Math.max(first, duration - 1 / composition.fps) };
+          decoder = { sink: new CanvasSink(track, { width: canvas.width, height: canvas.height, fit: await fitFor(segment, track), poolSize: 1 }), first, last: Math.max(first, duration - 1 / composition.fps) };
           edgeSinks.set(segment, decoder);
         }
         // Assets without spare frames hold their boundary image instead of introducing black.
@@ -72,7 +75,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
         if (first >= last) continue;
         const track = await inputFor(segment).getPrimaryVideoTrack();
         if (!track || !await track.canDecode()) throw new Error(`Unable to decode ${segment.label}.`);
-        const sink = new CanvasSink(track, { width: canvas.width, height: canvas.height, fit: 'contain', poolSize: 2 });
+        const sink = new CanvasSink(track, { width: canvas.width, height: canvas.height, fit: await fitFor(segment, track), poolSize: 2 });
         const timestamps = function* () { for (let frame = first; frame < last; frame++) yield segment.sourceStart + (segment.still ? 0 : (frame - segment.startFrame) / composition.fps) + 1e-7; };
         let frame = first;
         for await (const sample of sink.canvasesAtTimestamps(timestamps())) {

@@ -1,5 +1,6 @@
 import { assets } from '../project/assets';
-import type { MediaSource } from '../../media/media';
+import type { MediaInfo, MediaSource } from '../../media/media';
+import { generatedClipFit } from '../../media/videoFraming';
 import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, previewScene, sceneFrames, startSession,
   type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
 
@@ -11,10 +12,15 @@ export class NativeFlowPlayback {
   private buffering = false;
   private disposed = false;
   private lastTick = performance.now();
+  private resize?: ResizeObserver;
+  private framingStyle?: string;
   private onMedia = () => this.sync();
   constructor(readonly flow: CallResponseFlow, private video: HTMLVideoElement, private source: MediaSource,
-    private changed: (session: PlaybackSession, buffering: boolean, error?: string) => void) {
+    private changed: (session: PlaybackSession, buffering: boolean, error?: string) => void, private info?: MediaInfo, private matchFraming = false) {
     this.session = startSession(flow);
+    if (info && video.parentElement && typeof ResizeObserver !== 'undefined') {
+      this.resize = new ResizeObserver(() => this.updateFraming()); this.resize.observe(video.parentElement);
+    }
     video.loop = false;
     for (const event of ['timeupdate', 'ended', 'play', 'pause']) video.addEventListener(event, this.onMedia);
     const tick = () => {
@@ -34,6 +40,22 @@ export class NativeFlowPlayback {
     this.position();
   }
   private emit(error?: string) { this.changed(this.session, this.buffering, error); }
+  setMatchFraming(value: boolean) { this.matchFraming = value; this.updateFraming(); }
+  private resetFraming() {
+    if (this.framingStyle === undefined) return;
+    this.video.style.cssText = this.framingStyle; this.framingStyle = undefined;
+  }
+  private updateFraming() {
+    const { video, info } = this, parent = video.parentElement;
+    if (!info || !parent || !this.matchFraming || getScene(this.flow, this.session.sceneId).clip.assetId === this.source.assetId
+      || generatedClipFit(video.videoWidth, video.videoHeight, info.width, info.height) !== 'cover') { this.resetFraming(); return; }
+    if (this.framingStyle === undefined) this.framingStyle = video.style.cssText;
+    // The fallback video gets the same parent-shaped viewport as a prepared buffer.
+    const scale = Math.min(parent.clientWidth / info.width, parent.clientHeight / info.height);
+    const width = info.width * scale, height = info.height * scale;
+    Object.assign(video.style, { width: `${width}px`, height: `${height}px`, left: `${(parent.clientWidth - width) / 2}px`,
+      top: `${(parent.clientHeight - height) / 2}px`, right: 'auto', bottom: 'auto', objectFit: 'cover' });
+  }
   private sync() {
     if (this.disposed || this.buffering || this.video.seeking || this.session.finished) return;
     const scene = getScene(this.flow, this.session.sceneId);
@@ -58,6 +80,7 @@ export class NativeFlowPlayback {
     this.buffering = true; this.emit();
     const ready = () => {
       if (operation.signal.aborted || this.disposed) return;
+      this.updateFraming();
       this.buffering = false; this.emit();
       if (this.session.playing && !scene.draft) void this.video.play().catch(() => { this.session = { ...this.session, playing: false }; this.emit('Press Play to start this scene.'); });
     };
@@ -101,6 +124,7 @@ export class NativeFlowPlayback {
   }
   dispose() {
     this.disposed = true; cancelAnimationFrame(this.animation); this.positionTask?.abort();
+    this.resize?.disconnect(); this.resetFraming();
     for (const event of ['timeupdate', 'ended', 'play', 'pause']) this.video.removeEventListener(event, this.onMedia);
   }
 }

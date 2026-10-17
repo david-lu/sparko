@@ -5,7 +5,7 @@ import type { CallResponseFlow } from '../call-response/model';
 export type Asset = { id: string; name: string; blob: Blob };
 export type AnalysisState = { slice: Slice; provider: Provider; instructions: string; result: CaptionResult | null };
 export type Project = {
-  id: string; name: string; updatedAt: number;
+  id: string; name: string; updatedAt: number; saved?: boolean;
   source: { name: string; assetId?: string; originalAssetId?: string; url?: string };
   interstitials: Interstitial[];
   callResponse?: CallResponseFlow;

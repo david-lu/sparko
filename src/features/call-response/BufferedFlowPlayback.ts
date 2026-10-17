@@ -30,9 +30,9 @@ export class BufferedFlowPlayback {
   private subtitles?: { track: TextTrack; cues: VTTCue[] };
 
   constructor(readonly flow: CallResponseFlow, private video: HTMLVideoElement, private source: MediaAssetSource,
-    private changed: (session: PlaybackSession, buffering: boolean, error?: string) => void, info: MediaInfo) {
+    private changed: (session: PlaybackSession, buffering: boolean, error?: string) => void, private info: MediaInfo, private matchFraming = false) {
     this.session = startSession(flow); this.plan = new FlowBufferPlan(flow, this.session);
-    this.cache = new PreparedSceneBuffers(flow.fps, sceneBufferRenderer(source, info, flow.fps));
+    this.cache = new PreparedSceneBuffers(flow.fps, sceneBufferRenderer(source, info, flow.fps, matchFraming));
     const signal = this.lifetime.signal;
     video.loop = false;
     video.addEventListener('waiting', () => { if (!this.session.finished) { this.buffering = true; this.emit(); } }, { signal });
@@ -54,6 +54,15 @@ export class BufferedFlowPlayback {
   get diagnostics() {
     return { ...this.cache.statistics, preparedScenes: this.flow.scenes.filter(scene => this.cache.ready(scene)).map(scene => scene.id),
       aheadSeconds: Math.max(0, this.appended / this.flow.fps - this.video.currentTime), visits: this.plan.visits.length };
+  }
+  setMatchFraming(value: boolean) {
+    if (this.matchFraming === value) return;
+    this.sync(); this.matchFraming = value;
+    this.run.abort();
+    this.cache.dispose(); this.warmed.clear();
+    this.cache = new PreparedSceneBuffers(this.flow.fps, sceneBufferRenderer(this.source, this.info, this.flow.fps, value));
+    // The finished flow holds its parent frame; prepare the new framing on replay.
+    if (!this.session.finished) this.restart();
   }
   private emit(error?: string) { if (!this.disposed) this.changed(this.session, this.buffering, error); }
   setSubtitles(track: TextTrack | null, cues: VTTCue[]) {
@@ -87,6 +96,7 @@ export class BufferedFlowPlayback {
     });
   }
   private restart() {
+    const speed = this.video.playbackRate;
     this.run.abort(); this.run = new AbortController();
     const signal = this.run.signal;
     this.revision++; this.initializing = true; this.buffering = true;
@@ -96,6 +106,7 @@ export class BufferedFlowPlayback {
     this.updateSubtitles();
     const media = new MediaSource(); this.media = media;
     this.url = URL.createObjectURL(media); this.video.src = this.url; this.video.preload = 'auto'; this.video.load();
+    this.video.playbackRate = speed;
     media.addEventListener('sourceopen', () => {
       if (signal.aborted) return;
       try { this.buffer = media.addSourceBuffer(COMPOSITION_MIME); media.duration = Infinity; this.pump(); }

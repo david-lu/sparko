@@ -55,13 +55,13 @@ export class PreparedSceneBuffers {
   }
 }
 
-export function sceneBufferRenderer(source: MediaSource, info: MediaInfo, fps: number): Render {
+export function sceneBufferRenderer(source: MediaSource, info: MediaInfo, fps: number, matchFraming = false): Render {
   return async (scene, first, count, signal) => {
     const url = scene.clip.assetId === source.assetId ? source.url : assets.url(scene.clip.assetId);
     if (!url) throw new Error(`The media for ${scene.label} is not available. Reopen the project.`);
     const media = scene.clip.assetId === source.assetId ? source : { id: scene.clip.assetId, name: scene.label, url };
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'fragmented', minimumFragmentDuration: .5 }) });
-    await renderComposition({ info, fps, segments: [{ id: scene.id, kind: 'source', label: scene.label, source: media,
+    await renderComposition({ info, fps, matchFraming, segments: [{ id: scene.id, kind: scene.clip.assetId === source.assetId ? 'source' : 'interstitial', label: scene.label, source: media,
       sourceStart: (scene.clip.inFrame + (scene.draft ? 0 : first)) / fps, still: scene.draft, startFrame: 0, endFrame: count }], crossfade: false }, output,
     { start: 0, end: count / fps, signal, preview: true });
     if (!output.target.buffer) throw new Error(`No playback buffer was produced for ${scene.label}.`);

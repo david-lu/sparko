@@ -503,10 +503,14 @@ test('crossfade markers follow the Options toggle and persist after reload', asy
   await toggle.click(); await expect(toggle).toHaveAttribute('aria-checked', 'false');
   await expect(marks).toHaveCount(0);
   await expect.poll(() => page.locator('.video-stage video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(12, 2);
+  const framing = page.getByRole('menuitemcheckbox', { name: 'Match generated framing' });
+  await framing.click(); await expect(framing).toHaveAttribute('aria-checked', 'true');
+  await expect.poll(() => page.locator('.video-stage video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(12, 2);
   await expect(page.getByRole('slider', { name: 'Video timeline', exact: true })).toHaveAttribute('max', duration!);
   await page.reload(); await expect(page.locator('.rendered-interstitial')).toHaveCount(1);
   await expect(marks).toHaveCount(0);
   await page.getByText('Options', { exact: true }).click(); await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(framing).toHaveAttribute('aria-checked', 'true');
   await toggle.focus(); await toggle.press('Space'); await expect(toggle).toHaveAttribute('aria-checked', 'true');
   await expect(marks).toHaveCount(2);
   // Restart the progressive preview inside the opening dissolve, then wait for playable media.

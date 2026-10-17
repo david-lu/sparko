@@ -28,7 +28,7 @@ export async function createApp(options: { root?: string; providers?: Providers 
   app.get('/api/status', async (_req, res) => {
     const info = await stat(defaultPath).catch(() => null);
     res.json({ uploadMode: hosted ? 'blob' : 'local', requiresPassword: hosted || !!process.env.APP_PASSWORD,
-      providers: providers.configured, models: providers.models, defaultVideo: { name: 'episode_mock.mp4', url: remoteDefault || '/media/episode_mock.mp4', size: info?.size || 0 },
+      providers: providers.configured, models: providers.models, defaultVideo: { name: 'episode_mock.mp4', url: remoteDefault || (hosted && remoteProject ? '' : '/media/episode_mock.mp4'), size: info?.size || 0 },
       defaultProject: remoteProject ? { url: remoteProject } : null });
   });
   // Local preview of the captured example; deployed browsers download directly from Blob.

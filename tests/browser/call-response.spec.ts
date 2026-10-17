@@ -27,6 +27,32 @@ async function openExample(page: Page, prepare?: () => Promise<void>, generation
   await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
 }
 
+test('generated framing is optional in Options, preserves the current scene and persists on reload', async ({ page }) => {
+  await openExample(page);
+  await selectIdle(page);
+  await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
+  const position = await clip(page, 'wait').locator('.flow-playhead').getAttribute('style');
+  await page.getByText('Options', { exact: true }).click();
+  const toggle = page.getByRole('menuitemcheckbox', { name: 'Match generated framing' });
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
+  await expect(clip(page, 'wait')).toHaveAttribute('data-active', 'true');
+  await expect(clip(page, 'wait').locator('.flow-playhead')).toHaveAttribute('style', position!);
+  await expect(video(page)).toHaveJSProperty('paused', true);
+  await page.reload();
+  await expect(page.locator('.timeline-section.has-flow')).toBeVisible();
+  await page.getByText('Options', { exact: true }).click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await toggle.focus(); await toggle.press('Space');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  expect(await page.evaluate(() => localStorage.getItem('sparko:match-generated-framing'))).toBe('false');
+  await expect(video(page)).toHaveJSProperty('paused', true);
+  await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
+  await page.screenshot({ path: 'test-results/generated-framing-options.png' });
+});
+
 for (const reducedMotion of ['no-preference', 'reduce'] as const) {
   test(`answer choices dismiss in order and survive the playback transition (${reducedMotion})`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion });
@@ -452,7 +478,7 @@ test('response button assignments persist, route the real video, and leave the o
   await expect(clip(page, 'correct')).toHaveAttribute('data-active', 'true', { timeout: 7000 });
   await expect(clip(page, 'continue')).toHaveAttribute('data-active', 'true', { timeout: 7000 });
   await page.getByText('File', { exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Open default video' }).click();
+  await page.getByRole('menuitem', { name: 'Open sample video' }).click();
   await expect(page.locator('.timeline-section.has-flow')).toHaveCount(0);
   await expect(page.locator('.timeline-pin')).toHaveCount(1);
   await page.locator('.timeline-pin').click();

@@ -19,8 +19,10 @@ export class TimelineComposition {
   readonly hasInsertions: boolean;
   readonly sourceDuration: number;
   readonly crossfade: boolean;
-  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean } = {}) {
+  readonly matchFraming: boolean;
+  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean; matchFraming?: boolean } = {}) {
     this.crossfade = options.crossfade ?? true;
+    this.matchFraming = options.matchFraming ?? false;
     this.fps = TIMELINE_FPS;
     let cursor = 0, sourceFrame = 0;
     const total = Math.max(1, Math.round(info.duration * this.fps));

@@ -100,7 +100,7 @@ export class VideoPlayerController {
     const wasPlaying = this.wantsPlayback || this.state.playing;
     const sourceTime = this.composition?.sourceTime(this.state.time) ?? this.state.time;
     const previous = this.composition;
-    const sameEdit = previous && previous.crossfade !== composition.crossfade && previous.fps === composition.fps && previous.duration === composition.duration
+    const sameEdit = previous && (previous.crossfade !== composition.crossfade || previous.matchFraming !== composition.matchFraming) && previous.fps === composition.fps && previous.duration === composition.duration
       && previous.segments.length === composition.segments.length && previous.segments.every((segment, index) => {
         const next = composition.segments[index];
         return segment.id === next.id && segment.source.url === next.source.url && segment.sourceStart === next.sourceStart && segment.startFrame === next.startFrame && segment.endFrame === next.endFrame && segment.still === next.still;
@@ -114,10 +114,12 @@ export class VideoPlayerController {
     if (!this.element) return;
     if (this.stream) this.startStream(time); else this.startSource(time);
   }
-  setFlow(flow: CallResponseFlow, info?: MediaInfo) {
-    if (!this.element || !this.source || this.flowPlayback?.flow === flow) return;
+  setFlow(flow: CallResponseFlow, info?: MediaInfo, matchFraming = false) {
+    if (!this.element || !this.source) return;
     // Renaming the parent changes its editor metadata, not the current scene or playhead.
-    if (this.flowPlayback && JSON.stringify({ ...this.flowPlayback.flow, interstitial: undefined }) === JSON.stringify({ ...flow, interstitial: undefined })) return;
+    if (this.flowPlayback && (this.flowPlayback.flow === flow || JSON.stringify({ ...this.flowPlayback.flow, interstitial: undefined }) === JSON.stringify({ ...flow, interstitial: undefined }))) {
+      this.flowPlayback.setMatchFraming(matchFraming); return;
+    }
     this.flowPlayback?.dispose(); this.flowPlayback = null;
     this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose(); this.stream = null;
     this.composition = null; this.pendingSeek = null; this.wantsPlayback = false;
@@ -126,7 +128,7 @@ export class VideoPlayerController {
     this.flowPlayback = new FlowPlayback(flow, this.element, this.source, (session, buffering, error) => {
       this.update({ flow: session, playing: session.playing, buffering, error: error ?? null, buffered: [],
         time: (layout.starts[session.sceneId] + session.frame) / flow.fps, duration: layout.totalFrames / flow.fps });
-    }, info);
+    }, info, matchFraming);
   }
   seekFlowScene(id: SceneId, frame = 0) { this.flowPlayback?.seekScene(id, frame); }
   setFlowSubtitles(track: TextTrack | null, cues: VTTCue[]) {

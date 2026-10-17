@@ -2,9 +2,8 @@ import type { MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
 import { prepareVideo } from '../../media/prepareVideo';
 import type { InterstitialController } from '../interstitials/InterstitialController';
-import { loadInterstitials } from '../interstitials/storage';
 import { assets } from './assets';
-import { readActiveProject, readAsset, readProject, storageError, writeProject } from './database';
+import { deleteSavedProject, forgetRecentFile, listRecentFiles, listSavedProjects, readActiveProject, readAsset, readProject, rememberRecentFile, storageError, writeProject, type RecentFile } from './database';
 import { activeFlows, projectFlows, withFlows, assetIds, emptyAnalysis, type AnalysisState, type Asset, type Project } from './types';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { createTimelineExample, groupCallResponse, lockCallResponseStructure, migrateDefaultAnswerLabels, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
@@ -14,12 +13,23 @@ import { ProjectHistory } from './ProjectHistory';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
   busy: boolean; message: string; progress: number | null; error: string | null;
-  undoLabel: string | null; redoLabel: string | null; historyRevision: number };
+  undoLabel: string | null; redoLabel: string | null; historyRevision: number;
+  savedProjects: { id: string; name: string; updatedAt: number }[]; savedProjectId: string | null;
+  recentFiles: RecentFile[]; fileName: string | null };
 
 /** Owns project persistence and portable snapshots; media and job controllers stay independent. */
 export class ProjectController {
   private state: State = { project: null, source: null, subtitle: null, busy: false, message: '', progress: null, error: null,
-    undoLabel: null, redoLabel: null, historyRevision: 0 };
+    undoLabel: null, redoLabel: null, historyRevision: 0, savedProjects: [], savedProjectId: null,
+    recentFiles: [], fileName: null };
+  private fileHandle: FileSystemFileHandle | null = null;
+  private draftId = (() => {
+    try {
+      const existing = localStorage.getItem('sparko:draft-id');
+      if (existing?.startsWith('draft:')) return existing;
+      const id = `draft:${crypto.randomUUID()}`; localStorage.setItem('sparko:draft-id', id); return id;
+    } catch { return `draft:${crypto.randomUUID()}`; }
+  })();
   private history = new ProjectHistory();
   private listeners = new Set<() => void>();
   private unsubscribe?: () => void;
@@ -37,21 +47,42 @@ export class ProjectController {
     this.writes = this.writes.catch(() => undefined).then(() => writeProject(project));
     void this.writes.catch(error => this.update({ error: storageError(error) }));
   }
-  async init(defaultSource: MediaSource, exampleUrl?: string) {
+  async init(defaultSource: MediaSource) {
     this.unsubscribe ??= this.interstitials.subscribe(() => {
       const project = this.state.project;
       if (!project || this.switching || project.interstitials === this.interstitials.getSnapshot().items) return;
       this.save({ ...project, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() });
     });
-    await this.task('Opening saved project', async signal => {
-      const saved = await readActiveProject() || await readProject(defaultSource.id);
-      if (saved) await this.activate(saved, signal);
-      else if (exampleUrl) await this.loadExample(exampleUrl, signal);
-      else await this.activate(this.create(defaultSource), signal);
+    await this.task('Loading projects', async signal => {
+      const active = await readActiveProject();
+      const previous = await readProject(defaultSource.id);
+      if (previous && previous.saved === undefined) {
+        if (previous.interstitials.length || projectFlows(previous).length || previous.subtitle || previous.analysis.result || previous.analysis.instructions)
+          await writeProject({ ...previous, id: `project:${crypto.randomUUID()}`, saved: true, updatedAt: Date.now() });
+        await writeProject({ ...previous, saved: false });
+      }
+      if (active && active.id !== defaultSource.id && active.saved === undefined && !active.id.startsWith('draft:'))
+        await writeProject({ ...active, saved: true });
+      signal.throwIfAborted();
+      this.update({ savedProjects: await listSavedProjects(), recentFiles: await listRecentFiles() });
     });
   }
-  private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = []) {
+  private async loadSampleFromExample(url: string, id: string, sourceName: string, signal: AbortSignal) {
+    this.update({ message: 'Downloading sample video', progress: null });
+    const archive = await assets.fetch(url, 'example.sparko', signal, (received, total) => {
+      if (!signal.aborted) this.update({ progress: total ? received / total : null });
+    });
+    const { unpackProject } = await import('./archive');
+    const imported = await unpackProject(archive.blob, signal, (message, progress) => this.update({ message, progress }));
+    const project = { ...imported.project, name: 'Sample video', source: { ...imported.project.source, name: sourceName },
+      interstitials: [], callResponse: undefined, callResponses: undefined,
+      subtitle: null, analysis: emptyAnalysis() };
+    const needed = new Set(assetIds(project));
+    await this.activate(project, signal, imported.assets.filter(asset => needed.has(asset.id)), null, id);
+  }
+  private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = [], savedProjectId: string | null = null, workingId = this.draftId) {
     signal.throwIfAborted();
+    project = { ...project, id: workingId, saved: false };
     const renamedClips = new Map<string, { before: string; after: string }>();
     if (projectFlows(project).length) project = withFlows(project, projectFlows(project).map(flow => {
       const grouped = lockCallResponseStructure(migrateDefaultAnswerLabels(groupCallResponse(flow)));
@@ -80,7 +111,9 @@ export class ProjectController {
     signal.throwIfAborted();
     this.switching = true;
     this.history.clear();
-    this.update({ project, source, subtitle, error: null, undoLabel: null, redoLabel: null, historyRevision: this.state.historyRevision + 1 });
+    this.fileHandle = null;
+    this.update({ project, source, subtitle, error: null, undoLabel: null, redoLabel: null,
+      savedProjectId, fileName: null, historyRevision: this.state.historyRevision + 1 });
     this.interstitials.load(project.id, project.interstitials, project.callResponse ? responseInterstitialIds(project.callResponse) : [], projectFlows(project));
     this.interstitials.setCallResponses(activeFlows(project));
     assets.releaseExcept(new Set(assetIds(project)));
@@ -116,12 +149,78 @@ export class ProjectController {
   }
   private create(source: MediaSource): Project {
     return { id: source.id, name: source.name.replace(/\.[^.]+$/, ''), source: { name: source.name, url: source.url },
-      updatedAt: Date.now(), interstitials: loadInterstitials(source.id), subtitle: null, analysis: emptyAnalysis() };
+      updatedAt: Date.now(), interstitials: [], subtitle: null, analysis: emptyAnalysis() };
   }
-  async openDefault(source: MediaSource) {
-    await this.task('Opening default video', async signal => {
-      const project = await readProject(source.id) || this.create(source);
-      signal.throwIfAborted(); await this.activate(project, signal);
+  async openDefault(source: MediaSource, exampleUrl?: string) {
+    await this.task('Opening sample video', async signal => {
+      const previous = await readProject(source.id);
+      const media = previous?.source.name === source.name && previous.source.assetId && await readAsset(previous.source.assetId)
+        ? { ...previous.source, url: source.url } : { name: source.name, url: source.url };
+      if (!media.assetId && !media.url && exampleUrl) await this.loadSampleFromExample(exampleUrl, source.id, source.name, signal);
+      else await this.activate({ ...this.create(source), source: media }, signal, [], null, source.id);
+    });
+  }
+  async openSavedProject(id: string) {
+    return this.task('Opening saved project', async signal => {
+      const project = await readProject(id);
+      if (!project || project.saved === false || (!project.saved && project.id.startsWith('draft:'))) throw new Error('Saved project not found.');
+      await this.activate(project, signal, [], id);
+      return true;
+    });
+  }
+  async deleteSavedProject(id: string) {
+    return this.task('Deleting saved project', async signal => {
+      signal.throwIfAborted(); await deleteSavedProject(id);
+      this.update({ savedProjectId: this.state.savedProjectId === id ? null : this.state.savedProjectId,
+        savedProjects: await listSavedProjects() });
+      return true;
+    });
+  }
+  getFileHandle() { return this.fileHandle; }
+  async openProjectFile(handle: FileSystemFileHandle) {
+    return this.task('Opening project file', async signal => {
+      const permissionHandle = handle as FileSystemFileHandle & { requestPermission?: (options: { mode: 'read' }) => Promise<PermissionState> };
+      if (permissionHandle.requestPermission && await permissionHandle.requestPermission({ mode: 'read' }) !== 'granted')
+        throw new Error('Permission to read this project file was not granted.');
+      const file = await handle.getFile();
+      if (!/\.sparko$/i.test(file.name)) throw new Error('Choose a Sparko project file.');
+      await this.restoreArchive(file, signal);
+      this.fileHandle = handle;
+      await rememberRecentFile(handle);
+      this.update({ fileName: handle.name, recentFiles: await listRecentFiles() });
+      return true;
+    });
+  }
+  async saveToFile(handle: FileSystemFileHandle) {
+    return this.task('Saving project file', async signal => {
+      // Open the writer while the Save click still has user activation.
+      const writer = await handle.createWritable();
+      try {
+        const archive = await this.buildArchive(signal, handle.name.replace(/\.sparko$/i, ''));
+        signal.throwIfAborted();
+        await writer.write(archive.blob);
+        await writer.close();
+      } catch (error) { await writer.abort().catch(() => undefined); throw error; }
+      this.fileHandle = handle;
+      await rememberRecentFile(handle);
+      this.update({ fileName: handle.name, savedProjectId: null, recentFiles: await listRecentFiles() });
+      return true;
+    });
+  }
+  async removeRecentFile(id: string, deleteFromDisk = false) {
+    return this.task(deleteFromDisk ? 'Deleting project file' : 'Removing recent project', async signal => {
+      const item = this.state.recentFiles.find(item => item.id === id);
+      if (!item) throw new Error('Recent project not found.');
+      signal.throwIfAborted();
+      if (deleteFromDisk) {
+        const removable = item.handle as FileSystemFileHandle & { remove?: () => Promise<void> };
+        if (!removable.remove) throw new Error('This browser cannot delete the file. Delete it in your file manager or remove it from Recent.');
+        await removable.remove();
+      }
+      await forgetRecentFile(id);
+      if (this.fileHandle && await this.fileHandle.isSameEntry(item.handle)) this.fileHandle = null;
+      this.update({ recentFiles: await listRecentFiles(), fileName: this.fileHandle?.name ?? null });
+      return true;
     });
   }
   async openExample(url: string) {
@@ -283,8 +382,6 @@ export class ProjectController {
     await this.task('Saving video locally', async signal => {
       if (!file.type.startsWith('video/') && !/\.(mp4|webm|mov|mkv|m4v)$/i.test(file.name)) throw new Error('Choose a video file.');
       const id = `file:${file.name}:${file.size}:${file.lastModified}`;
-      const previous = await readProject(id);
-      if (previous?.source.assetId) { signal.throwIfAborted(); await this.activate(previous, signal); return; }
       const asset = { id: crypto.randomUUID(), name: file.name, blob: file };
       const project = { ...this.create({ id, name: file.name, url: '' }), source: { name: file.name, assetId: asset.id } };
       await this.activate(project, signal, [asset]);
@@ -305,9 +402,12 @@ export class ProjectController {
     } catch (error) { this.update({ error: storageError(error) }); }
   }
   async exportProject(): Promise<{ blob: Blob; name: string } | undefined> {
-    return this.task('Collecting project assets', async signal => {
+    return this.task('Collecting project assets', signal => this.buildArchive(signal));
+  }
+  private async buildArchive(signal: AbortSignal, fileName?: string): Promise<{ blob: Blob; name: string }> {
       if (!this.state.project) throw new Error('Open a video first.');
       const snapshot = structuredClone(this.state.project);
+      if (fileName) snapshot.name = fileName;
       signal.throwIfAborted();
       if (!snapshot.source.assetId) throw new Error('Wait for the source video to finish preparing.');
       if (snapshot.interstitials.some(item => item.result && (!item.result.assetId || item.phase !== 'ready'))) throw new Error('An interstitial result has not finished loading. Finish loading or retry the interstitial before exporting.');
@@ -320,7 +420,6 @@ export class ProjectController {
       const blob = await packProject(snapshot, stored, signal, (message, progress) => this.update({ message, progress }));
       signal.throwIfAborted();
       return { blob, name: `${snapshot.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'project'}.sparko` };
-    });
   }
   private async validateVideo(blob: Blob, signal: AbortSignal) {
     const url = URL.createObjectURL(blob), engine = new MediaEngine({ id: 'validate', name: 'Project video', url, file: new File([blob], 'video.mp4') });
