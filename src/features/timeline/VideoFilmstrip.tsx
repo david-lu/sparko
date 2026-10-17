@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { TIMELINE_FPS } from '../../../shared/constants';
-import { sampleFrames, type Thumbnail } from '../../media/media';
+import { sampleFrames, timelineThumbnailCount, type Thumbnail } from '../../media/media';
 import ClipLoading from '../../shared/ClipLoading';
 
-export default function VideoFilmstrip({ url, start, end, width }: { url: string; start: number; end: number; width: number }) {
+export default function VideoFilmstrip({ url, start, end }: { url: string; start: number; end: number }) {
   const [preview, setPreview] = useState<{ key: string; frames: Thumbnail[]; failed?: boolean } | null>(null);
   const key = `${url}:${start}:${end}`;
-  const count = Math.max(1, Math.min(24, Math.ceil(width / 120)));
+  const count = timelineThumbnailCount(end - start);
   useEffect(() => {
     const operation = new AbortController();
     // Stay inside the final frame even if the edit boundary was rounded to 24 fps.

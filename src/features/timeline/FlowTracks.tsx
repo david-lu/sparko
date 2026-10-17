@@ -46,7 +46,7 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
           const rect = event.currentTarget.getBoundingClientRect();
           value.onSelectScene(scene.id, event.detail === 0 ? 0 : Math.floor((event.clientX - rect.left) / rect.width * sceneFrames(scene)));
         }} aria-description={stale ? 'Stale: upstream video changed. Regenerate this clip to match.' : undefined} aria-pressed={value.selectedSceneId === scene.id}>
-          {url ? <VideoFilmstrip url={url} start={scene.clip.inFrame / flow.fps} end={scene.clip.outFrame / flow.fps} width={bounds.width} /> : <ClipLoading failed={!busy} message={busy ? phaseLabel(item) : 'Clip media unavailable'} />}
+          {url ? <VideoFilmstrip url={url} start={scene.clip.inFrame / flow.fps} end={scene.clip.outFrame / flow.fps} /> : <ClipLoading failed={!busy} message={busy ? phaseLabel(item) : 'Clip media unavailable'} />}
           {url && busy && <ClipJobStatus label={scene.label} message={phaseLabel(item)} />}
           {stale && <span className="flow-clip-stale" title="Upstream video changed. Regenerate this clip to match.">Stale</span>}
           <span className={`timeline-clip-label ${scene.clip.kind !== 'video' ? 'flow-clip-type' : ''}`}>

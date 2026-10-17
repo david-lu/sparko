@@ -9,6 +9,11 @@ export type MediaInfo = { duration: number; width: number; height: number; codec
 export type Thumbnail = { time: number; url: string };
 type TaskOptions = { signal?: AbortSignal; onProgress?: (progress: number) => void };
 
+/** Keep timeline sampling independent of how wide a clip is drawn or how far it is zoomed. */
+export function timelineThumbnailCount(duration: number): number {
+  return Math.max(1, Math.min(120, Math.ceil(duration / 5)));
+}
+
 export function openInput(source: MediaSource): Input {
   return new Input({
     formats: ALL_FORMATS,
@@ -70,7 +75,7 @@ export async function sampleFrames(source: MediaSource, slice: Slice, count: num
     const video = await input.getPrimaryVideoTrack();
     if (!video || !await video.canDecode()) throw new Error('This browser cannot decode this video for analysis. Try Chrome or Edge with an H.264 MP4.');
     const sink = new CanvasSink(video, { width, fit: 'contain', poolSize: 1 });
-    const length = Math.min(24, Math.max(1, Math.floor(count)));
+    const length = Math.min(120, Math.max(1, Math.floor(count)));
     const times = Array.from({ length }, (_, index) => slice.start + (slice.end - slice.start) * (index + 0.5) / length);
     const frames: Thumbnail[] = [];
     let index = 0;

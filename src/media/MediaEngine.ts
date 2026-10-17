@@ -1,4 +1,4 @@
-import { exportMp4, extractAudio, inspectMedia, sampleFrames, type MediaSource } from './media';
+import { exportMp4, extractAudio, inspectMedia, sampleFrames, timelineThumbnailCount, type MediaSource } from './media';
 import type { Slice } from '../../shared/contracts';
 
 /** One media source, with cancellable processing tasks that are released together. */
@@ -16,7 +16,7 @@ export class MediaEngine {
   }
   async thumbnails() {
     const info = await this.inspect();
-    return this.frames({ start: 0, end: info.duration }, 12, 180);
+    return this.frames({ start: 0, end: info.duration }, timelineThumbnailCount(info.duration), 180);
   }
   exportMp4(slice: Slice, options: Parameters<typeof exportMp4>[2] = {}) {
     return exportMp4(this.source, slice, { ...options, signal: this.signal(options.signal) });

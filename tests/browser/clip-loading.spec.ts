@@ -74,3 +74,20 @@ test('replacing a loading clip ignores its late result and generation keeps the 
   await expect(page.locator('#strip .clip-loading')).toHaveCount(0);
   await expect(page.locator('.clip-preview-stage .clip-loading')).toHaveCount(0);
 });
+
+test('zoom stretches the existing filmstrip without loading more frames', async ({ page }) => {
+  await page.goto('/__clip-loading', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Switch clip' }).click();
+  const strip = page.locator('#strip .video-filmstrip');
+  await expect(strip.locator('img')).toHaveCount(1);
+  await expect(strip).toHaveAttribute('aria-busy', 'false');
+  const beforeWidth = await strip.evaluate(element => {
+    (window as Window & { initialFrame?: Element }).initialFrame = element.querySelector('img') ?? undefined;
+    return element.getBoundingClientRect().width;
+  });
+  await page.getByRole('button', { name: 'Zoom filmstrip' }).click();
+  await expect(strip.locator('img')).toHaveCount(1);
+  await expect(strip).toHaveAttribute('aria-busy', 'false');
+  expect(await strip.evaluate(element => element.querySelector('img') === (window as Window & { initialFrame?: Element }).initialFrame)).toBe(true);
+  expect((await strip.boundingBox())!.width).toBeGreaterThan(beforeWidth);
+});

@@ -109,7 +109,7 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
             x: event.clientX - (section.current?.getBoundingClientRect().left || 0) });
         }} onPointerLeave={() => setHover(null)}>
           <div className="filmstrip">{composition?.hasInsertions ? composition.segments.filter(segment => segment.kind === 'source').map(segment => <div className="source-segment" key={segment.id} style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }}>
-            <VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} width={(segment.endFrame - segment.startFrame) / composition.fps / duration * contentWidth} />
+            <VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} />
             <span className="timeline-clip-label">{segment.label}</span>
           </div>) : <div className="source-segment source-entire">
             {thumbnails.length ? thumbnails.map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />) : <ClipLoading failed={thumbnailsFailed} message={thumbnailsFailed ? 'Preview unavailable' : duration ? 'Loading thumbnails…' : 'Loading video…'} />}
@@ -129,7 +129,7 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
               if (event.detail === 0 || !rect?.width) { onSelectInterstitial(segment.id); return; }
               const frame = Math.round((event.clientX - rect.left) / rect.width * duration * composition.fps);
               onSelectInterstitial(segment.id, Math.max(segment.startFrame, Math.min(segment.endFrame - 1, frame)) / composition.fps);
-            }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} width={(segment.endFrame - segment.startFrame) / composition.fps / duration * contentWidth} /><span className="timeline-clip-label">{segment.label}</span>{busy && <ClipJobStatus label={segment.label} message={phaseLabel(item)} />}</button>;
+            }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} /><span className="timeline-clip-label">{segment.label}</span>{busy && <ClipJobStatus label={segment.label} message={phaseLabel(item)} />}</button>;
           })}
           {composition && <CrossfadeMarks composition={composition} width={contentWidth} />}
           <div className="playhead" style={{ left: `${progress}%` }} aria-hidden="true"><span /></div>
