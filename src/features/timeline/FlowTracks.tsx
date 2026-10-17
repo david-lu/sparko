@@ -5,6 +5,9 @@ import { assets } from '../project/assets';
 import { answerLabel, branchScenes, clipTypeLabel, flowLayout, getScene, interstitialScenes, sceneFrames, type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId, type TimelineScene } from '../call-response/model';
 import VideoFilmstrip from './VideoFilmstrip';
 import './flow.css';
+import { isGenerating, type Interstitial } from '../../../shared/interstitials';
+import { phaseLabel } from '../interstitials/status';
+import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
 
 export type FlowTimeline = {
   flow: CallResponseFlow;
@@ -22,7 +25,7 @@ export type FlowTimeline = {
   onBranch: (id: SceneId, outcome: Outcome) => void;
   onReconnect: (id: string, to: SceneId) => void;
 };
-export default function FlowTracks({ value, width }: { value: FlowTimeline; width: number }) {
+export default function FlowTracks({ value, width, items = [] }: { value: FlowTimeline; width: number; items?: Interstitial[] }) {
   const { flow, session } = value, layout = flowLayout(flow), unit = width / layout.totalFrames;
   const branches = branchScenes(flow), rows = Math.max(1, branches.length);
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -36,6 +39,8 @@ export default function FlowTracks({ value, width }: { value: FlowTimeline; widt
   const renderClip = (scene: TimelineScene, offset = 0) => {
       const bounds = box(scene.id), active = session?.sceneId === scene.id, idle = scene.clip.kind === 'idle';
       const url = assets.url(scene.clip.assetId);
+      const item = items.find(item => item.id === scene.interstitialId);
+      const busy = item && isGenerating(item);
       const row = branches.findIndex(branch => branch.id === scene.id);
       const outputs = flow.edges.filter(edge => edge.from === scene.id && edge.when !== 'pending');
       return <div key={scene.id} className={`timeline-flow-clip clip-${scene.clip.kind} ${value.selectedSceneId === scene.id ? 'selected' : ''} ${active ? 'active' : ''} ${connecting ? 'connect-target' : ''}`}
@@ -45,7 +50,8 @@ export default function FlowTracks({ value, width }: { value: FlowTimeline; widt
           const rect = event.currentTarget.getBoundingClientRect();
           value.onSelectScene(scene.id, event.detail === 0 ? 0 : Math.floor((event.clientX - rect.left) / rect.width * sceneFrames(scene)));
         }} aria-pressed={connecting ? undefined : value.selectedSceneId === scene.id}>
-          {url && <VideoFilmstrip url={url} start={scene.clip.inFrame / flow.fps} end={scene.clip.outFrame / flow.fps} width={bounds.width} />}
+          {url ? <VideoFilmstrip url={url} start={scene.clip.inFrame / flow.fps} end={scene.clip.outFrame / flow.fps} width={bounds.width} /> : <ClipLoading failed={!busy} message={busy ? phaseLabel(item) : 'Clip media unavailable'} />}
+          {url && busy && <ClipJobStatus label={scene.label} message={phaseLabel(item)} />}
           {scene.clip.kind !== 'video' && <span className="flow-clip-type">
             {idle && <Repeat2 size={13} role="img" aria-label="Loops until an answer" />}
             <span>{clipTypeLabel(scene.clip, flow)}</span>

@@ -37,6 +37,7 @@ export default function App() {
   const [engine, setEngine] = useState<MediaEngine | null>(null);
   const [info, setInfo] = useState<MediaInfo | null>(null);
   const [thumbnails, setThumbnails] = useState<Thumbnail[]>([]);
+  const [thumbnailsFailed, setThumbnailsFailed] = useState(false);
   const [interstitials] = useState(() => new InterstitialController());
   const interstitialState = useSyncExternalStore(interstitials.subscribe, interstitials.getSnapshot);
   const [projects] = useState(() => new ProjectController(interstitials));
@@ -122,7 +123,7 @@ export default function App() {
     if (!projectState.source) return;
     const version = ++sourceVersion.current;
     const media = new MediaEngine(source);
-    setEngine(media); setInfo(null); setThumbnails([]); setError('');
+    setEngine(media); setInfo(null); setThumbnails([]); setThumbnailsFailed(false); setError('');
     controller.load(source);
     void media.inspect().then(metadata => {
       if (sourceVersion.current !== version) return;
@@ -130,7 +131,7 @@ export default function App() {
       const current = projects.getSnapshot().project;
       if (current?.id === source.id && current.analysis.slice.end > metadata.duration) projects.updateAnalysis({ ...current.analysis, slice: { start: 0, end: metadata.duration } });
       return media.thumbnails().then(frames => { if (sourceVersion.current === version) setThumbnails(frames); });
-    }).catch(err => { if (sourceVersion.current === version && err.name !== 'AbortError') setError(err.message || 'Unable to read video metadata.'); });
+    }).catch(err => { if (sourceVersion.current === version && err.name !== 'AbortError') { setThumbnailsFailed(true); setError(err.message || 'Unable to read video metadata.'); } });
     return () => { sourceVersion.current++; media.dispose(); };
   }, [source, controller, projects, projectState.source]);
   const selectInterstitial = (id: string | null, time?: number) => {
@@ -217,7 +218,7 @@ export default function App() {
       {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }}><X size={16} /></button></div>}
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
       <div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
-        {projectState.source ? <Player source={source} info={info} thumbnails={thumbnails} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
+        {projectState.source ? <Player source={source} info={info} thumbnails={thumbnails} thumbnailsFailed={thumbnailsFailed} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
           callResponse={flowTimeline}
           subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
           controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}

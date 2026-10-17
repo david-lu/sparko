@@ -1,6 +1,6 @@
 import './styles.css';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Captions, Check, Maximize, Minimize, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
+import { Captions, Check, Maximize, Minimize, PanelBottomClose, PanelBottomOpen, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, MediaSource, Thumbnail } from '../../media/media';
 import type { Interstitial } from '../../../shared/interstitials';
@@ -13,6 +13,7 @@ import { answerLabel, getScene, type Outcome } from '../call-response/model';
 
 type Props = {
   source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[];
+  thumbnailsFailed?: boolean;
   selectedId: string | null; composition: TimelineComposition | null;
   controller: VideoPlayerController;
   onAddInterstitial: () => void; onSeek: (time: number) => void; onError: (error: string) => void;
@@ -27,8 +28,13 @@ export default function Player(props: Props) {
   const { source, info, thumbnails, interstitials, controller, onAddInterstitial, onSeek, onError, selection } = props;
   const { playing, buffering, volume, muted, speed, loop, buffered, time, duration } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const container = useRef<HTMLDivElement>(null);
+  const transport = useRef<HTMLDivElement>(null);
   const captionInput = useRef<HTMLInputElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenControls, setFullscreenControls] = useState(true);
+  const [fullscreenTimeline, setFullscreenTimeline] = useState(() => {
+    try { return localStorage.getItem('sparko:fullscreen-timeline') !== 'false'; } catch { return true; }
+  });
   const subtitle = props.subtitle;
   const [captions, setCaptions] = useState(true);
   const flow = props.callResponse;
@@ -58,10 +64,40 @@ export default function Player(props: Props) {
 
   useEffect(() => { setCaptions(true); }, [subtitle]);
   useEffect(() => {
+    try { localStorage.setItem('sparko:fullscreen-timeline', String(fullscreenTimeline)); } catch { /* The toggle still works without persistence. */ }
+  }, [fullscreenTimeline]);
+  useEffect(() => {
     const update = () => setFullscreen(document.fullscreenElement === container.current);
     document.addEventListener('fullscreenchange', update);
     return () => document.removeEventListener('fullscreenchange', update);
   }, []);
+  useEffect(() => {
+    const player = container.current;
+    const controls = transport.current;
+    if (!fullscreen || !player || !controls) return;
+    let timeout: ReturnType<typeof setTimeout>;
+    const reveal = () => {
+      setFullscreenControls(true);
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        if (!controls.matches(':hover')) setFullscreenControls(false);
+      }, 2500);
+    };
+    reveal();
+    player.addEventListener('pointermove', reveal);
+    player.addEventListener('pointerdown', reveal);
+    player.addEventListener('keydown', reveal);
+    player.addEventListener('focusin', reveal);
+    controls.addEventListener('pointerleave', reveal);
+    return () => {
+      clearTimeout(timeout);
+      player.removeEventListener('pointermove', reveal);
+      player.removeEventListener('pointerdown', reveal);
+      player.removeEventListener('keydown', reveal);
+      player.removeEventListener('focusin', reveal);
+      controls.removeEventListener('pointerleave', reveal);
+    };
+  }, [fullscreen]);
 
   const playPause = () => controller.togglePlayback();
   const changeVolume = (value: number) => controller.setVolume(value);
@@ -124,7 +160,7 @@ export default function Player(props: Props) {
     return () => window.removeEventListener('keydown', handleKey);
   });
 
-  return <div className="player-card" ref={container}>
+  return <div className={`player-card${fullscreenTimeline ? '' : ' fullscreen-timeline-hidden'}`} ref={container} data-controls-visible={fullscreenControls}>
     <div className="video-stage" onDoubleClick={() => void toggleFullscreen()}>
       <video ref={controller.attach} preload="metadata" playsInline aria-label={source.name} onClick={playPause}>
         {subtitle && <track key={subtitle.url} src={subtitle.url} kind="subtitles" label={subtitle.name} srcLang="en" default />}
@@ -139,7 +175,7 @@ export default function Player(props: Props) {
           <span className="player-branch-selection" aria-hidden="true">{flow.session?.outcome === edge.when ? 'Selected' : ''}</span>
         </button>)}
       </div>}
-    <div className="transport" onDoubleClick={event => event.stopPropagation()}>
+    <div className="transport" ref={transport} onDoubleClick={event => event.stopPropagation()}>
       <div className="transport-group">
         <button className="icon-button play-button" aria-label={playing ? 'Pause' : 'Play'} title="Play / pause (Space)" disabled={!duration} onClick={playPause}>{playing ? <Pause /> : <Play fill="currentColor" />}</button>
         <button className="icon-button" aria-label="Back 10 seconds" title="Back 10 seconds (J)" disabled={!duration} onClick={() => onSeek(time - 10)}><RotateCcw size={18} /><span className="sr-only">10</span></button>
@@ -155,12 +191,14 @@ export default function Player(props: Props) {
         <button className={`icon-button ${loop ? 'active' : ''}`} aria-label="Loop video" aria-pressed={loop} title={props.callResponse ? 'Idle clip types control repeating playback' : 'Loop video'} disabled={!!props.callResponse} onClick={() => controller.setLoop(!loop)}><Repeat2 size={18} /></button>
         <button className={`icon-button ${subtitle && captions ? 'active' : ''}`} aria-label={subtitle ? 'Toggle captions' : 'Load captions'} aria-pressed={!!subtitle && captions} title={subtitle ? 'Toggle subtitles (C)' : 'Load WebVTT subtitles'} onClick={toggleCaptions}><Captions size={19} /></button>
         {document.pictureInPictureEnabled && <button className="icon-button pip-button" aria-label="Picture in picture" title="Picture in picture" disabled={!duration} onClick={() => void togglePip()}><PictureInPicture2 size={18} /></button>}
+        {fullscreen && <button className={`icon-button fullscreen-timeline-toggle ${fullscreenTimeline ? 'active' : ''}`} aria-label={fullscreenTimeline ? 'Hide timeline' : 'Show timeline'} aria-expanded={fullscreenTimeline} title={fullscreenTimeline ? 'Hide timeline' : 'Show timeline'} onClick={() => setFullscreenTimeline(visible => !visible)}
+          onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>{fullscreenTimeline ? <PanelBottomClose size={19} /> : <PanelBottomOpen size={19} />}</button>}
         <button className="icon-button" aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title="Fullscreen (F)" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={19} /> : <Maximize size={19} />}</button>
       </div>
     </div>
     </div>
 
-    <Timeline key={source.url} name={source.name} info={info} thumbnails={thumbnails} interstitials={interstitials} selectedId={props.selectedId} composition={props.composition} time={time} duration={duration} buffered={buffered} selection={selection}
+    <Timeline key={source.url} name={source.name} info={info} thumbnails={thumbnails} thumbnailsFailed={props.thumbnailsFailed} interstitials={interstitials} selectedId={props.selectedId} composition={props.composition} time={time} duration={duration} buffered={buffered} selection={selection}
       callResponse={props.callResponse}
       height={props.timelineHeight} maxHeight={props.maxTimelineHeight} onHeight={props.onTimelineHeight} onAddInterstitial={onAddInterstitial} onSeek={onSeek}
       onMoveInterstitial={props.onMoveInterstitial} onRemoveInterstitial={props.onRemoveInterstitial} onSelectInterstitial={props.onSelectInterstitial} />

@@ -16,7 +16,7 @@
 .timeline-flow-clip.selected{z-index:3}
 .timeline-flow-clip.active{border-color:var(--clip-color);box-shadow:inset 0 0 0 1px var(--clip-color)}
 .timeline-flow-clip:not(.clip-video){border:0}
-.flow-clip-body{display:block;position:relative;width:100%;height:100%;padding:0;overflow:hidden;background:#20252d}
+.flow-clip-body{display:block;position:relative;width:100%;height:100%;padding:0;overflow:hidden;background:#20252d;container-type:inline-size;container-name:clip}
 .flow-clip-body:focus-visible{outline:2px solid #d7e4ff;outline-offset:-2px}
 .flow-clip-body.rendered-interstitial:focus-visible{outline:2px solid #b8ffe9;outline-offset:-2px}
 .flow-clip-body.selected:after{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;border:3px solid #b8ffe9;background:#7fddc524;box-shadow:inset 0 0 0 1px #103c31}
