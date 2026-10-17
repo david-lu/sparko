@@ -12,6 +12,8 @@ import InterstitialEditor from './InterstitialEditor';
 import { clipTypeLabel, interstitialScenes, type SceneId } from '../call-response/model';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import CallResponsePanel from '../call-response/CallResponsePanel';
+import { ClipStatusBadge, clipStatus } from '../call-response/ClipStatus';
+import { sequenceActive } from '../call-response/sequence';
 import InterstitialName from './InterstitialName';
 import InterstitialHelp from './InterstitialHelp';
 
@@ -43,6 +45,7 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
 }) {
   const selected = items.find(item => item.id === selectedId);
   const members = callResponse ? interstitialScenes(callResponse.flow) : [];
+  const sequence = controller.getSnapshot().sequence;
   const childIds = new Set(groups.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : [])));
   const standaloneItems = items.filter(item => !item.groupId && !childIds.has(item.id) && !groups.some(group => group.flow.interstitial.id === item.id));
   const createActions = <div className="interstitial-create-actions">
@@ -73,10 +76,13 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
           {members.map(scene => {
             const item = items.find(item => item.id === scene.interstitialId);
             const stale = !!item && !!controller.dependency(item.id)?.stale;
-            return <li key={scene.clip.id}><button className="interstitial-row" data-stale={stale} aria-label={`Select ${clipTypeLabel(scene.clip, callResponse.flow)} clip`} onClick={() => callResponse.onSelectScene(scene.id)}>
+            const waiting = sequenceActive(sequence) && !!item && sequence!.ids.includes(item.id) && !sequence!.completedIds.includes(item.id) && sequence!.activeId !== item.id;
+            const clipState = clipStatus(item, { waiting, stale });
+            return <li key={scene.clip.id}><button className="interstitial-row" data-stale={stale} data-status={clipState.kind}
+              aria-label={`Select ${clipTypeLabel(scene.clip, callResponse.flow)} clip. Status: ${clipState.label}`} onClick={() => callResponse.onSelectScene(scene.id)}>
               {scene.clip.kind === 'idle' ? <Repeat2 size={14} /> : <Clapperboard size={14} />}
-              <span className="interstitial-row-content"><strong>{clipTypeLabel(scene.clip, callResponse.flow)}</strong><span>{scene.label}{stale ? ' · Stale' : ''}</span></span>
-              <span className="status-icon">{item && isGenerating(item) && <span className="spinner" />}</span>
+              <span className="interstitial-row-content"><strong>{clipTypeLabel(scene.clip, callResponse.flow)}</strong><span>{scene.label}</span></span>
+              <ClipStatusBadge status={clipState} />
             </button></li>;
           })}
         </ol>

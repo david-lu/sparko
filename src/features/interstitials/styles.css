@@ -39,3 +39,21 @@
 .interstitial-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;font-size:10px;color:var(--muted)}
 .interstitial-preview video{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#0f0e0c;border-radius:var(--radius-md)}
 .clip-preview-stage{position:relative;container-type:inline-size;container-name:clip;overflow:hidden;border-radius:var(--radius-md)}
+
+/* Clip status keeps one badge in place through draft, generation, and video states. */
+.clip-subpanel[data-status],.interstitial-clips .interstitial-row[data-status]{--clip-state-color:#c5bdb2}
+.clip-subpanel[data-status=waiting],.interstitial-clips .interstitial-row[data-status=waiting]{--clip-state-color:#e4c076}
+.clip-subpanel[data-status=generating],.interstitial-clips .interstitial-row[data-status=generating]{--clip-state-color:#91c6f6}
+.clip-subpanel[data-status=failed],.interstitial-clips .interstitial-row[data-status=failed]{--clip-state-color:#f28d83}
+.clip-subpanel[data-status=stale],.interstitial-clips .interstitial-row[data-status=stale]{--clip-state-color:#f5c77b}
+.clip-subpanel[data-status=cancelled],.interstitial-clips .interstitial-row[data-status=cancelled]{--clip-state-color:#c9a1de}
+.clip-subpanel[data-status=video],.interstitial-clips .interstitial-row[data-status=video]{--clip-state-color:#91d9ae}
+.clip-subpanel[data-status]{border-left:3px solid var(--clip-state-color)}
+.clip-subpanel.selected[data-status]{box-shadow:0 0 0 1px var(--accent)}
+.clip-subpanel[data-status]>.clip-subpanel-heading{min-height:56px;background:color-mix(in srgb,var(--clip-state-color) 8%,transparent)}
+.interstitial-clips .interstitial-row[data-status]{min-height:50px;padding-left:7px;border-left:3px solid var(--clip-state-color)}
+.clip-status-badge{display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:0 0 104px;height:22px;padding:0 5px;border:1px solid color-mix(in srgb,var(--clip-state-color) 50%,transparent);border-radius:999px;background:color-mix(in srgb,var(--clip-state-color) 14%,transparent);color:var(--clip-state-color);font:600 9px var(--mono);white-space:nowrap}
+.clip-status-badge svg{flex-shrink:0}
+.clip-status-badge[data-status=generating] svg{animation:clip-status-spin 1.4s linear infinite}
+@keyframes clip-status-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.clip-status-badge[data-status=generating] svg{animation:none}}
