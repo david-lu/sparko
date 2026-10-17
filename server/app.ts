@@ -2,14 +2,14 @@ import express from 'express';
 import { mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { createProviders, type Providers } from './providers';
-import { addHostingRoutes, hosted, remoteDefault } from './hosting';
-import { protectRequests } from './shared/http';
-import { createUploadReceiver } from './shared/uploads';
-import { addAnalysisRoutes } from './features/video-analysis/routes';
-import { addVoiceRoutes } from './features/voice-input/routes';
-import { addInsertionRoutes } from './features/video-insertion/routes';
-import { addInterstitialRoutes } from './features/interstitials/routes';
+import { createProviders, type Providers } from './providers.js';
+import { addHostingRoutes, hosted, remoteDefault, remoteProject } from './hosting.js';
+import { protectRequests } from './shared/http.js';
+import { createUploadReceiver } from './shared/uploads.js';
+import { addAnalysisRoutes } from './features/video-analysis/routes.js';
+import { addVoiceRoutes } from './features/voice-input/routes.js';
+import { addInsertionRoutes } from './features/video-insertion/routes.js';
+import { addInterstitialRoutes } from './features/interstitials/routes.js';
 
 export async function createApp(options: { root?: string; providers?: Providers } = {}) {
   const root = options.root || process.cwd();
@@ -26,7 +26,12 @@ export async function createApp(options: { root?: string; providers?: Providers 
   app.get('/api/status', async (_req, res) => {
     const info = await stat(defaultPath).catch(() => null);
     res.json({ uploadMode: hosted ? 'blob' : 'local', requiresPassword: hosted || !!process.env.APP_PASSWORD,
-      providers: providers.configured, models: providers.models, defaultVideo: { name: 'episode_mock.mp4', url: remoteDefault || '/media/episode_mock.mp4', size: info?.size || 0 } });
+      providers: providers.configured, models: providers.models, defaultVideo: { name: 'episode_mock.mp4', url: remoteDefault || '/media/episode_mock.mp4', size: info?.size || 0 },
+      defaultProject: remoteProject ? { url: remoteProject } : null });
+  });
+  // Local preview of the captured example; deployed browsers download directly from Blob.
+  if (!hosted) app.get('/media/example.sparko', (_req, res, next) => {
+    res.sendFile(path.join(root, 'examples', 'default.sparko'), { dotfiles: 'deny' }, error => { if (error) next(error); });
   });
   app.get('/media/episode_mock.mp4', (_req, res, next) => {
     if (remoteDefault) { res.redirect(307, remoteDefault); return; }

@@ -1,13 +1,13 @@
 import type { Express } from 'express';
 import { openAsBlob } from 'node:fs';
 import { z } from 'zod';
-import { INTERSTITIAL } from '../../../shared/constants';
-import { referenceResumeTime } from '../../../shared/interstitials';
-import { authenticate } from '../../hosting';
-import type { Providers } from '../../providers';
-import { HttpError, requireProvider } from '../../shared/http';
-import { videoDuration } from '../../shared/media';
-import type { UploadReceiver } from '../../shared/uploads';
+import { INTERSTITIAL } from '../../../shared/constants.js';
+import { referenceResumeTime } from '../../../shared/interstitials.js';
+import { authenticate } from '../../hosting.js';
+import type { Providers } from '../../providers.js';
+import { HttpError, requireProvider } from '../../shared/http.js';
+import { videoDuration } from '../../shared/media.js';
+import type { UploadReceiver } from '../../shared/uploads.js';
 
 const schema = z.object({
   start: z.coerce.number().finite().min(INTERSTITIAL.minStartRange).max(INTERSTITIAL.maxRange + 0.1),

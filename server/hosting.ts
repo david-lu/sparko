@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 export const hosted = process.env.VERCEL === '1';
 export const remoteDefault = process.env.DEFAULT_VIDEO_URL;
+export const remoteProject = process.env.DEFAULT_PROJECT_URL;
 const digest = (value: string) => createHash('sha256').update(value).digest();
 
 export const authenticate: RequestHandler = (req, res, next) => {
@@ -26,8 +27,9 @@ export const authenticate: RequestHandler = (req, res, next) => {
 // Only accept uploads in this project's Blob store, never arbitrary URLs (SSRF).
 export function validateBlobUrl(value: string, temporary = true): string {
   const url = new URL(value);
-  if (!remoteDefault) throw new Error('Set DEFAULT_VIDEO_URL to your default video in Vercel Blob.');
-  const expected = new URL(remoteDefault);
+  const storeUrl = remoteProject || remoteDefault;
+  if (!storeUrl) throw new Error('Set DEFAULT_PROJECT_URL or DEFAULT_VIDEO_URL to your example in Vercel Blob.');
+  const expected = new URL(storeUrl);
   if (url.protocol !== 'https:' || !url.hostname.endsWith('.public.blob.vercel-storage.com') || url.origin !== expected.origin || url.username || url.password || (temporary && !url.pathname.startsWith('/transient/'))) {
     throw new Error('The uploaded file must belong to this workspace.');
   }
@@ -51,7 +53,7 @@ export async function downloadRemote(url: string, destination: string, maxBytes:
 export function addHostingRoutes(app: Express) {
   app.post('/api/session', authenticate, (_req, res) => res.json({ ok: true }));
   app.post('/api/uploads', authenticate, async (req, res) => {
-    if (!process.env.BLOB_READ_WRITE_TOKEN || !remoteDefault) { res.status(503).json({ error: 'Configure BLOB_READ_WRITE_TOKEN and DEFAULT_VIDEO_URL in Vercel.' }); return; }
+    if (!process.env.BLOB_READ_WRITE_TOKEN || !(remoteProject || remoteDefault)) { res.status(503).json({ error: 'Configure BLOB_READ_WRITE_TOKEN and DEFAULT_PROJECT_URL (or DEFAULT_VIDEO_URL) in Vercel.' }); return; }
     // No upload-completion webhook is needed; the browser sends the final URL to the API.
     if (req.body?.type !== 'blob.generate-client-token') { res.status(400).json({ error: 'Unsupported upload action.' }); return; }
     const result = await handleUpload({ body: req.body, request: req,

@@ -29,16 +29,17 @@ export class ProjectController {
     this.writes = this.writes.catch(() => undefined).then(() => writeProject(project));
     void this.writes.catch(error => this.update({ error: storageError(error) }));
   }
-  async init(defaultSource: MediaSource) {
+  async init(defaultSource: MediaSource, exampleUrl?: string) {
     this.unsubscribe ??= this.interstitials.subscribe(() => {
       const project = this.state.project;
       if (!project || this.switching || project.interstitials === this.interstitials.getSnapshot().items) return;
       this.save({ ...project, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() });
     });
     await this.task('Opening saved project', async signal => {
-      const saved = await readActiveProject();
+      const saved = await readActiveProject() || await readProject(defaultSource.id);
       if (saved) await this.activate(saved, signal);
-      else await this.activate(await readProject(defaultSource.id) || this.create(defaultSource), signal);
+      else if (exampleUrl) await this.loadExample(exampleUrl, signal);
+      else await this.activate(this.create(defaultSource), signal);
     });
   }
   private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = []) {
@@ -98,6 +99,16 @@ export class ProjectController {
       signal.throwIfAborted(); await this.activate(project, signal);
     });
   }
+  async openExample(url: string) {
+    await this.task('Downloading example project', signal => this.loadExample(url, signal));
+  }
+  private async loadExample(url: string, signal: AbortSignal) {
+    this.update({ message: 'Downloading example project', progress: null });
+    const archive = await assets.fetch(url, 'example.sparko', signal, (received, total) => {
+      if (!signal.aborted) this.update({ progress: total ? received / total : null });
+    });
+    await this.restoreArchive(archive.blob, signal);
+  }
   private async task<T>(message: string, work: (signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
     if (this.operation) return;
     const operation = new AbortController(); this.operation = operation;
@@ -156,26 +167,27 @@ export class ProjectController {
     finally { engine.dispose(); URL.revokeObjectURL(url); }
   }
   async importProject(file: File) {
-    await this.task('Reading project', async signal => {
-      const { unpackProject } = await import('./archive');
-      const imported = await unpackProject(file, signal, (message, progress) => this.update({ message, progress }));
-      this.update({ message: 'Checking project media', progress: null });
-      const byId = new Map(imported.assets.map(asset => [asset.id, asset]));
-      const source = await this.validateVideo(byId.get(imported.project.source.assetId!)!.blob, signal);
-      for (const item of imported.project.interstitials) {
-        if (item.time > source.duration + Math.max(1 / source.fps, 1 / TIMELINE_FPS)) throw new Error('An interstitial anchor lies outside the source video.');
-        for (const result of [item.result, item.previousResult]) {
-          if (!result) continue;
-          const info = await this.validateVideo(byId.get(result.assetId!)!.blob, signal);
-          if (result.start + result.duration > info.duration + 1 / info.fps) throw new Error('An interstitial asset is shorter than its saved scene boundaries.');
-        }
+    await this.task('Reading project', signal => this.restoreArchive(file, signal));
+  }
+  private async restoreArchive(file: Blob, signal: AbortSignal) {
+    const { unpackProject } = await import('./archive');
+    const imported = await unpackProject(file, signal, (message, progress) => this.update({ message, progress }));
+    this.update({ message: 'Checking project media', progress: null });
+    const byId = new Map(imported.assets.map(asset => [asset.id, asset]));
+    const source = await this.validateVideo(byId.get(imported.project.source.assetId!)!.blob, signal);
+    for (const item of imported.project.interstitials) {
+      if (item.time > source.duration + Math.max(1 / source.fps, 1 / TIMELINE_FPS)) throw new Error('An interstitial anchor lies outside the source video.');
+      for (const result of [item.result, item.previousResult]) {
+        if (!result) continue;
+        const info = await this.validateVideo(byId.get(result.assetId!)!.blob, signal);
+        if (result.start + result.duration > info.duration + 1 / info.fps) throw new Error('An interstitial asset is shorter than its saved scene boundaries.');
       }
-      if (imported.project.subtitle) {
-        const blob = byId.get(imported.project.subtitle.assetId)!.blob;
-        if (blob.size > 8 * 1024 ** 2 || !(await blob.text()).replace(/^\uFEFF/, '').startsWith('WEBVTT')) throw new Error('The project subtitle asset is invalid.');
-      }
-      signal.throwIfAborted(); await this.activate(imported.project, signal, imported.assets);
-    });
+    }
+    if (imported.project.subtitle) {
+      const blob = byId.get(imported.project.subtitle.assetId)!.blob;
+      if (blob.size > 8 * 1024 ** 2 || !(await blob.text()).replace(/^\uFEFF/, '').startsWith('WEBVTT')) throw new Error('The project subtitle asset is invalid.');
+    }
+    signal.throwIfAborted(); await this.activate(imported.project, signal, imported.assets);
   }
   dispose() { this.cancel(); this.unsubscribe?.(); this.unsubscribe = undefined; }
 }

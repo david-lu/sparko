@@ -1,8 +1,8 @@
 import { createFalClient } from '@fal-ai/client';
 import { z } from 'zod';
-import type { FalJob } from '../../../shared/contracts';
-import { AI_MODELS } from '../../../shared/constants';
-import { falRequest } from './errors';
+import type { FalJob } from '../../../shared/contracts.js';
+import { AI_MODELS } from '../../../shared/constants.js';
+import { falRequest } from './errors.js';
 
 const FAL_MODEL = AI_MODELS.fal;
 export type FalInput = {

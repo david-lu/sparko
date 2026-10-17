@@ -2,10 +2,10 @@ import type { Express } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
-import { MAX_VOICE_BYTES, MAX_VOICE_SECONDS } from '../../../shared/constants';
-import type { Providers } from '../../providers';
-import { authenticate } from '../../hosting';
-import { HttpError, requireProvider } from '../../shared/http';
+import { MAX_VOICE_BYTES, MAX_VOICE_SECONDS } from '../../../shared/constants.js';
+import type { Providers } from '../../providers.js';
+import { authenticate } from '../../hosting.js';
+import { HttpError, requireProvider } from '../../shared/http.js';
 
 const voiceContextSchema = z.object({
   sourceId: z.string().min(1).max(1000), videoTime: z.number().finite().nonnegative(),

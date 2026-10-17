@@ -6,7 +6,7 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 300,
-      "excludeFiles": "{episode_mock.mp4,.env*,.data/**,tests/**,test-results/**,playwright-report/**,.npm-cache/**}"
+      "excludeFiles": "{episode_mock.mp4,examples/**,.env*,.data/**,tests/**,test-results*/**,playwright-report/**,.npm-cache/**}"
     }
   },
   "rewrites": [

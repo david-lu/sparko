@@ -1,5 +1,5 @@
 import { ApiError } from '@fal-ai/client';
-import { HttpError } from '../../shared/http';
+import { HttpError } from '../../shared/http.js';
 
 /** Expose fal's validation explanation, never the SDK error, input, headers or URLs. */
 export async function falRequest<T>(request: () => Promise<T>, credential?: string): Promise<T> {

@@ -3,12 +3,12 @@ import { openAsBlob } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { INTERSTITIAL } from '../../../shared/constants';
-import type { Providers } from '../../providers';
-import { authenticate, remoteDefault, validateBlobUrl, downloadRemote } from '../../hosting';
-import { HttpError, requireProvider } from '../../shared/http';
-import { videoDuration } from '../../shared/media';
-import type { UploadReceiver } from '../../shared/uploads';
+import { INTERSTITIAL } from '../../../shared/constants.js';
+import type { Providers } from '../../providers.js';
+import { authenticate, remoteDefault, validateBlobUrl, downloadRemote } from '../../hosting.js';
+import { HttpError, requireProvider } from '../../shared/http.js';
+import { videoDuration } from '../../shared/media.js';
+import type { UploadReceiver } from '../../shared/uploads.js';
 
 const falSchema = z.object({
   start: z.coerce.number().finite().nonnegative(), resume: z.coerce.number().finite().nonnegative(),

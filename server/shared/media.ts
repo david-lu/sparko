@@ -1,5 +1,5 @@
 import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
-import { HttpError } from './http';
+import { HttpError } from './http.js';
 
 export async function videoDuration(blob: Blob): Promise<number> {
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });

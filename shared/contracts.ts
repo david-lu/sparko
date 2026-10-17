@@ -28,6 +28,7 @@ export type AppStatus = {
   providers: Record<Provider | 'fal', boolean>;
   models: Record<Provider, string>;
   defaultVideo: { name: string; url: string; size: number };
+  defaultProject?: { url: string } | null;
 };
 export type FalJob = {
   requestId: string;

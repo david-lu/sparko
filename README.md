@@ -165,23 +165,29 @@ Feature APIs use shared HTTP transport; shared transport does not import feature
 
 ## Vercel deployment
 
-`vercel.json` builds the Vite frontend and routes API/media requests to `api/index.ts`, a Node.js function with a 300-second timeout. This repository is configured for deployment, but does not contain Vercel account credentials or a linked project.
+`vercel.json` builds the Vite frontend and routes API/media requests to `api/index.ts`, a Node.js function with a 300-second timeout. Account credentials and local Vercel project links are not committed.
 
-Large videos go directly from the browser to **Vercel Blob**. They do not pass through the function request body, which has a [4.5 MB limit](https://vercel.com/docs/vercel-blob/client-upload). The 144 MB default video is excluded from the deployment bundle and served from Blob instead.
+Server-side relative imports use explicit `.js` extensions so Vercel's compiled Node.js ES modules resolve correctly; `tsx` and Vite resolve these to the TypeScript sources during development.
+
+Large videos go directly from the browser to **Vercel Blob**. They do not pass through the function request body, which has a [4.5 MB limit](https://vercel.com/docs/vercel-blob/client-upload). The default video and example project archive are excluded from the deployment bundle and served from Blob instead.
+
+The hosted example is [`examples/default.sparko`](examples/default.sparko), a complete snapshot of the current IndexedDB project: the prepared episode, retained original, and two completed interstitials at source times **67.5417 s** and **71.2083 s**, including their prompts and generation settings. It is tracked with Git LFS; run `git lfs pull` before uploading from a fresh checkout. The archive is approximately 253 MiB.
+
+`DEFAULT_PROJECT_URL` makes a fresh browser download and validate that snapshot, then save it as a separate local project in one IndexedDB transaction. Later visits reopen the active local project, including the visitor's edits, without downloading the example again. **File → Open example project** opens a fresh copy without overwriting existing projects. Download/import progress and cancellation use the regular project controls. If the example fails to load, the error stays visible and the menu can retry it. When `DEFAULT_PROJECT_URL` is unset, the existing default-video behavior remains available.
 
 1. Run `npx vercel login` and `npx vercel link` to select your account/project.
 2. Create a **public Blob store** in the project's Storage tab and connect it to Preview and Production. This creates `BLOB_READ_WRITE_TOKEN`.
-3. Make that token available locally without overwriting your `.env` (for example, add it to `.env`), then run `npm run vercel:upload-default`. Set the printed URL as `DEFAULT_VIDEO_URL` in Vercel.
+3. Make that token available locally without overwriting your `.env` (for example, add it to `.env`), then run `npm run vercel:upload-example`. Set the printed URL as `DEFAULT_PROJECT_URL` in Vercel. The script validates the complete archive before uploading and uses a new URL for each snapshot. To replace the example later, export the desired project from the app and run `npm run vercel:upload-example -- path/to/project.sparko`. For the older video-only default, use `npm run vercel:upload-default` and `DEFAULT_VIDEO_URL` instead.
 4. Set these server-side environment variables in Preview and Production:
    - `OPENAI_API_KEY`
    - `GEMINI_KEY`
    - `FAL_KEY`
    - `BLOB_READ_WRITE_TOKEN` (provided by the store)
-   - `DEFAULT_VIDEO_URL`
+   - `DEFAULT_PROJECT_URL` (or `DEFAULT_VIDEO_URL` for a video-only default)
    - `APP_PASSWORD` (a separate workspace password, not an API key)
 5. Run `npm run deploy:preview`, or `npm run deploy:production` for production.
 
-The deployed app requires the workspace password before granting upload tokens or making provider requests. The default video is served by its public Blob URL. Temporary analysis uploads use random URLs in `transient/` and are deleted after retrieval or request cleanup. An interrupted browser can leave an upload behind; remove old `transient/` objects in Blob as needed. Only the configured Blob store is accepted for remote API inputs. Local runs do not need Blob or a password.
+The deployed app requires the workspace password before granting upload tokens or making provider requests. The example archive is served by its public Blob URL. Temporary analysis uploads use random URLs in `transient/` and are deleted after retrieval or request cleanup. An interrupted browser can leave an upload behind; remove old `transient/` objects in Blob as needed. Only the configured Blob store is accepted for remote API inputs. Local runs do not need Blob or a password. To preview the captured example locally, set `DEFAULT_PROJECT_URL=/media/example.sparko` and open the app in a fresh browser context; existing saved projects still take priority.
 
 Do not prefix API secrets with `VITE_`. Redeploy after changing deployment environment variables. This is a single-workspace app; interstitials and panel sizes remain browser-local, and API credits are shared by users of the workspace password.
 

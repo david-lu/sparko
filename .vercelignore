@@ -2,10 +2,12 @@
 .env.*
 !.env.example
 episode_mock.mp4
+examples
 .data
 .npm-cache
 node_modules
-test-results
+dist
+test-results*
 playwright-report
 .git
 tests

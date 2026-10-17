@@ -1,8 +1,8 @@
 import { toFile } from 'openai';
 import { z } from 'zod';
-import type { Provider, VoiceAnswer, VoiceContext } from '../../../shared/contracts';
-import { AI_MODELS } from '../../../shared/constants';
-import type { AIClients } from '../../shared/ai-clients';
+import type { Provider, VoiceAnswer, VoiceContext } from '../../../shared/contracts.js';
+import { AI_MODELS } from '../../../shared/constants.js';
+import type { AIClients } from '../../shared/ai-clients.js';
 
 export type VoiceInput = { audio: Uint8Array; mimeType: string; context: VoiceContext; signal: AbortSignal };
 export type VoiceProvider = (provider: Provider, input: VoiceInput) => Promise<VoiceAnswer>;

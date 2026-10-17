@@ -1,4 +1,4 @@
-import { INTERSTITIAL } from './constants';
+import { INTERSTITIAL } from './constants.js';
 
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
 export type InterstitialResult = { url: string; assetId?: string; start: number; duration: number; totalDuration: number };

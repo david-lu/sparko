@@ -1,8 +1,8 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import type { AppStatus } from '../../shared/contracts';
-import { hosted } from '../hosting';
+import type { AppStatus } from '../../shared/contracts.js';
+import { hosted } from '../hosting.js';
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message); }

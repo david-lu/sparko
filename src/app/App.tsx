@@ -86,8 +86,8 @@ export default function App() {
   useEffect(() => { let active = true; void getStatus().then(data => {
     if (!active) return;
     setStatus(data); defaultUrl.current = data.defaultVideo.url;
-    if (data.requiresPassword && !sessionStorage.getItem('sparko:password')) setLogin(true);
-    return projects.init({ ...defaultSource, url: data.defaultVideo.url });
+    if (data.requiresPassword && !data.defaultProject && !sessionStorage.getItem('sparko:password')) setLogin(true);
+    return projects.init({ ...defaultSource, url: data.defaultVideo.url }, data.defaultProject?.url);
   }).catch(err => { if (active) { setError(err.message); void projects.init(defaultSource); } });
     return () => { active = false; };
   }, [projects]);
@@ -141,7 +141,7 @@ export default function App() {
     <header className="menubar" aria-label="Application menu">
       <details className="file-menu" ref={fileMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }} onKeyDown={event => { if (event.key === 'Escape') event.currentTarget.open = false; }}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
         <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; fileInput.current?.click(); }}><FolderOpen size={14} />Open video<span>Ctrl O</span></button>
-        <button role="menuitem" disabled={projectState.busy || projectState.source?.id === defaultSource.id} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void projects.openDefault({ ...defaultSource, url: defaultUrl.current }).catch(err => setError(err.message)); }}><RotateCcw size={14} />Open default video</button>
+        <button role="menuitem" disabled={projectState.busy || (!status?.defaultProject && projectState.source?.id === defaultSource.id)} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void (status?.defaultProject ? projects.openExample(status.defaultProject.url) : projects.openDefault({ ...defaultSource, url: defaultUrl.current })).catch(err => setError(err.message)); }}><RotateCcw size={14} />{status?.defaultProject ? 'Open example project' : 'Open default video'}</button>
         <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; projectInput.current?.click(); }}><Upload size={14} />Import project</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>

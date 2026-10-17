@@ -1,9 +1,9 @@
 import { toFile } from 'openai';
 import { z } from 'zod';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { CaptionResult, Slice } from '../../../shared/contracts';
-import { AI_MODELS } from '../../../shared/constants';
-import type { AIClients } from '../../shared/ai-clients';
+import type { CaptionResult, Slice } from '../../../shared/contracts.js';
+import { AI_MODELS } from '../../../shared/constants.js';
+import type { AIClients } from '../../shared/ai-clients.js';
 
 export const captionSchema = z.object({ caption: z.string().min(1).max(2000), description: z.string().min(1).max(16000) });
 const outputSchema = {

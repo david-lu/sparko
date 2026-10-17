@@ -2,12 +2,12 @@ import type { Express } from 'express';
 import { readFile } from 'node:fs/promises';
 import { openAsBlob } from 'node:fs';
 import { z } from 'zod';
-import type { Providers } from '../../providers';
-import type { Frame } from './providers';
-import { authenticate } from '../../hosting';
-import { HttpError, requireProvider } from '../../shared/http';
-import { videoDuration } from '../../shared/media';
-import type { UploadReceiver } from '../../shared/uploads';
+import type { Providers } from '../../providers.js';
+import type { Frame } from './providers.js';
+import { authenticate } from '../../hosting.js';
+import { HttpError, requireProvider } from '../../shared/http.js';
+import { videoDuration } from '../../shared/media.js';
+import type { UploadReceiver } from '../../shared/uploads.js';
 
 const sliceSchema = z.object({
   start: z.coerce.number().finite().nonnegative(), end: z.coerce.number().finite().positive(),

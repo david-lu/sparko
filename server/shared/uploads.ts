@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import multer from 'multer';
 import { rm } from 'node:fs/promises';
-import { receiveHosted } from '../hosting';
+import { receiveHosted } from '../hosting.js';
 
 export function createUploadReceiver(uploadDir: string) {
   const upload = multer({ dest: uploadDir, limits: { fileSize: 256 * 1024 * 1024, files: 1, fields: 12, fieldSize: 24 * 1024 * 1024 } });

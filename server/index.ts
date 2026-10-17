@@ -2,8 +2,8 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { createServer } from 'node:http';
-import { createApp } from './app';
-import { errorHandler } from './shared/http';
+import { createApp } from './app.js';
+import { errorHandler } from './shared/http.js';
 
 const app = await createApp();
 const server = createServer(app);
