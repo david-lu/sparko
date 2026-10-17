@@ -2,6 +2,7 @@ import type { Express } from 'express';
 import { openAsBlob } from 'node:fs';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { once } from 'node:events';
 import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
 import { z } from 'zod';
 import { COMFY, INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants.js';
@@ -47,6 +48,27 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     res.status(202).json(job);
   });
   app.get('/api/comfy/jobs/:requestId', authenticate, requireComfy, async (req, res) => res.json(await provider().status(idSchema.parse(req.params.requestId))));
+  app.get('/api/comfy/jobs/:requestId/events', authenticate, requireComfy, async (req, res) => {
+    const requestId = idSchema.parse(req.params.requestId), comfy = provider();
+    const operation = new AbortController();
+    // Reconnect below Vercel's request deadline; this never cancels the generation job.
+    const signal = AbortSignal.any([operation.signal, AbortSignal.timeout(240_000)]);
+    const close = () => operation.abort();
+    res.once('close', close);
+    res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'private, no-store, no-transform', 'X-Accel-Buffering': 'no' });
+    res.flushHeaders();
+    const heartbeat = setInterval(() => { if (!res.destroyed && !res.writableNeedDrain) res.write(': keepalive\n\n'); }, 15_000);
+    try {
+      for await (const event of comfy.events(requestId, signal)) {
+        signal.throwIfAborted();
+        if (!res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)) await once(res, 'drain', { signal });
+      }
+    } catch {
+      if (!res.destroyed) res.write('event: fallback\ndata: {}\n\n');
+    } finally {
+      clearInterval(heartbeat); operation.abort(); res.off('close', close); res.end();
+    }
+  });
   app.delete('/api/comfy/jobs/:requestId', authenticate, requireComfy, async (req, res) => {
     const requestId = idSchema.parse(req.params.requestId); await provider().cancel(requestId);
     res.json({ requestId, status: 'CANCELLED' });

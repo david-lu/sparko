@@ -7,8 +7,10 @@ import { assets } from '../../src/features/project/assets';
 import { hasUnsubmittedChanges, interstitialSettings, playableResult } from '../../shared/interstitials';
 import { changeClipKind, createTimelineExample } from '../../src/features/call-response/model';
 import { generationSource } from '../../src/features/call-response/generation';
+import { watchComfyJob } from '../../src/features/interstitials/progress-stream';
 
 vi.mock('../../src/features/interstitials/api', () => ({ generateInterstitial: vi.fn(), getInterstitialJob: vi.fn(), cancelInterstitialJob: vi.fn() }));
+vi.mock('../../src/features/interstitials/progress-stream', () => ({ watchComfyJob: vi.fn() }));
 vi.mock('../../src/features/call-response/generation', () => ({ generationSource: vi.fn() }));
 vi.mock('../../src/media/MediaEngine', () => ({ MediaEngine: class { inspect() { return Promise.resolve({ duration: 9, fps: 25 }); } dispose() {} } }));
 vi.mock('../../src/features/project/assets', () => ({ assets: { download: async () => ({ id: 'stored-asset' }), open: async () => ({ url: 'blob:local-asset' }) } }));
@@ -34,6 +36,30 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
+  it('shows live Comfy steps without stale polls overwriting them and detaches on completion', async () => {
+    const id = add(); controller.edit(id, { method: 'comfy' });
+    vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE', insertion: completed.insertion });
+    let read!: (job: Awaited<ReturnType<typeof getInterstitialJob>>) => void;
+    vi.mocked(getInterstitialJob).mockImplementation(() => new Promise(resolve => { read = resolve; }));
+    const generation = controller.generate(id, media, info);
+    await vi.waitFor(() => expect(watchComfyJob).toHaveBeenCalledOnce());
+    const [, signal, update] = vi.mocked(watchComfyJob).mock.calls[0];
+    update({ type: 'progress', progress: .4, progressDetails: { stage: 'Generating video and audio', step: 8, steps: 20 } });
+    vi.useFakeTimers();
+    try {
+      read({ requestId: completed.requestId, status: 'IN_QUEUE', progress: 0 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'rendering', progress: .4, progressDetails: { step: 8 } });
+      controller.edit(id, { method: 'fal' });
+      await vi.advanceTimersByTimeAsync(2500);
+      read(completed); await generation;
+      expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', method: 'fal', requestMethod: 'comfy', progressDetails: undefined });
+      expect(signal.aborted).toBe(true);
+      update({ type: 'progress', progress: .8, progressDetails: { stage: 'Old update', step: 16, steps: 20 } });
+      expect(controller.getSnapshot().items[0].phase).toBe('ready');
+      expect(cancelInterstitialJob).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
   it('gives a newly converted child its own settings and retained video', () => {
     const example = createTimelineExample(crypto.randomUUID(), 8);
     controller.load('flow', example.interstitials, [], example.flow);

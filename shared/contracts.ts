@@ -31,11 +31,23 @@ export type AppStatus = {
   defaultProject?: { url: string } | null;
 };
 export type InsertionRange = { start: number; duration: number; totalDuration: number };
+export type GenerationProgress = {
+  stage: string;
+  step?: number;
+  steps?: number;
+  nodesDone?: number;
+  nodesTotal?: number;
+};
+export type GenerationEvent =
+  | { type: 'progress'; progress: number; progressDetails: GenerationProgress }
+  | { type: 'status'; status: 'IN_QUEUE' | 'IN_PROGRESS'; queuePosition?: number }
+  | { type: 'refresh' };
 export type GenerationJob = {
   requestId: string;
   status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   queuePosition?: number;
   progress?: number;
+  progressDetails?: GenerationProgress;
   videoUrl?: string;
   insertion?: InsertionRange;
 };

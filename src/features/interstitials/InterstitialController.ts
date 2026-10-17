@@ -4,6 +4,7 @@ import type { InsertionRange } from '../../../shared/contracts';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from './api';
+import { watchComfyJob } from './progress-stream';
 import { loadInterstitials, saveInterstitials } from './storage';
 import { assets } from '../project/assets';
 import { responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
@@ -106,7 +107,7 @@ export class InterstitialController {
     if (dependency?.blocked) { this.update({ error: dependency.blocked }); return; }
     const operation = new AbortController(); this.tasks.set(id, operation);
     const method = item.method ?? 'fal';
-    this.patch(id, { phase: 'preparing', error: undefined, progress: 0, queuePosition: undefined,
+    this.patch(id, { phase: 'preparing', error: undefined, progress: 0, progressDetails: undefined, queuePosition: undefined,
       previousResult: playableResult(item), result: undefined, requestId: item.phase === 'ready' ? undefined : item.requestId,
       requestMethod: requestMethod(item), generationSettings: interstitialSettings(item), requestReference: dependency?.reference });
     try {
@@ -141,7 +142,15 @@ export class InterstitialController {
     finally { if (this.tasks.get(id) === operation) this.tasks.delete(id); }
   }
   private async poll(id: string, requestId: string, signal: AbortSignal, method: GenerationMethod, submittedInsertion?: InsertionRange) {
-    for (;;) {
+    const stream = new AbortController(), streamSignal = AbortSignal.any([signal, stream.signal]);
+    let liveAt = -Infinity;
+    if (method === 'comfy') void watchComfyJob(requestId, streamSignal, event => {
+      if (streamSignal.aborted) return;
+      liveAt = Date.now();
+      if (event.type === 'progress') this.patch(id, { phase: 'rendering', progress: event.progress, progressDetails: event.progressDetails, queuePosition: undefined });
+      if (event.type === 'status') this.patch(id, { phase: event.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: event.queuePosition });
+    });
+    try { for (;;) {
       signal.throwIfAborted();
       const job = await getInterstitialJob(requestId, signal, method);
       signal.throwIfAborted();
@@ -150,12 +159,14 @@ export class InterstitialController {
         const insertion = job.insertion || submittedInsertion;
         if (!job.videoUrl || !insertion) throw new Error('The result is missing its generated scene boundaries. Retry checking the result.');
         const result = { url: job.videoUrl, ...insertion, reference: this.state.items.find(item => item.id === id)?.requestReference };
-        this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined });
+        stream.abort();
+        this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined, progressDetails: undefined });
         await this.loadResult(id, result, signal); return;
       }
-      this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition, progress: job.progress });
+      // A slow status response must not overwrite newer live steps. Polling takes over on disconnect.
+      if (Date.now() - liveAt > 5_000) this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition, progress: job.progress, progressDetails: job.progressDetails });
       await wait(signal);
-    }
+    } } finally { stream.abort(); }
   }
   private async loadResult(id: string, result: NonNullable<Interstitial['result']>, signal: AbortSignal) {
     if (!result.assetId) {

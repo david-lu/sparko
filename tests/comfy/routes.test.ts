@@ -11,7 +11,7 @@ vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: cla
   computeDuration() { return Promise.resolve(3.25); }
   dispose() {}
 } }));
-const comfy = { check: vi.fn(), submit: vi.fn(), status: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn() };
+const comfy = { check: vi.fn(), submit: vi.fn(), status: vi.fn(), events: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn() };
 const providers: Providers = { configured: { openai: false, gemini: false, fal: true, comfy: true }, models: { openai: 'test', gemini: 'test' },
   openai: vi.fn(), gemini: vi.fn(), voice: vi.fn(), falUpload: vi.fn(), falSubmit: vi.fn(), falCancel: vi.fn(), falStatus: vi.fn(), comfy };
 let app: Express;
@@ -40,8 +40,31 @@ describe('Comfy API boundaries', () => {
     await request(app).post('/api/comfy/interstitials').expect(403);
     vi.stubEnv('APP_PASSWORD', 'workspace-secret');
     await request(app).get('/api/comfy/jobs/comfy-job-123').expect(401);
+    await request(app).get('/api/comfy/jobs/comfy-job-123/events').expect(401);
     await request(app).get('/api/comfy/assets/comfy-asset-123/content').expect(401);
     expect(comfy.status).not.toHaveBeenCalled(); expect(comfy.assetUrl).not.toHaveBeenCalled();
+    expect(comfy.events).not.toHaveBeenCalled();
+  });
+  it('delivers live events without caching and closes the cloud subscription when done', async () => {
+    comfy.events.mockImplementation(async function* () {
+      yield { type: 'progress', progress: .4, progressDetails: { stage: 'Generating video and audio', step: 8, steps: 20 } };
+      yield { type: 'refresh' };
+    });
+    const response = await request(app).get('/api/comfy/jobs/comfy-job-123/events').expect(200);
+    expect(response.headers['content-type']).toContain('text/event-stream');
+    expect(response.headers['cache-control']).toContain('no-transform');
+    expect(response.text).toContain('event: progress\n');
+    expect(response.text).toContain('"step":8,"steps":20');
+    expect(response.text).toContain('event: refresh\n');
+    expect(comfy.events.mock.calls[0][1].aborted).toBe(true);
+    expect(comfy.cancel).not.toHaveBeenCalled();
+  });
+  it('falls back to polling on an upstream stream failure without exposing provider details', async () => {
+    comfy.events.mockImplementation(async function* () { throw new Error('private-key'); });
+    const response = await request(app).get('/api/comfy/jobs/comfy-job-123/events').expect(200);
+    expect(response.text).toBe('event: fallback\ndata: {}\n\n');
+    expect(comfy.cancel).not.toHaveBeenCalled();
+    await request(app).get('/api/comfy/jobs/invalid/events').expect(400);
   });
   it('streams private output bytes with range support without forwarding application credentials', async () => {
     comfy.assetUrl.mockResolvedValue('https://storage.example/video.mp4?signed=fresh');

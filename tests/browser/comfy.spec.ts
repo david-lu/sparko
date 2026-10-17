@@ -4,6 +4,9 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, fal: true, comfy: true } } }); });
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
   let complete = false, comfySubmissions = 0, falSubmissions = 0;
+  const progressDetails = { stage: 'Generating video and audio', step: 8, steps: 20 };
+  await page.route('**/api/comfy/jobs/comfy-test-job/events', route => route.fulfill({ contentType: 'text/event-stream',
+    body: `event: progress\ndata: ${JSON.stringify({ type: 'progress', progress: .4, progressDetails })}\n\n` }));
   await page.route('**/api/comfy/interstitials', async route => {
     comfySubmissions++;
     const form = await new Response(Uint8Array.from(route.request().postDataBuffer()!), { headers: { 'Content-Type': route.request().headers()['content-type'] } }).formData();
@@ -13,7 +16,7 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
   });
   await page.route('**/api/comfy/jobs/comfy-test-job', route => route.fulfill({ json: complete
     ? { requestId: 'comfy-test-job', status: 'COMPLETED', videoUrl: '/api/comfy/assets/comfy-test-asset/content' }
-    : { requestId: 'comfy-test-job', status: 'IN_PROGRESS', progress: .4 } }));
+    : { requestId: 'comfy-test-job', status: 'IN_PROGRESS', progress: .4, progressDetails } }));
   await page.route('**/api/interstitials', route => { falSubmissions++; return route.fulfill({ status: 202, json: { requestId: 'fal-next-job', status: 'IN_QUEUE' } }); });
   await page.route('**/api/fal/jobs/fal-next-job', route => route.fulfill({ json: { requestId: 'fal-next-job', status: 'COMPLETED', videoUrl: 'https://fal.media/comfy-test-fal.mp4', insertion: { start: 2, duration: 6, totalDuration: 226 / 24 } } }));
   await page.goto('/');
@@ -42,6 +45,8 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', '0.4', { timeout: 60_000 });
   await expect(page.locator('.timeline-generation-spinner')).toHaveCount(1);
+  await expect(page.locator('.task-status')).toContainText('Generating video and audio · step 8/20 · 40%');
+  await expect(page.locator('.timeline-generation-spinner')).toHaveAttribute('aria-label', /step 8\/20/);
   await method.selectOption('fal');
   await page.reload();
   await page.getByRole('button', { name: 'Select Interstitial 1', exact: true }).click();

@@ -1,15 +1,17 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { GenerationJob } from '../../../shared/contracts.js';
+import type { GenerationEvent, GenerationJob } from '../../../shared/contracts.js';
+import { readServerEvents } from '../../../shared/server-events.js';
 import { COMFY_MODELS } from '../../../shared/constants.js';
 import { comfyBridgePlan } from '../../../shared/comfy.js';
 import { HttpError } from '../../shared/http.js';
 import { ComfyClient } from './client.js';
 import { bridgeWorkflow, type BridgeInput } from './workflow.js';
+import { generationProgress, progressSchema } from './progress.js';
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
-const jobSchema = z.object({ id, status: z.enum(['queued', 'running', 'succeeded', 'canceling', 'canceled', 'failed', 'expired']),
-  queue_position: z.number().nullable().optional(), progress: z.object({ value: z.number().min(0).max(1) }).nullable().optional(),
+const statusSchema = z.object({ status: z.enum(['queued', 'running', 'succeeded', 'canceling', 'canceled', 'failed', 'expired']), queue_position: z.number().nullable().optional() });
+const jobSchema = statusSchema.extend({ id, progress: progressSchema.nullable().optional(),
   outputs: z.array(z.object({ id, node_id: z.string(), content_type: z.string() })).default([]),
   error: z.object({ message: z.string() }).nullable().optional(),
 });
@@ -18,6 +20,7 @@ export interface ComfyProvider {
   check(): Promise<ComfyReadiness>;
   submit(file: Blob, input: BridgeInput): Promise<GenerationJob>;
   status(requestId: string): Promise<GenerationJob>;
+  events(requestId: string, signal: AbortSignal): AsyncIterable<GenerationEvent>;
   cancel(requestId: string): Promise<void>;
   assetUrl(assetId: string): Promise<string>;
 }
@@ -51,15 +54,35 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       if (!output) throw new HttpError(502, 'Comfy completed without the expected MP4 output.');
       return { requestId, status: 'COMPLETED', videoUrl: `/api/comfy/assets/${output.id}/content` };
     }
-    return { requestId, status: data.status === 'queued' ? 'IN_QUEUE' : 'IN_PROGRESS', queuePosition: data.queue_position ?? undefined, progress: data.progress?.value };
+    return { requestId, status: data.status === 'queued' ? 'IN_QUEUE' : 'IN_PROGRESS', queuePosition: data.queue_position ?? undefined,
+      ...(data.progress ? generationProgress(data.progress) : {}) };
   };
   return {
     check, status,
+    async *events(requestId, signal) {
+      const response = await client.response(`/api/v2/jobs/${encodeURIComponent(id.parse(requestId))}/events`, { signal, headers: { Accept: 'text/event-stream' } });
+      if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) {
+        await response.body?.cancel();
+        throw new HttpError(502, 'Comfy did not return a progress stream.');
+      }
+      for await (const event of readServerEvents(response.body, signal)) {
+        if (event.event === 'progress') yield { type: 'progress', ...generationProgress(progressSchema.parse(JSON.parse(event.data))) };
+        else if (event.event === 'status') {
+          const data = statusSchema.parse(JSON.parse(event.data));
+          if (['succeeded', 'canceled', 'failed', 'expired'].includes(data.status)) { yield { type: 'refresh' }; return; }
+          yield { type: 'status', status: data.status === 'queued' ? 'IN_QUEUE' : 'IN_PROGRESS', queuePosition: data.queue_position ?? undefined };
+        } else if (event.event === 'error') {
+          // A stream failure does not mean the render failed. Reconcile using GET /jobs.
+          throw new HttpError(502, 'Comfy progress stream disconnected.');
+        }
+      }
+    },
     async submit(file, input) {
       const readiness = await check();
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
       const plan = comfyBridgePlan(input.before, input.after, input.duration);
-      const body = new FormData(); body.set('file', file, 'reference.mp4'); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`);
+      // Comfy reads multipart uploads sequentially: metadata must arrive before the file.
+      const body = new FormData(); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`); body.set('file', file, 'reference.mp4');
       const uploaded = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body }));
       const workflow = bridgeWorkflow(uploaded.id, input, randomInt(0, 2 ** 48 - 1));
       // Never automatically retry a paid submission after an ambiguous network error.

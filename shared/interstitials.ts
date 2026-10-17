@@ -1,5 +1,5 @@
 import { INTERSTITIAL } from './constants.js';
-import type { InsertionRange } from './contracts.js';
+import type { GenerationProgress, InsertionRange } from './contracts.js';
 
 export type GenerationMethod = 'fal' | 'comfy';
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
@@ -36,6 +36,7 @@ export type Interstitial = InterstitialSettings & {
   /** Last playable render, retained until a replacement has loaded and passed validation. */
   previousResult?: InterstitialResult;
   error?: string; progress?: number; queuePosition?: number;
+  progressDetails?: GenerationProgress;
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;

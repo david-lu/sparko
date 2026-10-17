@@ -14,7 +14,7 @@ export class ComfyClient {
     if (this.key) message = message.split(this.key).join('[redacted]');
     return message.replace(/https?:\/\/\S+/gi, '[URL]').replace(/(?:Bearer\s+|comfyui-)[^\s,;]+/gi, '[redacted]').slice(0, 1200);
   }
-  async call<T>(path: string, options: RequestInit = {}): Promise<T> {
+  async response(path: string, options: RequestInit = {}): Promise<Response> {
     if (!this.key) throw new HttpError(503, 'COMFY_CLOUD_API_KEY is missing. Add it to .env and restart the server.');
     // Invalid optional Comfy settings must not prevent the Fal server from starting.
     let base: URL;
@@ -22,12 +22,18 @@ export class ComfyClient {
     if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) throw new HttpError(503, 'COMFY_BASE_URL must be an HTTPS endpoint without credentials or query parameters.');
     const response = await this.transport(this.baseUrl + path, { ...options, redirect: 'error',
       signal: options.signal || AbortSignal.timeout(120_000), headers: { Authorization: `Bearer ${this.key}`, ...(path === '/api/object_info' ? { 'X-API-Key': this.key } : {}), ...options.headers } });
-    const body = await response.json().catch(() => ({})) as { error?: { message?: string; code?: string } | string; message?: string };
     if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: { message?: string; code?: string } | string; message?: string };
       const detail = typeof body.error === 'object' ? body.error?.message : body.error || body.message;
       throw new HttpError(response.status === 429 ? 429 : response.status === 400 || response.status === 422 ? 422 : 502,
         `Comfy Cloud: ${this.message(detail || `Request failed (${response.status}).`)}`);
     }
-    return body as T;
+    return response;
+  }
+  async call<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const response = await this.response(path, options);
+    if (response.status === 204) return undefined as T;
+    // Do not turn a timed-out or truncated response into a successful empty catalog.
+    return await response.json() as T;
   }
 }
