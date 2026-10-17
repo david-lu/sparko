@@ -79,6 +79,20 @@ const mp4 = await new TimelineStream(composition).exportMp4(
 
 Composed exports use the source dimensions, H.264/AAC, and the same frame/sample boundaries as preview. Description requests still analyze original-source ranges; voice context records source time. Microphone scene triggers remain separate future work.
 
+## Comfy Cloud interstitials
+
+Each draft has a **Generate with** selector: **Fal · H3 Max** (the existing default) or **Comfy · H3 masked bridge**. The selection, submitted provider, and exact generated-section bounds survive reload and project export/import. Changing the selector during generation affects the next job; polling and cancellation stay with the provider that received the current job. Both paths retain the previous video while regenerating and support retry, the independent preview, timeline thumbnails/loading feedback, and downloading the whole output.
+
+Set `COMFY_CLOUD_API_KEY` in `.env`, then restart `npm run dev`. `COMFY_API_KEY` is also accepted. `COMFY_BASE_URL` defaults to `https://cloud.comfy.org`; it can point to a compatible HTTPS Comfy API deployment. Set the same server-only variables in Vercel and redeploy there. Run `npm run comfy:check` to verify authentication, required nodes, and H3 model availability without submitting a generation. Model filenames and sampling settings live in `shared/constants.ts`.
+
+This implementation uses the [Comfy API v2](https://docs.comfy.org/api-reference/v2/overview) and native H3 video/audio latents with [MaskVidExperiments](https://github.com/drozbay/MaskVidExperiments). The specific `MiniMaxH3ContexMaskedAVBridge` custom node from the linked community workflow was absent from the managed Cloud catalog during setup. Instead, this graph independently encodes both context clips, places them at opposite ends of an H3 latent, and masks the missing middle using available Cloud nodes. When source audio exists it is conditioned and masked too; otherwise H3 generates audio. This is an alternate H3 Base workflow, not fal's proprietary H3 Max implementation; image quality and boundary continuity need evaluation with actual generations.
+
+H3 requires frame counts of `5 + 17k` at 24 fps. Context ranges round down to usable model windows, and total duration rounds up to the next valid frame count. A six-second draft with two-second reference ranges therefore uses 39 frames (1.625 seconds) per side and generates 148 frames (6.167 seconds). The panel shows these effective values before generation. At least 1.625 seconds of source footage must exist on both sides. The full target is capped at 362 frames, with dimensions rounded to multiples of 32 and the longest edge capped at 960 pixels. Only the generated middle is inserted into Sparko's timeline; original footage remains the source outside it. No crossfade replaces source frames.
+
+Comfy requests use short API calls and durable job IDs, with polled queue/progress updates. Completed outputs are streamed through an authenticated application endpoint and saved into IndexedDB. The server resolves a fresh signed storage URL for each download/retry, so an expired URL does not require paying for another generation. Keys stay on the server. Provider submissions are never automatically retried after ambiguous network failures. Comfy generation is asynchronous; this workflow exposes the video after the job completes, not live generated frames.
+
+Comfy server code is isolated in `server/features/comfy/`; shared frame planning is in `shared/comfy.ts`. No additional npm dependencies are required.
+
 ## Spoken-answer API
 
 `MicrophoneController` owns local voice activity detection through `@ricky0123/vad-web` and Silero, using ONNX Runtime Web. It waits for sustained speech, rejects brief misfires, and retains a 400 ms pre-speech buffer to preserve the first word. The detector and its assets are served by the app and loaded only when enabling the mic. The Silero model and detection settings live in `shared/constants.ts` alongside the LLM model IDs.

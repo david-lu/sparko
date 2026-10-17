@@ -10,6 +10,7 @@ const text = z.string().max(50_000);
 const resultSchema = z.object({ url: text, assetId: z.uuid(), start: number, duration: number.positive(), totalDuration: number.positive() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
+  method: z.enum(['fal', 'comfy']).default('fal'),
   start_range: number.max(4), end_range: number.max(4), prompt: text,
   duration: number.min(INTERSTITIAL.minDuration).max(INTERSTITIAL.maxDuration).default(INTERSTITIAL.defaultDuration),
   enable_prompt_expansion: z.boolean().default(INTERSTITIAL.enablePromptExpansion),
@@ -20,6 +21,9 @@ const projectSchema = z.object({
   interstitials: z.array(z.object({
     id: z.string().min(1).max(200), label: z.string().max(1000), time: number,
     ...settingsSchema.shape, generationSettings: settingsSchema.optional(),
+    requestMethod: z.enum(['fal', 'comfy']).optional(),
+    requestInsertion: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
+      .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid job boundaries.').optional(),
     phase: z.enum(['draft', 'preparing', 'uploading', 'queued', 'rendering', 'loading', 'ready', 'error', 'cancelled']),
     requestId: z.string().regex(/^[A-Za-z0-9_-]{8,128}$/).optional(), result: resultSchema.optional(), previousResult: resultSchema.optional(), error: text.optional(),
   })).max(1000).refine(items => new Set(items.map(item => item.id)).size === items.length, 'Duplicate interstitial IDs.')

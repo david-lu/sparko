@@ -6,6 +6,7 @@ dist/
 .npm-cache/
 .data/
 test-results/
+test-results-*/
 playwright-report/
 *.log
 .vercel/

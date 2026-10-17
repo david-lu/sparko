@@ -1,8 +1,11 @@
 import { INTERSTITIAL } from './constants.js';
+import type { InsertionRange } from './contracts.js';
 
+export type GenerationMethod = 'fal' | 'comfy';
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
 export type InterstitialResult = { url: string; assetId?: string; start: number; duration: number; totalDuration: number };
 export type InterstitialSettings = {
+  method?: GenerationMethod;
   start_range: number; end_range: number; duration: number; prompt: string;
   enable_prompt_expansion: boolean;
 };
@@ -14,6 +17,9 @@ export type Interstitial = InterstitialSettings & {
   generationSettings?: InterstitialSettings;
   phase: InterstitialPhase;
   requestId?: string;
+  /** Provider and bounds of the submitted job; editing the selector cannot reroute it. */
+  requestMethod?: GenerationMethod;
+  requestInsertion?: InsertionRange;
   result?: InterstitialResult;
   /** Last playable render, retained until a replacement has loaded and passed validation. */
   previousResult?: InterstitialResult;
@@ -21,10 +27,10 @@ export type Interstitial = InterstitialSettings & {
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
-export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion }: InterstitialSettings): InterstitialSettings =>
-  ({ start_range, end_range, duration, prompt, enable_prompt_expansion });
+export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'fal' }: InterstitialSettings): InterstitialSettings =>
+  ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method });
 export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&
-  (Object.keys(interstitialSettings(item)) as (keyof InterstitialSettings)[]).some(key => item[key] !== item.generationSettings![key]);
+  (Object.keys(interstitialSettings(item)) as (keyof InterstitialSettings)[]).some(key => interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]);
 export const frameTime = (seconds: number, fps: number) => Math.round(seconds * fps) / fps;
 
 export function validateInterstitialDuration(duration: number) {

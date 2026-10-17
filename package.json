@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/index.ts --production",
     "typecheck": "tsc --noEmit",
+    "comfy:check": "tsx scripts/check-comfy.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "vercel:upload-default": "node scripts/upload-default.mjs",

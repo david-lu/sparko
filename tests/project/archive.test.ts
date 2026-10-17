@@ -30,6 +30,15 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('preserves Comfy selection, submitted provider, and exact output boundaries', async () => {
+    const snapshot = structuredClone(project);
+    const item = snapshot.interstitials[0];
+    item.method = 'comfy'; item.requestMethod = 'comfy';
+    item.requestInsertion = { start: 39 / 24, duration: 148 / 24, totalDuration: 226 / 24 };
+    item.generationSettings = interstitialSettings(item);
+    const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
+    expect(restored.project.interstitials[0]).toMatchObject({ method: 'comfy', requestMethod: 'comfy', requestInsertion: item.requestInsertion, generationSettings: { method: 'comfy' } });
+  });
   it('includes and remaps the retained original alongside the prepared working video', async () => {
     const original = { id: crypto.randomUUID(), name: 'original.mp4', blob: new Blob(['original bytes']) };
     const snapshot = { ...project, source: { ...project.source, originalAssetId: original.id } };
@@ -48,7 +57,7 @@ describe('portable project archives', () => {
     expect(manifest).not.toMatch(/https:|blob:/);
     const restored = await unpackProject(blob, signal(), progress);
     expect(restored.project.id).not.toBe(project.id);
-    expect(restored.project.interstitials[0]).toEqual(project.interstitials[0]);
+    expect(restored.project.interstitials[0]).toEqual({ ...project.interstitials[0], method: 'fal' });
     expect(restored.project.interstitials.map(item => item.enable_prompt_expansion)).toEqual([true, false]);
     expect(restored.project.interstitials[1].result).toMatchObject({ start: 2, duration: 5, totalDuration: 9 });
     expect(restored.project.source.assetId).not.toBe(sourceId);

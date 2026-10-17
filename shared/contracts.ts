@@ -25,18 +25,21 @@ export type CaptionResult = {
 export type AppStatus = {
   uploadMode: 'local' | 'blob';
   requiresPassword: boolean;
-  providers: Record<Provider | 'fal', boolean>;
+  providers: Record<Provider | 'fal', boolean> & { comfy?: boolean };
   models: Record<Provider, string>;
   defaultVideo: { name: string; url: string; size: number };
   defaultProject?: { url: string } | null;
 };
-export type FalJob = {
+export type InsertionRange = { start: number; duration: number; totalDuration: number };
+export type GenerationJob = {
   requestId: string;
   status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   queuePosition?: number;
+  progress?: number;
   videoUrl?: string;
-  insertion?: { start: number; duration: number; totalDuration: number };
+  insertion?: InsertionRange;
 };
+export type FalJob = GenerationJob;
 
 export function validateSlice(slice: Slice, duration: number, maxDuration = Infinity): void {
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('The video is not ready yet.');

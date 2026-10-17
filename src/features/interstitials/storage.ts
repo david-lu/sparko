@@ -4,6 +4,7 @@ import { interstitialSettings, type Interstitial, type InterstitialResult, type 
 function readSettings(value: unknown): InterstitialSettings | undefined {
   if (!value || typeof value !== 'object') return;
   const settings = value as InterstitialSettings;
+  if (settings.method !== undefined && settings.method !== 'fal' && settings.method !== 'comfy') return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
   return interstitialSettings(settings);
@@ -12,7 +13,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
 function readResult(value: unknown): InterstitialResult | undefined {
   if (!value || typeof value !== 'object') return;
   const result = value as Partial<InterstitialResult>;
-  if (typeof result.url !== 'string' || !(result.url.startsWith('https://') || typeof result.assetId === 'string' && result.url === `asset:${result.assetId}`)) return;
+  if (typeof result.url !== 'string' || !(result.url.startsWith('https://') || /^\/api\/comfy\/assets\/[A-Za-z0-9_-]{8,128}\/content$/.test(result.url) || typeof result.assetId === 'string' && result.url === `asset:${result.assetId}`)) return;
   if (![result.start, result.duration, result.totalDuration].every(value => typeof value === 'number' && Number.isFinite(value))) return;
   if (result.start! >= 0 && result.duration! > 0 && result.start! + result.duration! <= result.totalDuration! + 0.1) return result as InterstitialResult;
 }
@@ -34,7 +35,10 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         end_range: Number.isFinite(item.end_range) ? item.end_range : INTERSTITIAL.defaultRange,
         duration: Number.isFinite(item.duration) ? item.duration : INTERSTITIAL.defaultDuration,
         enable_prompt_expansion: typeof item.enable_prompt_expansion === 'boolean' ? item.enable_prompt_expansion : INTERSTITIAL.enablePromptExpansion,
-        generationSettings: readSettings(item.generationSettings),
+        method: item.method === 'comfy' ? 'comfy' : 'fal', generationSettings: readSettings(item.generationSettings),
+        requestMethod: item.requestMethod === 'comfy' ? 'comfy' : item.requestMethod === 'fal' ? 'fal' : undefined,
+        requestInsertion: item.requestInsertion && [item.requestInsertion.start, item.requestInsertion.duration, item.requestInsertion.totalDuration].every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
+          && item.requestInsertion.start >= 0 && item.requestInsertion.duration > 0 && item.requestInsertion.start + item.requestInsertion.duration <= item.requestInsertion.totalDuration + 0.1 ? item.requestInsertion : undefined,
         prompt: typeof item.prompt === 'string' ? item.prompt : '', phase: phase === 'ready' && !result ? 'error' : phase,
         requestId: typeof item.requestId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(item.requestId) ? item.requestId : undefined,
         result, previousResult: readResult(item.previousResult), error: typeof item.error === 'string' ? item.error : undefined }];

@@ -1,5 +1,6 @@
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
-import { frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, playableResult, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
+import { frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, playableResult, type Interstitial, type InterstitialSettings, type GenerationMethod } from '../../../shared/interstitials';
+import type { InsertionRange } from '../../../shared/contracts';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from './api';
@@ -7,6 +8,7 @@ import { loadInterstitials, saveInterstitials } from './storage';
 import { assets } from '../project/assets';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null };
+const requestMethod = (item: Interstitial): GenerationMethod => item.requestMethod ?? item.generationSettings?.method ?? 'fal';
 const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   const abort = () => { clearTimeout(timer); reject(signal.reason); };
   const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, INTERSTITIAL.pollMilliseconds);
@@ -32,7 +34,7 @@ export class InterstitialController {
   load(sourceId: string, items?: Interstitial[]) {
     this.dispose(); this.sourceId = sourceId;
     this.update({ items: (items ?? loadInterstitials(sourceId)).map(item => {
-      const restored = { ...item, duration: item.duration ?? INTERSTITIAL.defaultDuration,
+      const restored = { ...item, method: item.method ?? 'fal' as const, duration: item.duration ?? INTERSTITIAL.defaultDuration,
         enable_prompt_expansion: item.enable_prompt_expansion ?? INTERSTITIAL.enablePromptExpansion };
       return { ...restored, generationSettings: item.generationSettings ?? (item.result || item.requestId ? interstitialSettings(restored) : undefined) };
     }), selectedId: null, error: null });
@@ -48,7 +50,7 @@ export class InterstitialController {
     const number = Math.max(0, ...this.state.items.map(item => Number(item.label.match(/^Interstitial (\d+)$/)?.[1]) || 0)) + 1;
     const item: Interstitial = { id: crypto.randomUUID(), label: `Interstitial ${number}`, time: anchor,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
-      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, prompt: '', phase: 'draft' };
+      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, method: 'fal', prompt: '', phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
     return item;
   }
@@ -67,20 +69,21 @@ export class InterstitialController {
     // An unchanged scene that only failed to download can reuse its existing render.
     if (item.result && item.phase !== 'ready' && !hasUnsubmittedChanges(item)) return this.resume(id);
     const operation = new AbortController(); this.tasks.set(id, operation);
+    const method = item.method ?? 'fal';
     this.patch(id, { phase: 'preparing', error: undefined, progress: 0, queuePosition: undefined,
       previousResult: playableResult(item), result: undefined, requestId: item.phase === 'ready' ? undefined : item.requestId,
-      generationSettings: interstitialSettings(item) });
+      requestMethod: requestMethod(item), generationSettings: interstitialSettings(item) });
     try {
       // A failed status request may still belong to an active job. Retire it before resubmitting.
-      if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId);
+      if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId, requestMethod(item));
       operation.signal.throwIfAborted();
-      this.patch(id, { requestId: undefined, result: undefined });
+      this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, result: undefined });
       const job = await generateInterstitial(item, engine, info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });
-      if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId).catch(() => undefined); return; }
-      this.patch(id, { requestId: job.requestId, phase: 'queued', progress: undefined });
-      await this.poll(id, job.requestId, operation.signal);
+      if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId, method).catch(() => undefined); return; }
+      this.patch(id, { requestId: job.requestId, requestMethod: method, requestInsertion: job.insertion, phase: 'queued', progress: undefined });
+      await this.poll(id, job.requestId, operation.signal, method, job.insertion);
     } catch (error) { this.fail(id, operation, error); }
     finally { if (this.tasks.get(id) === operation) this.tasks.delete(id); }
   }
@@ -94,24 +97,25 @@ export class InterstitialController {
     try {
       this.patch(id, { phase: item.result ? 'loading' : 'queued', error: undefined });
       if (item.result) await this.loadResult(id, item.result, operation.signal);
-      else if (item.requestId) await this.poll(id, item.requestId, operation.signal);
+      else if (item.requestId) await this.poll(id, item.requestId, operation.signal, requestMethod(item), item.requestInsertion);
       else throw new Error('No generation job was saved. Retry to generate the scene.');
     } catch (error) { this.fail(id, operation, error); }
     finally { if (this.tasks.get(id) === operation) this.tasks.delete(id); }
   }
-  private async poll(id: string, requestId: string, signal: AbortSignal) {
+  private async poll(id: string, requestId: string, signal: AbortSignal, method: GenerationMethod, submittedInsertion?: InsertionRange) {
     for (;;) {
       signal.throwIfAborted();
-      const job = await getInterstitialJob(requestId, signal);
+      const job = await getInterstitialJob(requestId, signal, method);
       signal.throwIfAborted();
       if (job.status === 'CANCELLED') { this.patch(id, { phase: 'cancelled' }); return; }
       if (job.status === 'COMPLETED') {
-        if (!job.videoUrl || !job.insertion) throw new Error('The result is missing its generated scene boundaries. Retry checking the result.');
-        const result = { url: job.videoUrl, ...job.insertion };
-        this.patch(id, { phase: 'loading', result, queuePosition: undefined });
+        const insertion = job.insertion || submittedInsertion;
+        if (!job.videoUrl || !insertion) throw new Error('The result is missing its generated scene boundaries. Retry checking the result.');
+        const result = { url: job.videoUrl, ...insertion };
+        this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined });
         await this.loadResult(id, result, signal); return;
       }
-      this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition });
+      this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition, progress: job.progress });
       await wait(signal);
     }
   }
@@ -140,7 +144,7 @@ export class InterstitialController {
     this.tasks.get(id)?.abort(); this.tasks.delete(id);
     const source = this.sourceId;
     try {
-      if (item.requestId && !item.result) await cancelInterstitialJob(item.requestId);
+      if (item.requestId && !item.result) await cancelInterstitialJob(item.requestId, requestMethod(item));
       if (source === this.sourceId) this.patch(id, { phase: 'cancelled', progress: undefined, error: undefined });
       return true;
     } catch (error) {

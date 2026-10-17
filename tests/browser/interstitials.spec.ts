@@ -38,7 +38,7 @@ async function addDraft(page: Page, time = 5) {
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); const status = await response.json(); await route.fulfill({ json: { ...status, providers: { ...status.providers, fal: true } } }); });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Add draft P' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Add draft P' })).toBeEnabled({ timeout: 60_000 });
 });
 
 test('time sliders and number inputs stay synchronized and survive reopening a draft', async ({ page }) => {

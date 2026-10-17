@@ -1,5 +1,6 @@
 import { readAsset, writeAsset } from './database';
 import type { Asset } from './types';
+import { appHeaders } from '../../shared/api';
 
 /** Durable Blob storage. Object URLs are session-only and never written into project files. */
 class AssetLibrary {
@@ -18,7 +19,9 @@ class AssetLibrary {
     await writeAsset(asset, signal); signal?.throwIfAborted(); return asset;
   }
   async fetch(url: string, name: string, signal?: AbortSignal, progress?: (received: number, total: number) => void): Promise<Asset> {
-    const response = await fetch(url, { signal });
+    const localComfy = /^\/api\/comfy\/assets\/[A-Za-z0-9_-]{8,128}\/content$/.test(url);
+    const response = await fetch(url, { signal, ...(localComfy ? { headers: appHeaders() } : {}) });
+    if (localComfy && response.status === 401) window.dispatchEvent(new Event('sparko:auth-required'));
     if (!response.ok) throw new Error(`Unable to save ${name} (${response.status}).`);
     const total = Number(response.headers.get('content-length')) || 0;
     const reader = response.body?.getReader();

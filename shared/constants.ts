@@ -10,6 +10,17 @@ export const AI_MODELS = {
 export const MAX_ANALYSIS_SECONDS = 120;
 // Project playback, editing and composed exports share this frame clock.
 export const TIMELINE_FPS = 24;
+export const COMFY_MODELS = {
+  diffusion: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+  textEncoder: 'qwen3vl_32b_minimax_h3_int8_convrot.safetensors',
+  videoVae: 'minimax_h3_video_vae_fp16.safetensors',
+  audioVae: 'minimax_h3_audio_vae_fp32.safetensors',
+} as const;
+export const COMFY = {
+  baseUrl: 'https://cloud.comfy.org', maxDimension: 960, minContextFrames: 39,
+  maxFrames: 362, frameGroup: 17, firstFrames: 5, steps: 20,
+  sampler: 'res_multistep', shiftVideo: 12, shiftAudio: 3,
+} as const;
 // Cap newly converted working videos; the untouched original remains in the project.
 // Set maxHeight to 0 to keep the original resolution during preparation.
 export const VIDEO_PREPARATION = { maxHeight: 1080 } as const;
