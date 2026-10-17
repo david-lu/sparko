@@ -15,8 +15,59 @@ async function hasProjectClock(track: InputVideoTrack, signal: AbortSignal) {
   return frames.size > 0 && frames.has(0) && [...frames].every(frame => frame < frames.size);
 }
 
+/** Probe native playback without starting an encoder. */
+export async function canPlaySourceVideo(blob: Blob, signal: AbortSignal): Promise<boolean> {
+  signal.throwIfAborted();
+  const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+  try {
+    const video = await input.getPrimaryVideoTrack();
+    if (!video) throw new Error('This file has no video track.');
+    const audio = await input.getPrimaryAudioTrack();
+    if (await video.canDecode() && (!audio || await audio.canDecode())) {
+      signal.throwIfAborted();
+      const element = document.createElement('video');
+      const url = URL.createObjectURL(blob);
+      element.preload = 'auto';
+      element.muted = true;
+      try {
+        const playable = await new Promise<boolean>((resolve, reject) => {
+          signal.throwIfAborted();
+          const cleanup = () => {
+            clearTimeout(timeout);
+            signal.removeEventListener('abort', aborted);
+            element.removeEventListener('loadeddata', loaded);
+            element.removeEventListener('error', failed);
+          };
+          const loaded = () => { cleanup(); resolve(true); };
+          const failed = () => { cleanup(); resolve(false); };
+          const aborted = () => { cleanup(); reject(signal.reason); };
+          const timeout = setTimeout(failed, 8000);
+          signal.addEventListener('abort', aborted, { once: true });
+          element.addEventListener('loadeddata', loaded, { once: true });
+          element.addEventListener('error', failed, { once: true });
+          element.src = url;
+          element.load();
+        });
+        signal.throwIfAborted();
+        if (playable) return true;
+      } finally {
+        element.removeAttribute('src');
+        element.load();
+        URL.revokeObjectURL(url);
+      }
+    }
+  } finally { input.dispose(); }
+  signal.throwIfAborted();
+  return false;
+}
+
+/** Keep browser-playable source media intact, with conversion only as a compatibility fallback. */
+export async function prepareSourceVideo(blob: Blob, signal: AbortSignal, onProgress: (progress: number) => void): Promise<Blob> {
+  return await canPlaySourceVideo(blob, signal) ? blob : prepareVideo(blob, signal, onProgress, false);
+}
+
 /** Prepare a durable 24 fps working file. Compatible files are returned unchanged. */
-export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: (progress: number) => void): Promise<Blob> {
+export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: (progress: number) => void, reuseCompatible = true): Promise<Blob> {
   signal.throwIfAborted();
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   let conversion: Conversion | undefined;
@@ -31,7 +82,7 @@ export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: 
     const video = await input.getPrimaryVideoTrack();
     if (!video) throw new Error('This file has no video track.');
     const audio = await input.getPrimaryAudioTrack();
-    if (await input.getFormat() instanceof Mp4InputFormat && await video.getCodec() === 'avc'
+    if (reuseCompatible && await input.getFormat() instanceof Mp4InputFormat && await video.getCodec() === 'avc'
       && (!audio || await audio.getCodec() === 'aac') && await hasProjectClock(video, signal)) return blob;
     signal.throwIfAborted();
     reportProgress(0);

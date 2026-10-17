@@ -1,6 +1,7 @@
 import type { MediaInfo, MediaSource } from '../../media/media';
 import type { TimelineComposition } from '../../media/TimelineComposition';
-import { TimelineStream } from '../../media/TimelineStream';
+import { NativeTimelinePlayback } from './NativeTimelinePlayback';
+import { remapSubtitles } from './subtitles';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { FlowPlayback } from '../call-response/FlowPlayback';
 import { flowLayout, type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from '../call-response/model';
@@ -23,16 +24,17 @@ export class VideoPlayerController {
   private removeEvents: (() => void) | null = null;
   private previewEnd: number | null = null;
   private composition: TimelineComposition | null = null;
-  private stream: TimelineStream | null = null;
+  private timeline: NativeTimelinePlayback | null = null;
   private pendingSeek: number | null = null;
   private wantsPlayback = false;
-  private streamVersion = 0;
   private nativeLoad: AbortController | null = null;
   private flowPlayback: FlowPlayback | null = null;
+  private subtitles: { track: TextTrack | null; cues: VTTCue[]; enabled: boolean } = { track: null, cues: [], enabled: true };
 
   getSnapshot = (): PlayerState => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
-  get video(): HTMLVideoElement | null { return this.element; }
+  get video(): HTMLVideoElement | null { return this.timeline?.video ?? this.flowPlayback?.video ?? this.element; }
+  get subtitleVideo(): HTMLVideoElement | null { return this.element; }
   private update(patch: Partial<PlayerState>) {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach(listener => listener());
@@ -43,9 +45,9 @@ export class VideoPlayerController {
     this.removeEvents?.();
     this.element?.pause();
     this.element = element;
-    if (!element) { this.flowPlayback?.dispose(); this.flowPlayback = null; this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose(); this.pendingSeek = null; this.wantsPlayback = false; return; }
+    if (!element) { this.flowPlayback?.dispose(); this.flowPlayback = null; this.nativeLoad?.abort(); this.timeline?.dispose(); this.timeline = null; this.pendingSeek = null; this.wantsPlayback = false; return; }
     const sync = (event: Event) => {
-      if (this.flowPlayback) { this.update({ volume: element.volume, muted: element.muted, speed: element.playbackRate }); return; }
+      if (this.flowPlayback || this.timeline) return;
       if (event.type === 'play') this.wantsPlayback = true;
       if (event.type === 'pause' && this.pendingSeek === null) this.wantsPlayback = false;
       if (this.previewEnd !== null && element.currentTime >= this.previewEnd) {
@@ -57,41 +59,40 @@ export class VideoPlayerController {
         buffered: Array.from({ length: element.buffered.length }, (_, i) => ({ start: element.buffered.start(i), end: element.buffered.end(i) })),
       });
     };
-    const waiting = () => { if (!this.flowPlayback) this.update({ buffering: true }); };
-    const ready = () => { if (!this.flowPlayback) this.update({ buffering: false }); };
-    const error = () => this.update({ buffering: false, error: 'Unable to play this video. Check the file and browser codec support.' });
-    const ended = () => { if (this.stream && this.state.loop) { this.wantsPlayback = true; this.startStream(0); } };
+    const waiting = () => { if (!this.flowPlayback && !this.timeline) this.update({ buffering: true }); };
+    const ready = () => { if (!this.flowPlayback && !this.timeline) this.update({ buffering: false }); };
+    const error = () => { if (!this.flowPlayback && !this.timeline) this.update({ buffering: false, error: 'Unable to play this video. Check the file and browser codec support.' }); };
     const syncEvents = ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'pause', 'ended', 'volumechange', 'ratechange', 'progress'];
     syncEvents.forEach(event => element.addEventListener(event, sync));
     element.addEventListener('waiting', waiting);
     ['playing', 'canplay', 'seeked'].forEach(event => element.addEventListener(event, ready));
     element.addEventListener('error', error);
-    element.addEventListener('ended', ended);
     this.removeEvents = () => {
       syncEvents.forEach(event => element.removeEventListener(event, sync));
       element.removeEventListener('waiting', waiting);
       ['playing', 'canplay', 'seeked'].forEach(event => element.removeEventListener(event, ready));
       element.removeEventListener('error', error);
-      element.removeEventListener('ended', ended);
     };
     this.applySettings();
-    if (this.stream) this.startStream(this.state.time);
+    if (this.composition?.hasInsertions) this.startTimeline(this.state.time);
     else if (this.source) this.startSource(this.state.time);
     else { element.removeAttribute('src'); element.load(); }
   };
 
   load(source: MediaSource) {
     this.flowPlayback?.dispose(); this.flowPlayback = null;
-    this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose(); this.stream = null; this.composition = null; this.pendingSeek = null; this.wantsPlayback = false;
+    this.nativeLoad?.abort(); this.timeline?.dispose(); this.timeline = null; this.composition = null; this.pendingSeek = null; this.wantsPlayback = false;
     this.source = source; this.previewEnd = null;
     this.element?.pause();
     this.update({ time: 0, duration: 0, playing: false, buffering: true, error: null, buffered: [], flow: null });
     if (this.element) this.startSource(0);
   }
   private applySettings() {
+    if (this.timeline) { this.timeline.setSettings(this.state, this.state.loop); return; }
+    if (this.flowPlayback) { this.flowPlayback.setSettings(this.state); return; }
     if (!this.element) return;
     this.element.volume = this.state.volume; this.element.muted = this.state.muted;
-    this.element.playbackRate = this.state.speed; this.element.loop = !this.flowPlayback && !this.stream && this.state.loop;
+    this.element.playbackRate = this.state.speed; this.element.loop = this.state.loop;
   }
   setComposition(composition: TimelineComposition) {
     this.flowPlayback?.dispose(); this.flowPlayback = null;
@@ -106,13 +107,12 @@ export class VideoPlayerController {
         return segment.id === next.id && segment.source.url === next.source.url && segment.sourceStart === next.sourceStart && segment.startFrame === next.startFrame && segment.endFrame === next.endFrame && segment.still === next.still;
       });
     this.composition = composition;
-    this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose();
-    this.stream = composition.hasInsertions ? new TimelineStream(composition) : null;
+    this.nativeLoad?.abort(); this.timeline?.dispose(); this.timeline = null; this.pendingSeek = null;
     this.wantsPlayback = wasPlaying;
     const time = sameEdit ? this.state.time : composition.timelineTime(sourceTime);
     this.update({ time, duration: composition.duration, buffered: [], error: null });
     if (!this.element) return;
-    if (this.stream) this.startStream(time); else this.startSource(time);
+    if (composition.hasInsertions) this.startTimeline(time); else this.startSource(time);
   }
   setFlow(flow: CallResponseFlow, info?: MediaInfo, matchFraming = false) {
     if (!this.element || !this.source) return;
@@ -121,19 +121,23 @@ export class VideoPlayerController {
       this.flowPlayback.setMatchFraming(matchFraming); return;
     }
     this.flowPlayback?.dispose(); this.flowPlayback = null;
-    this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose(); this.stream = null;
+    this.nativeLoad?.abort(); this.timeline?.dispose(); this.timeline = null;
     this.composition = null; this.pendingSeek = null; this.wantsPlayback = false;
     this.element.pause();
+    this.applySettings();
     const layout = flowLayout(flow);
     this.flowPlayback = new FlowPlayback(flow, this.element, this.source, (session, buffering, error) => {
       this.update({ flow: session, playing: session.playing, buffering, error: error ?? null, buffered: [],
         time: (layout.starts[session.sceneId] + session.frame) / flow.fps, duration: layout.totalFrames / flow.fps });
     }, info, matchFraming);
+    this.applySettings(); this.setSubtitles(this.subtitles.track, this.subtitles.cues, this.subtitles.enabled);
   }
   seekFlowScene(id: SceneId, frame = 0) { this.flowPlayback?.seekScene(id, frame); }
-  setFlowSubtitles(track: TextTrack | null, cues: VTTCue[]) {
-    if (!this.flowPlayback) return false;
-    this.flowPlayback.setSubtitles(track, cues); return true;
+  setSubtitles(track: TextTrack | null, cues: VTTCue[], enabled = true) {
+    this.subtitles = { track, cues, enabled };
+    if (this.flowPlayback) this.flowPlayback.setSubtitles(track, cues, enabled);
+    else if (this.timeline) this.timeline.setSubtitles(track, cues, enabled);
+    else if (track) { remapSubtitles(track, cues, null); track.mode = enabled ? 'showing' : 'hidden'; }
   }
   answerFlow(answer: string) { this.flowPlayback?.answer(answer); }
   branchFlow(id: SceneId, outcome: Outcome) { this.flowPlayback?.branch(id, outcome); }
@@ -146,6 +150,7 @@ export class VideoPlayerController {
     this.pendingSeek = time; this.previewEnd = null;
     const ready = () => {
       this.pendingSeek = null; this.applySettings(); this.update({ buffering: false, time: element.currentTime });
+      this.setSubtitles(this.subtitles.track, this.subtitles.cues, this.subtitles.enabled);
       if (this.wantsPlayback) void this.play();
     };
     const position = () => { element.currentTime = time; };
@@ -157,48 +162,42 @@ export class VideoPlayerController {
     if (element.src !== this.source.url) { element.src = this.source.url; element.load(); }
     else if (element.readyState >= 1) position();
   }
-  private startStream(time: number) {
-    if (!this.element || !this.stream) return;
+  private startTimeline(time: number) {
+    if (!this.element || !this.composition) return;
     this.nativeLoad?.abort();
-    const version = ++this.streamVersion;
-    this.pendingSeek = time; this.previewEnd = null;
+    this.pendingSeek = null; this.previewEnd = null;
     this.element.pause();
+    this.applySettings();
     this.update({ time, playing: false, buffering: true, error: null, buffered: [] });
-    this.stream.start(this.element, time, () => {
-      if (version !== this.streamVersion) return;
-      this.pendingSeek = null; this.applySettings(); this.update({ buffering: false });
-      if (this.wantsPlayback) void this.play();
-    }, error => {
-      if (version !== this.streamVersion) return;
-      this.pendingSeek = null; this.wantsPlayback = false; this.update({ buffering: false, playing: false, error: error.message });
+    this.timeline = new NativeTimelinePlayback(this.composition, this.element, (time, playing, buffering, error) => {
+      this.wantsPlayback = playing;
+      this.update({ time, playing, buffering, error: error ?? null });
+      if (this.previewEnd !== null && time >= this.previewEnd) { const end = this.previewEnd; this.previewEnd = null; this.pause(); this.timeline?.seek(end); }
     });
+    const autoplay = this.wantsPlayback;
+    this.timeline.seek(time); this.applySettings(); this.setSubtitles(this.subtitles.track, this.subtitles.cues, this.subtitles.enabled);
+    if (autoplay) this.timeline.play();
   }
-  getSourceTime() { if (this.flowPlayback) return this.flowPlayback.sourceTime; const time = this.pendingSeek ?? this.element?.currentTime ?? this.state.time; return this.composition?.sourceTime(time) ?? time; }
+  getSourceTime() { if (this.flowPlayback) return this.flowPlayback.sourceTime; const time = this.timeline ? this.state.time : this.pendingSeek ?? this.element?.currentTime ?? this.state.time; return this.composition?.sourceTime(time) ?? time; }
   getSourceDuration() { return this.composition?.info.duration ?? this.state.duration; }
   async play() {
     if (this.flowPlayback) { this.flowPlayback.play(); return; }
+    if (this.timeline) { this.timeline.play(); return; }
     if (!this.element) return;
     this.wantsPlayback = true;
     if (this.pendingSeek !== null) return;
-    if (this.stream && this.element.ended) { this.startStream(0); return; }
     try { await this.element.play(); }
     catch { this.update({ error: 'Playback could not start. Try a browser-supported video file.' }); }
   }
-  pause() { if (this.flowPlayback) { this.flowPlayback.pause(); return; } this.wantsPlayback = false; this.element?.pause(); }
-  togglePlayback() { if (this.flowPlayback) { if (this.state.playing) this.pause(); else void this.play(); return; } if (this.pendingSeek !== null && this.wantsPlayback || this.element && !this.element.paused) this.pause(); else void this.play(); }
+  pause() { if (this.flowPlayback) { this.flowPlayback.pause(); return; } if (this.timeline) { this.timeline.pause(); return; } this.wantsPlayback = false; this.element?.pause(); }
+  togglePlayback() { if (this.flowPlayback || this.timeline) { if (this.state.playing) this.pause(); else void this.play(); return; } if (this.pendingSeek !== null && this.wantsPlayback || this.element && !this.element.paused) this.pause(); else void this.play(); }
   seek(time: number) {
     if (!this.element || !Number.isFinite(time) || !this.state.duration) return;
     if (this.flowPlayback) { this.flowPlayback.seek(time); return; }
     this.previewEnd = null;
     const fps = this.composition?.fps ?? TIMELINE_FPS;
     const target = Math.max(0, Math.min(this.state.duration, Math.round(time * fps) / fps));
-    if (this.stream) {
-      const buffered = this.element.buffered;
-      if (this.pendingSeek === null && Array.from({ length: buffered.length }, (_, i) => i).some(i => target >= buffered.start(i) && target < buffered.end(i) - 0.1)) {
-        this.element.currentTime = target; this.update({ time: target });
-      } else this.startStream(target);
-      return;
-    }
+    if (this.timeline) { this.timeline.seek(target); return; }
     if (this.pendingSeek !== null) { this.startSource(target); return; }
     this.element.currentTime = target;
     this.update({ time: this.element.currentTime });
@@ -212,18 +211,26 @@ export class VideoPlayerController {
     this.seek((Math.floor((this.state.time + 1e-6) * fps) + direction) / fps);
   }
   setVolume(volume: number) {
-    if (!this.element) return;
-    this.element.volume = Math.max(0, Math.min(1, volume)); this.element.muted = volume === 0;
+    this.update({ volume: Math.max(0, Math.min(1, volume)), muted: volume === 0 }); this.applySettings();
   }
-  toggleMute() { if (this.element) this.element.muted = !this.element.muted; }
-  setSpeed(speed: number) { if (this.element && speed > 0 && speed <= 4) this.element.playbackRate = speed; }
+  toggleMute() { this.update({ muted: !this.state.muted }); this.applySettings(); }
+  setSpeed(speed: number) { if (speed > 0 && speed <= 4) { this.update({ speed }); this.applySettings(); } }
   setLoop(loop: boolean) { this.update({ loop }); this.applySettings(); }
   preview(start: number, end: number) { this.seek(start); this.previewEnd = end; void this.play(); }
   previewSource(start: number, end: number) { this.preview(this.composition?.timelineTime(start) ?? start, this.composition?.timelineTime(end) ?? end); }
   clearError() { this.update({ error: null }); }
+  close() {
+    this.attach(null);
+    this.timeline = null;
+    this.nativeLoad = null;
+    this.source = null;
+    this.composition = null;
+    this.previewEnd = null;
+    this.update({ time: 0, duration: 0, playing: false, buffering: false, error: null, buffered: [], flow: null });
+  }
   dispose() {
     this.flowPlayback?.dispose(); this.flowPlayback = null;
-    this.streamVersion++; this.stream?.dispose(); this.stream = null;
+    this.timeline?.dispose(); this.timeline = null;
     this.nativeLoad?.abort(); this.nativeLoad = null;
     this.attach(null); this.removeEvents = null; this.listeners.clear(); this.source = null;
   }

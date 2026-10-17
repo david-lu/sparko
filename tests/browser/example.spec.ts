@@ -27,7 +27,7 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({ json: { ...body, requiresPassword: true, defaultProject: { url: exampleUrl } } });
   });
   await page.route('https://fal.media/**', route => route.abort());
-  await page.route('**/media/episode_mock.mp4', route => route.fulfill({ contentType: 'video/mp4', body: video }));
+  await page.route('**/media/sample.mp4', route => route.fulfill({ contentType: 'video/mp4', body: video }));
 });
 const activeProject = (page: Page) => page.evaluate(async () => {
   const { readActiveProject } = await import('/src/features/project/database.ts' as string);
@@ -57,7 +57,7 @@ test('starts on the chooser and opens the example only when requested', async ({
   await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
   expect(downloads).toBe(0);
   await page.getByRole('button', { name: /Sample video/ }).click();
-  await expect(page.locator('.menu-document')).toHaveText('episode_mock.mp4');
+  await expect(page.locator('.menu-document')).toHaveText('sample.mp4');
   await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
   expect((await activeProject(page)).interstitials).toEqual([]);
   expect(downloads).toBe(0);
@@ -91,7 +91,7 @@ test('uses only the video from the example archive when no hosted video URL exis
   await page.goto('/');
   await page.getByRole('button', { name: /Sample video/ }).click();
   await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
-  await expect(page.locator('.menu-document')).toHaveText('episode_mock.mp4');
+  await expect(page.locator('.menu-document')).toHaveText('sample.mp4');
   expect((await activeProject(page)).interstitials).toEqual([]);
   expect(downloads).toBe(1);
   await page.reload();

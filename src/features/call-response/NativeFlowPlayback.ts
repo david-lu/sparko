@@ -1,112 +1,88 @@
 import { assets } from '../project/assets';
 import type { MediaInfo, MediaSource } from '../../media/media';
-import { generatedClipFit } from '../../media/videoFraming';
+import { NativeMediaDecks, type NativeClip, type PlaybackSettings } from '../player/NativeMediaDecks';
 import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, previewScene, sceneFrames, startSession,
   type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
 
-/** Plays the graph's real asset ranges in the editor's existing video element. */
+/** Native scene playback, with generated clips prepared once to the source's cadence and dimensions. */
 export class NativeFlowPlayback {
   session: PlaybackSession;
-  private positionTask: AbortController | null = null;
+  private decks: NativeMediaDecks;
   private animation = 0;
-  private buffering = false;
+  private buffering = true;
   private disposed = false;
   private lastTick = performance.now();
-  private resize?: ResizeObserver;
-  private framingStyle?: string;
-  private onMedia = () => this.sync();
-  constructor(readonly flow: CallResponseFlow, private video: HTMLVideoElement, private source: MediaSource,
-    private changed: (session: PlaybackSession, buffering: boolean, error?: string) => void, private info?: MediaInfo, private matchFraming = false) {
+  private remainder = 0;
+  private settings: PlaybackSettings;
+  private subtitles: { track: TextTrack | null; cues: VTTCue[]; enabled: boolean } = { track: null, cues: [], enabled: true };
+  constructor(readonly flow: CallResponseFlow, private primary: HTMLVideoElement, private source: MediaSource,
+    private changed: (session: PlaybackSession, buffering: boolean, error?: string) => void, private info: MediaInfo, private matchFraming = false) {
     this.session = startSession(flow);
-    if (info && video.parentElement && typeof ResizeObserver !== 'undefined') {
-      this.resize = new ResizeObserver(() => this.updateFraming()); this.resize.observe(video.parentElement);
-    }
-    video.loop = false;
-    for (const event of ['timeupdate', 'ended', 'play', 'pause']) video.addEventListener(event, this.onMedia);
-    const tick = () => {
+    this.settings = { volume: primary.volume, muted: primary.muted, speed: primary.playbackRate };
+    this.decks = new NativeMediaDecks(primary, info, matchFraming);
+    this.prepareMedia();
+    const tick = (now: number) => {
       if (this.disposed) return;
-      const now = performance.now(), elapsed = now - this.lastTick;
-      if (getScene(this.flow, this.session.sceneId).draft && this.session.playing && !this.buffering) {
-        const frames = Math.floor(elapsed * this.flow.fps / 1000);
-        if (frames) {
-          this.lastTick += frames * 1000 / this.flow.fps;
-          const visit = this.session.visit; this.session = advanceSession(this.flow, this.session, frames);
-          if (visit !== this.session.visit) this.position(); else this.emit();
-        }
-      } else { this.lastTick = now; this.sync(); }
-      this.animation = requestAnimationFrame(tick);
+      const elapsed = Math.min(.1, (now - this.lastTick) / 1000); this.lastTick = now;
+      if (this.session.playing && !this.buffering) {
+        this.remainder += elapsed * flow.fps * this.settings.speed;
+        const frames = Math.floor(this.remainder); this.remainder -= frames;
+        if (frames) this.session = advanceSession(flow, this.session, frames);
+      }
+      this.render(); this.animation = requestAnimationFrame(tick);
     };
     this.animation = requestAnimationFrame(tick);
-    this.position();
   }
-  private emit(error?: string) { this.changed(this.session, this.buffering, error); }
-  setMatchFraming(value: boolean) { this.matchFraming = value; this.updateFraming(); }
-  private resetFraming() {
-    if (this.framingStyle === undefined) return;
-    this.video.style.cssText = this.framingStyle; this.framingStyle = undefined;
+  get video() { return this.decks.video; }
+  private prepareMedia() {
+    for (const scene of this.flow.scenes) {
+      try { this.decks.prepareMedia(this.clip({ ...this.session, sceneId: scene.id, frame: 0 })); }
+      catch { /* Missing alternatives report their error when selected. */ }
+    }
   }
-  private updateFraming() {
-    const { video, info } = this, parent = video.parentElement;
-    if (!info || !parent || !this.matchFraming || getScene(this.flow, this.session.sceneId).clip.assetId === this.source.assetId
-      || generatedClipFit(video.videoWidth, video.videoHeight, info.width, info.height) !== 'cover') { this.resetFraming(); return; }
-    if (this.framingStyle === undefined) this.framingStyle = video.style.cssText;
-    // The fallback video gets the same parent-shaped viewport as a prepared buffer.
-    const scale = Math.min(parent.clientWidth / info.width, parent.clientHeight / info.height);
-    const width = info.width * scale, height = info.height * scale;
-    Object.assign(video.style, { width: `${width}px`, height: `${height}px`, left: `${(parent.clientWidth - width) / 2}px`,
-      top: `${(parent.clientHeight - height) / 2}px`, right: 'auto', bottom: 'auto', objectFit: 'cover' });
+  private clip(session: PlaybackSession): NativeClip {
+    const scene = getScene(this.flow, session.sceneId), sourceFootage = scene.clip.assetId === this.source.assetId;
+    const url = sourceFootage ? this.source.url : assets.url(scene.clip.assetId);
+    if (!url) throw new Error('This scene’s media is not available.');
+    return { key: `${scene.id}:${session.visit % 2}`, sourceFootage,
+      source: sourceFootage ? this.source : { id: scene.clip.assetId, assetId: scene.clip.assetId, name: scene.label, url },
+      time: (scene.clip.inFrame + (scene.draft ? 0 : session.frame + this.remainder)) / this.flow.fps, still: scene.draft };
   }
-  private sync() {
-    if (this.disposed || this.buffering || this.video.seeking || this.session.finished) return;
-    const scene = getScene(this.flow, this.session.sceneId);
-    if (scene.draft) return;
-    const frame = Math.max(0, Math.min(sceneFrames(scene), Math.floor(this.video.currentTime * this.flow.fps + 1e-4) - scene.clip.inFrame));
-    if (frame === this.session.frame) return;
-    if (!this.session.playing) { this.session = { ...this.session, frame }; this.emit(); return; }
-    const previous = this.session;
-    this.session = advanceSession(this.flow, previous, Math.max(0, frame - previous.frame));
-    if (this.session.finished) { this.video.pause(); this.emit(); return; }
-    if (this.session.visit !== previous.visit) this.position();
-    else this.emit();
+  private render() {
+    try {
+      const clip = this.clip(this.session);
+      this.buffering = !this.decks.render([{ ...clip, opacity: 1, gain: 1 }], this.session.playing, this.settings);
+      if (!this.session.finished) {
+        const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame);
+        if (!next.finished) this.decks.prepare(this.clip({ ...next, frame: 0 }));
+      }
+      this.changed(this.session, this.buffering);
+    } catch (error) {
+      this.session = { ...this.session, playing: false }; this.buffering = false; this.decks.pause();
+      this.changed(this.session, false, error instanceof Error ? error.message : 'Unable to play this scene.');
+    }
   }
-  private position() {
-    this.positionTask?.abort();
-    const operation = new AbortController(); this.positionTask = operation;
-    const scene = getScene(this.flow, this.session.sceneId);
-    if (scene.draft) this.video.pause();
-    this.lastTick = performance.now();
-    const url = scene.clip.assetId === this.source.assetId ? this.source.url : assets.url(scene.clip.assetId);
-    if (!url) { this.session = { ...this.session, playing: false }; this.buffering = false; this.emit('This scene’s media is not available.'); return; }
-    this.buffering = true; this.emit();
-    const ready = () => {
-      if (operation.signal.aborted || this.disposed) return;
-      this.updateFraming();
-      this.buffering = false; this.emit();
-      if (this.session.playing && !scene.draft) void this.video.play().catch(() => { this.session = { ...this.session, playing: false }; this.emit('Press Play to start this scene.'); });
-    };
-    const seek = () => {
-      const time = (scene.clip.inFrame + (scene.draft ? 0 : this.session.frame)) / this.flow.fps;
-      if (Math.abs(this.video.currentTime - time) < .001) { ready(); return; }
-      this.video.addEventListener('seeked', ready, { once: true, signal: operation.signal });
-      this.video.currentTime = time;
-    };
-    if (this.video.src !== url) {
-      this.video.addEventListener('loadedmetadata', seek, { once: true, signal: operation.signal });
-      this.video.src = url; this.video.load();
-    } else if (this.video.readyState >= 1) seek();
-    else this.video.addEventListener('loadedmetadata', seek, { once: true, signal: operation.signal });
+  setSettings(settings: PlaybackSettings) { this.settings = settings; this.render(); }
+  setSubtitles(track: TextTrack | null, cues: VTTCue[], enabled = true) {
+    this.subtitles = { track, cues, enabled }; this.decks.setSubtitles(track, cues, enabled); this.render();
+  }
+  setMatchFraming(value: boolean) {
+    if (value === this.matchFraming) return;
+    this.matchFraming = value; this.decks.dispose();
+    this.decks = new NativeMediaDecks(this.primary, this.info, value);
+    this.prepareMedia();
+    this.decks.setSubtitles(this.subtitles.track, this.subtitles.cues, this.subtitles.enabled);
+    this.buffering = true; this.render();
   }
   play() {
-    if (this.session.finished) { this.session = startSession(this.flow, true); this.position(); return; }
-    this.session = { ...this.session, playing: true }; this.emit();
-    this.lastTick = performance.now();
-    if (!this.buffering && !getScene(this.flow, this.session.sceneId).draft) void this.video.play().catch(() => { this.session = { ...this.session, playing: false }; this.emit('Press Play to start this scene.'); });
+    if (this.session.finished) this.session = startSession(this.flow, true);
+    else this.session = { ...this.session, playing: true };
+    this.lastTick = performance.now(); this.render();
   }
-  pause() { this.session = { ...this.session, playing: false }; this.video.pause(); this.emit(); }
+  pause() { this.session = { ...this.session, playing: false }; this.decks.pause(); this.render(); }
   seekScene(id: SceneId, frame = 0, playing = false) {
     this.session = { ...previewScene(this.flow, id), frame: Math.max(0, Math.min(sceneFrames(getScene(this.flow, id)) - 1, Math.round(frame))), playing };
-    if (!playing) this.video.pause();
-    this.position();
+    this.remainder = 0; this.buffering = true; this.lastTick = performance.now(); this.render();
   }
   seek(time: number) {
     const layout = flowLayout(this.flow), frame = Math.max(0, time * this.flow.fps);
@@ -114,17 +90,13 @@ export class NativeFlowPlayback {
     const path = playbackPath(this.flow, this.session);
     const id = [...path].reverse().find(id => frame >= layout.starts[id]) ?? this.flow.entrySceneId;
     this.seekScene(id, frame - layout.starts[id], this.session.playing);
-    if (answer && getScene(this.flow, id).clip.kind !== 'idle') { this.session = { ...this.session, outcome: answer.id }; this.emit(); }
+    if (answer && getScene(this.flow, id).clip.kind !== 'idle') { this.session = { ...this.session, outcome: answer.id }; this.render(); }
   }
-  answer(answer: string) { this.session = answerSession(this.flow, this.session, answer); this.emit(); }
+  answer(answer: string) { this.session = answerSession(this.flow, this.session, answer); this.render(); }
   branch(id: SceneId, outcome: Outcome) {
     if (getScene(this.flow, id).clip.kind !== 'idle') return;
     if (this.session.sceneId !== id || this.session.outcome || this.session.finished) this.seekScene(id);
     this.session = branchSession(this.flow, this.session, outcome); this.play();
   }
-  dispose() {
-    this.disposed = true; cancelAnimationFrame(this.animation); this.positionTask?.abort();
-    this.resize?.disconnect(); this.resetFraming();
-    for (const event of ['timeupdate', 'ended', 'play', 'pause']) this.video.removeEventListener(event, this.onMedia);
-  }
+  dispose() { this.disposed = true; cancelAnimationFrame(this.animation); this.decks.dispose(); }
 }

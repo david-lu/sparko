@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import path from 'node:path';
 
 const clip = (page: Page, id: string) => page.locator(`.timeline-flow-clip[data-scene-id="${id}"]`);
-const video = (page: Page) => page.locator('.video-stage > video');
+const video = (page: Page) => page.locator('.video-stage > video').first();
 const selectedEditor = (page: Page) => page.locator('.clip-subpanel.selected, .sidebar > .call-response-controls');
 const branchButton = (page: Page, outcome: string) => page.locator('.video-stage').getByRole('button', { name: `Choose ${outcome === 'correct' ? 'A' : outcome === 'incorrect' ? 'B' : outcome}`, exact: true });
 async function selectIdle(page: Page) {
@@ -17,14 +17,39 @@ async function openExample(page: Page, prepare?: () => Promise<void>, generation
   } }));
   await page.route('**/media/episode_mock.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
   await page.goto('/');
+  await page.getByRole('button', { name: /Sample video/ }).click();
   await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled({ timeout: 60_000 });
-  await video(page).evaluate(element => { (window as any).originalVideoElement = element; });
   await prepare?.();
-  await page.getByText('File', { exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Open test call response' }).click();
+  const duration = await video(page).evaluate(element => (element as HTMLVideoElement).duration);
+  await page.evaluate(async duration => {
+    const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
+    const { createTimelineExample } = await import('/src/features/call-response/model.ts' as string);
+    const current = await readActiveProject();
+    const example = createTimelineExample(current.source.assetId, duration);
+    await writeProject({ ...current, id: `project:${crypto.randomUUID()}`, name: 'Test call response',
+      saved: true, updatedAt: Date.now(), interstitials: example.interstitials,
+      callResponse: example.flow, callResponses: [example.flow], subtitle: null });
+  }, duration);
+  await page.reload();
+  const example = page.getByRole('region', { name: 'Recent projects' }).locator('.project-start-row').filter({ hasText: 'Test call response' });
+  await example.getByRole('button', { name: 'Open' }).click();
   await expect(page.locator('.timeline-section.has-flow')).toBeVisible();
+  await page.locator('.timeline-pin').click();
   await expect(page.locator('.project-status')).toHaveCount(0, { timeout: 60_000 });
   await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
+  await video(page).evaluate(element => { (window as any).originalVideoElement = element; });
+}
+
+async function reloadWorkingProject(page: Page) {
+  await page.evaluate(async () => {
+    const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
+    const current = await readActiveProject();
+    await writeProject({ ...current, id: 'project:test-reload', name: 'Working test project',
+      saved: true, updatedAt: Date.now() });
+  });
+  await page.reload();
+  const working = page.getByRole('region', { name: 'Recent projects' }).locator('.project-start-row').filter({ hasText: 'Working test project' });
+  await working.getByRole('button', { name: 'Open' }).click();
 }
 
 test('generated framing is optional in Options, preserves the current scene and persists on reload', async ({ page }) => {
@@ -41,7 +66,7 @@ test('generated framing is optional in Options, preserves the current scene and 
   await expect(clip(page, 'wait')).toHaveAttribute('data-active', 'true');
   await expect(clip(page, 'wait').locator('.flow-playhead')).toHaveAttribute('style', position!);
   await expect(video(page)).toHaveJSProperty('paused', true);
-  await page.reload();
+  await reloadWorkingProject(page);
   await expect(page.locator('.timeline-section.has-flow')).toBeVisible();
   await page.getByText('Options', { exact: true }).click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
@@ -192,7 +217,7 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
     return { labels: project.callResponse.interaction.answers.map((answer: any) => answer.label),
       fallback: project.callResponse.interaction.fallbackAnswerId, jobs: project.interstitials.length };
   })).toEqual({ labels: ['Forest', 'Ocean', 'Mountains'], fallback: null, jobs: 5 });
-  await page.reload(); await expect(clip(page, id)).toBeVisible();
+  await reloadWorkingProject(page); await expect(clip(page, id)).toBeVisible();
   await select(id); await answerEditor.getByText('Alternative answers', { exact: true }).click();
   await expect(alternatives).toHaveValue('Hiking\nThe mountains');
   await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7');
@@ -253,7 +278,7 @@ test('untouched legacy response names become A and B on reload without changing 
     await writeProject(project);
     return project.interstitials.map((item: any) => item.result.assetId);
   });
-  await page.reload();
+  await reloadWorkingProject(page);
   await selectIdle(page);
   await expect(branchButton(page, 'correct')).toBeVisible();
   await expect(branchButton(page, 'incorrect')).toBeVisible();
@@ -332,7 +357,7 @@ test('undo and redo add, edit, move and remove drafts, group typing, and reset w
     const { readActiveProject } = await import('/src/features/project/database.ts' as string);
     return (await readActiveProject()).callResponse.interstitial.label;
   })).toBe('Math challenge');
-  await page.reload();
+  await reloadWorkingProject(page);
   await expect(page.locator('.timeline-interstitial-group')).toHaveAccessibleName('Math challenge');
   await page.locator('.timeline-interstitial-marker .timeline-pin').click();
   await expect(name).toHaveValue('Math challenge');
@@ -361,7 +386,7 @@ test('undo restores the whole deleted call-response interstitial and redo remove
     const project = await readActiveProject();
     return { group: project.callResponse?.interstitial.id, clips: project.interstitials.length };
   })).toEqual({ group: id, clips: 4 });
-  await page.reload();
+  await reloadWorkingProject(page);
   await expect(group).toHaveAttribute('data-interstitial-id', id!);
   await expect(undo).toBeDisabled(); await expect(redo).toBeDisabled();
 });
@@ -457,7 +482,7 @@ test('the timeline shows footage and the player branches out of the idle clip', 
   expect(errors).toEqual([]);
 });
 
-test('response button assignments persist, route the real video, and leave the original project intact', async ({ page }) => {
+test('response button assignments persist, route the real video, and a new sample opens clean', async ({ page }) => {
   await openExample(page, async () => {
     await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
     await page.getByRole('button', { name: /^Add interstitial/ }).click();
@@ -469,7 +494,7 @@ test('response button assignments persist, route the real video, and leave the o
   await expect(selectedEditor(page).getByLabel('Interstitial prompt')).toHaveValue(originalPrompt);
   await expect(page.locator('[data-edge-id="wait-incorrect"]')).toHaveAttribute('data-to', 'correct');
   const groupId = await page.locator('.timeline-interstitial-group').getAttribute('data-interstitial-id');
-  await page.reload();
+  await reloadWorkingProject(page);
   await expect(page.locator('.timeline-interstitial-group')).toHaveAttribute('data-interstitial-id', groupId!);
   await expect(page.locator('[data-edge-id="wait-incorrect"]')).toHaveAttribute('data-to', 'correct');
   await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
@@ -478,11 +503,11 @@ test('response button assignments persist, route the real video, and leave the o
   await expect(clip(page, 'correct')).toHaveAttribute('data-active', 'true', { timeout: 7000 });
   await expect(clip(page, 'continue')).toHaveAttribute('data-active', 'true', { timeout: 7000 });
   await page.getByText('File', { exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Open sample video' }).click();
+  await page.getByRole('menuitem', { name: 'Close project' }).click();
+  await page.getByRole('dialog', { name: 'Save changes before closing?' }).getByRole('button', { name: 'Discard changes' }).click();
+  await page.getByRole('button', { name: /Sample video/ }).click();
   await expect(page.locator('.timeline-section.has-flow')).toHaveCount(0);
-  await expect(page.locator('.timeline-pin')).toHaveCount(1);
-  await page.locator('.timeline-pin').click();
-  await expect(page.getByRole('textbox', { name: 'Interstitial prompt' })).toHaveValue('Keep the original draft.');
+  await expect(page.locator('.timeline-pin')).toHaveCount(0);
 });
 
 test('idle has a fixed role and the question and player buttons fit on a phone', async ({ page }) => {
@@ -547,7 +572,7 @@ test('clips stay capped and centered, branches touch, and response duration edit
   await clip(page, 'incorrect').getByRole('button', { name: 'Select clip B', exact: true }).click();
   await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7.5');
   await expect(selectedEditor(page).getByText('Shared duration for all response branches.', { exact: false })).toBeVisible();
-  await page.reload();
+  await reloadWorkingProject(page);
   await clip(page, 'correct').getByRole('button', { name: 'Select clip A', exact: true }).click();
   await expect(selectedEditor(page).getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('7.5');
   await page.mouse.move(20, 20);
@@ -624,7 +649,7 @@ test('one timeline container opens child subpanels and regeneration follows the 
   await expect(child('B Response').locator('.clip-subpanel-heading small')).toHaveText('Stale · Needs regeneration');
   await expect(clip(page, 'correct')).toHaveAttribute('data-stale', 'false');
   await expect(page.locator('.timeline-flow-clip[data-stale=true]')).toHaveCount(1);
-  await page.reload();
+  await reloadWorkingProject(page);
   await container.click({ position: { x: 5, y: 5 } });
   await expect(child('A Response').locator('.clip-subpanel-heading small')).toHaveText('Ready');
   await expect(child('B Response').locator('.clip-subpanel-heading small')).toHaveText('Stale · Needs regeneration');
@@ -697,7 +722,7 @@ for (const action of ['panel', 'list', 'Delete', 'Backspace']) {
       }] });
       return project.source.assetId;
     });
-    await page.reload();
+    await reloadWorkingProject(page);
     await expect(page.locator('.timeline-section.has-flow')).toBeVisible();
     await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
     if (action === 'panel') {
@@ -718,7 +743,7 @@ for (const action of ['panel', 'list', 'Delete', 'Backspace']) {
       const project = await readActiveProject();
       return { source: project.source.assetId, hasFlow: !!project.callResponse, ids: project.interstitials.map((item: any) => item.id) };
     })).toEqual({ source: sourceId, hasFlow: false, ids: ['unrelated-draft'] });
-    await page.reload();
+    await reloadWorkingProject(page);
     const timeline = page.getByRole('slider', { name: 'Video timeline', exact: true });
     await expect(timeline).toBeEnabled({ timeout: 30_000 });
     await timeline.fill('1');

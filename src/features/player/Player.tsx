@@ -7,7 +7,6 @@ import type { Interstitial } from '../../../shared/interstitials';
 import type { TimelineComposition } from '../../media/TimelineComposition';
 import type { VideoPlayerController } from './VideoPlayerController';
 import Timeline from '../timeline/Timeline';
-import { remapSubtitles } from './subtitles';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import PlayerChoices from './PlayerChoices';
 
@@ -40,22 +39,21 @@ export default function Player(props: Props) {
   const flow = props.callResponse;
   const originalCues = useRef<{ url: string; cues: VTTCue[] } | null>(null);
   useEffect(() => {
-    const video = controller.video;
+    const video = controller.subtitleVideo;
     const element = video?.querySelector('track');
-    if (!element || !subtitle) { controller.setFlowSubtitles(null, []); return; }
+    if (!element || !subtitle) { controller.setSubtitles(null, []); return; }
     const remap = () => {
       const track = element.track;
       if (originalCues.current?.url !== subtitle.url) {
         if (element.readyState !== HTMLTrackElement.LOADED) return;
         originalCues.current = { url: subtitle.url, cues: Array.from(track.cues || []) as VTTCue[] };
       }
-      if (!props.callResponse || !controller.setFlowSubtitles(track, originalCues.current.cues)) remapSubtitles(track, originalCues.current.cues, props.composition);
-      track.mode = captions ? 'showing' : 'hidden';
+      controller.setSubtitles(track, originalCues.current.cues, captions);
     };
     remap();
     // Track load events do not bubble through React's delegated event handler.
     element.addEventListener('load', remap);
-    // Loading a new MediaSource restores the track's original cues in the browser.
+    // Changing a native clip can reload the track's original cues in the browser.
     video?.addEventListener('loadedmetadata', remap);
     video?.addEventListener('canplay', remap);
     return () => { element.removeEventListener('load', remap); video?.removeEventListener('loadedmetadata', remap); video?.removeEventListener('canplay', remap); };
@@ -111,8 +109,6 @@ export default function Player(props: Props) {
   };
   const toggleCaptions = () => {
     if (!subtitle) { captionInput.current?.click(); return; }
-    const track = controller.video?.textTracks[0];
-    if (track) track.mode = captions ? 'hidden' : 'showing';
     setCaptions(!captions);
   };
 
@@ -142,8 +138,8 @@ export default function Player(props: Props) {
         case 'l': onSeek(time + 10); break;
         case 'arrowleft': onSeek(time - 5); break;
         case 'arrowright': onSeek(time + 5); break;
-        case 'arrowup': changeVolume(video.volume + 0.05); break;
-        case 'arrowdown': changeVolume(video.volume - 0.05); break;
+        case 'arrowup': changeVolume(volume + 0.05); break;
+        case 'arrowdown': changeVolume(volume - 0.05); break;
         case 'm': toggleMute(); break;
         case 'f': void toggleFullscreen(); break;
         case 'p': onAddInterstitial(); break;

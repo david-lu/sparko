@@ -4,8 +4,14 @@ import { createTestFlow } from '../../src/features/call-response/model';
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('flow playback fallback', () => {
-  it('keeps native scene playback and source time when MediaSource is unavailable', async () => {
+vi.mock('../../src/features/player/NativeMediaDecks', () => ({ NativeMediaDecks: class {
+  constructor(public video: HTMLVideoElement) {}
+  render(layers: { time: number }[], playing: boolean) { this.video.currentTime = layers[0].time; if (playing) void this.video.play(); else this.video.pause(); return true; }
+  prepare() {} setSubtitles() {} pause() { this.video.pause(); } dispose() {}
+} }));
+
+describe('native flow playback', () => {
+  it('keeps scene time and seeking independent of MediaSource support', async () => {
     vi.stubGlobal('MediaSource', undefined);
     vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
@@ -19,7 +25,6 @@ describe('flow playback fallback', () => {
     const video = new Video(), changed = vi.fn();
     const player = new FlowPlayback(createTestFlow(), video as unknown as HTMLVideoElement,
       { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, changed);
-    expect(player.diagnostics).toBeUndefined();
     player.play(); expect(video.play).toHaveBeenCalled();
     player.seekScene('intro', 12); await Promise.resolve();
     expect(video.currentTime).toBe(.5); expect(player.sourceTime).toBe(.5);

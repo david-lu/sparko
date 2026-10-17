@@ -22,11 +22,12 @@ describe('server API boundaries', () => {
   it('reports configuration without exposing secrets', async () => {
     const result = await request(app).get('/api/status').expect(200);
     expect(result.body.providers).toEqual({ openai: true, gemini: true, fal: true });
-    expect(result.body.defaultVideo.name).toBe('episode_mock.mp4');
+    expect(result.body.defaultVideo.name).toBe('sample.mp4');
+    expect(result.body.defaultVideo.url).toBe('/media/sample.mp4');
     expect(result.text).not.toMatch(/sk-|FAL_KEY|OPENAI_API_KEY|GEMINI_KEY/);
   });
   it('serves partial video responses', async () => {
-    const result = await request(app).get('/media/episode_mock.mp4').set('Range', 'bytes=0-63').expect(206);
+    const result = await request(app).get('/media/sample.mp4').set('Range', 'bytes=0-63').expect(206);
     expect(result.headers['content-length']).toBe('64');
     expect(result.headers['accept-ranges']).toBe('bytes');
   });

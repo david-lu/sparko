@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { Download, FolderOpen, GitBranch, Redo2, RotateCcw, Save, Trash2, Undo2, Upload, X } from 'lucide-react';
+import { Download, FolderOpen, Redo2, Save, Undo2, X } from 'lucide-react';
 import CallResponseControls from '../features/call-response/CallResponseControls';
 import { addAnswer, branchScenes, resolveFlow, type SceneId } from '../features/call-response/model';
 import type { FlowTimeline } from '../features/timeline/FlowTracks';
@@ -30,7 +30,8 @@ if (import.meta.hot) {
   ], () => window.location.reload());
 }
 
-const defaultSource: MediaSource = { id: 'default:episode_mock.mp4', name: 'episode_mock.mp4', url: '/media/episode_mock.mp4' };
+// Keep the working ID so browser projects created with the previous sample can be migrated.
+const defaultSource: MediaSource = { id: 'default:episode_mock.mp4', name: 'sample.mp4', url: '/media/sample.mp4' };
 type ProjectPickerWindow = Window & {
   showSaveFilePicker?: (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle>;
   showOpenFilePicker?: (options: { multiple: boolean; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
@@ -53,11 +54,9 @@ export default function App() {
   const source = projectState.source || defaultSource;
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [startReady, setStartReady] = useState(false);
-  const [showProjectStart, setShowProjectStart] = useState(true);
   const [error, setError] = useState('');
   const [shortcuts, setShortcuts] = useState(false);
-  const [projectDialog, setProjectDialog] = useState<'library' | null>(null);
-  const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null);
+  const [closePrompt, setClosePrompt] = useState(false);
   const [crossfade, setCrossfade] = useState(savedCrossfadePreference);
   useEffect(() => { try { localStorage.setItem(crossfadePreference, String(crossfade)); } catch { /* Apply without persistence. */ } }, [crossfade]);
   const [matchFraming, setMatchFraming] = useState(savedFramingPreference);
@@ -87,12 +86,12 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
   const fileMenu = useRef<HTMLDetailsElement>(null);
-  const defaultUrl = useRef(defaultSource.url);
+  const sampleSource: MediaSource = { ...defaultSource, name: status?.defaultVideo.name || defaultSource.name, url: status?.defaultVideo.url ?? defaultSource.url };
   const sourceVersion = useRef(0);
   const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
   const flow = useMemo(() => info && source.assetId ? composeFlows(savedFlows, interstitialState.items, source.assetId, info.duration) : undefined, [savedFlows, readyKey, info, source.assetId]);
   const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, matchFraming }) : null, [source, info, readyKey, crossfade, matchFraming]);
-  useEffect(() => { if (flow && info) controller.setFlow(flow, info, matchFraming); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming]);
+  useEffect(() => { if (!projectState.source) return; if (flow && info) controller.setFlow(flow, info, matchFraming); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming, projectState.source]);
   useEffect(() => {
     controller.pause(); setSelectedFlowScene(null); setSelectedFlowEdge(null);
   }, [controller, projectState.historyRevision]);
@@ -113,19 +112,11 @@ export default function App() {
     return () => window.removeEventListener('keydown', historyKey);
   }, [controller, projects]);
   useEffect(() => () => { interstitials.dispose(); projects.dispose(); }, [interstitials, projects]);
-  useEffect(() => {
-    const open = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'o') { event.preventDefault(); fileInput.current?.click(); }
-    };
-    window.addEventListener('keydown', open);
-    return () => window.removeEventListener('keydown', open);
-  }, []);
-
   useEffect(() => { let active = true; void getStatus().then(data => {
     if (!active) return;
-    setStatus(data); defaultUrl.current = data.defaultVideo.url;
+    setStatus(data);
     if (data.requiresPassword && !data.defaultProject && !sessionStorage.getItem('sparko:password')) setLogin(true);
-    return projects.init({ ...defaultSource, url: data.defaultVideo.url });
+    return projects.init({ ...defaultSource, name: data.defaultVideo.name || defaultSource.name, url: data.defaultVideo.url });
   }).catch(err => { if (active) { setError(err.message); return projects.init(defaultSource); } })
     .finally(() => { if (active) setStartReady(true); });
     return () => { active = false; };
@@ -136,8 +127,11 @@ export default function App() {
     return () => window.removeEventListener('sparko:auth-required', show);
   }, []);
   useEffect(() => {
-    if (!projectState.source) return;
-    setShowProjectStart(false);
+    if (!projectState.source) {
+      controller.close(); setEngine(null); setInfo(null); setThumbnails([]); setThumbnailsFailed(false);
+      setSelectedFlowScene(null); setSelectedFlowEdge(null); setShortcuts(false);
+      return;
+    }
     const version = ++sourceVersion.current;
     const media = new MediaEngine(source);
     setEngine(media); setInfo(null); setThumbnails([]); setThumbnailsFailed(false); setError('');
@@ -146,7 +140,7 @@ export default function App() {
       if (sourceVersion.current !== version) return;
       setInfo(metadata);
       const current = projects.getSnapshot().project;
-      if (current?.id === source.id && current.analysis.slice.end > metadata.duration) projects.updateAnalysis({ ...current.analysis, slice: { start: 0, end: metadata.duration } });
+      if (current?.id === source.id && current.analysis.slice.end > metadata.duration) projects.updateAnalysis({ ...current.analysis, slice: { start: 0, end: metadata.duration } }, false);
       return media.thumbnails().then(frames => { if (sourceVersion.current === version) setThumbnails(frames); });
     }).catch(err => { if (sourceVersion.current === version && err.name !== 'AbortError') { setThumbnailsFailed(true); setError(err.message || 'Unable to read video metadata.'); } });
     return () => { sourceVersion.current++; media.dispose(); };
@@ -183,23 +177,29 @@ export default function App() {
     if (/\.sparko$/i.test(file.name)) void projects.importProject(file); else void projects.openVideo(file);
   };
   const exportProject = async () => {
-    const result = await projects.exportProject(); if (!result) return;
+    const result = await projects.exportProject(); if (!result) return false;
     const url = URL.createObjectURL(result.blob), link = document.createElement('a');
     link.href = url; link.download = result.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return true;
   };
   const saveAsFile = async () => {
     const picker = (window as ProjectPickerWindow).showSaveFilePicker;
-    if (!picker) { await exportProject(); return; }
+    if (!picker) return exportProject();
     try {
       const name = `${(projectState.project?.name || 'project').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')}.sparko`;
       const handle = await picker.call(window, { suggestedName: name, types: projectFileTypes });
-      await projects.saveToFile(handle);
-    } catch (cause) { if ((cause as DOMException).name !== 'AbortError') setError((cause as Error).message); }
+      return !!await projects.saveToFile(handle);
+    } catch (cause) { if ((cause as DOMException).name !== 'AbortError') setError((cause as Error).message); return false; }
   };
   const saveCurrent = () => {
     if (fileMenu.current) fileMenu.current.open = false;
     const handle = projects.getFileHandle();
-    if (handle) void projects.saveToFile(handle); else void saveAsFile();
+    return handle ? projects.saveToFile(handle).then(Boolean) : saveAsFile();
+  };
+  const closeCurrent = () => {
+    if (fileMenu.current) fileMenu.current.open = false;
+    if (projects.getSnapshot().dirty) setClosePrompt(true);
+    else void projects.closeProject();
   };
   const openProjectFile = async () => {
     const picker = (window as ProjectPickerWindow).showOpenFilePicker;
@@ -265,23 +265,16 @@ export default function App() {
     selectedSceneId={id} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)}
     onSelectEdge={panelTimeline.onSelectEdge} />;
   return <div className="app-shell" onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) openFile(file); }}>
-    {showProjectStart ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasExample={!!status?.defaultProject}
+    {!projectState.source ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasExample={!!status?.defaultProject}
       onOpenVideo={() => fileInput.current?.click()} onOpenProject={() => void openProjectFile()}
-      onOpenSample={() => void projects.openDefault({ ...defaultSource, url: defaultUrl.current }, status?.defaultProject?.url)}
+      onOpenSample={() => void projects.openDefault(sampleSource, status?.defaultProject?.url)}
       onOpenExample={() => { if (status?.defaultProject) void projects.openExample(status.defaultProject.url); }}
-      onReturn={projectState.source ? () => setShowProjectStart(false) : undefined}
       onDismissError={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }} /> : <>
     <header className="menubar" aria-label="Application menu">
       <details className="file-menu" ref={fileMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }} onKeyDown={event => { if (event.key === 'Escape') event.currentTarget.open = false; }}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
-        <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; setShowProjectStart(true); }}><FolderOpen size={14} />Choose project</button>
-        <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; fileInput.current?.click(); }}><FolderOpen size={14} />Open video<span>Ctrl O</span></button>
-        <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void projects.openDefault({ ...defaultSource, url: defaultUrl.current }, status?.defaultProject?.url); }}><RotateCcw size={14} />Open sample video</button>
-        {status?.defaultProject && <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void projects.openExample(status.defaultProject!.url); }}><FolderOpen size={14} />Open example project</button>}
-        <button role="menuitem" disabled={projectState.busy || !info} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; controller.pause(); setSelectedFlowEdge(null); setSelectedFlowScene(null); setTimelineHeight(Math.max(300, timelineHeight)); if (info) void projects.openTestCallResponse(info.duration); }}><GitBranch size={14} />Open test call response</button>
-        <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void openProjectFile(); }}><Upload size={14} />Open project file</button>
-        <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={saveCurrent}><Save size={14} />Save project</button>
+        <button role="menuitem" disabled={projectState.busy} onClick={closeCurrent}><FolderOpen size={14} />Close project</button>
+        <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { void saveCurrent(); }}><Save size={14} />Save project</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void saveAsFile(); }}><Save size={14} />Save as new file</button>
-        <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; setDeleteCandidate(null); setProjectDialog('library'); }}><FolderOpen size={14} />Recent projects<span>{projectState.recentFiles.length}</span></button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>
       <PlaybackOptions crossfade={crossfade} onCrossfade={setCrossfade} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
@@ -303,7 +296,7 @@ export default function App() {
           subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
           controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
           onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
-          timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} /> : <div className="project-opening" role="status">{projectState.busy ? 'Preparing video…' : 'Open a video from the File menu.'}</div>}
+          timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} /> : <div className="project-opening" role="status">{projectState.busy ? 'Preparing video…' : 'Choose a project to start editing.'}</div>}
         {shortcuts && <div className="shortcuts"><span><kbd>Ctrl/Cmd Z</kbd> Undo</span><span><kbd>Ctrl/Cmd Shift Z</kbd> / <kbd>Ctrl Y</kbd> Redo</span><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>P</kbd> New interstitial</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
       </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Interstitials">
         {panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
@@ -317,19 +310,19 @@ export default function App() {
     </main></>}
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" onChange={event => { const file = event.target.files?.[0]; if (file) openFile(file); event.target.value = ''; }} />
     <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" onChange={event => { const file = event.target.files?.[0]; if (file) void projects.importProject(file); event.target.value = ''; }} />
-    {projectDialog === 'library' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setProjectDialog(null); }}><div className="project-card project-library" role="dialog" aria-modal="true" aria-labelledby="saved-projects-title">
-      <div className="project-card-heading"><h2 id="saved-projects-title">Recent projects</h2><button className="icon-button small" aria-label="Close" onClick={() => setProjectDialog(null)}><X size={16} /></button></div>
-      {projectState.recentFiles.length === 0 && projectState.savedProjects.length === 0 && <p className="hint">Open or save a project file to see it here.</p>}
-      {projectState.recentFiles.length > 0 && <div className="project-list">{projectState.recentFiles.map(item => <div className="project-row" key={item.id}>
-        <div className="project-row-info"><strong>{item.name}</strong><span>{new Date(item.updatedAt).toLocaleString()}</span></div>
-        {deleteCandidate === `file:${item.id}` ? <div className="project-row-actions"><span>Delete this file from disk?</span><button className="button small danger" disabled={projectState.busy} onClick={() => { void projects.removeRecentFile(item.id, true).then(deleted => { if (deleted) setDeleteCandidate(null); }); }}>Delete file</button><button className="button small" onClick={() => setDeleteCandidate(null)}>Cancel</button></div>
-          : <div className="project-row-actions"><button className="button small" disabled={projectState.busy} onClick={() => { void projects.openProjectFile(item.handle).then(opened => { if (opened) setProjectDialog(null); }); }}>Open</button><button className="icon-button small" title={`Remove ${item.name} from Recent`} aria-label={`Remove ${item.name} from Recent`} disabled={projectState.busy} onClick={() => { void projects.removeRecentFile(item.id); }}><X size={14} /></button>{'remove' in item.handle && <button className="icon-button small" title={`Delete file ${item.name}`} aria-label={`Delete file ${item.name}`} disabled={projectState.busy} onClick={() => setDeleteCandidate(`file:${item.id}`)}><Trash2 size={14} /></button>}</div>}
-      </div>)}</div>}
-      {projectState.savedProjects.length > 0 && <><h3 className="project-section-title">Earlier browser projects</h3><p className="hint">Open one and choose Save as new file to keep it on disk.</p><div className="project-list">{projectState.savedProjects.map(item => <div className="project-row" key={item.id}>
-        <div className="project-row-info"><strong>{item.name}</strong><span>{new Date(item.updatedAt).toLocaleString()}{projectState.savedProjectId === item.id ? ' · Current project' : ''}</span></div>
-        {deleteCandidate === `browser:${item.id}` ? <div className="project-row-actions"><span>Delete browser copy?</span><button className="button small danger" disabled={projectState.busy} onClick={() => { void projects.deleteSavedProject(item.id).then(deleted => { if (deleted) setDeleteCandidate(null); }); }}>Delete</button><button className="button small" onClick={() => setDeleteCandidate(null)}>Cancel</button></div>
-          : <div className="project-row-actions"><button className="button small" disabled={projectState.busy} onClick={() => { void projects.openSavedProject(item.id).then(opened => { if (opened) setProjectDialog(null); }); }}>Open</button><button className="icon-button small" title={`Delete browser copy ${item.name}`} aria-label={`Delete browser copy ${item.name}`} disabled={projectState.busy} onClick={() => setDeleteCandidate(`browser:${item.id}`)}><Trash2 size={14} /></button></div>}
-      </div>)}</div></>}
+    {closePrompt && <div className="modal-backdrop"><div className="project-card" role="dialog" aria-modal="true" aria-labelledby="close-project-title">
+      <h2 id="close-project-title">Save changes before closing?</h2>
+      <p className="hint">Changes to {projectState.project?.name || 'this project'} have not been saved to a project file.</p>
+      {(projectState.error || error) && <p className="inline-error" role="alert">{projectState.error || error}</p>}
+      <div className="close-project-actions">
+        <button className="button" disabled={projectState.busy} onClick={() => setClosePrompt(false)}>Cancel</button>
+        <button className="button danger" disabled={projectState.busy} onClick={() => { setClosePrompt(false); void projects.closeProject(true); }}>Discard changes</button>
+        <button className="button primary" disabled={projectState.busy} onClick={() => { void saveCurrent().then(async saved => {
+          if (!saved) return;
+          const closed = await projects.closeProject(!(window as ProjectPickerWindow).showSaveFilePicker);
+          if (closed) setClosePrompt(false);
+        }); }}>Save and close</button>
+      </div>
     </div></div>}
     {login && <div className="modal-backdrop"><div className="login-card" role="dialog" aria-modal="true" aria-labelledby="login-title"><h2 id="login-title">Unlock video tools</h2><p className="hint">Enter this workspace’s password to use its AI providers.</p><form onSubmit={event => {
       event.preventDefault(); sessionStorage.setItem('sparko:password', password); setLoginError('');

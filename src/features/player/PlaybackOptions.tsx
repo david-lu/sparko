@@ -2,14 +2,7 @@ import { Check } from 'lucide-react';
 import { INTERSTITIAL_CROSSFADE_FRAMES, TIMELINE_FPS } from '../../../shared/constants';
 import './options.css';
 
-export const crossfadePreference = 'sparko:interstitial-crossfades';
-export function savedCrossfadePreference() {
-  try { return localStorage.getItem(crossfadePreference) !== 'false'; } catch { return true; }
-}
-export const framingPreference = 'sparko:match-generated-framing';
-export function savedFramingPreference() {
-  try { return localStorage.getItem(framingPreference) === 'true'; } catch { return false; }
-}
+export { crossfadePreference, savedCrossfadePreference, framingPreference, savedFramingPreference } from './preferences';
 
 export default function PlaybackOptions({ crossfade, onCrossfade, matchFraming, onMatchFraming }: {
   crossfade: boolean; onCrossfade: (value: boolean) => void; matchFraming: boolean; onMatchFraming: (value: boolean) => void;

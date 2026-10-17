@@ -42,7 +42,7 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   else if (error?.status === 401 || error?.status === 403) { status = 502; message = 'The provider rejected the API key or model access. Check your .env configuration.'; }
   else if (error?.status === 429) { status = 429; message = 'The provider quota or rate limit was reached. Check your account credits and try again.'; }
   else if (error?.status === 422 || error?.status === 400) { status = 422; message = 'The provider rejected the request. Check the selected model, source video, and time range.'; }
-  else if (error?.code === 'ENOENT') { status = 404; message = 'The video file was not found. Place episode_mock.mp4 in the project folder.'; }
+  else if (error?.code === 'ENOENT') { status = 404; message = 'The sample video was not found. Place sample.mp4 in the examples folder.'; }
   // Never serialize provider errors: they can include request headers or credentials.
   res.status(status).json({ error: message });
 };

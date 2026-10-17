@@ -4,13 +4,14 @@ const DATABASE = 'sparko-projects';
 let connection: Promise<IDBDatabase> | undefined;
 function database() {
   return connection ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DATABASE, 2);
+    const request = indexedDB.open(DATABASE, 3);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains('assets')) db.createObjectStore('assets', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
       if (!db.objectStoreNames.contains('recentFiles')) db.createObjectStore('recentFiles', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('playback')) db.createObjectStore('playback', { keyPath: 'key' }).createIndex('used', 'used');
     };
     request.onerror = () => { connection = undefined; reject(request.error); };
     request.onblocked = () => { connection = undefined; reject(new Error('Close other Sparko tabs to update local storage.')); };
@@ -34,6 +35,29 @@ function committed(transaction: IDBTransaction, signal?: AbortSignal) {
   });
 }
 export async function readAsset(id: string) { return result<Asset | undefined>((await database()).transaction('assets').objectStore('assets').get(id)); }
+/** Disposable generated derivatives; originals and project backups remain independent of this cache. */
+export async function readPlayback(key: string): Promise<Blob | undefined> {
+  const transaction = (await database()).transaction('playback', 'readwrite'), store = transaction.objectStore('playback');
+  const done = committed(transaction);
+  const entry = await result<{ key: string; blob: Blob; used: number } | undefined>(store.get(key));
+  if (entry) store.put({ ...entry, used: Date.now() });
+  await done; return entry?.blob;
+}
+export async function writePlayback(key: string, blob: Blob) {
+  const transaction = (await database()).transaction('playback', 'readwrite'), store = transaction.objectStore('playback');
+  const done = committed(transaction);
+  store.put({ key, blob, used: Date.now() });
+  // Keep the most recently used 256 MB without reading all cached blobs into memory.
+  let bytes = 0;
+  const cursor = store.index('used').openCursor(null, 'prev');
+  cursor.onsuccess = () => {
+    const entry = cursor.result; if (!entry) return;
+    bytes += (entry.value.blob as Blob).size;
+    if (bytes > 256 * 1024 * 1024) entry.delete();
+    entry.continue();
+  };
+  await done;
+}
 export async function readProject(id: string) { return result<Project | undefined>((await database()).transaction('projects').objectStore('projects').get(id)); }
 export type RecentFile = { id: string; name: string; updatedAt: number; handle: FileSystemFileHandle };
 export async function listRecentFiles() {
@@ -83,6 +107,12 @@ export async function deleteSavedProject(id: string) {
 export async function readActiveProject() {
   const id = await result<string | undefined>((await database()).transaction('settings').objectStore('settings').get('activeProject'));
   return id ? readProject(id) : undefined;
+}
+export async function clearActiveProject() {
+  const transaction = (await database()).transaction('settings', 'readwrite');
+  const done = committed(transaction);
+  transaction.objectStore('settings').delete('activeProject');
+  await done;
 }
 export async function writeAsset(asset: Asset, signal?: AbortSignal) {
   const db = await database(); signal?.throwIfAborted();

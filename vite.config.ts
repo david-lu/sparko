@@ -13,6 +13,6 @@ export default defineConfig({
   build: { chunkSizeWarningLimit: 700 },
   server: {
     // The Express server serves the single video with HTTP range support.
-    fs: { deny: ['.env', '.env.*', '**/.git/**', '**/.data/**', '**/episode_mock.mp4'] },
+    fs: { deny: ['.env', '.env.*', '**/.git/**', '**/.data/**', '**/episode_mock.mp4', '**/sample.mp4'] },
   },
 });

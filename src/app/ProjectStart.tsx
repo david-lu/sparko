@@ -13,19 +13,17 @@ type Props = {
   onOpenProject: () => void;
   onOpenSample: () => void;
   onOpenExample: () => void;
-  onReturn?: () => void;
   onDismissError: () => void;
 };
 
 export default function ProjectStart({ projects, state, ready, error, hasExample, onOpenVideo, onOpenProject,
-  onOpenSample, onOpenExample, onReturn, onDismissError }: Props) {
+  onOpenSample, onOpenExample, onDismissError }: Props) {
   const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null);
   const disabled = !ready || state.busy;
   return <main className="project-start">
     <div className="project-start-content">
       <header className="project-start-header">
         <div><div className="project-start-brand">SPARKO</div><h1>Choose a project</h1><p>Pick up where you left off, explore a sample, or start with your own video.</p></div>
-        {onReturn && <button className="button" disabled={state.busy} onClick={onReturn}>Back to editor</button>}
       </header>
       {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button small" aria-label="Dismiss error" onClick={onDismissError}><X size={16} /></button></div>}
       {(!ready || state.busy) && <div className="project-start-status" role="status"><span className="spinner" /><span>{state.busy ? state.message : 'Loading projects'}{state.progress !== null ? ` · ${Math.round(state.progress * 100)}%` : ''}</span>{state.busy && <button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button>}</div>}

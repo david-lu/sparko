@@ -24,20 +24,25 @@ export async function createApp(options: { root?: string; providers?: Providers 
   app.use(express.json({ limit: '1mb' }));
   addHostingRoutes(app);
   const receive = createUploadReceiver(uploadDir);
-  const defaultPath = path.join(root, 'episode_mock.mp4');
+  const defaultPath = path.join(root, 'examples', 'sample.mp4');
+  const rootLegacyPath = path.join(root, 'episode_mock.mp4');
+  const legacyPath = await stat(rootLegacyPath).then(() => rootLegacyPath).catch(() => path.join(root, 'examples', 'episode_mock.mp4'));
   app.get('/api/status', async (_req, res) => {
     const info = await stat(defaultPath).catch(() => null);
     res.json({ uploadMode: hosted ? 'blob' : 'local', requiresPassword: hosted || !!process.env.APP_PASSWORD,
-      providers: providers.configured, models: providers.models, defaultVideo: { name: 'episode_mock.mp4', url: remoteDefault || (hosted && remoteProject ? '' : '/media/episode_mock.mp4'), size: info?.size || 0 },
+      providers: providers.configured, models: providers.models, defaultVideo: { name: 'sample.mp4', url: remoteDefault || (hosted && remoteProject ? '' : '/media/sample.mp4'), size: info?.size || 0 },
       defaultProject: remoteProject ? { url: remoteProject } : null });
   });
   // Local preview of the captured example; deployed browsers download directly from Blob.
   if (!hosted) app.get('/media/example.sparko', (_req, res, next) => {
     res.sendFile(path.join(root, 'examples', 'default.sparko'), { dotfiles: 'deny' }, error => { if (error) next(error); });
   });
-  app.get('/media/episode_mock.mp4', (_req, res, next) => {
+  app.get('/media/sample.mp4', (_req, res, next) => {
     if (remoteDefault) { res.redirect(307, remoteDefault); return; }
     res.sendFile(defaultPath, { acceptRanges: true, dotfiles: 'deny' }, error => { if (error) next(error); });
+  });
+  if (!hosted) app.get('/media/episode_mock.mp4', (_req, res, next) => {
+    res.sendFile(legacyPath, { acceptRanges: true, dotfiles: 'deny' }, error => { if (error) next(error); });
   });
   addAnalysisRoutes(app, providers, receive);
   addVoiceRoutes(app, providers);

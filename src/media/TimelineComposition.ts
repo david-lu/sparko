@@ -40,7 +40,7 @@ export class TimelineComposition {
       const result = playableResult(item)!;
       const frames = Math.max(1, Math.round(result.duration * this.fps));
       this.segments.push({ id: item.id, kind: 'interstitial', label: item.label,
-        source: { id: item.id, name: item.label, url: result.assetId ? assets.url(result.assetId) || result.url : result.url }, sourceStart: result.start, startFrame: cursor, endFrame: cursor + frames });
+        source: { id: item.id, name: item.label, assetId: result.assetId, url: result.assetId ? assets.url(result.assetId) || result.url : result.url }, sourceStart: result.start, startFrame: cursor, endFrame: cursor + frames });
       cursor += frames;
     }
     addSource(total);

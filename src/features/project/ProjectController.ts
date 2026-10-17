@@ -1,12 +1,14 @@
 import type { MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
-import { prepareVideo } from '../../media/prepareVideo';
+import { canPlaySourceVideo, prepareSourceVideo } from '../../media/prepareVideo';
+import { GeneratedPlaybackMedia } from '../../media/GeneratedPlaybackMedia';
+import { savedFramingPreference } from '../player/preferences';
 import type { InterstitialController } from '../interstitials/InterstitialController';
 import { assets } from './assets';
-import { deleteSavedProject, forgetRecentFile, listRecentFiles, listSavedProjects, readActiveProject, readAsset, readProject, rememberRecentFile, storageError, writeProject, type RecentFile } from './database';
+import { clearActiveProject, deleteSavedProject, forgetRecentFile, listRecentFiles, listSavedProjects, readActiveProject, readAsset, readProject, rememberRecentFile, storageError, writeProject, type RecentFile } from './database';
 import { activeFlows, projectFlows, withFlows, assetIds, emptyAnalysis, type AnalysisState, type Asset, type Project } from './types';
 import { TIMELINE_FPS } from '../../../shared/constants';
-import { createTimelineExample, groupCallResponse, lockCallResponseStructure, migrateDefaultAnswerLabels, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
+import { groupCallResponse, lockCallResponseStructure, migrateDefaultAnswerLabels, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
 import { createCallResponseDraft, reanchorFlow } from '../call-response/draft';
 import { isGenerating } from '../../../shared/interstitials';
 import { ProjectHistory } from './ProjectHistory';
@@ -15,14 +17,15 @@ type State = { project: Project | null; source: MediaSource | null; subtitle: { 
   busy: boolean; message: string; progress: number | null; error: string | null;
   undoLabel: string | null; redoLabel: string | null; historyRevision: number;
   savedProjects: { id: string; name: string; updatedAt: number }[]; savedProjectId: string | null;
-  recentFiles: RecentFile[]; fileName: string | null };
+  recentFiles: RecentFile[]; fileName: string | null; dirty: boolean };
 
 /** Owns project persistence and portable snapshots; media and job controllers stay independent. */
 export class ProjectController {
   private state: State = { project: null, source: null, subtitle: null, busy: false, message: '', progress: null, error: null,
     undoLabel: null, redoLabel: null, historyRevision: 0, savedProjects: [], savedProjectId: null,
-    recentFiles: [], fileName: null };
+    recentFiles: [], fileName: null, dirty: false };
   private fileHandle: FileSystemFileHandle | null = null;
+  private revision = 0;
   private draftId = (() => {
     try {
       const existing = localStorage.getItem('sparko:draft-id');
@@ -43,7 +46,8 @@ export class ProjectController {
   clearError() { this.update({ error: null }); }
   private save(project: Project, record = true) {
     if (record && this.state.project?.id === project.id) this.history.record(this.state.project, project);
-    this.update({ project, undoLabel: this.history.undoLabel, redoLabel: this.history.redoLabel });
+    this.revision++;
+    this.update({ project, dirty: this.state.dirty || record, undoLabel: this.history.undoLabel, redoLabel: this.history.redoLabel });
     this.writes = this.writes.catch(() => undefined).then(() => writeProject(project));
     void this.writes.catch(error => this.update({ error: storageError(error) }));
   }
@@ -98,6 +102,7 @@ export class ProjectController {
       return rename && item.label === rename.before ? { ...item, label: rename.after } : item;
     }) };
     ({ project, pendingAssets } = await this.prepareSource(project, pendingAssets, signal));
+    await this.prepareGenerated(project, pendingAssets, signal);
     project = { ...project, interstitials: project.interstitials.map(item => ({ ...item, groupId: projectFlows(project).find(flow => flow.scenes.some(scene => scene.interstitialId === item.id))?.interstitial.id, phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase })) };
     this.update({ message: 'Saving prepared project', progress: null });
     await this.writes;
@@ -106,13 +111,14 @@ export class ProjectController {
     const source: MediaSource = { id: project.id, name: project.source.name, url, assetId: asset.id, file: new File([asset.blob], project.source.name, { type: asset.blob.type }) };
     const subtitle = project.subtitle ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
     // Restore retained renders before publishing the timeline, including failed/cancelled retries.
-    await Promise.all([...new Set([...project.interstitials.flatMap(item => [item.previousResult?.assetId, ...(project.callResponse ? [item.result?.assetId] : [])]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
+    await Promise.all([...new Set([...project.interstitials.flatMap(item => [item.previousResult?.assetId, item.result?.assetId]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
       .filter((id): id is string => !!id))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
+    this.revision = 0;
     this.history.clear();
     this.fileHandle = null;
-    this.update({ project, source, subtitle, error: null, undoLabel: null, redoLabel: null,
+    this.update({ project, source, subtitle, error: null, dirty: false, undoLabel: null, redoLabel: null,
       savedProjectId, fileName: null, historyRevision: this.state.historyRevision + 1 });
     this.interstitials.load(project.id, project.interstitials, project.callResponse ? responseInterstitialIds(project.callResponse) : [], projectFlows(project));
     this.interstitials.setCallResponses(activeFlows(project));
@@ -121,6 +127,7 @@ export class ProjectController {
     this.save({ ...project, interstitials: this.interstitials.getSnapshot().items }, false);
   }
   private async prepareSource(project: Project, pendingAssets: Asset[], signal: AbortSignal) {
+    const previousSourceId = project.source.assetId;
     let original = pendingAssets.find(asset => asset.id === project.source.assetId);
     if (!original && project.source.assetId) {
       original = await readAsset(project.source.assetId);
@@ -134,8 +141,14 @@ export class ProjectController {
       });
       pendingAssets = [...pendingAssets, original];
     }
-    this.update({ message: 'Checking video frame rate', progress: null });
-    const blob = await prepareVideo(original.blob, signal, progress => {
+    this.update({ message: 'Checking native video playback', progress: null });
+    let restoredOriginal = false;
+    if (project.source.originalAssetId && project.source.originalAssetId !== original.id) {
+      const retained = pendingAssets.find(asset => asset.id === project.source.originalAssetId) ?? await readAsset(project.source.originalAssetId);
+      const playable = retained && await canPlaySourceVideo(retained.blob, signal).catch(() => { signal.throwIfAborted(); return false; });
+      if (retained && playable) { original = retained; restoredOriginal = true; }
+    }
+    const blob = restoredOriginal ? original.blob : await prepareSourceVideo(original.blob, signal, progress => {
       if (!signal.aborted) this.update({ message: 'Preparing 24 fps video', progress });
     });
     signal.throwIfAborted();
@@ -144,8 +157,36 @@ export class ProjectController {
       working = { id: crypto.randomUUID(), name: `${project.source.name.replace(/\.[^.]+$/, '')}.24fps.mp4`, blob };
       pendingAssets = [...pendingAssets, working];
     }
+    if (working.id !== previousSourceId) project = withFlows(project, projectFlows(project).map(flow => ({ ...flow, scenes: flow.scenes.map(scene => scene.clip.assetId === previousSourceId
+      ? { ...scene, clip: { ...scene.clip, assetId: working.id } } : scene) })));
     return { project: { ...project, source: { ...project.source, assetId: working.id,
-      originalAssetId: project.source.originalAssetId ?? (working !== original ? original.id : undefined) }, updatedAt: Date.now() }, pendingAssets };
+      originalAssetId: restoredOriginal ? undefined : project.source.originalAssetId ?? (working !== original ? original.id : undefined) }, updatedAt: Date.now() }, pendingAssets };
+  }
+  private async prepareGenerated(project: Project, pendingAssets: Asset[], signal: AbortSignal) {
+    const generated = [...new Set([...project.interstitials.flatMap(item => [item.result?.assetId, item.previousResult?.assetId]),
+      ...projectFlows(project).flatMap(flow => flow.scenes.filter(scene => !scene.draft).map(scene => scene.clip.assetId))])]
+      .filter((id): id is string => !!id && id !== project.source.assetId && id !== project.source.originalAssetId);
+    if (!generated.length) return;
+    const get = async (id: string) => pendingAssets.find(asset => asset.id === id) ?? await readAsset(id);
+    const source = await get(project.source.assetId!);
+    if (!source) throw new Error('The source video is missing.');
+    const info = await this.validateVideo(source.blob, signal);
+    const media = new GeneratedPlaybackMedia(info, savedFramingPreference());
+    const abort = () => media.dispose(); signal.addEventListener('abort', abort, { once: true });
+    try {
+      for (const [index, id] of generated.entries()) {
+        signal.throwIfAborted();
+        const asset = await get(id); if (!asset) throw new Error('An interstitial video is missing.');
+        const url = URL.createObjectURL(asset.blob);
+        this.update({ message: `Checking interstitial ${index + 1} of ${generated.length}`, progress: index / generated.length });
+        try {
+          await media.resolve({ id, assetId: id, name: asset.name, url, file: new File([asset.blob], asset.name, { type: asset.blob.type }) }, progress => {
+            if (!signal.aborted) this.update({ message: `Matching interstitial ${index + 1} of ${generated.length} to source`, progress: (index + progress) / generated.length });
+          });
+        } finally { URL.revokeObjectURL(url); }
+      }
+      signal.throwIfAborted();
+    } finally { signal.removeEventListener('abort', abort); media.dispose(); }
   }
   private create(source: MediaSource): Project {
     return { id: source.id, name: source.name.replace(/\.[^.]+$/, ''), source: { name: source.name, url: source.url },
@@ -187,7 +228,7 @@ export class ProjectController {
       await this.restoreArchive(file, signal);
       this.fileHandle = handle;
       await rememberRecentFile(handle);
-      this.update({ fileName: handle.name, recentFiles: await listRecentFiles() });
+      this.update({ fileName: handle.name, dirty: false, recentFiles: await listRecentFiles() });
       return true;
     });
   }
@@ -195,6 +236,7 @@ export class ProjectController {
     return this.task('Saving project file', async signal => {
       // Open the writer while the Save click still has user activation.
       const writer = await handle.createWritable();
+      const revision = this.revision;
       try {
         const archive = await this.buildArchive(signal, handle.name.replace(/\.sparko$/i, ''));
         signal.throwIfAborted();
@@ -203,7 +245,7 @@ export class ProjectController {
       } catch (error) { await writer.abort().catch(() => undefined); throw error; }
       this.fileHandle = handle;
       await rememberRecentFile(handle);
-      this.update({ fileName: handle.name, savedProjectId: null, recentFiles: await listRecentFiles() });
+      this.update({ fileName: handle.name, dirty: this.revision !== revision, savedProjectId: null, recentFiles: await listRecentFiles() });
       return true;
     });
   }
@@ -225,17 +267,6 @@ export class ProjectController {
   }
   async openExample(url: string) {
     await this.task('Downloading example project', signal => this.loadExample(url, signal));
-  }
-  async openTestCallResponse(duration: number) {
-    await this.task('Opening call-response timeline', async signal => {
-      const current = this.state.project;
-      if (!current?.source.assetId) throw new Error('Open a video first.');
-      const example = createTimelineExample(current.source.assetId, duration);
-      const project: Project = { ...current, id: `project:${crypto.randomUUID()}`, name: 'Test call response',
-        updatedAt: Date.now(), interstitials: example.interstitials, callResponse: example.flow, callResponses: [example.flow], subtitle: null };
-      await this.activate(project, signal);
-      this.interstitials.select(example.flow.interstitial.id);
-    });
   }
   updateCallResponse(callResponse: CallResponseFlow) {
     if (this.operation) return;
@@ -378,6 +409,25 @@ export class ProjectController {
     finally { this.operation = null; this.update({ busy: false, message: '', progress: null }); }
   }
   cancel() { this.operation?.abort(); }
+  async closeProject(discardChanges = false) {
+    if (this.state.dirty && !discardChanges) return false;
+    return this.task('Closing project', async signal => {
+      await this.writes;
+      signal.throwIfAborted();
+      await clearActiveProject();
+      this.switching = true;
+      try {
+        this.fileHandle = null;
+        this.revision = 0;
+        this.history.clear();
+        this.update({ project: null, source: null, subtitle: null, savedProjectId: null, fileName: null,
+          dirty: false, undoLabel: null, redoLabel: null, historyRevision: this.state.historyRevision + 1 });
+        this.interstitials.load('', []);
+        assets.releaseExcept(new Set());
+      } finally { this.switching = false; }
+      return true;
+    });
+  }
   async openVideo(file: File) {
     await this.task('Saving video locally', async signal => {
       if (!file.type.startsWith('video/') && !/\.(mp4|webm|mov|mkv|m4v)$/i.test(file.name)) throw new Error('Choose a video file.');
@@ -387,8 +437,8 @@ export class ProjectController {
       await this.activate(project, signal, [asset]);
     });
   }
-  updateAnalysis(analysis: AnalysisState) {
-    if (this.state.project) this.save({ ...this.state.project, analysis, updatedAt: Date.now() });
+  updateAnalysis(analysis: AnalysisState, record = true) {
+    if (this.state.project) this.save({ ...this.state.project, analysis, updatedAt: Date.now() }, record);
   }
   async setSubtitle(file: File) {
     const projectId = this.state.project?.id; if (!projectId) return;
