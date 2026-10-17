@@ -3,6 +3,8 @@
 .interstitial-draft{flex-shrink:0;margin-right:6px;padding:3px 6px;border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent);font-size:10px;line-height:14px;font-weight:500}
 .interstitial-help-popover{position:fixed;z-index:100;width:260px;max-width:calc(100vw - 24px);padding:14px;border:1px solid var(--line-strong);border-radius:var(--radius-lg);background:var(--surface);box-shadow:0 8px 24px #0006;font-size:11px;line-height:1.7}
 .interstitial-help-popover p{margin-top:5px;color:var(--text-secondary)}
+.interstitial-panel .panel-intro{display:flex;align-items:center;justify-content:space-between}
+.interstitial-create-actions{display:grid;gap:8px;margin-bottom:12px}
 .interstitial-list{list-style:none;margin:12px 0 0;padding:0}.interstitial-list li{display:flex;align-items:center;border-bottom:1px solid var(--line)}
 .interstitial-list>.interstitial-group{display:block;padding:0 0 12px}.interstitial-group-heading{width:100%}
 .interstitial-group-title{display:flex;align-items:center;gap:8px}

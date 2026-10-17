@@ -8,16 +8,17 @@ type Props = {
   state: State;
   ready: boolean;
   error: string | null;
-  hasExample: boolean;
+  hasSampleProject: boolean;
+  sampleAvailable: boolean;
   onOpenVideo: () => void;
   onOpenProject: () => void;
   onOpenSample: () => void;
-  onOpenExample: () => void;
+  onOpenSampleProject: () => void;
   onDismissError: () => void;
 };
 
-export default function ProjectStart({ projects, state, ready, error, hasExample, onOpenVideo, onOpenProject,
-  onOpenSample, onOpenExample, onDismissError }: Props) {
+export default function ProjectStart({ projects, state, ready, error, hasSampleProject, sampleAvailable, onOpenVideo, onOpenProject,
+  onOpenSample, onOpenSampleProject, onDismissError }: Props) {
   const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null);
   const disabled = !ready || state.busy;
   return <main className="project-start">
@@ -48,8 +49,8 @@ export default function ProjectStart({ projects, state, ready, error, hasExample
         </section>
         <section className="project-start-section" aria-labelledby="sample-projects-heading">
           <div className="project-start-section-heading"><h2 id="sample-projects-heading">Sample projects</h2></div>
-          <div className="project-start-samples"><button className="project-start-sample" disabled={disabled} onClick={onOpenSample}><span className="project-start-sample-icon"><Film size={20} /></span><span><strong>Sample video</strong><small>A clean project to explore the editor</small></span><Play size={14} /></button>
-            {hasExample && <button className="project-start-sample" disabled={disabled} onClick={onOpenExample}><span className="project-start-sample-icon"><Film size={20} /></span><span><strong>Example project</strong><small>A project with a ready made timeline</small></span><Play size={14} /></button>}</div>
+          <div className="project-start-samples"><button className="project-start-sample" disabled={disabled || !sampleAvailable} onClick={onOpenSample}><span className="project-start-sample-icon"><Film size={20} /></span><span><strong>Sample video</strong><small>{sampleAvailable ? 'A clean project to explore the editor' : 'Sample video unavailable on this server'}</small></span><Play size={14} /></button>
+            {hasSampleProject && <button className="project-start-sample" disabled={disabled} onClick={onOpenSampleProject}><span className="project-start-sample-icon"><Film size={20} /></span><span><strong>Sample project</strong><small>episode_mock.mp4 with two saved interstitials</small></span><Play size={14} /></button>}</div>
         </section>
       </div>
     </div>

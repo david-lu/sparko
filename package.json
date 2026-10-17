@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "vercel:upload-default": "node scripts/upload-default.mjs",
-    "vercel:upload-example": "tsx scripts/upload-example.ts",
+    "vercel:upload-sample": "tsx scripts/upload-sample.ts",
     "deploy:preview": "npx vercel",
     "deploy:production": "npx vercel --prod"
   },

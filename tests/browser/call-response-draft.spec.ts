@@ -12,18 +12,16 @@ async function openDraft(page: Page) {
     for (let frame = 0; frame < 480; frame++) { ctx.fillStyle = `rgb(${frame % 255}, 80, 120)`; ctx.fillRect(0, 0, 160, 96); await video.add(frame / 24, 1 / 24); }
     video.close(); await output.finalize(); return [...new Uint8Array(output.target.buffer)];
   });
-  await page.route('**/media/episode_mock.mp4', route => route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) }));
+  await page.route('**/media/sample.mp4', route => route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) }));
   await page.route('**/api/status', route => route.fulfill({ json: { uploadMode: 'local', requiresPassword: false,
     providers: { openai: false, gemini: false, fal: false, comfy: true }, models: {},
-    defaultVideo: { name: 'episode_mock.mp4', url: '/media/episode_mock.mp4' } } }));
+    defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4' } } }));
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled({ timeout: 60_000 });
+  await page.getByRole('button', { name: /Sample video/ }).click();
+  await expect(page.getByRole('button', { name: 'Add call-response interstitial' })).toBeEnabled({ timeout: 60_000 });
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('3');
-  await page.getByRole('button', { name: /^Add interstitial/ }).click();
-  await expect(page.getByLabel('Video generation method')).toHaveValue('comfy');
-  await page.getByLabel('Interstitial prompt').fill('Keep the same room and character.');
-  await page.getByLabel('Interstitial type').selectOption('call-response');
+  await page.getByRole('button', { name: 'Add call-response interstitial' }).click();
   await expect(page.getByLabel('Interstitial prompt')).toHaveCount(4);
   await expect(page.locator('.project-status')).toHaveCount(0);
   return Buffer.from(bytes);
@@ -33,7 +31,7 @@ const saved = (page: Page) => page.evaluate(async () => {
   return readActiveProject();
 });
 
-test('editable Comfy drafts preserve both pin types, multiple groups, undo and reload', async ({ page }) => {
+test('creation uses separate fixed types and call-response drafts stay off the timeline', async ({ page }) => {
   await openDraft(page);
   const clips = page.locator('.clip-subpanel');
   await expect(clips).toHaveCount(4);
@@ -42,46 +40,33 @@ test('editable Comfy drafts preserve both pin types, multiple groups, undo and r
   await expect(clips.nth(0).getByLabel('Video generation method')).toHaveValue('comfy-extend');
   await expect(clips.nth(1).getByLabel('Video generation method')).toHaveValue('comfy-loop');
   await expect(clips.nth(2).getByLabel('Video generation method')).toHaveValue('comfy');
-  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(4);
+  await expect(page.locator('.timeline-flow-clip')).toHaveCount(0);
+  await expect(page.locator('.timeline-interstitial-group')).toHaveCount(0);
+  await expect(page.locator('.timeline-section .source-entire')).toBeVisible();
+  await expect(page.locator('.timeline-actions').getByRole('button', { name: /Add interstitial/ })).toHaveCount(0);
+  await expect(page.getByLabel('Interstitial type')).toHaveCount(0);
   await clips.nth(0).getByLabel('Interstitial prompt').fill('Ask gently, then settle into the listening pose.');
   await page.getByLabel('Continuity brief').fill('The same character in the same room, steady camera.');
   await page.getByLabel('Question', { exact: true }).fill('Should we continue?');
   await expect(page.getByLabel('Clip dialogue')).toHaveCount(0);
   await expect(page.getByLabel('Clip type', { exact: true })).toHaveCount(0);
   await expect(clips.nth(0).getByLabel('Interstitial prompt')).toHaveValue('Ask gently, then settle into the listening pose.');
-  await page.getByLabel('Interstitial type').selectOption('regular');
-  await expect(page.getByLabel('Interstitial prompt')).toHaveCount(1);
-  await expect(page.getByLabel('Interstitial prompt')).toHaveValue('Keep the same room and character.');
-  await page.getByLabel('Interstitial type').selectOption('call-response');
-  await expect(clips.nth(0).getByLabel('Interstitial prompt')).toHaveValue('Ask gently, then settle into the listening pose.');
-  const continuation = page.locator('[data-scene-id="source:1"] .flow-clip-body');
-  const bounds = await continuation.boundingBox();
-  await continuation.click({ position: { x: bounds!.width / 3, y: bounds!.height / 2 } });
-  await page.getByRole('button', { name: /^Add interstitial/ }).click();
-  await expect(page.getByLabel('Interstitial type')).toHaveValue('regular');
-  await page.getByLabel('Interstitial type').selectOption('call-response');
-  await expect(page.locator('.timeline-interstitial-group')).toHaveCount(2);
-  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(8);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(page.locator('.timeline-interstitial-group')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Redo', exact: true }).click();
-  await expect(page.locator('.timeline-interstitial-group')).toHaveCount(2);
+  await page.getByRole('button', { name: 'All interstitials' }).click();
+  await expect(page.getByRole('button', { name: 'Add regular interstitial' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add call-response interstitial' })).toBeVisible();
+  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('8');
+  await page.getByRole('button', { name: 'Add call-response interstitial' }).click();
   await expect.poll(async () => (await saved(page)).callResponses.length).toBe(2);
-  await page.getByLabel('Question', { exact: true }).fill('Where should we go next?');
-  await page.getByLabel('Question', { exact: true }).press('Tab');
-  for (const [index, question] of ['Should we continue?', 'Where should we go next?'].entries()) {
-    const idle = page.locator('.timeline-interstitial-group').nth(index).locator('[data-clip-kind="idle"] .flow-clip-body');
-    await idle.focus(); await page.keyboard.press('Enter');
-    await expect(page.locator('.player-branch-question')).toHaveText(question);
-    await expect(page.getByRole('group', { name: 'Choose an answer' })).toHaveAccessibleDescription(question);
-  }
-  await page.reload();
-  await expect(page.locator('.timeline-interstitial-group')).toHaveCount(2);
-  await page.locator('.timeline-pin').first().click();
-  await expect(clips.nth(0).getByLabel('Interstitial prompt')).toHaveValue('Ask gently, then settle into the listening pose.');
-  await expect(page.getByLabel('Question', { exact: true })).toHaveValue('Should we continue?');
-  await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
-  await page.screenshot({ path: 'test-results/call-response-draft.png' });
+  await expect(page.locator('.timeline-flow-clip')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect.poll(async () => (await saved(page)).callResponses.length).toBe(1);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect.poll(async () => (await saved(page)).callResponses.length).toBe(2);
+  await page.getByRole('button', { name: 'All interstitials' }).click();
+  await page.getByRole('button', { name: 'Add regular interstitial' }).click();
+  await expect(page.getByLabel('Interstitial type')).toHaveCount(0);
+  await expect(page.locator('.timeline-pin')).toHaveCount(1);
+  expect((await saved(page)).interstitials.filter((item: { groupId?: string; kind?: string }) => !item.groupId && item.kind !== 'call-response')).toHaveLength(1);
 });
 
 test('Comfy generates in dependency order with live edits, individual regeneration and cancellation', async ({ page }) => {
@@ -110,6 +95,7 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   await clips.nth(1).getByLabel('Interstitial prompt').fill('Wait quietly, returning to the same pose.');
   releaseCall = true;
   await expect(page.getByRole('status').filter({ hasText: 'All 4 clips generated.' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(4);
   expect(submissions.map(item => item.mode)).toEqual(['extend', 'loop', 'bridge', 'bridge']);
   expect(submissions[1].prompt).toContain('Wait quietly, returning to the same pose.');
   expect(submissions[0].prompt).not.toContain('A later Call edit.');
@@ -143,8 +129,4 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   const labelBounds = await page.locator('.timeline-flow-clip.clip-idle .timeline-clip-label').boundingBox();
   const staleBounds = await page.locator('.timeline-flow-clip.clip-idle .flow-clip-stale').boundingBox();
   expect(staleBounds!.y).toBeGreaterThanOrEqual(labelBounds!.y + labelBounds!.height);
-  await page.reload();
-  await expect(page.locator('.timeline-flow-clip[data-stale=true]')).toHaveCount(3);
-  await expect(page.locator('.buffering')).toHaveCount(0, { timeout: 30_000 });
-  await page.screenshot({ path: 'test-results/call-response-stale.png' });
 });

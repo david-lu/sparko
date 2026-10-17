@@ -79,7 +79,7 @@ test('waits for speech, rejects a tone, captures an utterance and sends it only 
     await expect(page.getByLabel('Voice result')).toContainText('The character opened the door.');
   }
   expect(uploads).toHaveLength(2);
-  expect(uploads[0].context).toEqual({ sourceId: 'default:episode_mock.mp4', videoTime: 12.5 });
+  expect(uploads[0].context).toEqual({ sourceId: 'default:sample.mp4', videoTime: 12.5 });
   expect(uploads[0].mime).toBe('audio/wav');
   expect(uploads[0].bytes).toBeGreaterThan(32000);
   expect(uploads[0].bytes).toBeLessThan(2 * 1024 * 1024);

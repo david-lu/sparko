@@ -22,7 +22,7 @@ async function generatedFixture(page: Page) {
   });
   return buffer;
 }
-const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:episode_mock.mp4') || '[]'));
+const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:sample.mp4') || '[]'));
 async function openTimeSlider(page: Page, label: string) {
   const name = label === 'Start range' ? 'start_range' : label === 'End range' ? 'end_range' : 'Duration';
   await page.getByRole('spinbutton', { name, exact: true }).click();
@@ -30,7 +30,7 @@ async function openTimeSlider(page: Page, label: string) {
 }
 async function addDraft(page: Page, time = 5) {
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill(String(time));
-  await page.getByRole('button', { name: 'Add interstitial P' }).click();
+  await page.getByRole('button', { name: 'Add regular interstitial' }).click();
   // This suite exercises the retained Fal integration explicitly; new drafts default to Comfy.
   await page.getByLabel('Video generation method').selectOption('fal');
   await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).fill(`Interstitial ${await page.locator('.timeline-pin').count()}`);
@@ -42,7 +42,7 @@ async function addDraft(page: Page, time = 5) {
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); const status = await response.json(); await route.fulfill({ json: { ...status, providers: { ...status.providers, fal: true } } }); });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Add interstitial P' })).toBeEnabled({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Add regular interstitial' })).toBeEnabled({ timeout: 60_000 });
 });
 
 test('time sliders and number inputs stay synchronized and survive reopening a draft', async ({ page }) => {

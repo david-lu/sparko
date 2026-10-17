@@ -9,7 +9,7 @@ test('fullscreen timeline can be hidden, restored and remembered without losing 
   const timeline = page.locator('.timeline-section');
   const stage = page.locator('.video-stage');
   await page.getByRole('slider', { name: 'Video timeline' }).fill('12.5');
-  await page.getByRole('button', { name: 'Add interstitial P' }).click();
+  await page.getByRole('button', { name: 'Add regular interstitial' }).click();
   await page.getByRole('slider', { name: 'Timeline zoom', exact: true }).fill('2');
   await stage.hover();
   await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();

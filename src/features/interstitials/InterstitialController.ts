@@ -107,7 +107,7 @@ export class InterstitialController {
   add(time: number, duration: number) {
     const fps = TIMELINE_FPS;
     const anchor = Math.max(0, Math.min(frameTime(duration, fps), frameTime(time, fps)));
-    const existing = this.state.items.find(item => Math.abs(item.time - anchor) < 0.5 / fps);
+    const existing = this.state.items.find(item => !item.groupId && item.kind !== 'call-response' && Math.abs(item.time - anchor) < 0.5 / fps);
     if (existing) { this.select(existing.id); return existing; }
     const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
@@ -123,7 +123,6 @@ export class InterstitialController {
     const label = name.trim().slice(0, 1000) || 'Untitled';
     if (this.state.items.some(item => item.id === id && item.label !== label)) this.patch(id, { label });
   }
-  setType(id: string, kind: 'regular' | 'call-response') { this.patch(id, { kind }); }
   ensureItem(item: Interstitial) { if (!this.state.items.some(current => current.id === item.id)) this.update({ items: [...this.state.items, item] }, true); }
   edit(id: string, values: Partial<InterstitialSettings>) {
     const item = this.state.items.find(item => item.id === id);

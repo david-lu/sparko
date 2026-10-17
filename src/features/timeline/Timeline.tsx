@@ -1,6 +1,6 @@
 import './styles.css';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Minus, Plus, SkipBack, SkipForward, Sparkles } from 'lucide-react';
+import { Minus, Plus, SkipBack, SkipForward } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, Thumbnail } from '../../media/media';
 import { isGenerating, playableResult, type Interstitial } from '../../../shared/interstitials';
@@ -13,14 +13,13 @@ import CrossfadeMarks from './CrossfadeMarks';
 import { phaseLabel } from '../interstitials/status';
 import FlowTracks, { type FlowTimeline } from './FlowTracks';
 import { flowLayout } from '../call-response/model';
-import InterstitialHelp from '../interstitials/InterstitialHelp';
 import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
 
 const MAX_ZOOM = 32;
-export default function Timeline({ name, info, thumbnails, thumbnailsFailed = false, interstitials, selectedId, composition, time, duration, buffered, selection, height, maxHeight, onHeight, onAddInterstitial, onMoveInterstitial, onRemoveInterstitial, onSelectInterstitial, onSeek, callResponse }: {
+export default function Timeline({ name, info, thumbnails, thumbnailsFailed = false, interstitials, selectedId, composition, time, duration, buffered, selection, height, maxHeight, onHeight, onMoveInterstitial, onRemoveInterstitial, onSelectInterstitial, onSeek, callResponse }: {
   name: string; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[]; selectedId: string | null; composition: TimelineComposition | null; time: number; duration: number;
   buffered: { start: number; end: number }[]; selection: Slice | null; height: number; maxHeight: number;
-  onHeight: (height: number) => void; onAddInterstitial: () => void; onMoveInterstitial: (id: string, time: number) => void;
+  onHeight: (height: number) => void; onMoveInterstitial: (id: string, time: number) => void;
   onRemoveInterstitial: (id: string) => void; onSelectInterstitial: (id: string | null, time?: number) => void; onSeek: (time: number) => void;
   callResponse?: FlowTimeline;
   thumbnailsFailed?: boolean;
@@ -92,10 +91,6 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
         </div>
         <button className="icon-button small" aria-label="Previous interstitial" disabled={!markers.some(item => item.time < time - 0.05)} onClick={() => onSelectInterstitial([...markers].reverse().find(item => item.time < time - 0.05)?.id ?? null)}><SkipBack size={14} /></button>
         <button className="icon-button small" aria-label="Next interstitial" disabled={!markers.some(item => item.time > time + 0.05)} onClick={() => onSelectInterstitial(markers.find(item => item.time > time + 0.05)?.id ?? null)}><SkipForward size={14} /></button>
-        <div className="interstitial-add-actions">
-          <button className="button small" disabled={!info} onClick={onAddInterstitial}><Sparkles size={13} /> Add interstitial <kbd>P</kbd></button>
-          <InterstitialHelp />
-        </div>
       </div>
     </div>
     <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label="Scrollable timeline" data-zoom={zoom} onScroll={() => setHover(null)}>

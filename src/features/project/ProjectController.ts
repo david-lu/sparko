@@ -9,8 +9,8 @@ import { clearActiveProject, deleteSavedProject, forgetRecentFile, listRecentFil
 import { activeFlows, projectFlows, withFlows, assetIds, emptyAnalysis, type AnalysisState, type Asset, type Project } from './types';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { groupCallResponse, lockCallResponseStructure, migrateDefaultAnswerLabels, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
-import { createCallResponseDraft, reanchorFlow } from '../call-response/draft';
-import { isGenerating } from '../../../shared/interstitials';
+import { createCallResponseDraft } from '../call-response/draft';
+import { frameTime, type Interstitial } from '../../../shared/interstitials';
 import { ProjectHistory } from './ProjectHistory';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
@@ -59,30 +59,19 @@ export class ProjectController {
     });
     await this.task('Loading projects', async signal => {
       const active = await readActiveProject();
-      const previous = await readProject(defaultSource.id);
-      if (previous && previous.saved === undefined) {
-        if (previous.interstitials.length || projectFlows(previous).length || previous.subtitle || previous.analysis.result || previous.analysis.instructions)
-          await writeProject({ ...previous, id: `project:${crypto.randomUUID()}`, saved: true, updatedAt: Date.now() });
-        await writeProject({ ...previous, saved: false });
+      for (const id of [defaultSource.id, 'default:episode_mock.mp4']) {
+        const previous = await readProject(id);
+        if (previous && previous.saved === undefined) {
+          if (previous.interstitials.length || projectFlows(previous).length || previous.subtitle || previous.analysis.result || previous.analysis.instructions)
+            await writeProject({ ...previous, id: `project:${crypto.randomUUID()}`, saved: true, updatedAt: Date.now() });
+          await writeProject({ ...previous, saved: false });
+        }
       }
-      if (active && active.id !== defaultSource.id && active.saved === undefined && !active.id.startsWith('draft:'))
+      if (active && active.id !== defaultSource.id && active.id !== 'default:episode_mock.mp4' && active.saved === undefined && !active.id.startsWith('draft:'))
         await writeProject({ ...active, saved: true });
       signal.throwIfAborted();
       this.update({ savedProjects: await listSavedProjects(), recentFiles: await listRecentFiles() });
     });
-  }
-  private async loadSampleFromExample(url: string, id: string, sourceName: string, signal: AbortSignal) {
-    this.update({ message: 'Downloading sample video', progress: null });
-    const archive = await assets.fetch(url, 'example.sparko', signal, (received, total) => {
-      if (!signal.aborted) this.update({ progress: total ? received / total : null });
-    });
-    const { unpackProject } = await import('./archive');
-    const imported = await unpackProject(archive.blob, signal, (message, progress) => this.update({ message, progress }));
-    const project = { ...imported.project, name: 'Sample video', source: { ...imported.project.source, name: sourceName },
-      interstitials: [], callResponse: undefined, callResponses: undefined,
-      subtitle: null, analysis: emptyAnalysis() };
-    const needed = new Set(assetIds(project));
-    await this.activate(project, signal, imported.assets.filter(asset => needed.has(asset.id)), null, id);
   }
   private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = [], savedProjectId: string | null = null, workingId = this.draftId) {
     signal.throwIfAborted();
@@ -192,13 +181,10 @@ export class ProjectController {
     return { id: source.id, name: source.name.replace(/\.[^.]+$/, ''), source: { name: source.name, url: source.url },
       updatedAt: Date.now(), interstitials: [], subtitle: null, analysis: emptyAnalysis() };
   }
-  async openDefault(source: MediaSource, exampleUrl?: string) {
+  async openDefault(source: MediaSource) {
     await this.task('Opening sample video', async signal => {
-      const previous = await readProject(source.id);
-      const media = previous?.source.name === source.name && previous.source.assetId && await readAsset(previous.source.assetId)
-        ? { ...previous.source, url: source.url } : { name: source.name, url: source.url };
-      if (!media.assetId && !media.url && exampleUrl) await this.loadSampleFromExample(exampleUrl, source.id, source.name, signal);
-      else await this.activate({ ...this.create(source), source: media }, signal, [], null, source.id);
+      if (!source.url) throw new Error('The sample video is unavailable on this server.');
+      await this.activate(this.create(source), signal, [], null, source.id);
     });
   }
   async openSavedProject(id: string) {
@@ -265,8 +251,8 @@ export class ProjectController {
       return true;
     });
   }
-  async openExample(url: string) {
-    await this.task('Downloading example project', signal => this.loadExample(url, signal));
+  async openSampleProject(url: string) {
+    await this.task('Downloading sample project', signal => this.loadSampleProject(url, signal));
   }
   updateCallResponse(callResponse: CallResponseFlow) {
     if (this.operation) return;
@@ -290,37 +276,27 @@ export class ProjectController {
       this.interstitials.setCallResponses(activeFlows(project)); this.save(project);
     }
   }
-  async setInterstitialType(id: string, kind: 'regular' | 'call-response', duration: number) {
-    return this.task('Changing interstitial type', async signal => {
-      let project = this.state.project;
+  async addCallResponse(time: number, duration: number) {
+    return this.task('Creating call-response interstitial', async () => {
+      const project = this.state.project;
       if (!project?.source.assetId) return;
-      let pin = project.interstitials.find(item => item.id === id);
-      const existing = projectFlows(project).find(flow => flow.interstitial.id === id);
-      // Older example projects stored the parent only in the flow.
-      if (!pin && existing) pin = { id, label: existing.interstitial.label, time: existing.interstitial.time,
-        kind: 'call-response', method: 'comfy', phase: 'draft', prompt: '', start_range: 2, end_range: 2, duration: 6, enable_prompt_expansion: false };
-      if (!pin || pin.groupId) return;
-      const owned = [pin.id, ...existing?.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []) ?? []];
-      if (!await this.interstitials.cancelSequence()) throw new Error('Cancel the active generation before changing interstitial type.');
-      for (const item of project.interstitials.filter(item => owned.includes(item.id) && (isGenerating(item) || item.phase === 'error' && item.requestId))) {
-        if (!await this.interstitials.cancel(item.id)) throw new Error('Could not cancel the active clip. Try again.');
-        signal.throwIfAborted();
-      }
-      let flows = projectFlows(project);
-      if (kind === 'call-response' && !existing) flows = [...flows, createCallResponseDraft(pin, project.source.assetId, duration).flow];
-      else if (kind === 'call-response' && existing) flows = flows.map(flow => flow === existing ? reanchorFlow(flow, pin!, duration) : flow);
+      const totalFrames = Math.floor(duration * TIMELINE_FPS);
+      if (totalFrames < 78) throw new Error('A call-response interstitial needs at least 3.25 seconds of source video.');
+      const anchor = Math.max(39, Math.min(totalFrames - 39, Math.round(frameTime(time, TIMELINE_FPS) * TIMELINE_FPS))) / TIMELINE_FPS;
+      const pin: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor, kind: 'call-response',
+        method: 'comfy', phase: 'draft', prompt: '', start_range: 2, end_range: 2, duration: 6, enable_prompt_expansion: false };
+      const flow = createCallResponseDraft(pin, project.source.assetId, duration).flow;
       this.switching = true;
       try {
-        if (!this.interstitials.getSnapshot().items.some(item => item.id === id)) {
-          this.interstitials.ensureItem(pin);
-        }
-        this.interstitials.setType(id, kind);
-        const flow = flows.find(flow => flow.interstitial.id === id);
-        if (kind === 'call-response' && flow) this.interstitials.setCallResponse(flow);
-        project = withFlows({ ...project, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() }, flows);
-        this.interstitials.setCallResponses(activeFlows(project));
+        this.interstitials.ensureItem(pin);
+        this.interstitials.setCallResponse(flow);
+        const next = withFlows({ ...project, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() },
+          [...projectFlows(project), flow].sort((left, right) => left.interstitial.time - right.interstitial.time));
+        this.interstitials.setCallResponses(activeFlows(next));
+        this.save(next);
+        this.interstitials.select(pin.id);
+        return pin;
       } finally { this.switching = false; }
-      this.save(project); this.interstitials.select(id);
     });
   }
   endHistoryGroup() { this.history.endGroup(); }
@@ -393,9 +369,9 @@ export class ProjectController {
       return removed;
     });
   }
-  private async loadExample(url: string, signal: AbortSignal) {
-    this.update({ message: 'Downloading example project', progress: null });
-    const archive = await assets.fetch(url, 'example.sparko', signal, (received, total) => {
+  private async loadSampleProject(url: string, signal: AbortSignal) {
+    this.update({ message: 'Downloading sample project', progress: null });
+    const archive = await assets.fetch(url, 'sample.sparko', signal, (received, total) => {
       if (!signal.aborted) this.update({ progress: total ? received / total : null });
     });
     await this.restoreArchive(archive.blob, signal);

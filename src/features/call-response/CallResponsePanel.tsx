@@ -10,8 +10,8 @@ import SequenceControls from './SequenceControls';
 import { sequenceActive } from './sequence';
 import AnswerEditor from './AnswerEditor';
 
-export default function CallResponsePanel({ value, items, onBack, renderControls, ...editor }: Omit<InterstitialEditorProps, 'selected'> & {
-  value: FlowTimeline; items: Interstitial[]; onBack: () => void; renderControls: (id: SceneId) => ReactNode;
+export default function CallResponsePanel({ value, items, onBack, renderControls, createActions, ...editor }: Omit<InterstitialEditorProps, 'selected'> & {
+  value: FlowTimeline; items: Interstitial[]; onBack: () => void; renderControls: (id: SceneId) => ReactNode; createActions?: ReactNode;
 }) {
   const members = interstitialScenes(value.flow);
   const panels = useRef<HTMLDivElement>(null);
@@ -22,11 +22,11 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
   }, [value.selectedSceneId]);
   return <div className="panel-content interstitial-panel call-response-panel" aria-label="Call Response Interstitial panel">
     <button className="text-button interstitial-back" onClick={onBack}><ArrowLeft size={13} /> All interstitials</button>
+    {createActions}
     <div className="interstitial-title"><InterstitialName key={value.flow.interstitial.id} name={value.flow.interstitial.label} onChange={value.onRenameInterstitial} />
       <button className="icon-button small" aria-label={`Remove ${value.flow.interstitial.label}`} onClick={() => value.onRemoveInterstitial()}><Trash2 size={14} /></button>
     </div>
     <div data-project-edit>
-      <label className="field">Interstitial type<select aria-label="Interstitial type" value="call-response" onChange={event => value.onTypeChange?.(event.target.value as 'regular' | 'call-response')}><option value="regular">Regular</option><option value="call-response">Call-response</option></select></label>
       <label className="field">Continuity brief<textarea aria-label="Continuity brief" rows={3} maxLength={1500} value={value.flow.interstitial.brief ?? ''} placeholder="Character, setting, camera, voice and shared direction" onChange={event => value.onChange?.({ ...value.flow, interstitial: { ...value.flow.interstitial, brief: event.target.value } })} /></label>
     </div>
     <fieldset className="response-buttons-editor" aria-label="Question and responses" data-project-edit>
@@ -40,7 +40,7 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
         <option value="">Keep waiting</option>{value.flow.interaction.answers.map(answer => <option key={answer.id} value={answer.id}>{answer.label}</option>)}
       </select></label>
     </fieldset>
-    <p className="hint">Call → Idle → Responses → Parent video</p>
+    <p className="hint">Call → Idle → Responses → Parent video. The sequence appears on the timeline when all clips are ready.</p>
     <label className="interstitial-option" data-project-edit><input type="checkbox" checked={value.flow.interstitial.linkResponseDurations !== false} onChange={event => value.onChange?.({ ...value.flow, interstitial: { ...value.flow.interstitial, linkResponseDurations: event.target.checked } })} /> Link response durations</label>
     <SequenceControls {...editor} flow={value.flow} items={items} />
     <div className="call-response-subpanels" ref={panels}>

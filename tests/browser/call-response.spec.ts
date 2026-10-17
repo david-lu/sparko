@@ -13,12 +13,12 @@ async function openExample(page: Page, prepare?: () => Promise<void>, generation
   await page.route('**/api/status', route => route.fulfill({ json: {
     uploadMode: 'local', requiresPassword: false, providers: { openai: false, gemini: false, fal: generation, comfy: false },
     models: { openai: 'mock', gemini: 'mock', fal: 'mock' },
-    defaultVideo: { name: 'episode_mock.mp4', size: 0, url: '/media/episode_mock.mp4' },
+    defaultVideo: { name: 'sample.mp4', size: 0, url: '/media/sample.mp4' },
   } }));
-  await page.route('**/media/episode_mock.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
+  await page.route('**/media/sample.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
   await page.goto('/');
   await page.getByRole('button', { name: /Sample video/ }).click();
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
   await prepare?.();
   const duration = await video(page).evaluate(element => (element as HTMLVideoElement).duration);
   await page.evaluate(async duration => {
@@ -303,12 +303,12 @@ test('undo and redo add, edit, move and remove drafts, group typing, and reset w
     await page.keyboard.press('Escape'); await expect(page.getByRole('note')).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
     await help.click(); await expect(page.getByRole('note')).toBeInViewport();
-    await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeInViewport();
+    await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
     await page.screenshot({ path: 'test-results/interstitial-help-mobile.png' });
     await page.keyboard.press('Escape'); await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
-    await page.getByRole('button', { name: /^Add interstitial/ }).click();
+    await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
     await expect(undo).toHaveAttribute('title', /Add interstitial/);
     await undo.click(); await expect(page.locator('.timeline-pin')).toHaveCount(0);
     await page.keyboard.press('Control+y'); await expect(page.locator('.timeline-pin')).toHaveCount(1);
@@ -485,7 +485,7 @@ test('the timeline shows footage and the player branches out of the idle clip', 
 test('response button assignments persist, route the real video, and a new sample opens clean', async ({ page }) => {
   await openExample(page, async () => {
     await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
-    await page.getByRole('button', { name: /^Add interstitial/ }).click();
+    await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
     await page.getByRole('textbox', { name: 'Interstitial prompt', exact: true }).fill('Keep the original draft.');
   });
   await clip(page, 'incorrect').locator('.flow-clip-body').click();

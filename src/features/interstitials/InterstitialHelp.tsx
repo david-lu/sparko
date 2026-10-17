@@ -25,7 +25,7 @@ export default function InterstitialHelp() {
       }}><CircleHelp size={14} /></button>
     {position && createPortal(<div ref={popup} id={id} className="interstitial-help-popover" role="note" style={position}>
       <strong>What is an interstitial?</strong>
-      <p>A short scene inserted between parts of your video. Add one at the playhead, then describe the scene you want to generate.</p>
+      <p>Add a regular scene or a call-response sequence at the playhead. Draft call-response clips stay in the editor until their videos are generated.</p>
     </div>, document.body)}
   </>;
 }

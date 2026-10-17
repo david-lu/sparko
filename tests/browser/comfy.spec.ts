@@ -22,7 +22,7 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
   await page.route('**/api/interstitials', route => { falSubmissions++; return route.fulfill({ status: 202, json: { requestId: 'fal-next-job', status: 'IN_QUEUE' } }); });
   await page.route('**/api/fal/jobs/fal-next-job', route => route.fulfill({ json: { requestId: 'fal-next-job', status: 'COMPLETED', videoUrl: 'https://fal.media/comfy-test-fal.mp4', insertion: { start: 2, duration: 6, totalDuration: 226 / 24 } } }));
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
   const bytes = await page.evaluate(async () => {
     const { Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const canvas = new OffscreenCanvas(160, 96), ctx = canvas.getContext('2d')!;
@@ -41,7 +41,7 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
   });
   await page.route('https://fal.media/comfy-test-fal.mp4', route => route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) }));
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('5');
-  await page.getByRole('button', { name: /^Add interstitial/ }).click();
+  await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
   const method = page.getByRole('combobox', { name: 'Video generation method' });
   await expect(method).toHaveValue('comfy');
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion' })).toHaveCount(0);
@@ -69,7 +69,7 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
   await expect(page.locator('.task-status')).toContainText('Downloading generated video');
   await expect(page.getByRole('progressbar', { name: 'Downloading generated video' })).toHaveJSProperty('position', -1);
   releaseDownload();
-  const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:episode_mock.mp4')!)[0]);
+  const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:sample.mp4')!)[0]);
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);
   expect((await saved()).requestMethod).toBe('comfy');

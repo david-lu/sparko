@@ -28,7 +28,7 @@ export const authenticate: RequestHandler = (req, res, next) => {
 export function validateBlobUrl(value: string, temporary = true): string {
   const url = new URL(value);
   const storeUrl = remoteProject || remoteDefault;
-  if (!storeUrl) throw new Error('Set DEFAULT_PROJECT_URL or DEFAULT_VIDEO_URL to your example in Vercel Blob.');
+  if (!storeUrl) throw new Error('Set DEFAULT_PROJECT_URL or DEFAULT_VIDEO_URL to your sample in Vercel Blob.');
   const expected = new URL(storeUrl);
   if (url.protocol !== 'https:' || !url.hostname.endsWith('.public.blob.vercel-storage.com') || url.origin !== expected.origin || url.username || url.password || (temporary && !url.pathname.startsWith('/transient/'))) {
     throw new Error('The uploaded file must belong to this workspace.');

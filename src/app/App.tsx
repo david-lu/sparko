@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { Download, FolderOpen, Redo2, Save, Undo2, X } from 'lucide-react';
 import CallResponseControls from '../features/call-response/CallResponseControls';
-import { addAnswer, branchScenes, resolveFlow, type SceneId } from '../features/call-response/model';
+import { addAnswer, branchScenes, interstitialScenes, resolveFlow, type SceneId } from '../features/call-response/model';
 import type { FlowTimeline } from '../features/timeline/FlowTracks';
 import Player from '../features/player/Player';
 import PlaybackOptions, { crossfadePreference, savedCrossfadePreference, framingPreference, savedFramingPreference } from '../features/player/PlaybackOptions';
@@ -30,8 +30,7 @@ if (import.meta.hot) {
   ], () => window.location.reload());
 }
 
-// Keep the working ID so browser projects created with the previous sample can be migrated.
-const defaultSource: MediaSource = { id: 'default:episode_mock.mp4', name: 'sample.mp4', url: '/media/sample.mp4' };
+const defaultSource: MediaSource = { id: 'default:sample.mp4', name: 'sample.mp4', url: '/media/sample.mp4' };
 type ProjectPickerWindow = Window & {
   showSaveFilePicker?: (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle>;
   showOpenFilePicker?: (options: { multiple: boolean; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
@@ -86,10 +85,15 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
   const fileMenu = useRef<HTMLDetailsElement>(null);
-  const sampleSource: MediaSource = { ...defaultSource, name: status?.defaultVideo.name || defaultSource.name, url: status?.defaultVideo.url ?? defaultSource.url };
+  const sampleSource: MediaSource = { ...defaultSource,
+    url: status ? status.defaultVideo.name === defaultSource.name ? status.defaultVideo.url : '' : defaultSource.url };
   const sourceVersion = useRef(0);
   const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
-  const flow = useMemo(() => info && source.assetId ? composeFlows(savedFlows, interstitialState.items, source.assetId, info.duration) : undefined, [savedFlows, readyKey, info, source.assetId]);
+  const playableFlows = useMemo(() => savedFlows.filter(group => interstitialScenes(group).every(scene => {
+    const item = interstitialState.items.find(item => item.id === scene.interstitialId);
+    return !!(item && playableResult(item)?.assetId);
+  })), [savedFlows, readyKey]);
+  const flow = useMemo(() => info && source.assetId ? composeFlows(playableFlows, interstitialState.items, source.assetId, info.duration) : undefined, [playableFlows, readyKey, info, source.assetId]);
   const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, matchFraming }) : null, [source, info, readyKey, crossfade, matchFraming]);
   useEffect(() => { if (!projectState.source) return; if (flow && info) controller.setFlow(flow, info, matchFraming); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming, projectState.source]);
   useEffect(() => {
@@ -116,7 +120,7 @@ export default function App() {
     if (!active) return;
     setStatus(data);
     if (data.requiresPassword && !data.defaultProject && !sessionStorage.getItem('sparko:password')) setLogin(true);
-    return projects.init({ ...defaultSource, name: data.defaultVideo.name || defaultSource.name, url: data.defaultVideo.url });
+    return projects.init(defaultSource);
   }).catch(err => { if (active) { setError(err.message); return projects.init(defaultSource); } })
     .finally(() => { if (active) setStartReady(true); });
     return () => { active = false; };
@@ -156,6 +160,11 @@ export default function App() {
     if (!info || !projectState.project || projectState.busy) return;
     const item = interstitials.add(controller.getSourceTime(), info.duration);
     controller.pause(); controller.seek(composition?.itemTime(item) ?? item.time);
+  };
+  const addCallResponse = () => {
+    if (!info || !projectState.project || projectState.busy) return;
+    const time = controller.getSourceTime(); controller.pause();
+    void projects.addCallResponse(time, info.duration).then(pin => { if (pin && !flow) controller.seek(composition?.timelineTime(pin.time) ?? pin.time); });
   };
   const moveInterstitial = (id: string, time: number) => {
     if (!info || projectState.busy) return;
@@ -225,7 +234,6 @@ export default function App() {
       onRemoveInterstitial: () => removeInterstitial(groupId),
       onRenameInterstitial: label => projects.updateCallResponse({ ...saved, interstitial: { ...saved.interstitial, label } }),
       onChange: value => projects.updateCallResponse(value),
-      onTypeChange: kind => { if (info) void projects.setInterstitialType(groupId, kind, info.duration); },
       onAddAnswer: () => {
         const next = addAnswer(saved), answer = next.interaction.answers.at(-1)!;
         controller.pause(); projects.updateCallResponse(next); setSelectedFlowScene(runtimeId(groupId, answer.sceneId)); setSelectedFlowEdge(null);
@@ -234,7 +242,9 @@ export default function App() {
       onRemoveAnswer: id => { controller.pause(); setSelectedFlowScene(null); setSelectedFlowEdge(null); interstitials.select(groupId); void projects.removeAnswer(id, groupId); },
       onSelectScene: (id, frame) => {
         const runtime = runtimeId(groupId, id); setSelectedFlowScene(runtime); setSelectedFlowEdge(null);
-        interstitials.select(resolved.scenes.find(scene => scene.id === id)?.interstitialId ?? null); controller.seekFlowScene(runtime, frame);
+        interstitials.select(resolved.scenes.find(scene => scene.id === id)?.interstitialId ?? null);
+        if (flow?.scenes.some(scene => scene.id === runtime)) controller.seekFlowScene(runtime, frame);
+        else controller.seek(composition?.timelineTime(saved.interstitial.time) ?? saved.interstitial.time);
       },
       onSelectEdge: id => {
         const scene = resolved.scenes.find(scene => scene.id === resolved.edges.find(edge => edge.id === id)?.from);
@@ -243,8 +253,9 @@ export default function App() {
       onBranch: (id, outcome) => controller.branchFlow(runtimeId(groupId, id), prefix + outcome),
     };
   });
+  const playableGroupTimelines = groupTimelines.filter(group => playableFlows.some(ready => ready.interstitial.id === group.flow.interstitial.id));
   const groupForScene = (id: string) => groupTimelines.find(group => group.flow.interstitial.id === flow?.scenes.find(scene => scene.id === id)?.groupId) ?? groupTimelines[0];
-  const flowTimeline: FlowTimeline | undefined = flow && groupTimelines.length ? { ...groupTimelines[0], flow, groups: groupTimelines, session: player.flow,
+  const flowTimeline: FlowTimeline | undefined = flow && playableGroupTimelines.length ? { ...playableGroupTimelines[0], flow, groups: playableGroupTimelines, session: player.flow,
     selectedSceneId: selectedRuntimeScene ?? null, selectedEdgeId: selectedFlowEdge,
     onSelectInterstitial: id => groupTimelines.find(group => group.flow.interstitial.id === (id ?? flow.interstitial.id))?.onSelectInterstitial(),
     onRemoveInterstitial: id => removeInterstitial(id ?? flow.interstitial.id),
@@ -265,10 +276,11 @@ export default function App() {
     selectedSceneId={id} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)}
     onSelectEdge={panelTimeline.onSelectEdge} />;
   return <div className="app-shell" onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) openFile(file); }}>
-    {!projectState.source ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasExample={!!status?.defaultProject}
+    {!projectState.source ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasSampleProject={!!status?.defaultProject}
+      sampleAvailable={!!sampleSource.url}
       onOpenVideo={() => fileInput.current?.click()} onOpenProject={() => void openProjectFile()}
-      onOpenSample={() => void projects.openDefault(sampleSource, status?.defaultProject?.url)}
-      onOpenExample={() => { if (status?.defaultProject) void projects.openExample(status.defaultProject.url); }}
+      onOpenSample={() => void projects.openDefault(sampleSource)}
+      onOpenSampleProject={() => { if (status?.defaultProject) void projects.openSampleProject(status.defaultProject.url); }}
       onDismissError={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }} /> : <>
     <header className="menubar" aria-label="Application menu">
       <details className="file-menu" ref={fileMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }} onKeyDown={event => { if (event.key === 'Escape') event.currentTarget.open = false; }}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
@@ -302,10 +314,9 @@ export default function App() {
         {panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
         <InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
           callResponse={panelTimeline} groups={groupTimelines}
-          onTypeChange={(id, kind) => { if (info) void projects.setInterstitialType(id, kind, info.duration); }}
           renderClipControls={clipControls}
           connectedIds={flow?.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : [])}
-          engine={engine} info={info} status={status} active onAdd={addInterstitial} onSelect={selectInterstitial} onRemove={removeInterstitial} onPreviewPlay={() => controller.pause()} />
+          engine={engine} info={info} status={status} active onAddRegular={addInterstitial} onAddCallResponse={addCallResponse} onSelect={selectInterstitial} onRemove={removeInterstitial} onPreviewPlay={() => controller.pause()} />
       </aside></div>
     </main></>}
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" onChange={event => { const file = event.target.files?.[0]; if (file) openFile(file); event.target.value = ''; }} />

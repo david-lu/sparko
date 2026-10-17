@@ -25,7 +25,6 @@ export type FlowTimeline = {
   onSelectEdge: (id: string) => void;
   onBranch: (id: SceneId, outcome: Outcome) => void;
   groups?: FlowTimeline[];
-  onTypeChange?: (kind: 'regular' | 'call-response') => void;
   onChange?: (flow: CallResponseFlow) => void;
 };
 export default function FlowTracks({ value, width, items = [] }: { value: FlowTimeline; width: number; items?: Interstitial[] }) {

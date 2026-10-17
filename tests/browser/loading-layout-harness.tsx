@@ -46,7 +46,7 @@ function Harness() {
   const column = { width: window.innerWidth > 660 ? 294 : 220, height: '100%', flexShrink: 0 };
   return <div style={{ display: 'flex', height: '100vh', overflow: 'auto' }}>
     <aside id="clip" className="sidebar" style={column}><CallResponsePanel {...common} value={value} items={items} onBack={noop} renderControls={() => null} /></aside>
-    <aside id="rows" className="sidebar" style={column}><InterstitialPanel {...common} items={[{ ...items[0], label: 'A very long interstitial name to verify truncation while regenerating' }]} selectedId={null} onAdd={noop} onSelect={noop} /></aside>
+    <aside id="rows" className="sidebar" style={column}><InterstitialPanel {...common} items={[{ ...items[0], label: 'A very long interstitial name to verify truncation while regenerating' }]} selectedId={null} onAddRegular={noop} onAddCallResponse={noop} onSelect={noop} /></aside>
     <aside id="voice" className="sidebar" style={column}><VoicePanel sourceId="test" controller={player} status={status} active /></aside>
     <aside id="analysis" className="sidebar" style={column}><AiPanel engine={engine} controller={player} status={status} slice={analysis.slice} onSlice={noop} analysis={analysis} onAnalysis={setAnalysis} /></aside>
   </div>;

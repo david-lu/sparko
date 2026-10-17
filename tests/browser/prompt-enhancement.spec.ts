@@ -9,9 +9,9 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({ json: { ...await response.json(), providers: { openai: true, gemini: false, fal: true, comfy: true } } });
   });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('5');
-  await page.getByRole('button', { name: /^Add interstitial/ }).click();
+  await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
   await page.getByLabel('Interstitial prompt').fill(original);
 });
 

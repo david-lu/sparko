@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { packProject } from '../../src/features/project/archive';
 import { emptyAnalysis } from '../../src/features/project/types';
 
-const exampleUrl = 'https://example.public.blob.vercel-storage.com/defaults/example.sparko';
+const exampleUrl = 'https://example.public.blob.vercel-storage.com/defaults/sample.sparko';
 let archive: Buffer;
 let video: Buffer;
 test.beforeAll(async () => {
@@ -34,18 +34,23 @@ const activeProject = (page: Page) => page.evaluate(async () => {
   return readActiveProject();
 });
 async function openExample(page: Page) {
-  await page.getByText('File', { exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Open example project', exact: true }).click();
+  if (await page.getByText('File', { exact: true }).isVisible()) {
+    await page.getByText('File', { exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Close project' }).click();
+    const prompt = page.getByRole('dialog', { name: 'Save changes before closing?' });
+    if (await prompt.isVisible()) await prompt.getByRole('button', { name: 'Discard changes' }).click();
+  }
+  await page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ }).click();
 }
 async function ready(page: Page) {
   await expect(page.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
 }
 
-test('opens the example project from the sample projects section', async ({ page }) => {
+test('opens the saved sample project from the sample projects section', async ({ page }) => {
   await page.route(exampleUrl, route => route.fulfill({ contentType: 'application/zip', body: archive }));
   await page.goto('/');
-  await page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Example project/ }).click();
+  await page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ }).click();
   await ready(page);
   expect((await activeProject(page)).interstitials[0].prompt).toBe('Saved example prompt');
 });
@@ -58,7 +63,7 @@ test('starts on the chooser and opens the example only when requested', async ({
   expect(downloads).toBe(0);
   await page.getByRole('button', { name: /Sample video/ }).click();
   await expect(page.locator('.menu-document')).toHaveText('sample.mp4');
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
   expect((await activeProject(page)).interstitials).toEqual([]);
   expect(downloads).toBe(0);
   await openExample(page); await ready(page);
@@ -81,7 +86,7 @@ test('starts on the chooser and opens the example only when requested', async ({
   expect(downloads).toBe(2);
 });
 
-test('uses only the video from the example archive when no hosted video URL exists', async ({ page }) => {
+test('does not offer the example archive as the sample video when no sample URL exists', async ({ page }) => {
   let downloads = 0;
   await page.route('**/api/status', async route => {
     const body = await (await route.fetch()).json();
@@ -89,19 +94,15 @@ test('uses only the video from the example archive when no hosted video URL exis
   });
   await page.route(exampleUrl, route => { downloads++; return route.fulfill({ contentType: 'application/zip', body: archive }); });
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
-  await expect(page.locator('.menu-document')).toHaveText('sample.mp4');
-  expect((await activeProject(page)).interstitials).toEqual([]);
-  expect(downloads).toBe(1);
-  await page.reload();
-  await page.getByRole('button', { name: /Sample video/ }).click();
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
-  expect((await activeProject(page)).interstitials).toEqual([]);
+  await expect(page.getByRole('button', { name: /Sample video/ })).toBeDisabled();
+  expect(downloads).toBe(0);
+  await openExample(page);
+  await ready(page);
+  expect((await activeProject(page)).source.name).toBe('example.mp4');
   expect(downloads).toBe(1);
 });
 
-test('failed example downloads and corrupt archives leave the sample open and can be retried', async ({ page }) => {
+test('failed sample project downloads and corrupt archives leave the chooser ready for retry', async ({ page }) => {
   let attempt = 0;
   await page.route(exampleUrl, route => {
     attempt++;
@@ -109,21 +110,19 @@ test('failed example downloads and corrupt archives leave the sample open and ca
       : route.fulfill({ contentType: 'application/zip', body: attempt === 2 ? Buffer.from('broken archive') : archive });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
-  const sample = await activeProject(page);
   await openExample(page);
   await expect(page.getByRole('alert')).toContainText('503');
-  expect((await activeProject(page)).id).toBe(sample.id);
+  await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+  expect(await activeProject(page)).toBeUndefined();
   await openExample(page);
   await expect(page.getByLabel('Cancel project operation')).toHaveCount(0);
   await expect(page.getByRole('alert')).toBeVisible();
-  expect((await activeProject(page)).id).toBe(sample.id);
+  expect(await activeProject(page)).toBeUndefined();
   await openExample(page); await ready(page);
   expect(attempt).toBe(3);
 });
 
-test('cancels an example download without replacing the sample', async ({ page }) => {
+test('cancels a sample project download and leaves the chooser ready for retry', async ({ page }) => {
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
   let attempt = 0;
@@ -132,14 +131,12 @@ test('cancels an example download without replacing the sample', async ({ page }
     await route.fulfill({ contentType: 'application/zip', body: archive }).catch(() => {});
   });
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
-  await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled();
-  const sample = await activeProject(page);
   await openExample(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Downloading example project' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Downloading sample project' })).toBeVisible();
   await page.getByLabel('Cancel project operation').click();
   await expect(page.getByLabel('Cancel project operation')).toHaveCount(0);
-  expect((await activeProject(page)).id).toBe(sample.id);
+  await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+  expect(await activeProject(page)).toBeUndefined();
   release();
   await openExample(page); await ready(page);
 });

@@ -26,7 +26,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'episode_mock.mp4', url: '/media/episode_mock.mp4', size: video.length }, defaultProject: null,
     } }));
     await page.goto('/');
-    await expect(page.getByRole('button', { name: /^Add interstitial/ })).toBeEnabled({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
     await expect(page.locator('.buffering')).toHaveCount(0);
 
     // Real media events must swap equally sized overlays without moving the workspace.
@@ -39,7 +39,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.locator('.video-stage video').evaluate(video => video.dispatchEvent(new Event('canplay')));
 
     await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
-    await page.getByRole('button', { name: /^Add interstitial/ }).click();
+    await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
     await page.getByLabel('Video generation method').selectOption('fal');
     await page.getByLabel('Interstitial prompt').fill('Continue the dance');
     await page.locator('.sidebar').evaluate(element => { element.scrollTop = 0; });

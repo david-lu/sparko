@@ -13,6 +13,7 @@ import { clipTypeLabel, interstitialScenes, type SceneId } from '../call-respons
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import CallResponsePanel from '../call-response/CallResponsePanel';
 import InterstitialName from './InterstitialName';
+import InterstitialHelp from './InterstitialHelp';
 
 function RemoveInterstitialButton({ item, controller, disabled = false, onRemove }: { item: Interstitial; controller: InterstitialController; disabled?: boolean; onRemove?: (id: string) => void }) {
   const handledTouch = useRef(false);
@@ -32,26 +33,31 @@ function RemoveInterstitialButton({ item, controller, disabled = false, onRemove
     }}><Trash2 size={14} /></button>;
 }
 
-export default function InterstitialPanel({ items, selectedId, controller, engine, info, status, active, onAdd, onSelect, onRemove, onPreviewPlay, connectedIds = [], callResponse, groups = callResponse ? [callResponse] : [], onTypeChange, renderClipControls }: {
+export default function InterstitialPanel({ items, selectedId, controller, engine, info, status, active, onAddRegular, onAddCallResponse, onSelect, onRemove, onPreviewPlay, connectedIds = [], callResponse, groups = callResponse ? [callResponse] : [], renderClipControls }: {
   items: Interstitial[]; selectedId: string | null; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null; status: AppStatus | null;
-  active: boolean; onAdd: () => void; onSelect: (id: string | null) => void; onPreviewPlay: () => void;
+  active: boolean; onAddRegular: () => void; onAddCallResponse: () => void; onSelect: (id: string | null) => void; onPreviewPlay: () => void;
   connectedIds?: string[];
   onRemove?: (id: string) => void;
-  callResponse?: FlowTimeline; groups?: FlowTimeline[]; onTypeChange?: (id: string, kind: 'regular' | 'call-response') => void;
+  callResponse?: FlowTimeline; groups?: FlowTimeline[];
   renderClipControls?: (id: SceneId) => ReactNode;
 }) {
   const selected = items.find(item => item.id === selectedId);
   const members = callResponse ? interstitialScenes(callResponse.flow) : [];
   const childIds = new Set(groups.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : [])));
   const standaloneItems = items.filter(item => !item.groupId && !childIds.has(item.id) && !groups.some(group => group.flow.interstitial.id === item.id));
+  const createActions = <div className="interstitial-create-actions">
+    <button className="button full-width" disabled={!info} onClick={onAddRegular}><Sparkles size={14} /> Add regular interstitial</button>
+    <button className="button full-width" disabled={!info || info.duration < 3.25} onClick={onAddCallResponse}><Sparkles size={14} /> Add call-response interstitial</button>
+  </div>;
   if (callResponse && renderClipControls && (callResponse.selectedInterstitial || members.some(scene => scene.interstitialId === selectedId || scene.id === callResponse.selectedSceneId))) {
     return <CallResponsePanel value={callResponse} items={items} onBack={() => onSelect(null)} renderControls={renderClipControls}
+      createActions={createActions}
       controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />;
   }
   if (!selected) return <div className="panel-content interstitial-panel">
-    <div className="panel-intro"><h2>Interstitials</h2></div>
-    <button className="button full-width" disabled={!info} onClick={onAdd}><Sparkles size={14} /> New interstitial at playhead</button>
-    {!standaloneItems.length && !groups.length ? <div className="empty-state"><h3>No interstitials yet</h3><p>Press <kbd>P</kbd> to add an interstitial at the playhead.</p></div> : <ol className="interstitial-list">
+    <div className="panel-intro"><h2>Interstitials</h2><InterstitialHelp /></div>
+    {createActions}
+    {!standaloneItems.length && !groups.length ? <div className="empty-state"><h3>No interstitials yet</h3><p>Choose an interstitial type to add it at the playhead.</p></div> : <ol className="interstitial-list">
       {groups.map(callResponse => {
         const members = interstitialScenes(callResponse.flow), groupReady = members.every(scene => !scene.draft && !!assets.url(scene.clip.assetId) && !controller.dependency(scene.interstitialId!)?.stale);
         return <li key={callResponse.flow.interstitial.id} className="interstitial-group" data-interstitial-id={callResponse.flow.interstitial.id}>
@@ -84,12 +90,12 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
   </div>;
   return <div className="panel-content interstitial-panel">
     <button className="text-button interstitial-back" onClick={() => onSelect(null)}><ArrowLeft size={13} /> All interstitials</button>
+    {createActions}
     <div className="interstitial-title">
       <InterstitialName key={selected.id} name={selected.label} onChange={name => controller.rename(selected.id, name)} />
       {selected.phase === 'draft' && <span className="interstitial-draft">Draft</span>}
       <RemoveInterstitialButton item={selected} controller={controller} onRemove={onRemove} disabled={connectedIds.includes(selected.id)} />
     </div>
-    <label className="field">Interstitial type<select aria-label="Interstitial type" value="regular" onChange={event => onTypeChange?.(selected.id, event.target.value as 'regular' | 'call-response')}><option value="regular">Regular</option><option value="call-response">Call-response</option></select></label>
     <InterstitialEditor selected={selected} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />
   </div>;
 }

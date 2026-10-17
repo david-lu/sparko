@@ -35,11 +35,3 @@ export function createCallResponseDraft(pin: Interstitial, assetId: string, dura
   });
   return { flow, interstitials: flow.scenes.filter(scene => scene.interstitialId).map(scene => draftClip(flow, scene)) };
 }
-
-export function reanchorFlow(flow: CallResponseFlow, pin: Interstitial, duration: number): CallResponseFlow {
-  const split = Math.round(pin.time * flow.fps), total = Math.floor(duration * flow.fps);
-  if (split < 39 || total - split < 39) throw new Error('Place the call-response pin at least 1.625 seconds from either end of the parent video.');
-  return { ...flow, interstitial: { ...flow.interstitial, time: pin.time, label: pin.label }, scenes: flow.scenes.map(scene => scene.id === 'intro'
-    ? { ...scene, clip: { ...scene.clip, inFrame: 0, outFrame: split } }
-    : scene.id === 'continue' ? { ...scene, clip: { ...scene.clip, inFrame: split, outFrame: total } } : scene) };
-}
