@@ -13,6 +13,14 @@ export const MAX_ANALYSIS_SECONDS = 120;
 export const TIMELINE_FPS = 24;
 // Total dissolve width, centered on each interstitial boundary.
 export const INTERSTITIAL_CROSSFADE_FRAMES = 4;
+export const FLOW_BUFFERING = {
+  chunkSeconds: 2,
+  aheadSeconds: 6,
+  decisionLeadSeconds: .35,
+  retainSeconds: 8,
+  parallelRenders: 2,
+  cacheBytes: 64 * 1024 * 1024,
+} as const;
 export const COMFY_MODELS = {
   diffusion: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
   textEncoder: 'qwen3vl_32b_minimax_h3_int8_convrot.safetensors',

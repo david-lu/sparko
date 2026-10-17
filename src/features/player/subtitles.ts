@@ -1,7 +1,7 @@
 import type { TimelineComposition } from '../../media/TimelineComposition';
 
 /** Shift source subtitles with the footage and leave generated scenes free of source dialogue. */
-export function remapSubtitles(track: TextTrack, original: VTTCue[], composition: TimelineComposition | null) {
+export function remapSubtitles(track: TextTrack, original: VTTCue[], composition: Pick<TimelineComposition, 'hasInsertions' | 'fps' | 'segments'> | null) {
   for (const cue of Array.from(track.cues || [])) track.removeCue(cue);
   const add = (originalCue: VTTCue, start: number, end: number) => {
     const cue = new VTTCue(start, end, originalCue.text);

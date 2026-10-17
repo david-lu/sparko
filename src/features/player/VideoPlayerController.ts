@@ -1,4 +1,4 @@
-import type { MediaSource } from '../../media/media';
+import type { MediaInfo, MediaSource } from '../../media/media';
 import type { TimelineComposition } from '../../media/TimelineComposition';
 import { TimelineStream } from '../../media/TimelineStream';
 import { TIMELINE_FPS } from '../../../shared/constants';
@@ -57,8 +57,8 @@ export class VideoPlayerController {
         buffered: Array.from({ length: element.buffered.length }, (_, i) => ({ start: element.buffered.start(i), end: element.buffered.end(i) })),
       });
     };
-    const waiting = () => this.update({ buffering: true });
-    const ready = () => this.update({ buffering: false });
+    const waiting = () => { if (!this.flowPlayback) this.update({ buffering: true }); };
+    const ready = () => { if (!this.flowPlayback) this.update({ buffering: false }); };
     const error = () => this.update({ buffering: false, error: 'Unable to play this video. Check the file and browser codec support.' });
     const ended = () => { if (this.stream && this.state.loop) { this.wantsPlayback = true; this.startStream(0); } };
     const syncEvents = ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'pause', 'ended', 'volumechange', 'ratechange', 'progress'];
@@ -114,7 +114,7 @@ export class VideoPlayerController {
     if (!this.element) return;
     if (this.stream) this.startStream(time); else this.startSource(time);
   }
-  setFlow(flow: CallResponseFlow) {
+  setFlow(flow: CallResponseFlow, info?: MediaInfo) {
     if (!this.element || !this.source || this.flowPlayback?.flow === flow) return;
     // Renaming the parent changes its editor metadata, not the current scene or playhead.
     if (this.flowPlayback && JSON.stringify({ ...this.flowPlayback.flow, interstitial: undefined }) === JSON.stringify({ ...flow, interstitial: undefined })) return;
@@ -126,9 +126,13 @@ export class VideoPlayerController {
     this.flowPlayback = new FlowPlayback(flow, this.element, this.source, (session, buffering, error) => {
       this.update({ flow: session, playing: session.playing, buffering, error: error ?? null, buffered: [],
         time: (layout.starts[session.sceneId] + session.frame) / flow.fps, duration: layout.totalFrames / flow.fps });
-    });
+    }, info);
   }
   seekFlowScene(id: SceneId, frame = 0) { this.flowPlayback?.seekScene(id, frame); }
+  setFlowSubtitles(track: TextTrack | null, cues: VTTCue[]) {
+    if (!this.flowPlayback) return false;
+    this.flowPlayback.setSubtitles(track, cues); return true;
+  }
   answerFlow(answer: string) { this.flowPlayback?.answer(answer); }
   branchFlow(id: SceneId, outcome: Outcome) { this.flowPlayback?.branch(id, outcome); }
   /** A prepared source plays directly, without decoding and encoding another preview copy. */
@@ -167,7 +171,7 @@ export class VideoPlayerController {
       this.pendingSeek = null; this.wantsPlayback = false; this.update({ buffering: false, playing: false, error: error.message });
     });
   }
-  getSourceTime() { const time = this.pendingSeek ?? this.element?.currentTime ?? this.state.time; return this.composition?.sourceTime(time) ?? time; }
+  getSourceTime() { if (this.flowPlayback) return this.flowPlayback.sourceTime; const time = this.pendingSeek ?? this.element?.currentTime ?? this.state.time; return this.composition?.sourceTime(time) ?? time; }
   getSourceDuration() { return this.composition?.info.duration ?? this.state.duration; }
   async play() {
     if (this.flowPlayback) { this.flowPlayback.play(); return; }

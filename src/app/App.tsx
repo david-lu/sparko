@@ -77,7 +77,7 @@ export default function App() {
   const readyKey = JSON.stringify(interstitialState.items.filter(item => playableResult(item)).map(item => ({ id: item.id, label: item.label, time: item.time, result: playableResult(item) })));
   const flow = useMemo(() => savedFlow ? resolveFlow(savedFlow, interstitialState.items) : undefined, [savedFlow, readyKey]);
   const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade }) : null, [source, info, readyKey, crossfade]);
-  useEffect(() => { if (flow && info) controller.setFlow(flow); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info]);
+  useEffect(() => { if (flow && info) controller.setFlow(flow, info); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info]);
   useEffect(() => {
     controller.pause(); setSelectedFlowScene(null); setSelectedFlowEdge(null);
   }, [controller, projectState.historyRevision]);

@@ -38,11 +38,13 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     const end = await page.evaluate(async () => {
       const { readActiveProject } = await import('/src/features/project/database.ts' as string);
       const flow = (await readActiveProject()).callResponse;
-      return flow.scenes.find((scene: any) => scene.id === 'wait').clip.outFrame / flow.fps;
+      const scene = flow.scenes.find((scene: any) => scene.id === 'wait');
+      return (scene.clip.outFrame - scene.clip.inFrame) / flow.fps;
     });
     await video(page).evaluate(async (element: HTMLVideoElement, end: number) => {
       const seeked = new Promise<void>(resolve => element.addEventListener('seeked', () => resolve(), { once: true }));
-      element.currentTime = end - .15; await seeked;
+      // Seek before the next idle cycle is committed to the continuous playback stream.
+      element.currentTime = end - .5; await seeked;
     }, end);
     await choices.evaluate(element => {
       (window as any).choicePhases = [];
@@ -552,13 +554,13 @@ test('empty timeline space and the ruler seek at the clicked position, including
     await page.mouse.click(idle.x + idle.width / 2, container.y + 5);
     await expect(clip(page, 'wait')).toHaveAttribute('data-active', 'true');
     const scene = flow.scenes.find((scene: any) => scene.id === 'wait');
-    const expected = (scene.clip.inFrame + Math.round((scene.clip.outFrame - scene.clip.inFrame) / 2)) / flow.fps;
-    await expect.poll(() => video(page).evaluate(element => (element as HTMLVideoElement).currentTime)).toBeCloseTo(expected, 2);
+    const expected = Math.round((scene.clip.outFrame - scene.clip.inFrame) / 2) / (scene.clip.outFrame - scene.clip.inFrame) * 100;
+    await expect.poll(() => clip(page, 'wait').locator('.flow-playhead').evaluate(element => parseFloat((element as HTMLElement).style.left))).toBeCloseTo(expected, 2);
     await expect(page.locator('.timeline-interstitial-container')).toHaveAttribute('aria-pressed', 'true');
     const ruler = (await page.locator('.timeline-ruler').boundingBox())!;
     await page.mouse.click(idle.x + idle.width * .25, ruler.y + 5);
-    const rulerTime = (scene.clip.inFrame + Math.round((scene.clip.outFrame - scene.clip.inFrame) / 4)) / flow.fps;
-    await expect.poll(() => video(page).evaluate(element => (element as HTMLVideoElement).currentTime)).toBeCloseTo(rulerTime, 2);
+    const rulerPosition = Math.round((scene.clip.outFrame - scene.clip.inFrame) / 4) / (scene.clip.outFrame - scene.clip.inFrame) * 100;
+    await expect.poll(() => clip(page, 'wait').locator('.flow-playhead').evaluate(element => parseFloat((element as HTMLElement).style.left))).toBeCloseTo(rulerPosition, 2);
   }
   await page.getByRole('button', { name: 'Fit timeline' }).click();
   await clip(page, 'incorrect').getByRole('button', { name: 'Select clip Give a hint', exact: true }).focus();
@@ -568,8 +570,8 @@ test('empty timeline space and the ruler seek at the clicked position, including
   await page.mouse.click(branch.x + branch.width / 2, tracks.y + tracks.height - 5);
   await expect(clip(page, 'incorrect')).toHaveAttribute('data-active', 'true');
   const incorrect = flow.scenes.find((scene: any) => scene.id === 'incorrect');
-  await expect.poll(() => video(page).evaluate(element => (element as HTMLVideoElement).currentTime))
-    .toBeCloseTo((incorrect.clip.inFrame + Math.round((incorrect.clip.outFrame - incorrect.clip.inFrame) / 2)) / flow.fps, 2);
+  await expect.poll(() => clip(page, 'incorrect').locator('.flow-playhead').evaluate(element => parseFloat((element as HTMLElement).style.left)))
+    .toBeCloseTo(Math.round((incorrect.clip.outFrame - incorrect.clip.inFrame) / 2) / (incorrect.clip.outFrame - incorrect.clip.inFrame) * 100, 2);
 });
 
 for (const action of ['panel', 'list', 'Delete', 'Backspace']) {

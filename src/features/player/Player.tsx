@@ -42,14 +42,14 @@ export default function Player(props: Props) {
   useEffect(() => {
     const video = controller.video;
     const element = video?.querySelector('track');
-    if (!element || !subtitle) return;
+    if (!element || !subtitle) { controller.setFlowSubtitles(null, []); return; }
     const remap = () => {
       const track = element.track;
       if (originalCues.current?.url !== subtitle.url) {
         if (element.readyState !== HTMLTrackElement.LOADED) return;
         originalCues.current = { url: subtitle.url, cues: Array.from(track.cues || []) as VTTCue[] };
       }
-      remapSubtitles(track, originalCues.current.cues, props.composition);
+      if (!props.callResponse || !controller.setFlowSubtitles(track, originalCues.current.cues)) remapSubtitles(track, originalCues.current.cues, props.composition);
       track.mode = captions ? 'showing' : 'hidden';
     };
     remap();
