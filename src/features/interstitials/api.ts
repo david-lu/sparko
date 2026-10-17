@@ -6,7 +6,7 @@ import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import { request, sendForm } from '../../shared/api';
 
-export async function generateInterstitial(item: Interstitial, engine: MediaEngine, info: MediaInfo, signal: AbortSignal,
+export async function generateInterstitial(item: Interstitial, engine: Pick<MediaEngine, 'exportMp4'>, info: MediaInfo, signal: AbortSignal,
   onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void): Promise<GenerationJob> {
   if (item.method === 'comfy') {
     const readiness = await request<{ ready: boolean; message?: string }>('/api/comfy/status', { signal });

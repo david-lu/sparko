@@ -8,15 +8,18 @@ import type { TimelineComposition } from '../../media/TimelineComposition';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import ResizeHandle from '../../shared/ResizeHandle';
 import InterstitialMarker from './InterstitialMarker';
-import InterstitialThumbnail from './InterstitialThumbnail';
+import VideoFilmstrip from './VideoFilmstrip';
 import { phaseLabel } from '../interstitials/status';
+import FlowTracks, { type FlowTimeline } from './FlowTracks';
+import { flowLayout } from '../call-response/model';
 
 const MAX_ZOOM = 32;
-export default function Timeline({ name, info, thumbnails, interstitials, selectedId, composition, time, duration, buffered, selection, height, maxHeight, onHeight, onAddInterstitial, onMoveInterstitial, onRemoveInterstitial, onSelectInterstitial, onSeek }: {
+export default function Timeline({ name, info, thumbnails, interstitials, selectedId, composition, time, duration, buffered, selection, height, maxHeight, onHeight, onAddInterstitial, onMoveInterstitial, onRemoveInterstitial, onSelectInterstitial, onSeek, callResponse }: {
   name: string; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[]; selectedId: string | null; composition: TimelineComposition | null; time: number; duration: number;
   buffered: { start: number; end: number }[]; selection: Slice | null; height: number; maxHeight: number;
   onHeight: (height: number) => void; onAddInterstitial: () => void; onMoveInterstitial: (id: string, time: number) => void;
   onRemoveInterstitial: (id: string) => void; onSelectInterstitial: (id: string | null, time?: number) => void; onSeek: (time: number) => void;
+  callResponse?: FlowTimeline;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
@@ -26,8 +29,10 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<{ time: number; x: number } | null>(null);
   const anchor = useRef<{ ratio: number; x: number } | null>(null);
-  const markers = interstitials.map(item => ({ ...item, time: composition?.itemTime(item) ?? item.time }));
+  const markers = interstitials.map(item => ({ ...item, time: callResponse ? (() => { const scene = callResponse.flow.scenes.find(scene => scene.interstitialId === item.id); return scene ? flowLayout(callResponse.flow).starts[scene.id] / callResponse.flow.fps : item.time; })() : composition?.itemTime(item) ?? item.time }));
   const sourceHover = hover ? composition?.sourceTime(hover.time) ?? hover.time : 0;
+  const childIds = new Set(callResponse?.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []));
+  const interstitialCount = interstitials.filter(item => !childIds.has(item.id) && playableResult(item)).length + (callResponse ? 1 : 0);
   const changeZoom = useCallback((value: number, x?: number) => {
     const scroll = viewport.current;
     const next = Math.max(1, Math.min(MAX_ZOOM, value));
@@ -64,7 +69,7 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
     changeZoom(value, scroll && x >= 0 && x <= scroll.clientWidth ? x : undefined);
   };
   const progress = duration ? Math.max(0, Math.min(100, time / duration * 100)) : 0;
-  const contentWidth = width * zoom;
+  const contentWidth = (callResponse ? Math.max(1000, width) : width) * zoom;
   const rawStep = duration / Math.max(1, contentWidth / 100);
   const power = 10 ** Math.floor(Math.log10(rawStep || 1));
   const tickStep = ([1, 2, 5, 10].find(multiplier => multiplier * power >= rawStep) || 10) * power;
@@ -72,9 +77,9 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
     .filter(value => value === 0 || (duration - value) / duration * contentWidth > 65).concat(duration) : [0];
   const hoveredFrame = hover === null || composition?.at(hover.time)?.kind === 'interstitial' ? null : thumbnails.reduce<Thumbnail | null>((nearest, frame) => !nearest || Math.abs(frame.time - sourceHover) < Math.abs(nearest.time - sourceHover) ? frame : nearest, null);
 
-  return <div className="timeline-section" ref={section} style={{ height }}>
+  return <div className={`timeline-section ${callResponse ? 'has-flow' : ''}`} ref={section} style={{ height }}>
     <ResizeHandle orientation="horizontal" label="Resize timeline" value={height} min={134} max={maxHeight} onChange={onHeight} />
-    <div className="timeline-heading"><span className="eyebrow">TIMELINE <span className="subtle">/ {interstitials.filter(item => playableResult(item)).length} INTERSTITIALS</span></span>
+    <div className="timeline-heading"><span className="eyebrow">TIMELINE <span className="subtle">/ {interstitialCount} {interstitialCount === 1 ? 'INTERSTITIAL' : 'INTERSTITIALS'}</span></span>
       <div className="timeline-actions">
         <div className="timeline-zoom" role="group" aria-label="Timeline zoom">
           <button className="icon-button small" aria-label="Zoom out timeline" title="Zoom out" disabled={zoom <= 1 || !duration} onClick={() => zoomAtPlayhead(zoom / 1.5)}><Minus size={13} /></button>
@@ -84,19 +89,19 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
         </div>
         <button className="icon-button small" aria-label="Previous interstitial" disabled={!markers.some(item => item.time < time - 0.05)} onClick={() => onSelectInterstitial([...markers].reverse().find(item => item.time < time - 0.05)?.id ?? null)}><SkipBack size={14} /></button>
         <button className="icon-button small" aria-label="Next interstitial" disabled={!markers.some(item => item.time > time + 0.05)} onClick={() => onSelectInterstitial(markers.find(item => item.time > time + 0.05)?.id ?? null)}><SkipForward size={14} /></button>
-        <button className="button small" disabled={!info} onClick={onAddInterstitial}><Clapperboard size={13} /> Add draft <kbd>P</kbd></button>
+        <button className="button small" disabled={!info || !!callResponse} onClick={onAddInterstitial}><Clapperboard size={13} /> Add draft <kbd>P</kbd></button>
       </div>
     </div>
     <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label="Scrollable timeline" data-zoom={zoom} onScroll={() => setHover(null)}>
-      <div className="timeline-content" style={{ width: `${zoom * 100}%` }}>
+      <div className="timeline-content" style={{ width: callResponse ? contentWidth : `${zoom * 100}%` }}>
         <div className="timeline-ruler" aria-hidden="true">{ticks.map((value, index) => <span key={value} style={{ left: `${duration ? value / duration * 100 : 0}%`, transform: `translateX(${index === 0 ? 0 : index === ticks.length - 1 ? -100 : -50}%)` }}>{formatTime(value, tickStep < 1)}</span>)}</div>
-        <div className="timeline-track" ref={track} onPointerMove={event => {
+        {callResponse ? <FlowTracks value={callResponse} width={contentWidth} /> : <div className="timeline-track-space"><div className="timeline-track" ref={track} onPointerMove={event => {
           if (!duration || (event.target as HTMLElement).closest('.timeline-marker')) { setHover(null); return; }
           const rect = event.currentTarget.getBoundingClientRect();
           setHover({ time: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration,
             x: event.clientX - (section.current?.getBoundingClientRect().left || 0) });
         }} onPointerLeave={() => setHover(null)}>
-          <div className="filmstrip" aria-hidden="true">{composition?.hasInsertions ? composition.segments.filter(segment => segment.kind === 'source').map(segment => <div className="source-segment" key={segment.id} style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }}>{thumbnails.filter(frame => frame.time >= segment.sourceStart && frame.time < segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps).map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />)}</div>) : thumbnails.length ? thumbnails.map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />) : <div className="filmstrip-placeholder">{duration ? name : 'Loading video…'}</div>}</div>
+          <div className="filmstrip" aria-hidden="true">{composition?.hasInsertions ? composition.segments.filter(segment => segment.kind === 'source').map(segment => <div className="source-segment" key={segment.id} style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} width={(segment.endFrame - segment.startFrame) / composition.fps / duration * contentWidth} /></div>) : thumbnails.length ? thumbnails.map(frame => <img key={frame.time} src={frame.url} alt="" draggable={false} />) : <div className="filmstrip-placeholder">{duration ? name : 'Loading video…'}</div>}</div>
           <div className="timeline-shade" style={{ width: `${progress}%` }} />
           {selection && duration > 0 && selection.end > selection.start && <div className="selection-overlay" style={{ left: `${(composition?.timelineTime(selection.start) ?? selection.start) / duration * 100}%`, width: `${((composition?.timelineTime(selection.end) ?? selection.end) - (composition?.timelineTime(selection.start) ?? selection.start)) / duration * 100}%` }} />}
           <div className="buffer-track" aria-hidden="true">{buffered.map((range, index) => <span key={index} style={{ left: `${range.start / duration * 100}%`, width: `${(range.end - range.start) / duration * 100}%` }} />)}</div>
@@ -111,7 +116,7 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
               if (event.detail === 0 || !rect?.width) { onSelectInterstitial(segment.id); return; }
               const frame = Math.round((event.clientX - rect.left) / rect.width * duration * composition.fps);
               onSelectInterstitial(segment.id, Math.max(segment.startFrame, Math.min(segment.endFrame - 1, frame)) / composition.fps);
-            }}><InterstitialThumbnail url={segment.source.url} time={segment.sourceStart} /><span className="interstitial-caption">{busy ? <span className="spinner timeline-generation-spinner" role="status" aria-label={`${segment.label}: ${phaseLabel(item)}`} /> : <Clapperboard size={12} />}<span>{segment.label}</span></span></button>;
+            }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} width={(segment.endFrame - segment.startFrame) / composition.fps / duration * contentWidth} />{busy && <span className="spinner timeline-generation-spinner" role="status" aria-label={`${segment.label}: ${phaseLabel(item)}`} />}</button>;
           })}
           <div className="playhead" style={{ left: `${progress}%` }} aria-hidden="true"><span /></div>
           {duration > 0 && markers.filter(item => item.time <= duration).map((item, index) => {
@@ -119,11 +124,11 @@ export default function Timeline({ name, info, thumbnails, interstitials, select
             const sceneDuration = segment && composition ? (segment.endFrame - segment.startFrame) / composition.fps : 0;
             return <InterstitialMarker key={item.id} pin={item} selected={selectedId === item.id} number={index + 1} sceneDuration={sceneDuration} duration={duration} fps={TIMELINE_FPS} track={track} viewport={viewport} onMove={onMoveInterstitial} onRemove={onRemoveInterstitial} onSelect={onSelectInterstitial} />;
           })}
-        </div>
+        </div></div>}
       </div>
     </div>
     {hover && hoveredFrame && <div className="hover-preview" style={{ left: Math.max(75, Math.min(width - 55, hover.x)) }}><img src={hoveredFrame.url} alt="Timeline preview" /><span>{formatTime(hover.time)}</span></div>}
     <span id="pin-help" className="sr-only">Select to edit. Drag to move unless generation is in progress. Arrow keys move one frame, Shift moves one second. Delete or Backspace removes the interstitial. Escape cancels a drag.</span>
-    <div className="timeline-footer"><span className="source-name">{name}</span><span>{info ? `${info.width} × ${info.height} · ${TIMELINE_FPS} fps · ${info.codec.toUpperCase()}` : 'Reading media…'}</span></div>
+    <div className="timeline-footer"><span className="source-name">{name}{callResponse ? ' · One idle cycle shown · total duration varies' : ''}</span><span>{info ? `${info.width} × ${info.height} · ${TIMELINE_FPS} fps · ${info.codec.toUpperCase()}` : 'Reading media…'}</span></div>
   </div>;
 }

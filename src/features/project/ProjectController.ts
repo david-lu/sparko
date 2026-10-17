@@ -7,6 +7,7 @@ import { assets } from './assets';
 import { readActiveProject, readAsset, readProject, storageError, writeProject } from './database';
 import { assetIds, emptyAnalysis, type AnalysisState, type Asset, type Project } from './types';
 import { TIMELINE_FPS } from '../../../shared/constants';
+import { createTimelineExample, groupCallResponse, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
   busy: boolean; message: string; progress: number | null; error: string | null };
@@ -44,6 +45,12 @@ export class ProjectController {
   }
   private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = []) {
     signal.throwIfAborted();
+    if (project.callResponse) {
+      const existing = project.callResponse.interstitial;
+      const grouped = groupCallResponse(project.callResponse);
+      if (!existing) grouped.interstitial.time = project.interstitials.find(item => grouped.scenes.some(scene => scene.interstitialId === item.id))?.time ?? grouped.interstitial.time;
+      project = { ...project, callResponse: grouped };
+    }
     ({ project, pendingAssets } = await this.prepareSource(project, pendingAssets, signal));
     project = { ...project, interstitials: project.interstitials.map(item => ['preparing', 'uploading'].includes(item.phase) ? { ...item, phase: 'draft' } : item) };
     this.update({ message: 'Saving prepared project', progress: null });
@@ -53,11 +60,12 @@ export class ProjectController {
     const source: MediaSource = { id: project.id, name: project.source.name, url, assetId: asset.id, file: new File([asset.blob], project.source.name, { type: asset.blob.type }) };
     const subtitle = project.subtitle ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
     // Restore retained renders before publishing the timeline, including failed/cancelled retries.
-    await Promise.all(project.interstitials.flatMap(item => item.previousResult?.assetId ? [assets.open(item.previousResult.assetId)] : []));
+    await Promise.all([...new Set([...project.interstitials.flatMap(item => [item.previousResult?.assetId, ...(project.callResponse ? [item.result?.assetId] : [])]), ...(project.callResponse?.scenes.map(scene => scene.clip.assetId) ?? [])]
+      .filter((id): id is string => !!id))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
     this.update({ project, source, subtitle, error: null });
-    this.interstitials.load(project.id, project.interstitials);
+    this.interstitials.load(project.id, project.interstitials, project.callResponse ? responseInterstitialIds(project.callResponse) : [], project.callResponse);
     assets.releaseExcept(new Set(assetIds(project)));
     this.switching = false;
     this.save({ ...project, interstitials: this.interstitials.getSnapshot().items });
@@ -101,6 +109,23 @@ export class ProjectController {
   }
   async openExample(url: string) {
     await this.task('Downloading example project', signal => this.loadExample(url, signal));
+  }
+  async openTestCallResponse(duration: number) {
+    await this.task('Opening call-response timeline', async signal => {
+      const current = this.state.project;
+      if (!current?.source.assetId) throw new Error('Open a video first.');
+      const example = createTimelineExample(current.source.assetId, duration);
+      const project: Project = { ...current, id: `project:${crypto.randomUUID()}`, name: 'Test call response',
+        updatedAt: Date.now(), interstitials: example.interstitials, callResponse: example.flow, subtitle: null };
+      await this.activate(project, signal);
+      this.interstitials.select(example.flow.interstitial.id);
+    });
+  }
+  updateCallResponse(callResponse: CallResponseFlow) {
+    callResponse = groupCallResponse({ ...callResponse, scenes: callResponse.scenes.map(scene => scene.clip.kind !== 'video' && !scene.interstitialId
+      ? { ...scene, interstitialId: `call-response-${scene.id}` } : scene) });
+    this.interstitials.setCallResponse(callResponse);
+    if (this.state.project) this.save({ ...this.state.project, callResponse: groupCallResponse(callResponse), updatedAt: Date.now() });
   }
   private async loadExample(url: string, signal: AbortSignal) {
     this.update({ message: 'Downloading example project', progress: null });
@@ -175,6 +200,12 @@ export class ProjectController {
     this.update({ message: 'Checking project media', progress: null });
     const byId = new Map(imported.assets.map(asset => [asset.id, asset]));
     const source = await this.validateVideo(byId.get(imported.project.source.assetId!)!.blob, signal);
+      const clipInfo = new Map([[imported.project.source.assetId!, source]]);
+      for (const scene of imported.project.callResponse?.scenes ?? []) {
+        let info = clipInfo.get(scene.clip.assetId);
+        if (!info) { info = await this.validateVideo(byId.get(scene.clip.assetId)!.blob, signal); clipInfo.set(scene.clip.assetId, info); }
+        if (scene.clip.outFrame / imported.project.callResponse!.fps > info.duration + 1 / info.fps) throw new Error('A scene clip extends beyond its media.');
+      }
     for (const item of imported.project.interstitials) {
       if (item.time > source.duration + Math.max(1 / source.fps, 1 / TIMELINE_FPS)) throw new Error('An interstitial anchor lies outside the source video.');
       for (const result of [item.result, item.previousResult]) {

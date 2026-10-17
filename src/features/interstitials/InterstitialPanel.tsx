@@ -1,23 +1,24 @@
 import './styles.css';
-import { useRef } from 'react';
-import { ArrowLeft, Clapperboard, Plus, RotateCcw, Trash2 } from 'lucide-react';
-import { COMFY, INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
-import { comfyReferenceRange } from '../../../shared/comfy';
+import { useRef, type ReactNode } from 'react';
+import { ArrowLeft, Clapperboard, Plus, Repeat2, Trash2 } from 'lucide-react';
 import { formatTime, type AppStatus } from '../../../shared/contracts';
-import { hasUnsubmittedChanges, isGenerating, playableResult, referenceRange, validateInterstitialDuration, type Interstitial } from '../../../shared/interstitials';
+import { isGenerating, playableResult, type Interstitial } from '../../../shared/interstitials';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import type { InterstitialController } from './InterstitialController';
 import { assets } from '../project/assets';
 import { phaseLabel } from './status';
-import InterstitialTimeField from './InterstitialTimeField';
-import InterstitialPreview from './InterstitialPreview';
+import InterstitialEditor from './InterstitialEditor';
+import { clipTypeLabel, interstitialScenes, type SceneId } from '../call-response/model';
+import type { FlowTimeline } from '../timeline/FlowTracks';
+import CallResponsePanel from '../call-response/CallResponsePanel';
 
-function RemoveInterstitialButton({ item, controller }: { item: Interstitial; controller: InterstitialController }) {
+function RemoveInterstitialButton({ item, controller, disabled = false }: { item: Interstitial; controller: InterstitialController; disabled?: boolean }) {
   const handledTouch = useRef(false);
-  return <button className="icon-button small" aria-label={`Remove ${item.label}`}
+  return <button className="icon-button small" aria-label={`Remove ${item.label}`} disabled={disabled} title={disabled ? 'This interstitial is used by a connected timeline clip.' : undefined}
     onPointerDown={() => { handledTouch.current = false; }}
     onPointerUp={event => {
+      if (disabled) return;
       if (event.pointerType !== 'touch' || !event.isPrimary) return;
       const rect = event.currentTarget.getBoundingClientRect();
       if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return;
@@ -29,67 +30,53 @@ function RemoveInterstitialButton({ item, controller }: { item: Interstitial; co
     }}><Trash2 size={14} /></button>;
 }
 
-export default function InterstitialPanel({ items, selectedId, controller, engine, info, status, active, onAdd, onSelect, onPreviewPlay }: {
+export default function InterstitialPanel({ items, selectedId, controller, engine, info, status, active, onAdd, onSelect, onPreviewPlay, connectedIds = [], callResponse, renderClipControls }: {
   items: Interstitial[]; selectedId: string | null; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null; status: AppStatus | null;
   active: boolean; onAdd: () => void; onSelect: (id: string | null) => void; onPreviewPlay: () => void;
+  connectedIds?: string[];
+  callResponse?: FlowTimeline;
+  renderClipControls?: (id: SceneId) => ReactNode;
 }) {
   const selected = items.find(item => item.id === selectedId);
+  const members = callResponse ? interstitialScenes(callResponse.flow) : [];
+  const childIds = new Set(callResponse?.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []));
+  const standaloneItems = items.filter(item => !childIds.has(item.id));
+  const groupReady = members.length > 0 && members.every(scene => !!assets.url(scene.clip.assetId));
+  if (callResponse && renderClipControls && (callResponse.selectedInterstitial || members.some(scene => scene.interstitialId === selectedId || scene.id === callResponse.selectedSceneId))) {
+    return <CallResponsePanel value={callResponse} items={items} onBack={() => onSelect(null)} renderControls={renderClipControls}
+      controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />;
+  }
   if (!selected) return <div className="panel-content interstitial-panel">
     <div className="panel-intro"><h2>Interstitials</h2></div>
-    <button className="button full-width" disabled={!info} onClick={onAdd}><Plus size={14} /> New interstitial at playhead</button>
-    {!items.length ? <div className="empty-state"><h3>No interstitials yet</h3><p>Press <kbd>P</kbd> to add a draft at the playhead.</p></div> : <ol className="interstitial-list">{items.map((item, i) => <li key={item.id}>
+    <button className="button full-width" disabled={!info || connectedIds.length > 0} onClick={onAdd}><Plus size={14} /> New interstitial at playhead</button>
+    {!items.length && !callResponse ? <div className="empty-state"><h3>No interstitials yet</h3><p>Press <kbd>P</kbd> to add a draft at the playhead.</p></div> : <ol className="interstitial-list">
+      {callResponse && <li className="interstitial-group" data-interstitial-id={callResponse.flow.interstitial.id}>
+        <button className={`interstitial-row interstitial-group-heading ${groupReady ? 'ready' : ''}`} disabled={!members.length}
+          aria-label={`Select ${callResponse.flow.interstitial.label}`} onClick={callResponse.onSelectInterstitial}>
+          <span className="interstitial-number">1</span><span className="interstitial-row-content"><strong>{callResponse.flow.interstitial.label}</strong><span>{formatTime(callResponse.flow.interstitial.time, true)} · {members.length} clips</span></span>
+          {groupReady && <Clapperboard size={14} />}
+        </button>
+        <ol className="interstitial-clips" aria-label={`Clips in ${callResponse.flow.interstitial.label}`}>
+          {members.map(scene => {
+            const item = items.find(item => item.id === scene.interstitialId);
+            return <li key={scene.clip.id}><button className="interstitial-row" aria-label={`Select ${clipTypeLabel(scene.clip)} clip`} onClick={() => callResponse.onSelectScene(scene.id)}>
+              {scene.clip.kind === 'idle' ? <Repeat2 size={14} /> : <Clapperboard size={14} />}
+              <span className="interstitial-row-content"><strong>{clipTypeLabel(scene.clip)}</strong><span>{scene.label}</span></span>
+              {item && isGenerating(item) && <span className="spinner" />}
+            </button></li>;
+          })}
+        </ol>
+      </li>}
+      {standaloneItems.map((item, i) => <li key={item.id}>
       <button className={`interstitial-row ${playableResult(item) ? 'ready' : ''}`} onClick={() => onSelect(item.id)} aria-label={`Select ${item.label}`}>
-        <span className="interstitial-number">{i + 1}</span><span className="interstitial-row-content"><strong>{item.label}</strong><span>{formatTime(item.time, true)} · {phaseLabel(item)}</span></span>
+        <span className="interstitial-number">{i + 1 + (callResponse ? 1 : 0)}</span><span className="interstitial-row-content"><strong>{item.label}</strong><span>{formatTime(item.time, true)} · {phaseLabel(item)}</span></span>
         {isGenerating(item) && <span className="spinner" />}{playableResult(item) && <Clapperboard size={14} />}
-      </button><RemoveInterstitialButton item={item} controller={controller} />
+      </button><RemoveInterstitialButton item={item} controller={controller} disabled={connectedIds.includes(item.id)} />
     </li>)}</ol>}
   </div>;
-  const busy = isGenerating(selected);
-  const method = selected.method ?? 'fal';
-  const currentResult = playableResult(selected);
-  const changed = hasUnsubmittedChanges(selected);
-  const retryLoading = !busy && !!selected.result && selected.phase !== 'ready' && !changed;
-  const action = retryLoading ? 'Retry loading' : selected.phase === 'error' || selected.phase === 'cancelled' ? 'Retry' : currentResult ? 'Regenerate' : 'Generate';
-  const fullVideoUrl = currentResult?.assetId ? assets.url(currentResult.assetId) : undefined;
-  const downloadName = `${selected.label.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'interstitial'}-full.mp4`;
-  let validationError = '';
-  let comfyPlan: ReturnType<typeof comfyReferenceRange>['plan'] | undefined;
-  try {
-    validateInterstitialDuration(selected.duration);
-    if (info) {
-      if (method === 'comfy') comfyPlan = comfyReferenceRange(selected, info.duration).plan;
-      else referenceRange(selected, info.duration);
-    }
-  } catch (error) { validationError = (error as Error).message; }
   return <div className="panel-content interstitial-panel">
     <button className="text-button interstitial-back" onClick={() => onSelect(null)}><ArrowLeft size={13} /> All interstitials</button>
-    <div className="interstitial-title"><h2>{selected.label}</h2><RemoveInterstitialButton item={selected} controller={controller} /></div>
-    {busy && <div className="task-status" role="status"><span className="spinner" /><span>{phaseLabel(selected)}</span><button className="text-button" aria-label="Cancel interstitial generation" onClick={() => void controller.cancel(selected.id)}>Cancel</button></div>}
-    {selected.phase === 'preparing' && <progress className="interstitial-progress" aria-label="Preparing reference" max="1" value={selected.progress || 0} />}
-    {selected.phase === 'rendering' && selected.progress !== undefined && <progress className="interstitial-progress" aria-label="Generating interstitial" max="1" value={selected.progress} />}
-    <form onSubmit={event => { event.preventDefault(); if (engine && info) void controller.generate(selected.id, engine, info); }}>
-      <fieldset>
-        <label className="field">Generate with<select aria-label="Video generation method" value={method} onChange={event => controller.edit(selected.id, { method: event.target.value as 'fal' | 'comfy' })}>
-          <option value="fal">Fal · H3 Max</option><option value="comfy">Comfy · H3 masked bridge</option>
-        </select></label>
-        <label className="field">Prompt{changed && <span className="interstitial-edited" title="Changes apply to the next generation">Edited</span>}<textarea aria-label="Interstitial prompt" rows={4} required maxLength={4000} placeholder="Describe the scene to insert…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} /></label>
-        <div className="interstitial-time-fields" key={selected.id}>
-          <InterstitialTimeField name="start_range" label="Start range" value={selected.start_range} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025} onChange={value => controller.edit(selected.id, { start_range: value })} />
-          <InterstitialTimeField name="end_range" label="End range" value={selected.end_range} min={method === 'comfy' ? COMFY.minContextFrames / TIMELINE_FPS : INTERSTITIAL.minEndRange} max={INTERSTITIAL.maxRange} step={0.1} onChange={value => controller.edit(selected.id, { end_range: value })} />
-          <InterstitialTimeField name="Duration" label="Duration" value={selected.duration} min={INTERSTITIAL.minDuration} max={INTERSTITIAL.maxDuration} step={0.25} onChange={value => controller.edit(selected.id, { duration: value })} />
-        </div>
-        {comfyPlan && <p className="hint">{comfyPlan.insertion.duration.toFixed(3)}s generated · {(comfyPlan.prefixFrames / TIMELINE_FPS).toFixed(3)}s / {(comfyPlan.suffixFrames / TIMELINE_FPS).toFixed(3)}s context</p>}
-        {method === 'fal' && <label className="interstitial-option"><input type="checkbox" checked={selected.enable_prompt_expansion}
-          onChange={event => controller.edit(selected.id, { enable_prompt_expansion: event.target.checked })} /> Prompt expansion</label>}
-      </fieldset>
-      {validationError && <p className="inline-error" role="alert">{validationError}</p>}
-      {selected.error && <p className="inline-error" role="alert">{selected.error}</p>}
-      {selected.phase === 'cancelled' && <p className="hint">Cancelled</p>}
-      <button type="submit" className="button primary full-width" disabled={busy || !engine || !info || !status?.providers[method] || !!validationError || !selected.prompt.trim()}>
-        {busy ? <span className="spinner" /> : action === 'Generate' ? <Clapperboard size={14} /> : <RotateCcw size={14} />} {busy ? 'Generating…' : action}
-      </button>
-      {status && !status.providers[method] && <p className="hint interstitial-action-hint">{method === 'fal' ? 'fal.ai' : 'Comfy Cloud'} is not connected.</p>}
-    </form>
-    {fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName} active={active} onPlay={onPreviewPlay} />}
+    <div className="interstitial-title"><h2>{selected.label}</h2><RemoveInterstitialButton item={selected} controller={controller} disabled={connectedIds.includes(selected.id)} /></div>
+    <InterstitialEditor selected={selected} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />
   </div>;
 }

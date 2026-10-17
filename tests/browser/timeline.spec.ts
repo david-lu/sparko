@@ -11,7 +11,7 @@ async function addPin(page: Page, time: number) {
 }
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.duration)).toBeGreaterThan(0);
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.duration), { timeout: 60_000 }).toBeGreaterThan(0);
 });
 
 test('pins drag without seeking, reorder, persist, and delete from the panel or keyboard', async ({ page }) => {
@@ -155,22 +155,18 @@ test('pin drag cancellation, bounds, keyboard adjustments and edge scrolling', a
 
 test('Space toggles playback from controls and the timeline, but preserves text editing', async ({ page }) => {
   await addPin(page, 20);
-  for (const control of [page.getByRole('button', { name: 'Add draft P' }), page.locator('.timeline-pin'), page.getByRole('tab', { name: 'Describe' }), page.getByRole('slider', { name: 'Video timeline' }), page.getByRole('button', { name: 'Zoom in timeline' })]) {
+  for (const control of [page.getByRole('button', { name: 'Add draft P' }), page.locator('.timeline-pin'), page.getByRole('button', { name: 'All interstitials' }), page.getByRole('slider', { name: 'Video timeline' }), page.getByRole('button', { name: 'Zoom in timeline' })]) {
     await control.focus();
     await page.keyboard.press('Space'); await expect.poll(() => paused(page)).toBe(false);
     await page.keyboard.press('Space'); await expect.poll(() => paused(page)).toBe(true);
   }
   await expect(page.locator('.timeline-pin')).toHaveCount(1);
-  await expect(page.getByRole('tab', { name: /Interstitials/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('textbox', { name: 'Interstitial prompt' })).toBeVisible();
   await expect(page.getByLabel('Scrollable timeline')).toHaveAttribute('data-zoom', '1');
   const label = page.getByRole('textbox', { name: 'Interstitial prompt' });
   await label.fill('Scene'); await label.press('End'); await label.press('Space');
   await expect(label).toHaveValue('Scene '); expect(await paused(page)).toBe(true);
-  await page.getByRole('tab', { name: 'Describe' }).click();
-  const focus = page.getByPlaceholder('e.g. Describe the action and camera movement');
-  await focus.fill('Action'); await focus.press('Space');
-  await expect(focus).toHaveValue('Action '); expect(await paused(page)).toBe(true);
-  await page.getByRole('spinbutton', { name: 'Analysis start' }).focus(); await page.keyboard.press('Space');
+  await page.getByRole('spinbutton', { name: 'start_range' }).focus(); await page.keyboard.press('Space');
   expect(await paused(page)).toBe(true);
 });
 

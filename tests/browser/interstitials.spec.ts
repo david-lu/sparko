@@ -176,9 +176,11 @@ test('draft editor, preparation, generation and a progressively buffered interst
   await preview.focus(); await preview.press('Space'); await expect(preview).toHaveJSProperty('paused', true);
   await expect(mainVideo).toHaveJSProperty('paused', true);
   await preview.press('Space'); await expect(preview).toHaveJSProperty('paused', false);
-  await page.getByRole('tab', { name: 'Describe', exact: true }).click();
-  await expect(preview).toHaveJSProperty('paused', true);
-  await page.getByRole('tab', { name: /Interstitials/ }).click();
+  const previousPreview = await preview.elementHandle();
+  await page.getByRole('button', { name: 'All interstitials' }).click();
+  await expect.poll(() => previousPreview!.evaluate(video => (video as HTMLVideoElement).paused)).toBe(true);
+  await previousPreview!.dispose();
+  await page.getByRole('button', { name: 'Select Interstitial 1', exact: true }).click();
   await preview.evaluate(video => (video as HTMLVideoElement).play());
   await page.locator('.video-stage').hover(); await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(preview).toHaveJSProperty('paused', true);

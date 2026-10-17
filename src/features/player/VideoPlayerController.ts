@@ -2,14 +2,17 @@ import type { MediaSource } from '../../media/media';
 import type { TimelineComposition } from '../../media/TimelineComposition';
 import { TimelineStream } from '../../media/TimelineStream';
 import { TIMELINE_FPS } from '../../../shared/constants';
+import { FlowPlayback } from '../call-response/FlowPlayback';
+import { flowLayout, type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from '../call-response/model';
 
 export type PlayerState = {
   time: number; duration: number; playing: boolean; buffering: boolean;
   volume: number; muted: boolean; speed: number; loop: boolean; error: string | null;
   buffered: { start: number; end: number }[];
+  flow: PlaybackSession | null;
 };
 const initialState = (): PlayerState => ({ time: 0, duration: 0, playing: false, buffering: false,
-  volume: 1, muted: false, speed: 1, loop: false, error: null, buffered: [] });
+  volume: 1, muted: false, speed: 1, loop: false, error: null, buffered: [], flow: null });
 
 /** Owns transport, media events, segment playback, and element lifetime. No React dependency. */
 export class VideoPlayerController {
@@ -25,6 +28,7 @@ export class VideoPlayerController {
   private wantsPlayback = false;
   private streamVersion = 0;
   private nativeLoad: AbortController | null = null;
+  private flowPlayback: FlowPlayback | null = null;
 
   getSnapshot = (): PlayerState => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
@@ -39,8 +43,9 @@ export class VideoPlayerController {
     this.removeEvents?.();
     this.element?.pause();
     this.element = element;
-    if (!element) { this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose(); this.pendingSeek = null; this.wantsPlayback = false; return; }
+    if (!element) { this.flowPlayback?.dispose(); this.flowPlayback = null; this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose(); this.pendingSeek = null; this.wantsPlayback = false; return; }
     const sync = (event: Event) => {
+      if (this.flowPlayback) { this.update({ volume: element.volume, muted: element.muted, speed: element.playbackRate }); return; }
       if (event.type === 'play') this.wantsPlayback = true;
       if (event.type === 'pause' && this.pendingSeek === null) this.wantsPlayback = false;
       if (this.previewEnd !== null && element.currentTime >= this.previewEnd) {
@@ -76,18 +81,21 @@ export class VideoPlayerController {
   };
 
   load(source: MediaSource) {
+    this.flowPlayback?.dispose(); this.flowPlayback = null;
     this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose(); this.stream = null; this.composition = null; this.pendingSeek = null; this.wantsPlayback = false;
     this.source = source; this.previewEnd = null;
     this.element?.pause();
-    this.update({ time: 0, duration: 0, playing: false, buffering: true, error: null, buffered: [] });
+    this.update({ time: 0, duration: 0, playing: false, buffering: true, error: null, buffered: [], flow: null });
     if (this.element) this.startSource(0);
   }
   private applySettings() {
     if (!this.element) return;
     this.element.volume = this.state.volume; this.element.muted = this.state.muted;
-    this.element.playbackRate = this.state.speed; this.element.loop = !this.stream && this.state.loop;
+    this.element.playbackRate = this.state.speed; this.element.loop = !this.flowPlayback && !this.stream && this.state.loop;
   }
   setComposition(composition: TimelineComposition) {
+    this.flowPlayback?.dispose(); this.flowPlayback = null;
+    if (this.state.flow) this.update({ flow: null });
     if (this.composition === composition) return;
     const wasPlaying = this.wantsPlayback || this.state.playing;
     const sourceTime = this.composition?.sourceTime(this.state.time) ?? this.state.time;
@@ -100,6 +108,21 @@ export class VideoPlayerController {
     if (!this.element) return;
     if (this.stream) this.startStream(time); else this.startSource(time);
   }
+  setFlow(flow: CallResponseFlow) {
+    if (!this.element || !this.source || this.flowPlayback?.flow === flow) return;
+    this.flowPlayback?.dispose(); this.flowPlayback = null;
+    this.streamVersion++; this.nativeLoad?.abort(); this.stream?.dispose(); this.stream = null;
+    this.composition = null; this.pendingSeek = null; this.wantsPlayback = false;
+    this.element.pause();
+    const layout = flowLayout(flow);
+    this.flowPlayback = new FlowPlayback(flow, this.element, this.source, (session, buffering, error) => {
+      this.update({ flow: session, playing: session.playing, buffering, error: error ?? null, buffered: [],
+        time: (layout.starts[session.sceneId] + session.frame) / flow.fps, duration: layout.totalFrames / flow.fps });
+    });
+  }
+  seekFlowScene(id: SceneId, frame = 0) { this.flowPlayback?.seekScene(id, frame); }
+  answerFlow(answer: string) { this.flowPlayback?.answer(answer); }
+  branchFlow(id: SceneId, outcome: Outcome) { this.flowPlayback?.branch(id, outcome); }
   /** A prepared source plays directly, without decoding and encoding another preview copy. */
   private startSource(time: number) {
     if (!this.element || !this.source) return;
@@ -139,6 +162,7 @@ export class VideoPlayerController {
   getSourceTime() { const time = this.pendingSeek ?? this.element?.currentTime ?? this.state.time; return this.composition?.sourceTime(time) ?? time; }
   getSourceDuration() { return this.composition?.info.duration ?? this.state.duration; }
   async play() {
+    if (this.flowPlayback) { this.flowPlayback.play(); return; }
     if (!this.element) return;
     this.wantsPlayback = true;
     if (this.pendingSeek !== null) return;
@@ -146,10 +170,11 @@ export class VideoPlayerController {
     try { await this.element.play(); }
     catch { this.update({ error: 'Playback could not start. Try a browser-supported video file.' }); }
   }
-  pause() { this.wantsPlayback = false; this.element?.pause(); }
-  togglePlayback() { if (this.pendingSeek !== null && this.wantsPlayback || this.element && !this.element.paused) this.pause(); else void this.play(); }
+  pause() { if (this.flowPlayback) { this.flowPlayback.pause(); return; } this.wantsPlayback = false; this.element?.pause(); }
+  togglePlayback() { if (this.flowPlayback) { if (this.state.playing) this.pause(); else void this.play(); return; } if (this.pendingSeek !== null && this.wantsPlayback || this.element && !this.element.paused) this.pause(); else void this.play(); }
   seek(time: number) {
     if (!this.element || !Number.isFinite(time) || !this.state.duration) return;
+    if (this.flowPlayback) { this.flowPlayback.seek(time); return; }
     this.previewEnd = null;
     const fps = this.composition?.fps ?? TIMELINE_FPS;
     const target = Math.max(0, Math.min(this.state.duration, Math.round(time * fps) / fps));
@@ -183,6 +208,7 @@ export class VideoPlayerController {
   previewSource(start: number, end: number) { this.preview(this.composition?.timelineTime(start) ?? start, this.composition?.timelineTime(end) ?? end); }
   clearError() { this.update({ error: null }); }
   dispose() {
+    this.flowPlayback?.dispose(); this.flowPlayback = null;
     this.streamVersion++; this.stream?.dispose(); this.stream = null;
     this.nativeLoad?.abort(); this.nativeLoad = null;
     this.attach(null); this.removeEvents = null; this.listeners.clear(); this.source = null;

@@ -8,6 +8,10 @@ test.beforeEach(async ({ page }) => {
 test('default video, playback, seeking, settings and persistent pins', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await expect(page.locator('.menu-document')).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Interstitials' })).toBeVisible();
+  await expect(page.getByRole('tablist', { name: 'Video tools' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Generate description' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Enable mic' })).toHaveCount(0);
   await expect(page.locator('video')).toHaveCount(1);
   const viewport = page.viewportSize()!;
   const timelineBox = await page.locator('.timeline-section').boundingBox();
@@ -104,7 +108,8 @@ test('panel dividers resize and persist without page scrolling', async ({ page }
   await page.screenshot({ path: 'test-results/resizable-panels.png' });
 });
 
-test('AI panels prepare real frames/audio and real MP4 segments', async ({ page }) => {
+// Retained for when the Describe panel returns to the interface.
+test.skip('AI panels prepare real frames/audio and real MP4 segments', async ({ page }) => {
   const sent: { url: string; bytes: number; data: string }[] = [];
   await page.route('**/api/analyze/*', async route => {
     const data = route.request().postDataBuffer();

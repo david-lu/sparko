@@ -3,7 +3,18 @@ import type { InsertionRange } from './contracts.js';
 
 export type GenerationMethod = 'fal' | 'comfy';
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
-export type InterstitialResult = { url: string; assetId?: string; start: number; duration: number; totalDuration: number };
+export type ClipReference = { sceneId: string; assetId: string; inFrame: number; outFrame: number };
+export type GenerationReference = { before: ClipReference; after?: ClipReference };
+export type InterstitialResult = { url: string; assetId?: string; start: number; duration: number; totalDuration: number; reference?: GenerationReference };
+/** A single interstitial whose child clips share an interaction and branching timeline. */
+export type CallResponseInterstitial = {
+  id: string;
+  kind: 'call-response';
+  label: string;
+  /** Insertion anchor in the original source video. */
+  time: number;
+  clipIds: string[];
+};
 export type InterstitialSettings = {
   method?: GenerationMethod;
   start_range: number; end_range: number; duration: number; prompt: string;
@@ -20,6 +31,7 @@ export type Interstitial = InterstitialSettings & {
   /** Provider and bounds of the submitted job; editing the selector cannot reroute it. */
   requestMethod?: GenerationMethod;
   requestInsertion?: InsertionRange;
+  requestReference?: GenerationReference;
   result?: InterstitialResult;
   /** Last playable render, retained until a replacement has loaded and passed validation. */
   previousResult?: InterstitialResult;

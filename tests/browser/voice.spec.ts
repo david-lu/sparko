@@ -2,6 +2,8 @@ import { expect, test } from './fixtures';
 import { readFile } from 'node:fs/promises';
 import { wavFixture } from '../fixtures/audio';
 
+test.skip(true, 'The Voice panel is temporarily removed from the interface.');
+
 declare global {
   interface Window {
     voiceTest: { tracks: MediaStreamTrack[]; play: (url: string) => Promise<void> };

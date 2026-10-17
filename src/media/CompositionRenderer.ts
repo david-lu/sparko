@@ -6,7 +6,7 @@ export const COMPOSITION_MIME = 'video/mp4; codecs="avc1.42002a, mp4a.40.2"';
 type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
 
 /** Encodes one continuous frame/sample clock, including across different source assets. */
-export async function renderComposition(composition: TimelineComposition, output: Output, options: Options) {
+export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'>, output: Output, options: Options) {
   await ensureAac();
   options.signal.throwIfAborted();
   const scale = options.preview ? Math.min(1, 720 / composition.info.height) : 1;
@@ -37,7 +37,7 @@ export async function renderComposition(composition: TimelineComposition, output
         const track = await inputFor(segment).getPrimaryVideoTrack();
         if (!track || !await track.canDecode()) throw new Error(`Unable to decode ${segment.label}.`);
         const sink = new CanvasSink(track, { width: canvas.width, height: canvas.height, fit: 'contain', poolSize: 2 });
-        const timestamps = function* () { for (let frame = first; frame < last; frame++) yield segment.sourceStart + (frame - segment.startFrame) / composition.fps + 1e-7; };
+        const timestamps = function* () { for (let frame = first; frame < last; frame++) yield segment.sourceStart + (segment.still ? 0 : (frame - segment.startFrame) / composition.fps) + 1e-7; };
         let frame = first;
         for await (const sample of sink.canvasesAtTimestamps(timestamps())) {
           options.signal.throwIfAborted();
@@ -70,7 +70,7 @@ export async function renderComposition(composition: TimelineComposition, output
         if (from >= to) continue;
         const sourceStart = segment.sourceStart + from - segment.startFrame / composition.fps;
         const sourceEnd = sourceStart + to - from;
-        const track = await inputFor(segment).getPrimaryAudioTrack();
+        const track = segment.still ? null : await inputFor(segment).getPrimaryAudioTrack();
         let cursor = from - origin;
         if (track) {
           if (!await track.canDecode()) throw new Error(`Unable to decode audio in ${segment.label}.`);

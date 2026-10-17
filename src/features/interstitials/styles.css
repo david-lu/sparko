@@ -1,5 +1,11 @@
 .interstitial-back{margin-bottom:10px}.interstitial-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .interstitial-list{list-style:none;margin:12px 0 0;padding:0}.interstitial-list li{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+.interstitial-list>.interstitial-group{display:block;padding:0 0 12px}.interstitial-group-heading{width:100%}
+.interstitial-clips{list-style:none;margin:8px 0 0 6px;padding:0 0 0 12px;border-left:1px solid #62759866}.interstitial-clips li:last-child{border-bottom:0}.interstitial-clips .interstitial-row{padding:9px 0}.interstitial-clips .interstitial-row>svg{color:#9aabc5;flex-shrink:0}
+.interstitial-parent-label{font-size:10px;line-height:1.6;color:#9aabc5;margin:0 0 8px}
+.call-response-panel .call-response-controls{padding:10px 0}.clip-subpanel{border:1px solid var(--line);margin-top:9px;background:#171a1e}.clip-subpanel.selected{border-color:#62c8b580}
+.clip-subpanel-heading{display:flex;align-items:center;gap:8px;padding:10px;width:100%;text-align:left;background:transparent}.clip-subpanel-heading>span:first-of-type{flex:1;display:flex;flex-direction:column;gap:5px}.clip-subpanel-heading strong{font-size:11px;font-weight:500}.clip-subpanel-heading small{font:9px var(--mono);color:var(--muted)}.clip-subpanel-heading[aria-expanded=true]>svg:last-child{transform:rotate(180deg)}
+.clip-subpanel-body{padding:0 10px 10px}.clip-subpanel-body .interstitial-editor{padding-top:10px}.clip-stale{font-size:10px;line-height:1.6;color:#e1c17b;margin:8px 0}.clip-dependency{margin-bottom:8px}
 .interstitial-row{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:12px 0;background:transparent;text-align:left}.interstitial-row:hover{background:#ffffff05}
 .interstitial-number{display:grid;place-items:center;width:23px;height:23px;flex-shrink:0;background:#ffc657;color:#201600;font:700 10px var(--mono)}
 .interstitial-row.ready .interstitial-number{background:#62c8b5;color:#0b2924}.interstitial-row.ready>svg{color:#62c8b5}.interstitial-row-content{display:flex;flex:1;min-width:0;flex-direction:column;gap:5px}

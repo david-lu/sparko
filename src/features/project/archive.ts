@@ -2,12 +2,15 @@ import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } 
 import { z } from 'zod';
 import { INTERSTITIAL } from '../../../shared/constants';
 import { assetIds, type Asset, type Project } from './types';
+import { callResponseSchema } from '../call-response/schema';
 
 const MAX_BYTES = 8 * 1024 ** 3;
 const MAX_MANIFEST = 8 * 1024 ** 2;
 const number = z.number().finite().nonnegative();
 const text = z.string().max(50_000);
-const resultSchema = z.object({ url: text, assetId: z.uuid(), start: number, duration: number.positive(), totalDuration: number.positive() })
+const clipReferenceSchema = z.object({ sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
+const generationReferenceSchema = z.object({ before: clipReferenceSchema, after: clipReferenceSchema.optional() });
+const resultSchema = z.object({ url: text, assetId: z.uuid(), start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
   method: z.enum(['fal', 'comfy']).default('fal'),
@@ -17,11 +20,13 @@ const settingsSchema = z.object({
 });
 const projectSchema = z.object({
   id: text, name: z.string().min(1).max(1000), updatedAt: number,
+  callResponse: callResponseSchema.optional(),
   source: z.object({ name: z.string().min(1).max(1000), assetId: z.uuid(), originalAssetId: z.uuid().optional() }),
   interstitials: z.array(z.object({
     id: z.string().min(1).max(200), label: z.string().max(1000), time: number,
     ...settingsSchema.shape, generationSettings: settingsSchema.optional(),
     requestMethod: z.enum(['fal', 'comfy']).optional(),
+    requestReference: generationReferenceSchema.optional(),
     requestInsertion: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
       .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid job boundaries.').optional(),
     phase: z.enum(['draft', 'preparing', 'uploading', 'queued', 'rendering', 'loading', 'ready', 'error', 'cancelled']),
@@ -32,14 +37,14 @@ const projectSchema = z.object({
   analysis: z.object({ slice: z.object({ start: number, end: number }), provider: z.enum(['openai', 'gemini']), instructions: text,
     result: z.object({ caption: text, description: text, provider: z.enum(['openai', 'gemini']), model: text, start: number, end: number, basis: text }).nullable(),
   }),
-});
-const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.literal(1), project: projectSchema,
+}).refine(project => !project.callResponse || project.callResponse.scenes.every(scene => !scene.interstitialId || project.interstitials.some(item => item.id === scene.interstitialId)), 'A scene references a missing interstitial.');
+const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2)]), project: projectSchema,
   assets: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(1000), mime: z.string().max(200), size: number.int().positive().max(MAX_BYTES) })).max(2000),
 });
 type Progress = (message: string, fraction: number) => void;
 
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
-  const manifest = manifestSchema.parse({ format: 'sparko-project', version: 1, project: {
+  const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.callResponse ? 2 : 1, project: {
     ...project, interstitials: project.interstitials.map(item => ({ ...item,
       result: item.result ? { ...item.result, url: `asset:${item.result.assetId}` } : undefined,
       previousResult: item.previousResult ? { ...item.previousResult, url: `asset:${item.previousResult.assetId}` } : undefined,
@@ -80,7 +85,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const entry = entries.find(entry => entry.filename === 'project.json');
     if (!entry || entry.directory || entry.uncompressedSize > MAX_MANIFEST) throw new Error('The archive is missing a valid project.json manifest.');
     const raw = JSON.parse(await entry.getData(new TextWriter(), { signal, checkSignature: true }));
-    if (raw.version !== 1 || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
+    if (![1, 2].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
     const parsed = manifestSchema.safeParse(raw);
     if (!parsed.success) throw new Error(`Invalid project metadata: ${parsed.error.issues[0].message}`);
     const { project, assets: descriptions } = parsed.data;
@@ -89,6 +94,8 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const total = descriptions.reduce((sum, asset) => sum + asset.size, 0);
     if (total > MAX_BYTES) throw new Error('This project exceeds the 8 GB import limit.');
     const remap = new Map(descriptions.map(asset => [asset.id, crypto.randomUUID()]));
+    const remapReference = (input?: z.infer<typeof generationReferenceSchema>) => input ? { before: { ...input.before, assetId: remap.get(input.before.assetId)! },
+      after: input.after ? { ...input.after, assetId: remap.get(input.after.assetId)! } : undefined } : undefined;
     const assets: Asset[] = []; let read = 0;
     for (const asset of descriptions) {
       signal.throwIfAborted();
@@ -102,12 +109,14 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     }
     return { project: {
       ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(),
+      callResponse: project.callResponse ? { ...project.callResponse, scenes: project.callResponse.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) } : undefined,
       source: { ...project.source, assetId: remap.get(project.source.assetId)!, originalAssetId: project.source.originalAssetId ? remap.get(project.source.originalAssetId)! : undefined },
       subtitle: project.subtitle ? { ...project.subtitle, assetId: remap.get(project.subtitle.assetId)! } : null,
       interstitials: project.interstitials.map(item => ({ ...item,
+        requestReference: remapReference(item.requestReference),
         phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase,
-        result: item.result ? { ...item.result, assetId: remap.get(item.result.assetId)!, url: `asset:${remap.get(item.result.assetId)}` } : undefined,
-        previousResult: item.previousResult ? { ...item.previousResult, assetId: remap.get(item.previousResult.assetId)!, url: `asset:${remap.get(item.previousResult.assetId)}` } : undefined,
+        result: item.result ? { ...item.result, reference: remapReference(item.result.reference), assetId: remap.get(item.result.assetId)!, url: `asset:${remap.get(item.result.assetId)}` } : undefined,
+        previousResult: item.previousResult ? { ...item.previousResult, reference: remapReference(item.previousResult.reference), assetId: remap.get(item.previousResult.assetId)!, url: `asset:${remap.get(item.previousResult.assetId)}` } : undefined,
       })),
     }, assets };
   } finally { await reader.close(); }

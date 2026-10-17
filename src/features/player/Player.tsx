@@ -1,6 +1,6 @@
 import './styles.css';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Captions, Maximize, Minimize, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
+import { Captions, Check, Maximize, Minimize, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX, X } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, MediaSource, Thumbnail } from '../../media/media';
 import type { Interstitial } from '../../../shared/interstitials';
@@ -8,6 +8,8 @@ import type { TimelineComposition } from '../../media/TimelineComposition';
 import type { VideoPlayerController } from './VideoPlayerController';
 import Timeline from '../timeline/Timeline';
 import { remapSubtitles } from './subtitles';
+import type { FlowTimeline } from '../timeline/FlowTracks';
+import { getScene, type Outcome } from '../call-response/model';
 
 type Props = {
   source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[];
@@ -18,6 +20,7 @@ type Props = {
   selection: Slice | null;
   subtitle: { url: string; name: string } | null; onSubtitle: (file: File) => void;
   timelineHeight: number; maxTimelineHeight: number; onTimelineHeight: (value: number) => void;
+  callResponse?: FlowTimeline;
 };
 
 export default function Player(props: Props) {
@@ -28,6 +31,8 @@ export default function Player(props: Props) {
   const [fullscreen, setFullscreen] = useState(false);
   const subtitle = props.subtitle;
   const [captions, setCaptions] = useState(true);
+  const flow = props.callResponse;
+  const activeScene = flow?.session ? getScene(flow.flow, flow.session.sceneId) : null;
   const originalCues = useRef<{ url: string; cues: VTTCue[] } | null>(null);
   useEffect(() => {
     const video = controller.video;
@@ -126,12 +131,20 @@ export default function Player(props: Props) {
       </video>
       {!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
       {buffering && <div className="buffering" role="status"><span className="spinner" /> Buffering</div>}
+      {flow && activeScene?.clip.kind === 'idle' && <div className="player-branch-controls" role="group" aria-label="Debug response branches" onDoubleClick={event => event.stopPropagation()}>
+        {flow.flow.edges.filter(edge => edge.from === activeScene.id && (edge.when === 'correct' || edge.when === 'incorrect')).map(edge => <button key={edge.id}
+          className={`player-branch-${edge.when}`} aria-label={`Take ${edge.when} branch`} title={`Debug: take the ${edge.when} branch at the next loop boundary`}
+          aria-pressed={flow.session?.outcome === edge.when} onClick={() => flow.onBranch(activeScene.id, edge.when as Outcome)}>
+          <span className="player-branch-label">{edge.when === 'correct' ? <Check size={15} /> : <X size={15} />}{edge.when === 'correct' ? 'Correct' : 'Incorrect'}</span>
+          <span className="player-branch-selection" aria-hidden="true">{flow.session?.outcome === edge.when ? 'Selected' : ''}</span>
+        </button>)}
+      </div>}
     <div className="transport" onDoubleClick={event => event.stopPropagation()}>
       <div className="transport-group">
         <button className="icon-button play-button" aria-label={playing ? 'Pause' : 'Play'} title="Play / pause (Space)" disabled={!duration} onClick={playPause}>{playing ? <Pause /> : <Play fill="currentColor" />}</button>
         <button className="icon-button" aria-label="Back 10 seconds" title="Back 10 seconds (J)" disabled={!duration} onClick={() => onSeek(time - 10)}><RotateCcw size={18} /><span className="sr-only">10</span></button>
         <button className="icon-button" aria-label="Forward 10 seconds" title="Forward 10 seconds (L)" disabled={!duration} onClick={() => onSeek(time + 10)}><RotateCw size={18} /></button>
-        <span className="time-display"><strong>{formatTime(time)}</strong><span>/</span>{formatTime(duration)}</span>
+        <span className="time-display"><strong>{formatTime(time)}</strong><span>/</span>{props.callResponse ? 'variable' : formatTime(duration)}</span>
       </div>
       <div className="transport-group transport-options">
         <button className="icon-button" aria-label={muted || !volume ? 'Unmute' : 'Mute'} title="Mute (M)" onClick={toggleMute}>{muted || !volume ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
@@ -139,7 +152,7 @@ export default function Player(props: Props) {
         <select className="speed-select" aria-label="Playback speed" value={speed} onChange={event => controller.setSpeed(Number(event.target.value))}>
           {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(rate => <option key={rate} value={rate}>{rate}×</option>)}
         </select>
-        <button className={`icon-button ${loop ? 'active' : ''}`} aria-label="Loop video" aria-pressed={loop} title="Loop video" onClick={() => controller.setLoop(!loop)}><Repeat2 size={18} /></button>
+        <button className={`icon-button ${loop ? 'active' : ''}`} aria-label="Loop video" aria-pressed={loop} title={props.callResponse ? 'Idle clip types control repeating playback' : 'Loop video'} disabled={!!props.callResponse} onClick={() => controller.setLoop(!loop)}><Repeat2 size={18} /></button>
         <button className={`icon-button ${subtitle && captions ? 'active' : ''}`} aria-label={subtitle ? 'Toggle captions' : 'Load captions'} aria-pressed={!!subtitle && captions} title={subtitle ? 'Toggle subtitles (C)' : 'Load WebVTT subtitles'} onClick={toggleCaptions}><Captions size={19} /></button>
         {document.pictureInPictureEnabled && <button className="icon-button pip-button" aria-label="Picture in picture" title="Picture in picture" disabled={!duration} onClick={() => void togglePip()}><PictureInPicture2 size={18} /></button>}
         <button className="icon-button" aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title="Fullscreen (F)" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={19} /> : <Maximize size={19} />}</button>
@@ -148,6 +161,7 @@ export default function Player(props: Props) {
     </div>
 
     <Timeline key={source.url} name={source.name} info={info} thumbnails={thumbnails} interstitials={interstitials} selectedId={props.selectedId} composition={props.composition} time={time} duration={duration} buffered={buffered} selection={selection}
+      callResponse={props.callResponse}
       height={props.timelineHeight} maxHeight={props.maxTimelineHeight} onHeight={props.onTimelineHeight} onAddInterstitial={onAddInterstitial} onSeek={onSeek}
       onMoveInterstitial={props.onMoveInterstitial} onRemoveInterstitial={props.onRemoveInterstitial} onSelectInterstitial={props.onSelectInterstitial} />
     <input ref={captionInput} className="sr-only" type="file" accept=".vtt,text/vtt" aria-label="Choose subtitle file" onChange={event => {

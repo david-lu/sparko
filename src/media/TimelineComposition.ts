@@ -6,6 +6,8 @@ import { TIMELINE_FPS } from '../../shared/constants';
 export type TimelineSegment = {
   id: string; kind: 'source' | 'interstitial'; label: string; source: MediaSource;
   sourceStart: number; startFrame: number; endFrame: number;
+  /** Repeat one boundary frame, with silent audio, for a generation reference. */
+  still?: boolean;
 };
 
 /** Immutable 24 fps edit list. Original assets are sampled without modifying their files. */

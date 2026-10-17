@@ -35,12 +35,15 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await page.getByLabel('end_range').fill('1.5');
   await page.getByLabel('Choose subtitle file').setInputFiles({ name: 'dialogue.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nEmbedded dialogue\n') });
   await expect.poll(async () => (await activeProject(page)).subtitle?.assetId).toBeTruthy();
-  await page.getByRole('tab', { name: 'Describe' }).click();
-  await page.getByPlaceholder('e.g. Describe the action and camera movement').fill('Saved focus');
-  await page.getByRole('combobox', { name: 'AI provider' }).selectOption('gemini');
-  await page.route('**/api/analyze/gemini', route => route.fulfill({ json: { caption: 'Saved caption', description: 'Saved description', provider: 'gemini', model: 'test-model', start: 0, end: 4, basis: 'Video' } }));
-  await page.getByRole('button', { name: 'Generate description' }).click();
-  await expect(page.getByLabel('Analysis result')).toContainText('Saved description', { timeout: 60_000 });
+  // Existing project analysis must survive even while the Describe panel is unavailable.
+  await page.evaluate(async () => {
+    const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
+    const project = await readActiveProject();
+    await writeProject({ ...project, analysis: { ...project.analysis, provider: 'gemini', instructions: 'Saved focus',
+      result: { caption: 'Saved caption', description: 'Saved description', provider: 'gemini', model: 'test-model', start: 0, end: 4, basis: 'Video' } } });
+  });
+  await page.reload();
+  await expect(page.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
   await page.locator('.file-menu summary').click();
   const downloadEvent = page.waitForEvent('download');
   await page.getByRole('menuitem', { name: 'Export project', exact: true }).click();
@@ -78,10 +81,7 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   expect(stored.source).toEqual(preparedSource);
   expect(Buffer.from(stored.original)).toEqual(videoBytes); expect(Buffer.from(stored.scene)).toEqual(videoBytes);
   expect(stored.subtitle).toContain('Embedded dialogue');
-  await restored.getByRole('tab', { name: 'Describe' }).click();
-  await expect(restored.getByLabel('Analysis result')).toContainText('Saved description');
-  await expect(restored.getByRole('combobox', { name: 'AI provider' })).toHaveValue('gemini');
-  await expect(restored.getByPlaceholder('e.g. Describe the action and camera movement')).toHaveValue('Saved focus');
+  expect(project.analysis).toMatchObject({ provider: 'gemini', instructions: 'Saved focus', result: { description: 'Saved description' } });
   await restored.route('http://127.0.0.1:3000/media/**', route => route.abort());
   await restored.reload();
   await expect(restored.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });

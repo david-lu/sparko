@@ -1,0 +1,37 @@
+.timeline-section.has-flow{min-height:270px}
+.timeline-section.has-flow .timeline-ruler{height:25px}
+.timeline-section.has-flow .timeline-scroll{overflow-y:auto}
+.timeline-flow-tracks{position:relative;min-height:210px;flex:1;isolation:isolate}
+.timeline-interstitial-group{position:absolute;top:0;bottom:0;pointer-events:none}
+.timeline-interstitial-group .timeline-flow-clip{pointer-events:auto}
+.timeline-interstitial-container{position:absolute;left:-3px;right:-3px;top:calc(50% - var(--timeline-clip-height) - 4px);height:calc(var(--timeline-clip-height)*2 + 8px);padding:0;pointer-events:auto;background:#62c8b50a;border:1px solid #7fddc580}
+.timeline-interstitial-container.selected,.timeline-interstitial-container:focus-visible{border-color:#b8ffe9;outline:1px solid #b8ffe9;outline-offset:1px;background:#62c8b514}
+.timeline-marker.timeline-interstitial-marker{left:50%;bottom:calc(50% + var(--timeline-clip-height) + 6px);pointer-events:auto}
+.timeline-interstitial-marker .timeline-pin{cursor:pointer}
+.timeline-flow-clip{position:absolute;top:calc(50% - var(--timeline-clip-height)/2);height:var(--timeline-clip-height);max-height:var(--timeline-clip-height);border:1px solid #586578;background:#2a3444;--clip-color:#93adc9;z-index:2}
+.timeline-flow-clip[data-scene-id="correct"]{top:calc(50% - var(--timeline-clip-height))}
+.timeline-flow-clip[data-scene-id="incorrect"]{top:50%}
+.timeline-flow-clip.clip-call{--clip-color:#9cadde;background:#333952}
+.timeline-flow-clip.clip-idle{--clip-color:#e1c17b;background:#403827}
+.timeline-flow-clip.clip-response{--clip-color:#8ac7a0;background:#274438}
+.timeline-flow-clip.incorrect{--clip-color:#d8a28e;background:#4b3530}
+.timeline-flow-clip.selected{z-index:3}
+.timeline-flow-clip.active{border-color:var(--clip-color);box-shadow:inset 0 0 0 1px var(--clip-color)}
+.timeline-flow-clip:not(.clip-video){border:0}
+.flow-clip-body{display:block;position:relative;width:100%;height:100%;padding:0;overflow:hidden;background:#20252d}
+.flow-clip-body:focus-visible{outline:2px solid #d7e4ff;outline-offset:-2px}
+.flow-clip-body.rendered-interstitial:focus-visible{outline:2px solid #b8ffe9;outline-offset:-2px}
+.flow-clip-body.selected:after{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;border:3px solid #b8ffe9;background:#7fddc524;box-shadow:inset 0 0 0 1px #103c31}
+.flow-clip-type{position:absolute;top:4px;left:4px;display:flex;align-items:center;gap:4px;max-width:calc(100% - 8px);padding:3px 5px;background:#10151dec;border:1px solid #ffffff26;border-radius:3px;color:var(--clip-color);font:10px/13px var(--mono);pointer-events:none}
+.flow-clip-type>svg{flex-shrink:0}.flow-clip-type>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flow-clip-body.selected .flow-clip-type{z-index:3;background:#b8ffe9;color:#103c31;border-color:#dffff4}
+.flow-output-port{position:absolute;right:-5px;transform:translateY(-50%);width:9px;height:9px;border:1px solid #11161d;padding:0;border-radius:50%;z-index:6;cursor:crosshair;opacity:0}
+.timeline-flow-clip:hover .flow-output-port,.flow-output-port:focus-visible,.flow-output-port.connecting,.flow-output-port.selected{opacity:1}
+.flow-output-port:hover,.flow-output-port:focus-visible,.flow-output-port.connecting{outline:2px solid #d7e4ff;outline-offset:2px}
+.flow-repeat-port{right:4px;cursor:pointer}
+.flow-playhead{top:-7px;bottom:-3px;z-index:4}
+.connect-target{cursor:crosshair}
+.connect-target:hover{outline:2px solid #b3caff;outline-offset:-2px}
+.flow-connect-hint{position:absolute;bottom:0;left:5px;font-size:10px;color:#bdd0ef;background:#191b1f;padding:3px;z-index:7}
+.call-response-controls{border-bottom:1px solid var(--line);padding:13px 12px}.call-response-controls h2{margin-bottom:9px}.call-response-controls .field{margin-bottom:9px}.flow-connection-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #ffffff09;background:transparent;width:100%;font-size:10px;color:#aabfdf;text-align:left}.flow-connection-row small{color:#7e8ea5}
+@media(max-width:660px){.timeline-section.has-flow{min-height:270px}.workspace-grid:has(.has-flow){grid-template-rows:minmax(370px,62%) minmax(0,1fr)}.timeline-section.has-flow .timeline-heading .timeline-actions>.icon-button{display:none}}

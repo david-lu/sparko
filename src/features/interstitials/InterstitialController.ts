@@ -6,6 +6,9 @@ import type { MediaInfo } from '../../media/media';
 import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from './api';
 import { loadInterstitials, saveInterstitials } from './storage';
 import { assets } from '../project/assets';
+import { responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
+import { baselineReferences, clipDependency } from '../call-response/dependencies';
+import { generationSource } from '../call-response/generation';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null };
 const requestMethod = (item: Interstitial): GenerationMethod => item.requestMethod ?? item.generationSettings?.method ?? 'fal';
@@ -18,6 +21,8 @@ const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
 /** Owns persisted drafts and independently cancellable generation jobs, outside React. */
 export class InterstitialController {
   private sourceId = '';
+  private linkedDurationIds: string[] = [];
+  private callResponse?: CallResponseFlow;
   private state: State = { items: [], selectedId: null, error: null };
   private listeners = new Set<() => void>();
   private tasks = new Map<string, AbortController>();
@@ -31,17 +36,42 @@ export class InterstitialController {
   private patch(id: string, patch: Partial<Interstitial>) {
     this.update({ items: this.state.items.map(item => item.id === id ? { ...item, ...patch } : item).sort((a, b) => a.time - b.time) }, true);
   }
-  load(sourceId: string, items?: Interstitial[]) {
+  load(sourceId: string, items?: Interstitial[], linkedDurationIds: string[] = [], callResponse?: CallResponseFlow) {
     this.dispose(); this.sourceId = sourceId;
-    this.update({ items: (items ?? loadInterstitials(sourceId)).map(item => {
+    this.callResponse = callResponse;
+    this.linkedDurationIds = linkedDurationIds;
+    const loaded = (items ?? loadInterstitials(sourceId)).map(item => {
       const restored = { ...item, method: item.method ?? 'fal' as const, duration: item.duration ?? INTERSTITIAL.defaultDuration,
         enable_prompt_expansion: item.enable_prompt_expansion ?? INTERSTITIAL.enablePromptExpansion };
       return { ...restored, generationSettings: item.generationSettings ?? (item.result || item.requestId ? interstitialSettings(restored) : undefined) };
-    }), selectedId: null, error: null });
+    });
+    const linked = loaded.filter(item => linkedDurationIds.includes(item.id));
+    const duration = Math.max(...linked.map(item => item.duration));
+    const normalized = loaded.map(item => linked.includes(item) ? { ...item, duration } : item);
+    this.update({ items: callResponse ? baselineReferences(callResponse, normalized) : normalized, selectedId: null, error: null });
     for (const item of this.state.items) if (['queued', 'rendering', 'loading', 'ready'].includes(item.phase)) void this.resume(item.id);
   }
   select(id: string | null) { this.update({ selectedId: id }); }
   clearError() { this.update({ error: null }); }
+  hasLinkedDuration(id: string) { return this.linkedDurationIds.length > 1 && this.linkedDurationIds.includes(id); }
+  setCallResponse(flow: CallResponseFlow) {
+    this.callResponse = flow;
+    this.linkedDurationIds = responseInterstitialIds(flow);
+    const added: Interstitial[] = flow.scenes.filter(scene => scene.clip.kind !== 'video' && scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({
+      id: scene.interstitialId!, label: scene.label, time: flow.interstitial.time, method: 'fal', phase: 'ready',
+      start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange,
+      duration: this.state.items.find(item => this.linkedDurationIds.includes(item.id))?.duration ?? INTERSTITIAL.defaultDuration,
+      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, prompt: scene.dialogue,
+      result: { url: `asset:${scene.clip.assetId}`, assetId: scene.clip.assetId, start: scene.clip.inFrame / flow.fps,
+        duration: (scene.clip.outFrame - scene.clip.inFrame) / flow.fps,
+        totalDuration: Math.max(scene.clip.outFrame / flow.fps, ...this.state.items.flatMap(item => item.result?.assetId === scene.clip.assetId ? [item.result.totalDuration] : [])) },
+    }));
+    if (added.length) this.update({ items: baselineReferences(flow, [...this.state.items, ...added]) }, true);
+  }
+  dependency(id: string) {
+    const scene = this.callResponse?.scenes.find(scene => scene.interstitialId === id && scene.clip.kind !== 'video');
+    return scene && this.callResponse ? clipDependency(this.callResponse, this.state.items, scene.id) : undefined;
+  }
   add(time: number, duration: number) {
     const fps = TIMELINE_FPS;
     const anchor = Math.max(0, Math.min(frameTime(duration, fps), frameTime(time, fps)));
@@ -61,24 +91,32 @@ export class InterstitialController {
   edit(id: string, values: Partial<InterstitialSettings>) {
     const item = this.state.items.find(item => item.id === id);
     // The editor always stays usable. Jobs and media retain the inputs they were submitted with.
-    if (item) this.patch(id, values);
+    if (!item) return;
+    if (values.duration !== undefined && this.hasLinkedDuration(id)) {
+      this.update({ items: this.state.items.map(current => current.id === id ? { ...current, ...values }
+        : this.linkedDurationIds.includes(current.id) ? { ...current, duration: values.duration! } : current) }, true);
+    } else this.patch(id, values);
   }
   async generate(id: string, engine: MediaEngine, info: MediaInfo) {
     const item = this.state.items.find(item => item.id === id);
     if (!item || isGenerating(item) || this.tasks.has(id)) return;
     // An unchanged scene that only failed to download can reuse its existing render.
     if (item.result && item.phase !== 'ready' && !hasUnsubmittedChanges(item)) return this.resume(id);
+    const dependency = this.dependency(id);
+    if (dependency?.blocked) { this.update({ error: dependency.blocked }); return; }
     const operation = new AbortController(); this.tasks.set(id, operation);
     const method = item.method ?? 'fal';
     this.patch(id, { phase: 'preparing', error: undefined, progress: 0, queuePosition: undefined,
       previousResult: playableResult(item), result: undefined, requestId: item.phase === 'ready' ? undefined : item.requestId,
-      requestMethod: requestMethod(item), generationSettings: interstitialSettings(item) });
+      requestMethod: requestMethod(item), generationSettings: interstitialSettings(item), requestReference: dependency?.reference });
     try {
       // A failed status request may still belong to an active job. Retire it before resubmitting.
       if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId, requestMethod(item));
       operation.signal.throwIfAborted();
       this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, result: undefined });
-      const job = await generateInterstitial(item, engine, info, operation.signal, (phase, progress) => {
+      const source = dependency?.reference ? await generationSource(item, dependency.reference, operation.signal) : { item, engine, info };
+      operation.signal.throwIfAborted();
+      const job = await generateInterstitial(source.item, source.engine, source.info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });
       if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId, method).catch(() => undefined); return; }
@@ -111,7 +149,7 @@ export class InterstitialController {
       if (job.status === 'COMPLETED') {
         const insertion = job.insertion || submittedInsertion;
         if (!job.videoUrl || !insertion) throw new Error('The result is missing its generated scene boundaries. Retry checking the result.');
-        const result = { url: job.videoUrl, ...insertion };
+        const result = { url: job.videoUrl, ...insertion, reference: this.state.items.find(item => item.id === id)?.requestReference };
         this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined });
         await this.loadResult(id, result, signal); return;
       }

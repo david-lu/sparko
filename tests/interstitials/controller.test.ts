@@ -5,8 +5,11 @@ import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from 
 import type { MediaEngine } from '../../src/media/MediaEngine';
 import { assets } from '../../src/features/project/assets';
 import { hasUnsubmittedChanges, interstitialSettings, playableResult } from '../../shared/interstitials';
+import { changeClipKind, createTimelineExample } from '../../src/features/call-response/model';
+import { generationSource } from '../../src/features/call-response/generation';
 
 vi.mock('../../src/features/interstitials/api', () => ({ generateInterstitial: vi.fn(), getInterstitialJob: vi.fn(), cancelInterstitialJob: vi.fn() }));
+vi.mock('../../src/features/call-response/generation', () => ({ generationSource: vi.fn() }));
 vi.mock('../../src/media/MediaEngine', () => ({ MediaEngine: class { inspect() { return Promise.resolve({ duration: 9, fps: 25 }); } dispose() {} } }));
 vi.mock('../../src/features/project/assets', () => ({ assets: { download: async () => ({ id: 'stored-asset' }), open: async () => ({ url: 'blob:local-asset' }) } }));
 const info = { duration: 20, fps: 25, width: 320, height: 180, codec: 'avc', hasAudio: true };
@@ -31,6 +34,76 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
+  it('gives a newly converted child its own settings and retained video', () => {
+    const example = createTimelineExample(crypto.randomUUID(), 8);
+    controller.load('flow', example.interstitials, [], example.flow);
+    const flow = changeClipKind(example.flow, 'continue', 'call');
+    flow.scenes.find(scene => scene.id === 'continue')!.interstitialId = 'call-response-continue';
+    controller.setCallResponse(flow);
+    const child = controller.getSnapshot().items.find(item => item.id === 'call-response-continue');
+    expect(child).toMatchObject({ phase: 'ready', prompt: 'Let’s keep exploring. Our next adventure awaits!', result: { assetId: flow.scenes[0].clip.assetId } });
+    controller.edit(child!.id, { prompt: 'An independent prompt' });
+    expect(controller.getSnapshot().items[0].prompt).toBe('What is 2 + 2?');
+  });
+  it('submits a child against its latest predecessor and stores that reference on its result', async () => {
+    const example = createTimelineExample(crypto.randomUUID(), 8);
+    controller.load('flow', example.interstitials, [], example.flow);
+    await vi.waitFor(() => expect(controller.getSnapshot().items.every(item => item.phase === 'ready')).toBe(true));
+    const input = controller.dependency('call-response-wait')!.reference!;
+    const item = controller.getSnapshot().items.find(item => item.id === 'call-response-wait')!;
+    vi.mocked(generationSource).mockResolvedValue({ item: { ...item, time: 2 }, info, engine: media });
+    vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
+    vi.mocked(getInterstitialJob).mockResolvedValue(completed);
+    await controller.generate(item.id, media, info);
+    expect(generationSource).toHaveBeenCalledWith(item, input, expect.any(AbortSignal));
+    expect(generateInterstitial).toHaveBeenCalledWith(expect.objectContaining({ time: 2 }), media, info, expect.any(AbortSignal), expect.any(Function));
+    expect(controller.getSnapshot().items.find(current => current.id === item.id)).toMatchObject({ time: 3, result: { reference: input } });
+    expect(controller.dependency('call-response-correct')?.stale).toBe(true);
+    expect(loadInterstitials('flow').find(current => current.id === item.id)?.result?.reference).toEqual(input);
+  });
+  it('blocks a child while its predecessor generates and retains media if reference preparation fails', async () => {
+    const example = createTimelineExample(crypto.randomUUID(), 8);
+    controller.load('flow', example.interstitials, [], example.flow);
+    await vi.waitFor(() => expect(controller.getSnapshot().items.every(item => item.phase === 'ready')).toBe(true));
+    let fail!: (error: Error) => void;
+    vi.mocked(generationSource).mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+    const previous = playableResult(controller.getSnapshot().items[0]);
+    const generation = controller.generate('call-response-call', media, info);
+    await controller.generate('call-response-wait', media, info);
+    expect(controller.getSnapshot().error).toContain('Wait for Call');
+    expect(generateInterstitial).not.toHaveBeenCalled();
+    fail(new Error('Reference unavailable')); await generation;
+    expect(playableResult(controller.getSnapshot().items[0])).toEqual(previous);
+    expect(controller.dependency('call-response-wait')).toMatchObject({ stale: false, blocked: undefined });
+  });
+  it('shares response duration edits and submissions, while preserving separate prompts and real result lengths', async () => {
+    const correct = add(), incorrect = controller.add(8, 20).id, other = controller.add(12, 20).id;
+    controller.edit(incorrect, { prompt: 'Try again' });
+    controller.load('responses', controller.getSnapshot().items, [correct, incorrect]);
+    controller.edit(correct, { duration: 7.5, prompt: 'Well done' });
+    expect(controller.getSnapshot().items.map(item => [item.duration, item.prompt])).toEqual([[7.5, 'Well done'], [7.5, 'Try again'], [6, '']]);
+    vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
+    vi.mocked(getInterstitialJob).mockResolvedValue(completed);
+    await controller.generate(correct, media, info);
+    await controller.generate(incorrect, media, info);
+    expect(vi.mocked(generateInterstitial).mock.calls.map(call => call[0].duration)).toEqual([7.5, 7.5]);
+    expect(loadInterstitials('responses').slice(0, 2).map(item => item.result?.duration)).toEqual([5, 5]);
+    expect(controller.hasLinkedDuration(other)).toBe(false);
+    controller.load('responses', undefined, [correct, incorrect]);
+    controller.edit(incorrect, { duration: 8 });
+    expect(controller.getSnapshot().items.slice(0, 2).map(item => item.duration)).toEqual([8, 8]);
+  });
+  it('normalizes older response targets without rewriting submitted settings, and clears links on project switch', () => {
+    const correct = add(), incorrect = controller.add(8, 20).id;
+    controller.edit(incorrect, { duration: 8 });
+    const items = controller.getSnapshot().items.map(item => ({ ...item, generationSettings: interstitialSettings(item) }));
+    controller.load('responses', items, [correct, incorrect]);
+    expect(controller.getSnapshot().items.map(item => item.duration)).toEqual([8, 8]);
+    expect(controller.getSnapshot().items.map(item => item.generationSettings?.duration)).toEqual([6, 8]);
+    controller.load('regular', items);
+    controller.edit(correct, { duration: 7 });
+    expect(controller.getSnapshot().items.map(item => item.duration)).toEqual([7, 8]);
+  });
   it('pins a Comfy job to its submitted provider and bounds while the editor switches back to Fal', async () => {
     const id = add(); controller.edit(id, { method: 'comfy' });
     let finish!: (job: typeof completed) => void;

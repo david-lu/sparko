@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { Clapperboard, Download, FolderOpen, Mic, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
+import { Download, FolderOpen, GitBranch, RotateCcw, Upload, X } from 'lucide-react';
+import CallResponseControls from '../features/call-response/CallResponseControls';
+import { reconnectEdge, resolveFlow, type SceneId } from '../features/call-response/model';
+import type { FlowTimeline } from '../features/timeline/FlowTracks';
 import Player from '../features/player/Player';
-import AiPanel from '../features/video-analysis/AiPanel';
-import VoicePanel from '../features/voice-input/VoicePanel';
 import InterstitialPanel from '../features/interstitials/InterstitialPanel';
 import { InterstitialController } from '../features/interstitials/InterstitialController';
 import { ProjectController } from '../features/project/ProjectController';
@@ -12,8 +13,7 @@ import { MediaEngine } from '../media/MediaEngine';
 import { VideoPlayerController } from '../features/player/VideoPlayerController';
 import type { MediaInfo, MediaSource, Thumbnail } from '../media/media';
 import { getStatus, request } from '../shared/api';
-import type { AppStatus, Slice } from '../../shared/contracts';
-import { emptyAnalysis } from '../features/project/types';
+import type { AppStatus } from '../../shared/contracts';
 import { playableResult } from '../../shared/interstitials';
 
 // Fast Refresh preserves useState, including instances with obsolete controller methods.
@@ -27,7 +27,6 @@ if (import.meta.hot) {
 }
 
 const defaultSource: MediaSource = { id: 'default:episode_mock.mp4', name: 'episode_mock.mp4', url: '/media/episode_mock.mp4' };
-type Tab = 'interstitials' | 'ai' | 'voice';
 function savedSize(key: string, fallback: number) {
   try { const value = Number(localStorage.getItem(key)); return value > 0 && Number.isFinite(value) ? value : fallback; } catch { return fallback; }
 }
@@ -42,13 +41,12 @@ export default function App() {
   const [projects] = useState(() => new ProjectController(interstitials));
   const projectState = useSyncExternalStore(projects.subscribe, projects.getSnapshot);
   const source = projectState.source || defaultSource;
-  const analysis = projectState.project?.analysis || emptyAnalysis();
-  const slice = analysis.slice;
-  const setSlice = (slice: Slice) => projects.updateAnalysis({ ...analysis, slice });
-  const [tab, setTab] = useState<Tab>('interstitials');
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [error, setError] = useState('');
   const [shortcuts, setShortcuts] = useState(false);
+  const [selectedFlowScene, setSelectedFlowScene] = useState<SceneId | null>(null);
+  const [selectedFlowEdge, setSelectedFlowEdge] = useState<string | null>(null);
+  const savedFlow = projectState.project?.callResponse;
   const [login, setLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -56,9 +54,9 @@ export default function App() {
   const [timelineHeight, setTimelineHeight] = useState(() => savedSize('sparko:timeline-height', 134));
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const maxSideWidth = Math.max(220, Math.min(700, viewport.width - 340));
-  const maxTimelineHeight = Math.max(134, Math.floor(viewport.height * (viewport.width <= 660 ? 0.28 : 0.55)));
+  const maxTimelineHeight = Math.max(savedFlow ? 290 : 134, Math.floor(viewport.height * (viewport.width <= 660 ? savedFlow ? 0.4 : 0.28 : 0.55)));
   const actualSideWidth = Math.max(220, Math.min(maxSideWidth, sideWidth));
-  const actualTimelineHeight = Math.max(134, Math.min(maxTimelineHeight, timelineHeight));
+  const actualTimelineHeight = savedFlow ? Math.max(290, Math.min(maxTimelineHeight, timelineHeight)) : Math.max(134, Math.min(maxTimelineHeight, timelineHeight));
   useEffect(() => {
     const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize);
@@ -72,8 +70,9 @@ export default function App() {
   const defaultUrl = useRef(defaultSource.url);
   const sourceVersion = useRef(0);
   const readyKey = JSON.stringify(interstitialState.items.filter(item => playableResult(item)).map(item => ({ id: item.id, label: item.label, time: item.time, result: playableResult(item) })));
+  const flow = useMemo(() => savedFlow ? resolveFlow(savedFlow, interstitialState.items) : undefined, [savedFlow, readyKey]);
   const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items) : null, [source, info, readyKey]);
-  useEffect(() => { if (composition) controller.setComposition(composition); }, [composition, controller]);
+  useEffect(() => { if (flow && info) controller.setFlow(flow); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info]);
   useEffect(() => () => { interstitials.dispose(); projects.dispose(); }, [interstitials, projects]);
   useEffect(() => {
     const open = (event: KeyboardEvent) => {
@@ -112,14 +111,15 @@ export default function App() {
     return () => { sourceVersion.current++; media.dispose(); };
   }, [source, controller, projects, projectState.source]);
   const selectInterstitial = (id: string | null, time?: number) => {
-    interstitials.select(id); setTab('interstitials');
+    interstitials.select(id);
+    if (flow) { const scene = flow.scenes.find(scene => scene.interstitialId === id); setSelectedFlowScene(scene?.id ?? null); setSelectedFlowEdge(null); if (scene) controller.seekFlowScene(scene.id); return; }
     const item = interstitialState.items.find(item => item.id === id);
     if (item) { controller.pause(); controller.seek(time ?? composition?.itemTime(item) ?? item.time); }
   };
   const addInterstitial = () => {
-    if (!info || !projectState.project) return;
+    if (!info || !projectState.project || flow) return;
     const item = interstitials.add(controller.getSourceTime(), info.duration);
-    setTab('interstitials'); controller.pause(); controller.seek(composition?.itemTime(item) ?? item.time);
+    controller.pause(); controller.seek(composition?.itemTime(item) ?? item.time);
   };
   const moveInterstitial = (id: string, time: number) => {
     if (!info) return;
@@ -137,33 +137,50 @@ export default function App() {
     link.href = url; link.download = result.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
   const visibleError = projectState.error || error || player.error || interstitialState.error;
+  const flowTimeline: FlowTimeline | undefined = flow ? { flow, session: player.flow,
+    selectedSceneId: flow.scenes.find(scene => scene.interstitialId === interstitialState.selectedId)?.id ?? selectedFlowScene,
+    selectedEdgeId: selectedFlowEdge,
+    selectedInterstitial: interstitialState.selectedId === flow.interstitial.id,
+    onSelectInterstitial: () => { interstitials.select(flow.interstitial.id); setSelectedFlowScene(null); setSelectedFlowEdge(null); controller.pause(); },
+    onSelectScene: (id, frame) => { setSelectedFlowScene(id); setSelectedFlowEdge(null); interstitials.select(flow.scenes.find(scene => scene.id === id)?.interstitialId ?? null); controller.seekFlowScene(id, frame); },
+    onSelectEdge: id => { const scene = flow.scenes.find(scene => scene.id === flow.edges.find(edge => edge.id === id)?.from); setSelectedFlowEdge(id); setSelectedFlowScene(scene?.id ?? null); interstitials.select(scene?.interstitialId ?? null); },
+    onBranch: (id, outcome) => { setSelectedFlowScene(id); setSelectedFlowEdge(null); interstitials.select(flow.scenes.find(scene => scene.id === id)?.interstitialId ?? null); controller.branchFlow(id, outcome); },
+    onReconnect: (id, to) => { if (savedFlow) projects.updateCallResponse(reconnectEdge(savedFlow, id, to)); },
+  } : undefined;
+  const parentPanelOpen = !!flowTimeline && (flowTimeline.selectedInterstitial || flow?.scenes.some(scene => scene.clip.kind !== 'video' && (scene.interstitialId === interstitialState.selectedId || scene.id === flowTimeline.selectedSceneId)));
+  const clipControls = (id: SceneId) => flowTimeline && <CallResponseControls flow={flowTimeline.flow}
+    selectedSceneId={id} selectedEdgeId={selectedFlowEdge} onChange={value => projects.updateCallResponse(value)}
+    onSelectEdge={flowTimeline.onSelectEdge} />;
   return <div className="app-shell" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) openFile(file); }}>
     <header className="menubar" aria-label="Application menu">
       <details className="file-menu" ref={fileMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }} onKeyDown={event => { if (event.key === 'Escape') event.currentTarget.open = false; }}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
         <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; fileInput.current?.click(); }}><FolderOpen size={14} />Open video<span>Ctrl O</span></button>
         <button role="menuitem" disabled={projectState.busy || (!status?.defaultProject && projectState.source?.id === defaultSource.id)} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void (status?.defaultProject ? projects.openExample(status.defaultProject.url) : projects.openDefault({ ...defaultSource, url: defaultUrl.current })).catch(err => setError(err.message)); }}><RotateCcw size={14} />{status?.defaultProject ? 'Open example project' : 'Open default video'}</button>
+        <button role="menuitem" disabled={projectState.busy || !info} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; controller.pause(); setSelectedFlowEdge(null); setSelectedFlowScene(null); setTimelineHeight(Math.max(300, timelineHeight)); if (info) void projects.openTestCallResponse(info.duration); }}><GitBranch size={14} />Open test call response</button>
         <button role="menuitem" disabled={projectState.busy} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; projectInput.current?.click(); }}><Upload size={14} />Import project</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>
       <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button>
-      <span className="menu-document">{source.name}</span><span className="menu-app-name">SPARKO</span>
+      <span className="menu-document">{savedFlow ? projectState.project?.name : source.name}</span><span className="menu-app-name">SPARKO</span>
     </header>
     <main className="workspace">
       {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }}><X size={16} /></button></div>}
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
       <div className="workspace-grid" style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
         {projectState.source ? <Player source={source} info={info} thumbnails={thumbnails} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
+          callResponse={flowTimeline}
           subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
-          controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={tab === 'ai' ? slice : null}
-          onMoveInterstitial={moveInterstitial} onRemoveInterstitial={id => void interstitials.remove(id)} onSelectInterstitial={selectInterstitial}
+          controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
+          onMoveInterstitial={moveInterstitial} onRemoveInterstitial={id => { if (!flow?.scenes.some(scene => scene.interstitialId === id)) void interstitials.remove(id); }} onSelectInterstitial={selectInterstitial}
           timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} /> : <div className="project-opening" role="status">{projectState.busy ? 'Preparing video…' : 'Open a video from the File menu.'}</div>}
         {shortcuts && <div className="shortcuts"><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>P</kbd> New interstitial</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
-      </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar">
-        <div className="tabs" role="tablist" aria-label="Video tools">{([{ id: 'interstitials', label: 'Interstitials', icon: Clapperboard }, { id: 'ai', label: 'Describe', icon: Sparkles }, { id: 'voice', label: 'Voice', icon: Mic }] as const).map(item => <button key={item.id} role="tab" id={`tab-${item.id}`} aria-controls={`panel-${item.id}`} aria-selected={tab === item.id} className={tab === item.id ? 'selected' : ''} onClick={() => setTab(item.id)}><item.icon size={15} />{item.label}{item.id === 'interstitials' && <span className="count">{interstitialState.items.length}</span>}</button>)}</div>
-        <div role="tabpanel" id="panel-interstitials" aria-labelledby="tab-interstitials" hidden={tab !== 'interstitials'}><InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
-          engine={engine} info={info} status={status} active={tab === 'interstitials'} onAdd={addInterstitial} onSelect={selectInterstitial} onPreviewPlay={() => controller.pause()} /></div>
-        <div role="tabpanel" id="panel-ai" aria-labelledby="tab-ai" hidden={tab !== 'ai'}><AiPanel engine={engine} controller={controller} status={status} analysis={analysis} onAnalysis={value => projects.updateAnalysis(value)} slice={slice} onSlice={setSlice} /></div>
-        <div role="tabpanel" id="panel-voice" aria-labelledby="tab-voice" hidden={tab !== 'voice'}><VoicePanel key={source.url} sourceId={source.id} controller={controller} status={status} active={tab === 'voice'} /></div>
+      </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Interstitials">
+        {flowTimeline && !parentPanelOpen && <CallResponseControls flow={flowTimeline.flow} selectedSceneId={flowTimeline.selectedSceneId} selectedEdgeId={selectedFlowEdge} onChange={value => projects.updateCallResponse(value)} onSelectEdge={flowTimeline.onSelectEdge} />}
+        <InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
+          callResponse={flowTimeline}
+          renderClipControls={clipControls}
+          connectedIds={flow?.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : [])}
+          engine={engine} info={info} status={status} active onAdd={addInterstitial} onSelect={selectInterstitial} onPreviewPlay={() => controller.pause()} />
       </aside></div>
     </main>
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" onChange={event => { const file = event.target.files?.[0]; if (file) openFile(file); event.target.value = ''; }} />

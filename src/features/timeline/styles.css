@@ -88,9 +88,12 @@
 .rendered-interstitial.selected{background:#397e6e}.rendered-interstitial:focus-visible{outline:1px solid #b8ffe9;outline-offset:-2px}.timeline-marker.selected .timeline-pin{box-shadow:0 0 0 2px #fff1c8}.timeline-marker.ready .timeline-pin{background:#62c8b5;border-color:#9be3d4;color:#082d24}.timeline-marker.ready .timeline-pin:before{border-top-color:#62c8b5}.timeline-marker.ready .timeline-pin:after{background:#62c8b5}
 .timeline-marker.generating .timeline-pin{background:#9daee2;border-color:#c1cef8;cursor:wait}.timeline-marker.generating .timeline-pin:before{border-top-color:#9daee2}.playhead{z-index:4}
 .timeline-generation-spinner{flex-shrink:0;width:12px;height:12px;vertical-align:middle}.timeline-pin .timeline-generation-spinner{border-color:#56678a;border-top-color:#132449}.rendered-interstitial.generating{background:repeating-linear-gradient(135deg,#303e5b 0,#303e5b 7px,#384966 7px,#384966 14px);color:#d4def8;border-color:#9daee2}.rendered-interstitial .timeline-generation-spinner{border-color:#ffffff38;border-top-color:#e4ecff}
-.interstitial-thumbnail{position:absolute;inset:0;background-size:auto 100%;background-repeat:repeat-x;opacity:.85;pointer-events:none}
-.interstitial-caption{position:relative;display:flex;align-items:center;gap:5px;min-width:0;padding:2px 3px;background:#132a25d9;pointer-events:none}
-.interstitial-caption>span:last-child{overflow:hidden;text-overflow:ellipsis}
-.rendered-interstitial.selected .interstitial-thumbnail{opacity:1}
-.rendered-interstitial.generating .interstitial-thumbnail{opacity:.5}
-.rendered-interstitial.generating .interstitial-caption{background:#202d49e6}
+.timeline-section{--timeline-clip-height:76px}
+.timeline-track-space{display:flex;align-items:center;flex:1;min-height:18px}
+.timeline-track-space>.timeline-track{height:100%;max-height:var(--timeline-clip-height)}
+
+.video-filmstrip{position:absolute;inset:0;display:flex;overflow:hidden;pointer-events:none;background:#20252d}
+.video-filmstrip img{display:block;height:100%;width:0;flex:1;min-width:0;object-fit:cover;border-right:1px solid #0003}
+.rendered-interstitial{padding:0;background:#20252d}
+.rendered-interstitial .timeline-generation-spinner{position:absolute;right:5px;bottom:5px;z-index:1}
+.filmstrip{opacity:1}
