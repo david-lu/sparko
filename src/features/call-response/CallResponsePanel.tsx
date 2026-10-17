@@ -9,6 +9,7 @@ import InterstitialName from '../interstitials/InterstitialName';
 import SequenceControls from './SequenceControls';
 import { sequenceActive } from './sequence';
 import AnswerEditor from './AnswerEditor';
+import ContinuityBriefEditor from './ContinuityBriefEditor';
 
 export default function CallResponsePanel({ value, items, onBack, renderControls, createActions, ...editor }: Omit<InterstitialEditorProps, 'selected'> & {
   value: FlowTimeline; items: Interstitial[]; onBack: () => void; renderControls: (id: SceneId) => ReactNode; createActions?: ReactNode;
@@ -26,9 +27,7 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
     <div className="interstitial-title"><InterstitialName key={value.flow.interstitial.id} name={value.flow.interstitial.label} onChange={value.onRenameInterstitial} />
       <button className="icon-button small" aria-label={`Remove ${value.flow.interstitial.label}`} onClick={() => value.onRemoveInterstitial()}><Trash2 size={14} /></button>
     </div>
-    <div data-project-edit>
-      <label className="field">Continuity brief<textarea aria-label="Continuity brief" rows={3} maxLength={1500} value={value.flow.interstitial.brief ?? ''} placeholder="Character, setting, camera, voice and shared direction" onChange={event => value.onChange?.({ ...value.flow, interstitial: { ...value.flow.interstitial, brief: event.target.value } })} /></label>
-    </div>
+    <ContinuityBriefEditor value={value} engine={editor.engine} info={editor.info} status={editor.status} />
     <fieldset className="response-buttons-editor" aria-label="Question and responses" data-project-edit>
       <legend>Question and responses</legend>
       <p className="hint">Shown together on the video while Idle waits for an answer.</p>

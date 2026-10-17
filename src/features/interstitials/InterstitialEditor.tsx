@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Clapperboard, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Clapperboard, RotateCcw } from 'lucide-react';
 import { COMFY, INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
 import { comfyReferenceRange } from '../../../shared/comfy';
 import type { AppStatus } from '../../../shared/contracts';
@@ -13,6 +13,7 @@ import InterstitialTimeField from './InterstitialTimeField';
 import InterstitialPreview from './InterstitialPreview';
 import { referenceTiming } from '../call-response/generation';
 import { enhancePrompt } from './enhance-prompt';
+import EnhancePromptActions from './EnhancePromptActions';
 import TaskStatus from '../../shared/TaskStatus';
 import { sequenceActive } from '../call-response/sequence';
 
@@ -95,15 +96,8 @@ export default function InterstitialEditor({ selected, controller, engine, info,
           <div className="prompt-field-heading">
             <label htmlFor={promptId}>Prompt</label>
             {changed && <span className="interstitial-edited" title="Changes apply to the next generation">Edited</span>}
-            <div className="enhance-prompt-actions">
-              <button type="button" className="text-button enhance-prompt" disabled={enhancing || !status?.providers.openai || !selected.prompt.trim()} aria-busy={enhancing}
-                title={status?.providers.openai ? 'Enhance with OpenAI using reference frames to preserve the shot, composition and continuous positions' : 'Connect OpenAI to enhance prompts'} onClick={() => void enhance()}>
-                {enhancing ? <span className="spinner" /> : <Sparkles size={12} />}
-                <span className="button-labels"><span aria-hidden={enhancing}>Enhance prompt</span><span aria-hidden={!enhancing}>Enhancing…</span></span>
-              </button>
-              <button type="button" className="icon-button small enhance-prompt-cancel" aria-label="Cancel prompt enhancement" aria-hidden={!enhancing} disabled={!enhancing}
-                onClick={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }}><X size={13} /></button>
-            </div>
+            <EnhancePromptActions promptId={promptId} enhancing={enhancing} enabled={!!selected.prompt.trim()} connected={!!status?.providers.openai}
+              onEnhance={() => void enhance()} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
           </div>
           <textarea id={promptId} aria-label="Interstitial prompt" rows={4} required maxLength={generationProvider(method) === 'comfy' ? 8000 : 4000} placeholder="Describe the action, camera, sound and any spoken words…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
         </div>

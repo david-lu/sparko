@@ -45,6 +45,16 @@ describe('interstitial prompt enhancement', () => {
     expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: 'Quiet breathing.', kind: 'idle' });
     expect(result.prompt.split(continuity)).toHaveLength(2);
   });
+  it('enhances a shared continuity brief without treating it as a clip action or appending another brief', async () => {
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: continuity }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, target: 'continuity', prompt: continuity });
+    const options = respond.mock.calls[0][0];
+    expect(JSON.parse(options.input[0].content[0].text).draft).toBe(continuity);
+    expect(options.instructions).toContain('shared continuity brief');
+    expect(options.instructions).toContain('Do not add stage-specific actions');
+    expect(options.input[0].content[1].image_url).toBe(input.referenceFrames[0]);
+    expect(result.prompt).toBe(continuity);
+  });
   it.each([
     { status: 'incomplete', output_text: '{"prompt":"unfinished"}' },
     { status: 'completed', output_text: '{' },
@@ -91,9 +101,13 @@ describe('prompt enhancement API', () => {
     await send({ ...body, prompt }).expect(200);
     expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ prompt }));
   });
+  it('passes the continuity target through to the enhancer', async () => {
+    await send({ ...body, target: 'continuity' }).expect(200);
+    expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ target: 'continuity' }));
+  });
   it.each([
     { ...body, prompt: '' }, { ...body, prompt: 'x'.repeat(8001) }, { ...body, duration: 99 },
-    { ...body, kind: 'unknown' }, { ...body, referenceFrames: ['https://arbitrary.example/image.jpg'] },
+    { ...body, kind: 'unknown' }, { ...body, target: 'unknown' }, { ...body, referenceFrames: ['https://arbitrary.example/image.jpg'] },
     { ...body, referenceFrames: [...body.referenceFrames, ...body.referenceFrames, ...body.referenceFrames] },
   ])('rejects invalid input before making a paid request', async invalid => {
     await send(invalid).expect(400); expect(enhancePrompt).not.toHaveBeenCalled();

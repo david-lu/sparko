@@ -6,8 +6,8 @@ import type { MediaEngine } from '../../media/MediaEngine';
 import { request } from '../../shared/api';
 import { assets } from '../project/assets';
 
-export async function enhancePrompt(item: Interstitial, kind: PromptClipKind, reference: GenerationReference | undefined,
-  engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal) {
+export async function enhancePrompt(item: Pick<Interstitial, 'prompt' | 'time' | 'duration' | 'continuity' | 'dialogue'>, kind: PromptClipKind, reference: GenerationReference | undefined,
+  engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, target?: 'continuity') {
   const referenceFrames: string[] = [];
   if (reference) {
     const before = await assets.open(reference.before.assetId);
@@ -24,5 +24,5 @@ export async function enhancePrompt(item: Interstitial, kind: PromptClipKind, re
   }
   signal.throwIfAborted();
   return request<PromptEnhancement>('/api/interstitials/enhance-prompt', { method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, duration: item.duration, kind, referenceFrames, continuity: item.continuity, dialogue: item.dialogue }) });
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, duration: item.duration, kind, target, referenceFrames, continuity: item.continuity, dialogue: item.dialogue }) });
 }
