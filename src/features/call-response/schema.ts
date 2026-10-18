@@ -28,7 +28,7 @@ export const callResponseSchema = z.object({
   interaction: z.object({ question: z.string().min(1).max(4000), waitSceneId: sceneId,
     acceptedAnswers: z.array(z.string().min(1).max(200)).min(1).max(100).optional(),
     answers: z.array(z.object({ id: answerId, label: z.string().trim().min(1).max(200), sceneId,
-      color: z.object({ hue: z.number().int().min(0).max(360), saturation: z.number().int().min(0).max(100) }).optional(),
+      color: z.object({ hue: z.number().min(0).max(360), saturation: z.number().min(0).max(100), value: z.number().min(0).max(100).optional() }).optional(),
       values: z.array(z.string().trim().min(1).max(200)).max(100) })).min(1).max(100).optional(),
     fallbackAnswerId: answerId.nullable().optional(),
   }),

@@ -351,19 +351,22 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
   await page.screenshot({ path: 'test-results/arbitrary-answers-desktop.png' });
 });
 
-test('response button hue and saturation update the player and survive reload', async ({ page }) => {
+test('idle choice HSV wheel, bevels and contrast update live and survive reload', async ({ page }) => {
   await openExample(page);
   await selectIdle(page);
   await expect(page.locator('.playback-canvas')).toBeVisible();
   await page.locator('.playback-canvas').evaluate(canvas => { (window as any).buttonEditCanvas = canvas; });
   const sameCanvas = () => page.evaluate(() => document.querySelector('.playback-canvas') === (window as any).buttonEditCanvas);
   const editor = page.getByRole('group', { name: 'Question and responses' });
-  const hue = editor.getByRole('slider', { name: 'Button 1 hue' });
-  const saturation = editor.getByRole('slider', { name: 'Button 1 saturation' });
+  const picker = page.getByRole('dialog', { name: 'Button 1 color' });
+  const colorButton = editor.getByRole('button', { name: 'Button 1 color' });
+  const hue = picker.getByRole('spinbutton', { name: 'Button 1 hue', exact: true });
+  const saturation = picker.getByRole('spinbutton', { name: 'Button 1 saturation', exact: true });
+  const brightness = picker.getByRole('spinbutton', { name: 'Button 1 value', exact: true });
+  const wheel = picker.getByRole('slider', { name: 'Button 1 hue wheel' });
+  const plane = picker.getByRole('group', { name: 'Button 1 saturation and value' });
   const first = branchButton(page, 'correct');
   const second = branchButton(page, 'incorrect');
-  await expect(hue).toHaveValue('43');
-  await expect(saturation).toHaveValue('100');
   await expect(first).toHaveCSS('--choice-fill', '#ffe49a');
   await expect(second).toHaveCSS('--choice-fill', '#daccff');
   const addAnswer = editor.getByRole('button', { name: 'Add answer' });
@@ -375,32 +378,63 @@ test('response button hue and saturation update the player and survive reload', 
   await editor.getByRole('textbox', { name: 'Button 1 text' }).press('Enter');
   await expect(page.locator('.video-stage').getByRole('button', { name: 'Choose New answer' })).toBeVisible();
   expect(await sameCanvas()).toBe(true);
+  await colorButton.click();
+  await expect(wheel).toBeFocused();
+  const bounds = (await wheel.boundingBox())!;
+  // Drag around the ring, including a captured pointer outside its bounds.
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 5); await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width + 20, bounds.y + bounds.height / 2, { steps: 6 }); await page.mouse.up();
+  await expect(wheel).toHaveAttribute('aria-valuenow', '90');
+  await wheel.press('Home'); await wheel.press('ArrowRight');
+  await expect(wheel).toHaveAttribute('aria-valuenow', '1');
+  await plane.click({ position: { x: 48, y: 48 } });
+  await expect(saturation).toHaveValue('50'); await expect(brightness).toHaveValue('50');
+  await plane.press('ArrowUp'); await expect(brightness).toHaveValue('51');
   await hue.fill('210');
   await saturation.fill('45');
+  await brightness.fill('80');
   expect(await sameCanvas()).toBe(true);
   await expect(page.locator('.buffering')).toHaveCount(0);
   const renamed = page.locator('.video-stage').getByRole('button', { name: 'Choose New answer' });
-  await expect(renamed).toHaveCSS('--choice-fill', 'hsl(210 45% 80%)');
-  await expect(renamed).toHaveCSS('--choice-shadow', 'hsl(210 45% 45%)');
+  await expect(renamed).toHaveCSS('--choice-fill', '#709ecc');
+  await expect(renamed).toHaveCSS('color', 'rgb(17, 20, 27)');
+  await brightness.fill('20');
+  await expect(renamed).toHaveCSS('color', 'rgb(255, 255, 255)');
+  const hex = picker.getByRole('textbox', { name: 'Button 1 hex' });
+  await hex.fill('#187ae4'); await hex.press('Enter');
+  await expect(renamed).toHaveCSS('--choice-fill', '#187ae4');
+  await hex.fill('invalid'); await hex.press('Enter');
+  await expect(hex).toHaveValue('#187ae4');
+  await hue.fill('210'); await saturation.fill('45'); await brightness.fill('80'); await brightness.press('Tab');
   await expect(second).toHaveCSS('--choice-fill', '#daccff');
   expect(await addAnswer.evaluate(element => (element as HTMLElement).offsetTop)).toBe(before);
+  await page.screenshot({ path: 'test-results/choice-colors-desktop.png' });
+  await wheel.press('Escape'); await expect(picker).toHaveCount(0); await expect(colorButton).toBeFocused();
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveAttribute('title', /Change button color/);
   await expect.poll(() => page.evaluate(async () => {
     const { readActiveProject } = await import('/src/features/project/database.ts' as string);
     return (await readActiveProject()).callResponse.interaction.answers[0].color;
-  })).toEqual({ hue: 210, saturation: 45 });
+  })).toEqual({ hue: 210, saturation: 45, value: 80 });
   await reloadWorkingProject(page);
   await page.locator('.timeline-pin').click();
   await selectIdle(page);
-  await expect(editor.getByRole('slider', { name: 'Button 1 hue' })).toHaveValue('210');
-  await expect(editor.getByRole('slider', { name: 'Button 1 saturation' })).toHaveValue('45');
-  await expect(renamed).toHaveCSS('--choice-fill', 'hsl(210 45% 80%)');
+  await expect(renamed).toHaveCSS('--choice-fill', '#709ecc');
+  await colorButton.click();
+  await expect(hue).toHaveValue('210'); await expect(saturation).toHaveValue('45'); await expect(brightness).toHaveValue('80');
+  await wheel.press('Escape');
   await page.setViewportSize({ width: 390, height: 844 });
-  await hue.scrollIntoViewIfNeeded();
+  await colorButton.click();
   await expect(hue).toBeInViewport();
   await expect(saturation).toBeInViewport();
+  await expect(brightness).toBeInViewport(); await expect(wheel).toBeInViewport();
+  const popupBounds = (await picker.boundingBox())!;
+  expect(popupBounds.x).toBeGreaterThanOrEqual(12); expect(popupBounds.x + popupBounds.width).toBeLessThanOrEqual(378);
+  expect(popupBounds.y).toBeGreaterThanOrEqual(12); expect(popupBounds.y + popupBounds.height).toBeLessThanOrEqual(832);
   await expect(renamed).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.screenshot({ path: 'test-results/choice-colors-mobile.png' });
+  await picker.getByRole('button', { name: 'Close color picker' }).click();
+  await expect(colorButton).toBeFocused();
 });
 
 test('untouched legacy response names become A and B on reload without changing media or routes', async ({ page }) => {

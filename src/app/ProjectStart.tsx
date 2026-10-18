@@ -1,5 +1,5 @@
-import { FilePlus2, Film, FolderOpen, Play, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowUpRight, FilePlus2, Film, FolderOpen, Play, Sparkles, Trash2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type { ProjectController } from '../features/project/ProjectController';
 
 type State = ReturnType<ProjectController['getSnapshot']>;
@@ -20,22 +20,42 @@ type Props = {
 export default function ProjectStart({ projects, state, ready, error, hasSampleProject, sampleAvailable, onOpenVideo, onOpenProject,
   onOpenSample, onOpenSampleProject, onDismissError }: Props) {
   const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null);
+  const projectCount = state.recentFiles.length + state.savedProjects.length;
   const disabled = !ready || state.busy;
+  const loading = ready && state.busy && state.message !== 'Closing project';
+  const [showLoading, setShowLoading] = useState(false);
+  useEffect(() => {
+    if (!loading) { setShowLoading(false); return; }
+    const timer = window.setTimeout(() => setShowLoading(true), 500);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
   return <main className="project-start">
     <div className="project-start-content">
       <header className="project-start-header">
-        <div><div className="project-start-brand">SPARKO</div><h1>Choose a project</h1><p>Pick up where you left off, explore a sample, or start with your own video.</p></div>
+        <div className="project-start-intro">
+          <div className="project-start-brand"><span className="project-start-brand-mark"><Sparkles size={15} /></span>SPARKO <span className="project-start-brand-tag">VIDEO WORKSPACE</span></div>
+          <div className="project-start-eyebrow">A good place to begin</div>
+          <h1>Choose a project</h1>
+          <p>Welcome back. Continue an edit, start with your own video, or explore a sample to see what you can make.</p>
+        </div>
+        <div className="project-start-hero-art" aria-hidden="true">
+          <div className="project-start-hero-frame"><div className="project-start-hero-frame-top"><span /><span /><span /></div><div className="project-start-hero-screen"><Play size={27} fill="currentColor" /></div><div className="project-start-hero-timeline"><i /><i /><i /></div></div>
+          <span className="project-start-hero-spark"><Sparkles size={20} /></span>
+        </div>
       </header>
-      {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button small" aria-label="Dismiss error" onClick={onDismissError}><X size={16} /></button></div>}
-      {(!ready || state.busy) && <div className="project-start-status" role="status"><span className="spinner" /><span>{state.busy ? state.message : 'Loading projects'}{state.progress !== null ? ` · ${Math.round(state.progress * 100)}%` : ''}</span>{state.busy && <button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button>}</div>}
+      <div className="project-start-status">
+        {error ? <div className="project-start-feedback error" role="alert"><span title={error}>{error}</span><button className="icon-button small" aria-label="Dismiss error" onClick={onDismissError}><X size={16} /></button></div>
+          : loading && showLoading && <div className="project-start-feedback" role="status"><span className="spinner" /><span title={state.message}>{state.message}{state.progress !== null ? ` · ${Math.round(state.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
+      </div>
       <div className="project-start-actions">
-        <button className="project-start-action primary" disabled={disabled} onClick={onOpenVideo}><span className="project-start-action-icon"><FilePlus2 size={24} /></span><strong>Create project from video</strong><span>Choose a video file to begin editing</span></button>
-        <button className="project-start-action" disabled={disabled} onClick={onOpenProject}><span className="project-start-action-icon"><FolderOpen size={24} /></span><strong>Open project file</strong><span>Open a saved .sparko file</span></button>
+        <button className="project-start-action primary" disabled={disabled} onClick={onOpenVideo}><span className="project-start-action-top"><span className="project-start-action-icon"><FilePlus2 size={24} /></span><ArrowUpRight size={19} /></span><span className="project-start-action-copy"><strong>Create project from video</strong><span>Bring a video and start shaping your story.</span></span></button>
+        <button className="project-start-action" disabled={disabled} onClick={onOpenProject}><span className="project-start-action-top"><span className="project-start-action-icon"><FolderOpen size={24} /></span><ArrowUpRight size={19} /></span><span className="project-start-action-copy"><strong>Open project file</strong><span>Pick up an edit from a saved .sparko file.</span></span></button>
       </div>
       <div className="project-start-sections">
-        <section className="project-start-section" aria-labelledby="recent-projects-heading">
-          <div className="project-start-section-heading"><h2 id="recent-projects-heading">Recent projects</h2><span>{state.recentFiles.length + state.savedProjects.length}</span></div>
-          {ready && state.recentFiles.length === 0 && state.savedProjects.length === 0 && <div className="project-start-empty">Projects you open or save will appear here.</div>}
+        <section className="project-start-section" aria-labelledby="recent-projects-heading" aria-busy={!ready}>
+          <div className="project-start-section-heading"><div><h2 id="recent-projects-heading">Recent projects</h2><p>Jump back into something you started.</p></div><span aria-label={ready ? `${projectCount} project${projectCount === 1 ? '' : 's'}` : 'Checking projects'}>{ready ? projectCount : '…'}</span></div>
+          {!ready && <div className="project-start-empty project-start-pending" aria-hidden="true"><span className="project-start-pending-icon" /><span className="project-start-pending-line" /><span className="project-start-pending-line short" /></div>}
+          {ready && projectCount === 0 && <div className="project-start-empty"><span className="project-start-empty-icon"><FolderOpen size={21} /></span><strong>Nothing here yet</strong><span>Projects you open or save will appear here.</span></div>}
           {state.recentFiles.length > 0 && <div className="project-start-list">{state.recentFiles.map(item => <div className="project-start-row" key={item.id}>
             <span className="project-start-file-icon"><FolderOpen size={17} /></span><div className="project-start-row-info"><strong>{item.name}</strong><span>{new Date(item.updatedAt).toLocaleString()}</span></div>
             {deleteCandidate === `file:${item.id}` ? <div className="project-start-row-actions"><span>Delete from disk?</span><button className="button small danger" disabled={disabled} onClick={() => { void projects.removeRecentFile(item.id, true).then(deleted => { if (deleted) setDeleteCandidate(null); }); }}>Delete file</button><button className="button small" onClick={() => setDeleteCandidate(null)}>Cancel</button></div>
@@ -48,9 +68,9 @@ export default function ProjectStart({ projects, state, ready, error, hasSampleP
           </div>)}</div></>}
         </section>
         <section className="project-start-section" aria-labelledby="sample-projects-heading">
-          <div className="project-start-section-heading"><h2 id="sample-projects-heading">Sample projects</h2></div>
+          <div className="project-start-section-heading"><div><h2 id="sample-projects-heading">Sample projects</h2><p>Take a look around with a ready-made example.</p></div></div>
           <div className="project-start-samples"><button className="project-start-sample" disabled={disabled || !sampleAvailable} onClick={onOpenSample}><span className="project-start-sample-icon"><Film size={20} /></span><span><strong>Sample video</strong><small>{sampleAvailable ? 'A clean project to explore the editor' : 'Sample video unavailable on this server'}</small></span><Play size={14} /></button>
-            {hasSampleProject && <button className="project-start-sample" disabled={disabled} onClick={onOpenSampleProject}><span className="project-start-sample-icon"><Film size={20} /></span><span><strong>Sample project</strong><small>episode_mock.mp4 with two saved interstitials</small></span><Play size={14} /></button>}</div>
+            {hasSampleProject && <button className="project-start-sample" disabled={disabled} onClick={onOpenSampleProject}><span className="project-start-sample-icon"><Film size={20} /></span><span><strong>Sample project</strong><small>A ready-made edit with two interstitial scenes</small></span><Play size={14} /></button>}</div>
         </section>
       </div>
     </div>

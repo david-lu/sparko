@@ -1,0 +1,23 @@
+/* Filled, nested rounded shapes keep the bevel continuous around every corner.
+   The stationary base and translated face follow the layered construction in
+   https://www.joshwcomeau.com/animation/3d-button/ (independent implementation). */
+.choice-button{
+  --choice-depth:4px;--choice-radius:12px;--choice-rim:2px;--choice-padding:12px 18px;
+  position:relative;isolation:isolate;display:grid;
+  min-width:0;padding:0;border:0;border-radius:var(--choice-radius);
+  background:var(--choice-shadow);color:var(--choice-text);
+  font-family:inherit;font-size:16px;font-weight:750;line-height:1.25;text-align:center;
+  box-shadow:0 4px 6px -3px #0003;-webkit-tap-highlight-color:transparent;
+}
+.choice-button-face{
+  position:relative;display:flex;align-items:center;justify-content:center;min-width:0;min-height:inherit;
+  padding:var(--choice-padding);border-radius:inherit;
+  background:linear-gradient(var(--choice-highlight),var(--choice-edge) 38%,var(--choice-bevel));
+  transform:translateY(calc(-1 * var(--choice-depth)));transition:transform 160ms cubic-bezier(.2,.7,.3,1);
+}
+.choice-button-face::before{
+  content:"";position:absolute;inset:var(--choice-rim);border-radius:calc(var(--choice-radius) - var(--choice-rim));
+  background:var(--choice-fill);pointer-events:none;
+}
+.choice-button-label{position:relative;min-width:0;max-width:100%;text-wrap:balance}
+@media(prefers-reduced-motion:reduce){.choice-button-face{transition:none}}

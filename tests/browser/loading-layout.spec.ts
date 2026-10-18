@@ -3,12 +3,13 @@ import { readFile } from 'node:fs/promises';
 
 const workspace = ['.workspace-grid', '.video-stage', '.timeline-section', '.sidebar'];
 const editor = ['.interstitial-editor', '.prompt-field-heading', '.enhance-prompt', 'textarea', '.interstitial-time-fields', '.interstitial-editor button[type=submit]', '.task-status'];
-async function bounds(page: Page, selectors: string[]) {
-  return page.evaluate(selectors => selectors.map(selector => {
+async function bounds(page: Page, selectors: string[], scrollRoot?: string) {
+  return page.evaluate(({ selectors, scrollRoot }) => selectors.map(selector => {
     const element = document.querySelector(selector)!;
+    const scrollTop = scrollRoot ? document.querySelector(scrollRoot)?.scrollTop ?? 0 : 0;
     const { x, y, width, height } = element.getBoundingClientRect();
-    return { selector, x, y, width, height };
-  }), selectors);
+    return { selector, x, y: y + scrollTop, width, height };
+  }), { selectors, scrollRoot });
 }
 function unchanged(actual: Awaited<ReturnType<typeof bounds>>, expected: Awaited<ReturnType<typeof bounds>>) {
   for (let i = 0; i < expected.length; i++) for (const property of ['x', 'y', 'width', 'height'] as const) {
@@ -17,6 +18,90 @@ function unchanged(actual: Awaited<ReturnType<typeof bounds>>, expected: Awaited
 }
 
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+  test(`initial project read keeps the chooser steady without a loading blurb at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    let releaseStatus!: () => void;
+    const pendingStatus = new Promise<void>(resolve => { releaseStatus = resolve; });
+    await page.route('**/api/status', async route => {
+      await pendingStatus;
+      await route.fulfill({ json: {
+        requiresPassword: false, uploadMode: 'local', providers: { openai: true, gemini: false, comfy: true },
+        models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: 1000 }, defaultProject: null,
+      } });
+    });
+    await page.goto('/');
+    await expect(page.locator('.project-start-pending')).toBeVisible();
+    const selectors = ['.project-start-header', '.project-start-actions', '.project-start-sections', '.project-start-section:first-child', '.project-start-section:last-child'];
+    const pending = await bounds(page, selectors);
+    await page.waitForTimeout(850);
+    await expect(page.locator('.project-start-feedback')).toHaveCount(0);
+    unchanged(await bounds(page, selectors), pending);
+    releaseStatus();
+    await expect(page.getByRole('button', { name: /Sample video/ })).toBeEnabled();
+    await expect(page.locator('.project-start-empty:not(.project-start-pending)')).toBeVisible();
+    unchanged(await bounds(page, selectors), pending);
+  });
+
+  test(`project chooser stays fixed through loading, cancellation, and error at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.route('**/api/status', route => route.fulfill({ json: {
+      requiresPassword: false, uploadMode: 'local', providers: { openai: true, gemini: false, comfy: true },
+      models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: 1000 }, defaultProject: null,
+    } }));
+    let releaseDownload!: () => void;
+    const downloading = new Promise<void>(resolve => { releaseDownload = resolve; });
+    let holdDownload = true;
+    await page.route('**/media/sample.mp4', async route => {
+      if (holdDownload) await downloading;
+      await route.fulfill({ status: 503, body: 'Sample unavailable' }).catch(() => {});
+    });
+    await page.goto('/');
+    const sample = page.getByRole('button', { name: /Sample video/ });
+    await expect(sample).toBeEnabled();
+    const selectors = ['.project-start-header', '.project-start-status', '.project-start-actions', '.project-start-sections', '.project-start-sample'];
+    const idle = await bounds(page, selectors, '.project-start');
+    await page.screenshot({ path: `test-results/project-chooser-${viewport.width}.png` });
+
+    await sample.click();
+    await expect(page.locator('.project-start-feedback[role="status"]')).toContainText('Downloading source video');
+    unchanged(await bounds(page, selectors, '.project-start'), idle);
+    await page.getByRole('button', { name: 'Cancel project operation' }).click();
+    releaseDownload();
+    await expect(sample).toBeEnabled();
+    await expect(page.locator('.project-start-feedback')).toHaveCount(0);
+    unchanged(await bounds(page, selectors, '.project-start'), idle);
+
+    holdDownload = false;
+    await sample.click();
+    await expect(page.getByRole('alert')).toContainText('503');
+    unchanged(await bounds(page, selectors, '.project-start'), idle);
+    await page.getByRole('button', { name: 'Dismiss error' }).click();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    unchanged(await bounds(page, selectors, '.project-start'), idle);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
+  });
+
+  test(`discarding an edit does not show a closing message on the chooser at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
+    await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
+    await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
+    await page.evaluate(() => {
+      (window as any).__chooserMessages = [];
+      new MutationObserver(() => {
+        const message = document.querySelector('.project-start-feedback[role="status"]')?.textContent;
+        if (message) (window as any).__chooserMessages.push(message);
+      }).observe(document.body, { childList: true, subtree: true, characterData: true });
+    });
+    await page.getByText('File', { exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Close project' }).click();
+    await page.getByRole('dialog', { name: 'Save changes before closing?' }).getByRole('button', { name: 'Discard changes' }).click();
+    await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Create project from video/ })).toBeEnabled();
+    expect(await page.evaluate(() => (window as any).__chooserMessages)).toEqual([]);
+  });
+
   test(`loading preserves workspace and editor geometry at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     const video = await readFile('tests/fixtures/interstitial-reference.mp4');

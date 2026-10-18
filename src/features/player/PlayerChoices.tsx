@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { answerColorStyle, getScene, interactionFor, type Outcome, type SceneId } from '../call-response/model';
 import type { FlowTimeline } from '../timeline/FlowTracks';
+import ChoiceFace from '../call-response/ChoiceFace';
 
 const EXIT_MS = 220;
 const HOLD_MS = 1000;
@@ -67,7 +68,7 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
     data-phase={presentation.phase} style={{ '--choice-columns': Math.min(3, presentation.choices.length), '--choice-exit-duration': `${EXIT_MS}ms` } as CSSProperties}
     onDoubleClick={event => event.stopPropagation()}>
     {presentation.question.trim() && <p id={questionId} className="player-branch-question">{presentation.question}</p>}
-    {presentation.choices.map((choice, index) => <button key={choice.id}
+    {presentation.choices.map((choice, index) => <button key={choice.id} className="choice-button"
       style={{ ...choice.style, animationDelay: selectedId ? '0ms' : `${Math.min(index, 6) * 100}ms` }}
       aria-label={`Choose ${choice.label}`} aria-pressed={selectedId === choice.id} aria-disabled={!!selectedId}
       tabIndex={selectedId && selectedId !== choice.id ? -1 : undefined}
@@ -76,7 +77,7 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
         setPresentation({ ...presentation, selectedId: choice.id, phase: 'dismissing' });
         value.onBranch(presentation.sceneId, choice.outcome);
       }} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>
-      <span className="player-branch-label">{choice.label}</span>
+      <ChoiceFace>{choice.label}</ChoiceFace>
     </button>)}
   </div>;
 }
