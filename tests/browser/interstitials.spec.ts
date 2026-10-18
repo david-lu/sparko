@@ -22,7 +22,11 @@ async function generatedFixture(page: Page) {
   });
   return buffer;
 }
-const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:sample.mp4') || '[]'));
+const saved = (page: Page) => page.evaluate(async () => {
+  const { readActiveProject } = await import('/src/features/project/database.ts' as string);
+  const project = await readActiveProject();
+  return JSON.parse(localStorage.getItem(`sparko:interstitials:v1:${project.id}`) || '[]');
+});
 async function openTimeSlider(page: Page, label: string) {
   const name = label === 'Start range' ? 'start_range' : label === 'End range' ? 'end_range' : 'Duration';
   await page.getByRole('spinbutton', { name, exact: true }).click();
@@ -30,6 +34,9 @@ async function openTimeSlider(page: Page, label: string) {
 }
 async function addDraft(page: Page, time = 5) {
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill(String(time));
+  if (await page.getByRole('button', { name: 'All interstitials' }).count()) {
+    await page.getByRole('button', { name: 'All interstitials' }).click();
+  }
   await page.getByRole('button', { name: 'Add regular interstitial' }).click();
   await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).fill(`Interstitial ${await page.locator('.timeline-pin').count()}`);
   await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).press('Enter');
@@ -40,7 +47,7 @@ async function addDraft(page: Page, time = 5) {
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); const status = await response.json(); await route.fulfill({ json: { ...status, providers: { ...status.providers, comfy: true } } }); });
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('examples/sample.mp4');
   await expect(page.getByRole('button', { name: 'Add regular interstitial' })).toBeEnabled({ timeout: 60_000 });
 });
 

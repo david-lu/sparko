@@ -38,7 +38,7 @@ test('source-only editor playback loads captions and uses the canvas transport',
     providers: { openai: false, gemini: false, comfy: false }, models: { openai: 'mock', gemini: 'mock' },
     defaultVideo: { name: 'sample.mp4', size: 0, url: '/media/sample.mp4' } } }));
   await page.route('**/media/sample.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
-  await page.goto('/'); await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.goto('/'); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.playback-canvas')).toHaveAttribute('data-renderer', 'webgpu');
   await expect(page.locator('.buffering')).toHaveCount(0);
   await page.getByLabel('Choose subtitle file').setInputFiles({ name: 'source.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:00.000 --> 00:03.000\nCanvas captions\n') });

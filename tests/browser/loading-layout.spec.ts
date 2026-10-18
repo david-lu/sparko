@@ -17,53 +17,72 @@ function unchanged(actual: Awaited<ReturnType<typeof bounds>>, expected: Awaited
   }
 }
 
-for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 320, height: 700 }]) {
   test(`initial project read keeps the chooser steady without a loading blurb at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
+    await page.addInitScript(() => {
+      const samples: number[] = [];
+      (window as any).__projectOverflow = samples;
+      const measure = () => {
+        const main = document.querySelector('.project-start');
+        if (main) {
+          const rect = main.getBoundingClientRect();
+          samples.push(Math.max(rect.right - innerWidth, -rect.left, main.scrollWidth - main.clientWidth,
+            document.documentElement.scrollWidth - innerWidth));
+        }
+        requestAnimationFrame(measure);
+      };
+      requestAnimationFrame(measure);
+    });
     let releaseStatus!: () => void;
     const pendingStatus = new Promise<void>(resolve => { releaseStatus = resolve; });
     await page.route('**/api/status', async route => {
       await pendingStatus;
       await route.fulfill({ json: {
         requiresPassword: false, uploadMode: 'local', providers: { openai: true, gemini: false, comfy: true },
-        models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: 1000 }, defaultProject: null,
+        models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: 1000 }, defaultProject: { url: 'https://example.test/sample.sparko' },
       } });
     });
     await page.goto('/');
     await expect(page.locator('.project-start-pending')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
+    await expect(page.getByText(/interactive interstitial creator/)).toBeVisible();
     const selectors = ['.project-start-header', '.project-start-actions', '.project-start-sections', '.project-start-section:first-child', '.project-start-section:last-child'];
     const pending = await bounds(page, selectors);
     await page.waitForTimeout(850);
     await expect(page.locator('.project-start-feedback')).toHaveCount(0);
     unchanged(await bounds(page, selectors), pending);
     releaseStatus();
-    await expect(page.getByRole('button', { name: /Sample video/ })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /Sample project/ })).toBeEnabled();
     await expect(page.locator('.project-start-empty:not(.project-start-pending)')).toBeVisible();
     unchanged(await bounds(page, selectors), pending);
+    const overflow = await page.evaluate(() => (window as any).__projectOverflow as number[]);
+    expect(overflow.length).toBeGreaterThan(0);
+    expect(Math.max(...overflow), 'project page overflow during startup').toBeLessThanOrEqual(1);
   });
 
   test(`project chooser stays fixed through loading, cancellation, and error at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.route('**/api/status', route => route.fulfill({ json: {
       requiresPassword: false, uploadMode: 'local', providers: { openai: true, gemini: false, comfy: true },
-      models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: 1000 }, defaultProject: null,
+      models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: 1000 }, defaultProject: { url: 'https://example.test/sample.sparko' },
     } }));
     let releaseDownload!: () => void;
     const downloading = new Promise<void>(resolve => { releaseDownload = resolve; });
     let holdDownload = true;
-    await page.route('**/media/sample.mp4', async route => {
+    await page.route('https://example.test/sample.sparko', async route => {
       if (holdDownload) await downloading;
       await route.fulfill({ status: 503, body: 'Sample unavailable' }).catch(() => {});
     });
     await page.goto('/');
-    const sample = page.getByRole('button', { name: /Sample video/ });
+    const sample = page.getByRole('button', { name: /Sample project/ });
     await expect(sample).toBeEnabled();
     const selectors = ['.project-start-header', '.project-start-status', '.project-start-actions', '.project-start-sections', '.project-start-sample'];
     const idle = await bounds(page, selectors, '.project-start');
     await page.screenshot({ path: `test-results/project-chooser-${viewport.width}.png` });
 
     await sample.click();
-    await expect(page.locator('.project-start-feedback[role="status"]')).toContainText('Downloading source video');
+    await expect(page.locator('.project-start-feedback[role="status"]')).toContainText('Downloading sample project');
     unchanged(await bounds(page, selectors, '.project-start'), idle);
     await page.getByRole('button', { name: 'Cancel project operation' }).click();
     releaseDownload();
@@ -97,7 +116,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.getByText('File', { exact: true }).click();
     await page.getByRole('menuitem', { name: 'Close project' }).click();
     await page.getByRole('dialog', { name: 'Save changes before closing?' }).getByRole('button', { name: 'Discard changes' }).click();
-    await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
     await expect(page.getByRole('button', { name: /Create project from video/ })).toBeEnabled();
     expect(await page.evaluate(() => (window as any).__chooserMessages)).toEqual([]);
   });
@@ -105,13 +124,12 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
   test(`loading preserves workspace and editor geometry at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     const video = await readFile('tests/fixtures/interstitial-reference.mp4');
-    await page.route('**/media/sample.mp4', route => route.fulfill({ contentType: 'video/mp4', body: video }));
     await page.route('**/api/status', route => route.fulfill({ json: {
       requiresPassword: false, uploadMode: 'local', providers: { openai: true, gemini: false, comfy: true },
       models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: video.length }, defaultProject: null,
     } }));
     await page.goto('/');
-    await page.getByRole('button', { name: /Sample video/ }).click();
+    await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
     await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
     await expect(page.locator('.buffering')).toHaveCount(0);
 
@@ -157,17 +175,23 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     // A new result legitimately adds a video preview. Controls above it must stay put.
     unchanged(await bounds(page, editor.slice(1)), idleEditor.slice(1));
 
-    // Hold the real export's lazy module load so the busy workspace can be measured.
-    let releaseExport!: () => void;
-    const exporting = new Promise<void>(resolve => { releaseExport = resolve; });
-    await page.route('**/src/features/project/archive.ts*', async route => { await exporting; await route.continue(); });
+    // Hold the file writer so the busy workspace can be measured even when archive code is eager-loaded.
+    await page.evaluate(() => {
+      Object.defineProperty(window, 'showSaveFilePicker', { configurable: true, value: async () => ({
+        name: 'layout.sparko',
+        createWritable: async () => {
+          await new Promise<void>(resolve => { (window as any).__releaseSave = resolve; });
+          return { write: async () => {}, close: async () => {}, abort: async () => {} };
+        },
+      }) });
+    });
     const beforeExport = await bounds(page, workspace);
     await page.locator('.file-menu summary').first().click();
-    await page.getByRole('menuitem', { name: 'Export project', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Save project', exact: true }).click();
     await expect(page.locator('.project-status')).toBeVisible();
     unchanged(await bounds(page, workspace), beforeExport);
     await page.getByRole('button', { name: 'Cancel project operation' }).click();
-    releaseExport();
+    await page.evaluate(() => (window as any).__releaseSave());
     await expect(page.locator('.project-status')).toHaveCount(0);
     unchanged(await bounds(page, workspace), beforeExport);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);

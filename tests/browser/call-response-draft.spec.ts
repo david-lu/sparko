@@ -12,13 +12,12 @@ async function openDraft(page: Page) {
     for (let frame = 0; frame < 480; frame++) { ctx.fillStyle = `rgb(${frame % 255}, 80, 120)`; ctx.fillRect(0, 0, 160, 96); await video.add(frame / 24, 1 / 24); }
     video.close(); await output.finalize(); return [...new Uint8Array(output.target.buffer)];
   });
-  await page.route('**/media/sample.mp4', route => route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) }));
   await page.route('**/api/status', route => route.fulfill({ json: { uploadMode: 'local', requiresPassword: false,
     providers: { openai: false, gemini: false, comfy: true }, models: {},
     defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4' } } }));
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'sample.mp4', mimeType: 'video/mp4', buffer: Buffer.from(bytes) });
   await expect(page.getByRole('button', { name: 'Add call-response interstitial' })).toBeEnabled({ timeout: 60_000 });
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('3');
   await page.getByRole('button', { name: 'Add call-response interstitial' }).click();

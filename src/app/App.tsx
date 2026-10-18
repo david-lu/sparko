@@ -87,8 +87,6 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
   const fileMenu = useRef<HTMLDetailsElement>(null);
-  const sampleSource: MediaSource = { ...defaultSource,
-    url: status ? status.defaultVideo.name === defaultSource.name ? status.defaultVideo.url : '' : defaultSource.url };
   const sourceVersion = useRef(0);
   const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, loopAudio: item.loopAudio, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
   const flow = useMemo(() => info && source.assetId ? composeFlows(savedFlows, interstitialState.items, source.assetId, info.duration) : undefined, [savedFlows, readyKey, info, source.assetId]);
@@ -274,9 +272,7 @@ export default function App() {
     onSelectEdge={panelTimeline.onSelectEdge} />;
   return <div className="app-shell" onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) openFile(file); }}>
     {!projectState.source ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasSampleProject={!!status?.defaultProject}
-      sampleAvailable={!!sampleSource.url}
       onOpenVideo={() => fileInput.current?.click()} onOpenProject={() => void openProjectFile()}
-      onOpenSample={() => void projects.openDefault(sampleSource)}
       onOpenSampleProject={() => { if (status?.defaultProject) void projects.openSampleProject(status.defaultProject.url); }}
       onDismissError={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }} /> : <>
     <header className="menubar" aria-label="Application menu">

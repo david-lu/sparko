@@ -1,11 +1,18 @@
 import { expect, test, type Page } from './fixtures';
 import type { Interstitial as Pin } from '../../shared/interstitials';
 
-const savedPins = (page: Page): Promise<Pin[]> => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:sample.mp4') || '[]'));
+const savedPins = (page: Page): Promise<Pin[]> => page.evaluate(async () => {
+  const { readActiveProject } = await import('/src/features/project/database.ts' as string);
+  const project = await readActiveProject();
+  return JSON.parse(localStorage.getItem(`sparko:interstitials:v1:${project.id}`) || '[]');
+});
 const videoTime = async (page: Page) => Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).inputValue());
 const paused = (page: Page) => page.locator('video').evaluate((video: HTMLVideoElement) => video.paused);
 async function addPin(page: Page, time: number) {
   await page.getByRole('slider', { name: 'Video timeline' }).fill(String(time));
+  if (await page.getByRole('button', { name: 'All interstitials' }).count()) {
+    await page.getByRole('button', { name: 'All interstitials' }).click();
+  }
   await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
   await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).fill(`Interstitial ${await page.locator('.timeline-pin').count()}`);
   await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).press('Enter');
@@ -13,7 +20,7 @@ async function addPin(page: Page, time: number) {
 }
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('examples/sample.mp4');
   await expect.poll(async () => Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max')), { timeout: 60_000 }).toBeGreaterThan(0);
 });
 
@@ -34,7 +41,15 @@ test('pins drag without seeking, reorder, persist, and delete from the panel or 
   expect(pins.map(pin => pin.label)).toEqual(['Interstitial 2', 'Interstitial 1']);
   expect(pins[1].time).toBeCloseTo(80, 1);
   expect(await videoTime(page)).toBeCloseTo(60, 1);
+  await page.evaluate(() => {
+    Object.defineProperty(window, 'showSaveFilePicker', { configurable: true, value: async ({ suggestedName }: { suggestedName: string }) =>
+      (await navigator.storage.getDirectory()).getFileHandle(suggestedName, { create: true }) });
+  });
+  await page.getByText('File', { exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Save project', exact: true }).click();
+  await expect(page.locator('.menu-document')).toHaveText('sample.sparko', { timeout: 60_000 });
   await page.reload();
+  await page.getByRole('region', { name: 'Recent projects' }).getByRole('button', { name: 'Open', exact: true }).click();
   await expect(marker).toHaveText('2');
   await marker.click();
   await expect(page.locator('.timeline-pin-remove')).toHaveCount(0);
@@ -56,7 +71,7 @@ test('failed generation pins can move while preserving the job, and Delete respe
     ? route.fulfill({ json: { requestId: 'failed-job-1234', status: 'CANCELLED' } })
     : route.fulfill({ status: 422, json: { error: 'Comfy Cloud rejected the reference timing.' } }));
   await page.reload();
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('examples/sample.mp4');
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
   await addPin(page, 20);
   const prompt = page.getByRole('textbox', { name: 'Interstitial prompt' });

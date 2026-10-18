@@ -67,10 +67,10 @@ test('starts on the chooser and opens the example only when requested', async ({
   let downloads = 0;
   await page.route(exampleUrl, route => { downloads++; return route.fulfill({ contentType: 'application/zip', body: archive }); });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
   expect(downloads).toBe(0);
-  await page.getByRole('button', { name: /Sample video/ }).click();
-  await expect(page.locator('.menu-document')).toHaveText('sample.mp4');
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
+  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
   expect((await activeProject(page)).interstitials).toEqual([]);
   expect(downloads).toBe(0);
@@ -84,7 +84,7 @@ test('starts on the chooser and opens the example only when requested', async ({
     const { listRecentFiles } = await import('/src/features/project/database.ts' as string); return (await listRecentFiles()).length;
   })).toBe(1);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
   expect(downloads).toBe(1);
   await page.getByRole('region', { name: 'Recent projects' }).getByRole('button', { name: 'Open' }).click();
   await ready(page);
@@ -94,7 +94,7 @@ test('starts on the chooser and opens the example only when requested', async ({
   expect(downloads).toBe(2);
 });
 
-test('does not offer the example archive as the sample video when no sample URL exists', async ({ page }) => {
+test('keeps the sample project available when no sample video URL exists', async ({ page }) => {
   let downloads = 0;
   await page.route('**/api/status', async route => {
     const body = await (await route.fetch()).json();
@@ -102,7 +102,8 @@ test('does not offer the example archive as the sample video when no sample URL 
   });
   await page.route(exampleUrl, route => { downloads++; return route.fulfill({ contentType: 'application/zip', body: archive }); });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /Sample video/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /Sample video/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Sample project/ })).toBeVisible();
   expect(downloads).toBe(0);
   await openExample(page);
   await ready(page);
@@ -120,7 +121,7 @@ test('failed sample project downloads and corrupt archives leave the chooser rea
   await page.goto('/');
   await openExample(page);
   await expect(page.getByRole('alert')).toContainText('503');
-  await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
   expect(await activeProject(page)).toBeUndefined();
   await openExample(page);
   await expect(page.getByLabel('Cancel project operation')).toHaveCount(0);
@@ -143,7 +144,7 @@ test('cancels a sample project download and leaves the chooser ready for retry',
   await expect(page.getByRole('status').filter({ hasText: 'Downloading sample project' })).toBeVisible();
   await page.getByLabel('Cancel project operation').click();
   await expect(page.getByLabel('Cancel project operation')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
   expect(await activeProject(page)).toBeUndefined();
   release();
   await openExample(page); await ready(page);

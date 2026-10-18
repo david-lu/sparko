@@ -22,7 +22,7 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
       ? { requestId: 'comfy-test-job', status: 'COMPLETED', videoUrl: '/api/comfy/assets/comfy-test-asset/content' }
       : { requestId: 'comfy-test-job', status: 'IN_PROGRESS', progress: .98, progressDetails } }));
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('examples/sample.mp4');
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
   const bytes = await page.evaluate(async () => {
     const { Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
@@ -73,7 +73,11 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
   await expect(page.locator('.task-status')).toContainText('Downloading generated video');
   await expect(page.getByRole('progressbar', { name: 'Downloading generated video' })).toHaveJSProperty('position', -1);
   releaseDownload();
-  const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:sample.mp4')!)[0]);
+  const saved = () => page.evaluate(async () => {
+    const { readActiveProject } = await import('/src/features/project/database.ts' as string);
+    const project = await readActiveProject();
+    return JSON.parse(localStorage.getItem(`sparko:interstitials:v1:${project.id}`)!)[0];
+  });
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);
   expect((await saved()).requestMethod).toBe('comfy');

@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); const body = await response.json(); await route.fulfill({ json: { ...body, providers: { openai: true, gemini: true, comfy: true } } }); });
   await page.route('**/media/sample.mp4', route => route.fulfill({ path: 'tests/fixtures/interstitial-reference.mp4', contentType: 'video/mp4' }));
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
 });
 
@@ -63,7 +63,7 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   let remoteReads = 0;
   await restored.route('https://example.test/**', route => { remoteReads++; return route.abort(); });
   await restored.goto('/');
-  await expect(restored.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+  await expect(restored.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
   await restored.getByLabel('Choose project file').setInputFiles({ name: download.suggestedFilename(), mimeType: 'application/zip', buffer: await readFile(path) });
   await expect(restored.locator('.menu-document')).toHaveText('interstitial-reference.mp4', { timeout: 30_000 });
   await expect(restored.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
@@ -123,7 +123,7 @@ test('chooses a video, then opens and deletes an explicitly saved project', asyn
   await page.getByRole('menuitem', { name: 'Save project' }).click();
   await expect.poll(() => page.evaluate(async () => (await (await navigator.storage.getDirectory()).getFileHandle('interstitial-reference.sparko')).getFile().then(file => file.size))).toBeGreaterThan(1000);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
   const library = page.getByRole('region', { name: 'Recent projects' });
   await expect(library.getByText('interstitial-reference.sparko')).toBeVisible();
   await library.getByRole('button', { name: 'Open' }).click();
@@ -165,7 +165,7 @@ test('chooses a video, then opens and deletes an explicitly saved project', asyn
   const recent = page.getByRole('region', { name: 'Recent projects' });
   await recent.getByRole('button', { name: 'Delete file interstitial-reference.sparko' }).click();
   await recent.getByRole('button', { name: 'Delete file', exact: true }).click();
-  await expect(recent.getByText('Projects you open or save will appear here.')).toBeVisible();
+  await expect(recent.getByText('Bring a video and it will show up here next time.')).toBeVisible();
   await expect.poll(() => page.evaluate(async () => {
     try { await (await navigator.storage.getDirectory()).getFileHandle('interstitial-reference.sparko'); return false; }
     catch { return true; }

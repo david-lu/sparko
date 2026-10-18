@@ -99,7 +99,7 @@ test('converts only a short generation reference from a native 25 fps source', a
 
 test('cancelling a fallback conversion preserves the active project and leaves no partial assets', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
   const before = await page.evaluate(async () => {
     const { readActiveProject } = await import('/src/features/project/database.ts' as string);
@@ -129,7 +129,7 @@ test('cancelling a fallback conversion preserves the active project and leaves n
     } finally { db.close(); }
   });
   expect(result).toEqual({ id: before.id, source: before.source, count: 1 });
-  await expect(page.locator('.menu-document')).toHaveText('sample.mp4');
+  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
@@ -163,7 +163,7 @@ test('normalizes variable frame spacing even when its average is 24 fps', async 
 
 test('opens a saved 25 fps source without moving its drafts', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
   const legacy = await page.evaluate(async () => {
     const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);

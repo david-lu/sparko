@@ -97,7 +97,7 @@ async function openExample(page: Page, prepare?: () => Promise<void>, generation
   } }));
   await page.route('**/media/sample.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
   await page.goto('/');
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
   await prepare?.();
   const duration = await page.evaluate(async () => {
@@ -680,7 +680,7 @@ test('response button assignments persist, route the real video, and a new sampl
   await page.getByText('File', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Close project' }).click();
   await page.getByRole('dialog', { name: 'Save changes before closing?' }).getByRole('button', { name: 'Discard changes' }).click();
-  await page.getByRole('button', { name: /Sample video/ }).click();
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.timeline-section.has-flow')).toHaveCount(0);
   await expect(page.locator('.timeline-pin')).toHaveCount(0);
 });
