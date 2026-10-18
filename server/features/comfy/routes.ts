@@ -17,7 +17,7 @@ const frameRange = z.coerce.number().finite().min(COMFY.minContextFrames / TIMEL
   .refine(value => Math.abs(value * TIMELINE_FPS - Math.round(value * TIMELINE_FPS)) < 1e-6, 'Reference ranges must use whole 24 fps frames.');
 const schema = z.object({ before: frameRange, after: z.union([frameRange, z.coerce.number().refine(value => value === 0)]),
   mode: z.enum(['bridge', 'extend', 'loop']).default('bridge'),
-  duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().trim().min(1).max(8000) });
+  duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().min(1).max(8000).refine(value => !!value.trim(), 'Add a prompt before generating.') });
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 
 export function addComfyRoutes(app: Express, providers: Providers, receive: UploadReceiver) {
@@ -26,7 +26,7 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
   app.get('/api/comfy/status', authenticate, requireComfy, async (_req, res) => res.json(await provider().check()));
   app.post('/api/comfy/interstitials', authenticate, requireComfy, ...receive('video'), async (req, res) => {
     const parsed = schema.parse(req.body);
-    const settings = { ...parsed, prompt: parsed.prompt.replace(/\r\n/g, '\n') };
+    const settings = parsed;
     let plan;
     try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); }
     catch (error) { throw new HttpError(400, (error as Error).message); }

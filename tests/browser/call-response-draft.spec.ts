@@ -159,8 +159,7 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   await expect(clips.nth(1).locator('.interstitial-preview video')).toHaveJSProperty('muted', true);
   await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(4);
   expect(submissions.map(item => item.mode)).toEqual(['extend', 'loop', 'bridge', 'bridge']);
-  expect(submissions[1].prompt).toContain('Wait quietly, returning to the same pose.');
-  expect(submissions[1].prompt).toContain('No speech, dialogue or lip movement');
+  expect(submissions[1].prompt).toBe('Wait quietly, returning to the same pose.');
   expect(submissions[0].prompt).not.toContain('A later Call edit.');
   await expect.poll(async () => (await saved(page)).interstitials.filter((item: any) => item.groupId && item.phase === 'ready' && item.result?.assetId).length).toBe(4);
   const project = await saved(page), children = project.interstitials.filter((item: any) => item.groupId);
@@ -181,7 +180,7 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   expect(idleAfter.x).toBeCloseTo(idleBody.x + idleBody.width, 1);
   await expect(idleClip.locator('.flow-clip-body')).toHaveAttribute('title', /Generated .* · Full file .* · Dotted sections:/);
   expect(idle.result.reference.before.assetId).toBe(children.find((item: any) => item.method === 'comfy-extend').result.assetId);
-  expect(children.filter((item: any) => item.method === 'comfy').every((item: any) => item.result.reference.before.assetId === idle.result.assetId)).toBe(true);
+  expect(children.filter((item: any) => item.method === 'comfy').every((item: any) => item.result.reference.before.assetId === idle.result.fullAssetId)).toBe(true);
   await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(0);
   await expect(page.locator('.timeline-flow-clip[data-stale=true]')).toHaveCount(0);
   await clips.nth(2).getByRole('button', { name: 'Regenerate', exact: true }).click();

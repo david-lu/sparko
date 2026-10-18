@@ -56,38 +56,9 @@ export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', '
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
 export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', continuity, dialogue, loopAudio }: InterstitialSettings): InterstitialSettings =>
   ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, ...(continuity !== undefined ? { continuity } : {}), ...(dialogue !== undefined ? { dialogue } : {}), ...(loopAudio !== undefined ? { loopAudio } : {}) });
-function combineH3Prompt(prompt: string, context: string | undefined, dialogue?: string) {
-  const body = prompt.trim();
-  const additions = [context?.trim(), dialogue].filter(Boolean).join(' ');
-  if (body.startsWith('integrated_multimodal_description: [Shot 1] ') && body.includes('\noverall_soundscape: ')) {
-    const soundscape = body.indexOf('\noverall_soundscape: ');
-    return `${body.slice(0, soundscape)} ${additions}${body.slice(soundscape)}`.replace(/ +\n/g, '\n');
-  }
-  return [context?.trim(), body, dialogue].filter(Boolean).join('\n\n');
-}
-export function generationPrompt(item: Pick<InterstitialSettings, 'method' | 'continuity' | 'prompt' | 'dialogue'>) {
-  if (item.method === 'comfy-loop') {
-    // A loop can inherit a speech instruction from an enhanced Call or a shared brief.
-    // Keep the visual directions, but never ask H3 to speak during Idle.
-    const withoutSpeech = (value: string | undefined) => value?.replace(/\bEnglish speech only\.?/gi, '')
-      .replace(/The character \(S1\) says once: <d>[\s\S]*?<\/d>\. After speaking, they keep their mouth closed and remain silent\./gi, '')
-      .replace(/(?:^|\n)\s*Spoken dialogue, verbatim:[^\n]*/gi, '')
-      .replace(/<d>\[[^\]]+\][\s\S]*?<\/d>/gi, '').trim();
-    return combineH3Prompt(withoutSpeech(item.prompt) ?? '', withoutSpeech(item.continuity),
-      'The character stays silent with their mouth closed throughout the generated loop. No speech, dialogue or lip movement. Only subtle ambient sound.');
-  }
-  const dialogue = item.dialogue?.trim()
-    ? `The character (S1) says once: <d>[English] ${item.dialogue.trim()}</d>. After speaking, they keep their mouth closed and remain silent.` : undefined;
-  return combineH3Prompt(item.prompt, item.continuity, dialogue);
-}
-/** Bring legacy speech instructions into the visible prompt without changing submitted text. */
-export function promptOnlySettings<T extends InterstitialSettings>(settings: T): T {
-  if (settings.dialogue === undefined) return settings;
-  return { ...settings, prompt: generationPrompt({ prompt: settings.prompt, dialogue: settings.dialogue }), dialogue: undefined };
-}
 export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&
   ([...new Set([...Object.keys(interstitialSettings(item)), ...Object.keys(interstitialSettings(item.generationSettings))])] as (keyof InterstitialSettings)[])
-    .some(key => key !== 'loopAudio' && interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]);
+    .some(key => !['loopAudio', 'continuity', 'dialogue'].includes(key) && interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]);
 export const frameTime = (seconds: number, fps: number) => Math.round(seconds * fps) / fps;
 
 export function validateInterstitialDuration(duration: number, method: GenerationMethod = 'comfy') {

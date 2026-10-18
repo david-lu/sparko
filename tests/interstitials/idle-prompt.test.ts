@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generationPrompt, promptOnlySettings, type Interstitial } from '../../shared/interstitials';
+import type { Interstitial } from '../../shared/interstitials';
 import { generateInterstitial } from '../../src/features/interstitials/api';
 import { request, sendForm } from '../../src/shared/api';
 
@@ -13,17 +13,8 @@ const idle: Interstitial = {
   dialogue: 'Say hello',
 };
 
-describe('Idle prompt sent to Comfy', () => {
-  it('keeps H3 sections in order when adding reference continuity and a separate spoken line', () => {
-    const prompt = 'integrated_multimodal_description: [Shot 1] The girl turns toward the camera.\noverall_soundscape: Quiet room tone.\nnon_diegetic_music: N/A';
-    const result = generationPrompt({ ...idle, method: 'comfy-extend', continuity: 'Keep the same shot.', prompt, dialogue: 'What do you think?' });
-    expect(result).toBe('integrated_multimodal_description: [Shot 1] The girl turns toward the camera. Keep the same shot. The character (S1) says once: <d>[English] What do you think?</d>. After speaking, they keep their mouth closed and remain silent.\noverall_soundscape: Quiet room tone.\nnon_diegetic_music: N/A');
-    const silent = generationPrompt({ ...idle, prompt, continuity: 'Keep the same shot.', dialogue: 'What do you think?' });
-    expect(silent).not.toContain('What do you think?');
-    expect(silent).toContain('The character stays silent');
-    expect(silent.split('\n')).toHaveLength(3);
-  });
-  it('removes inherited speech instructions and legacy dialogue while retaining scene direction', async () => {
+describe('visible prompts sent to Comfy', () => {
+  it('submits the editable prompt exactly, without adding continuity, dialogue or Idle instructions', async () => {
     vi.mocked(request).mockResolvedValue({ ready: true });
     vi.mocked(sendForm).mockResolvedValue({ requestId: 'idle-job', status: 'IN_QUEUE' });
     const engine = { exportMp4: vi.fn(async () => new Blob(['reference'], { type: 'video/mp4' })) };
@@ -33,18 +24,11 @@ describe('Idle prompt sent to Comfy', () => {
     const [path, body] = vi.mocked(sendForm).mock.calls[0];
     expect(path).toBe('/api/comfy/interstitials');
     expect(body.get('mode')).toBe('loop');
-    expect(body.get('prompt')).toBe(generationPrompt(idle));
+    expect(body.get('prompt')).toBe(idle.prompt);
     expect(body.get('prompt')).toContain('cyborg silently points');
-    expect(body.get('prompt')).toContain('No speech, dialogue or lip movement');
-    expect(body.get('prompt')).not.toMatch(/English speech only|Say hello|Spoken dialogue/);
+    expect(body.get('prompt')).not.toContain('Keep the cyborg in frame.');
+    expect(body.get('prompt')).not.toContain('Say hello');
+    expect(body.get('prompt')).not.toContain('No speech, dialogue or lip movement');
     expect(engine.exportMp4).toHaveBeenCalledOnce();
-  });
-
-  it('keeps a regular clip\'s speech instruction and preserves legacy Idle prompt migration', () => {
-    expect(generationPrompt({ ...idle, method: 'comfy' })).toContain('English speech only.');
-    const restored = promptOnlySettings(idle);
-    expect(restored.prompt).toContain('<d>[English] Say hello</d>');
-    expect(restored.prompt).not.toContain('No speech, dialogue or lip movement');
-    expect(generationPrompt(restored)).not.toContain('Say hello');
   });
 });

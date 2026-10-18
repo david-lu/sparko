@@ -3,7 +3,7 @@ import { Clapperboard, RotateCcw } from 'lucide-react';
 import { COMFY, INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
 import { comfyReferenceRange } from '../../../shared/comfy';
 import type { AppStatus } from '../../../shared/contracts';
-import { generationPrompt, minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, type Interstitial } from '../../../shared/interstitials';
+import { minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, type Interstitial } from '../../../shared/interstitials';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import type { InterstitialController } from './InterstitialController';
@@ -68,7 +68,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   let comfyPlan: ReturnType<typeof comfyReferenceRange>['plan'] | undefined;
   try {
     validateInterstitialDuration(selected.duration, method);
-    if (generationPrompt(selected).length > 8000) throw new Error('Shorten the combined continuity brief and prompt to fit this model.');
+    if (selected.prompt.length > 8000) throw new Error('Shorten the prompt to fit this model.');
     if (info && !dependency?.blocked) {
       const timing = dependency?.reference && referenceTiming(selected, dependency.reference);
       const input = timing ? { ...selected, time: timing.time } : selected;
@@ -94,14 +94,15 @@ export default function InterstitialEditor({ selected, controller, engine, info,
               onEnhance={() => void enhance()} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
           </div>
           <textarea id={promptId} aria-label="Interstitial prompt" rows={4} required maxLength={8000} placeholder="Describe the action, camera, sound and any spoken words…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
+          {(selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
         </div>
-        {kind === 'idle' && <details className="interstitial-prompt-details">
+        <details className="interstitial-prompt-details">
           <summary>Prompt passed to Comfy</summary>
-          <p>Next generation</p><pre>{generationPrompt(selected)}</pre>
+          <p>Next generation</p><pre>{selected.prompt}</pre>
           {selected.requestPrompt && <><p>Latest submitted job</p><pre>{selected.requestPrompt}</pre></>}
           {!selected.requestPrompt && (selected.requestId || currentResult) && <p>The submitted prompt was not saved for this older render.</p>}
-          <p>The reference tail keeps its original video and audio; prompt instructions apply to the generated section.</p>
-        </details>}
+          <p>Reference footage keeps its original video and audio; prompt instructions apply to the generated section.</p>
+        </details>
         {enhancementError && <p className="inline-error" role="alert">{enhancementError}</p>}
         <div className="interstitial-time-fields" key={selected.id}>
           <InterstitialTimeField name="start_range" label={method === 'comfy-extend' || method === 'comfy-loop' ? 'Reference tail' : 'Start range'} value={selected.start_range} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025} onChange={value => controller.edit(selected.id, { start_range: value })} />

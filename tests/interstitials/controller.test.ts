@@ -5,7 +5,7 @@ import { loadInterstitials, interstitialKey } from '../../src/features/interstit
 import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from '../../src/features/interstitials/api';
 import type { MediaEngine } from '../../src/media/MediaEngine';
 import { assets } from '../../src/features/project/assets';
-import { generationPrompt, hasUnsubmittedChanges, interstitialSettings, playableResult } from '../../shared/interstitials';
+import { hasUnsubmittedChanges, interstitialSettings, playableResult } from '../../shared/interstitials';
 import { addAnswer, changeClipKind, createTimelineExample, responseInterstitialIds } from '../../src/features/call-response/model';
 import { generationSource } from '../../src/features/call-response/generation';
 import { watchComfyJob } from '../../src/features/interstitials/progress-stream';
@@ -100,15 +100,14 @@ describe('interstitial lifecycle', () => {
     expect(call.dialogue).toBeUndefined();
     expect(controller.getSnapshot().items.find(item => item.id === draft.interstitials[2].id)?.duration).toBe(8);
   });
-  it('migrates saved dialogue into visible prompts without altering submitted generation text or edit status', () => {
+  it('keeps legacy dialogue available to enhancement without changing the saved prompt on load', () => {
     const pin = controller.add(5, 20), draft = createCallResponseDraft(pin, crypto.randomUUID(), 20);
     const legacy = { ...draft.interstitials[0], prompt: 'Ask gently.', dialogue: 'What do you think?' };
     controller.load('legacy', [{ ...legacy, generationSettings: interstitialSettings(legacy) }], [], draft.flow);
     const restored = controller.getSnapshot().items[0];
-    expect(restored.prompt).toContain('<d>[English] What do you think?</d>');
-    expect(restored.dialogue).toBeUndefined();
-    expect(restored.generationSettings?.dialogue).toBeUndefined();
-    expect(generationPrompt(restored)).toBe(generationPrompt(legacy));
+    expect(restored.prompt).toBe('Ask gently.');
+    expect(restored.dialogue).toBe('What do you think?');
+    expect(restored.generationSettings?.dialogue).toBe('What do you think?');
     expect(hasUnsubmittedChanges(restored)).toBe(false);
     controller.load('legacy', [restored], [], draft.flow);
     expect(controller.getSnapshot().items[0].prompt).toBe(restored.prompt);

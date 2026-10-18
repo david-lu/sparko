@@ -29,9 +29,9 @@ describe('Comfy API boundaries', () => {
     await submit().expect(202);
     expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { mode: 'bridge', before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 1280, height: 736, hasAudio: true });
   });
-  it('normalizes multipart line endings before sending the prompt to Comfy', async () => {
+  it('passes the entered prompt through to Comfy without rewriting it', async () => {
     await submit('1.625', '1.625', 'First direction.\r\n\r\nSecond direction.').expect(202);
-    expect(comfy.submit.mock.calls[0][1].prompt).toBe('First direction.\n\nSecond direction.');
+    expect(comfy.submit.mock.calls[0][1].prompt).toBe('First direction.\r\n\r\nSecond direction.');
   });
   it('rejects off-grid windows, missing context, and unavailable providers before submission', async () => {
     await submit('2', '2').expect(400);

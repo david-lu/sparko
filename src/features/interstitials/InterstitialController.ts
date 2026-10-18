@@ -1,5 +1,5 @@
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
-import { frameTime, generationPrompt, hasUnsubmittedChanges, interstitialSettings, isGenerating, normalizeGenerationMethod, playableResult, promptOnlySettings, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
+import { frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, normalizeGenerationMethod, playableResult, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import type { AppStatus, InsertionRange, PromptClipKind } from '../../../shared/contracts';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
@@ -54,10 +54,10 @@ export class InterstitialController {
     const loaded = (items ?? loadInterstitials(sourceId)).map(item => {
       const legacyJob = (item.requestMethod as string | undefined) === 'fal'
         || (!item.requestMethod && (item.generationSettings?.method as string | undefined) === 'fal');
-      const restored = { ...promptOnlySettings(item), method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
+      const restored = { ...item, method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
         enable_prompt_expansion: item.enable_prompt_expansion ?? INTERSTITIAL.enablePromptExpansion };
       const generationSettings = item.generationSettings
-        ? promptOnlySettings({ ...item.generationSettings, method: normalizeGenerationMethod(item.generationSettings.method) })
+        ? { ...item.generationSettings, method: normalizeGenerationMethod(item.generationSettings.method) }
         : (item.result || item.requestId ? interstitialSettings(restored) : undefined);
       return { ...restored, generationSettings, requestMethod: legacyJob ? undefined : item.requestMethod,
         ...(legacyJob && item.requestId && !item.result ? { requestId: undefined, phase: 'error' as const,
@@ -226,7 +226,7 @@ export class InterstitialController {
       this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, result: undefined });
       const source = dependency?.reference ? await generationSource(item, dependency.reference, operation.signal) : { item, engine, info };
       operation.signal.throwIfAborted();
-      const submittedPrompt = generationPrompt(source.item);
+      const submittedPrompt = source.item.prompt;
       const job = await generateInterstitial(source.item, source.engine, source.info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });

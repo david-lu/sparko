@@ -1,4 +1,4 @@
-import { generationPrompt, type Interstitial } from '../../../shared/interstitials';
+import type { Interstitial } from '../../../shared/interstitials';
 import { createTestFlow, groupCallResponse, type CallResponseFlow, type TimelineScene } from './model';
 
 export const continuityBrief = 'Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.';
@@ -8,11 +8,13 @@ export function scenePrompt(scene: TimelineScene) {
   return `Begin in the Idle loop’s ending pose. Deliver the ${scene.label} response naturally, then gradually converge on the first frame of the supplied original continuation. Match its character pose, face, gaze, framing, background, lighting and color before the generated section ends. Keep the mouth closed after speaking; do not save a sudden correction for the cut back to the original footage.`;
 }
 export function draftClip(flow: CallResponseFlow, scene: TimelineScene): Interstitial {
+  const dialogue = scene.dialogue?.trim()
+    ? `The character (S1) says once: <d>[English] ${scene.dialogue.trim()}</d>. After speaking, they keep their mouth closed and remain silent.` : '';
   return { id: scene.interstitialId!, groupId: flow.interstitial.id, label: scene.label, time: flow.interstitial.time,
     phase: 'draft', method: scene.id === 'call' ? 'comfy-extend' : scene.id === 'wait' ? 'comfy-loop' : 'comfy',
     start_range: 2, end_range: 2, duration: scene.id === 'wait' ? 2 : 6, enable_prompt_expansion: false,
     continuity: flow.interstitial.brief ?? continuityBrief,
-    prompt: generationPrompt({ prompt: scenePrompt(scene), dialogue: scene.dialogue }) };
+    prompt: [scenePrompt(scene), dialogue].filter(Boolean).join('\n\n') };
 }
 export function createCallResponseDraft(pin: Interstitial, assetId: string, duration: number) {
   const template = createTestFlow(), total = Math.floor(duration * template.fps), split = Math.round(pin.time * template.fps);
