@@ -21,13 +21,17 @@ beforeEach(() => {
   comfy.submit.mockResolvedValue({ requestId: 'comfy-job-123', status: 'IN_QUEUE', insertion: { start: 39 / 24, duration: 148 / 24, totalDuration: 226 / 24 } });
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
-const submit = (before = '1.625', after = '1.625') => request(app).post('/api/comfy/interstitials').set('x-sparko-request', '1')
-  .field('before', before).field('after', after).field('duration', '6').field('prompt', 'Bridge this scene').attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
+const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene') => request(app).post('/api/comfy/interstitials').set('x-sparko-request', '1')
+  .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
   it('validates the reference and dispatches to Comfy', async () => {
     await submit().expect(202);
     expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { mode: 'bridge', before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 1280, height: 736, hasAudio: true });
+  });
+  it('normalizes multipart line endings before sending the prompt to Comfy', async () => {
+    await submit('1.625', '1.625', 'First direction.\r\n\r\nSecond direction.').expect(202);
+    expect(comfy.submit.mock.calls[0][1].prompt).toBe('First direction.\n\nSecond direction.');
   });
   it('rejects off-grid windows, missing context, and unavailable providers before submission', async () => {
     await submit('2', '2').expect(400);

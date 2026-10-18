@@ -3,7 +3,9 @@ import { FrameDecoder } from './FrameDecoder';
 import { GpuVideoCanvas } from './GpuVideoCanvas';
 import { CanvasAudio } from './CanvasAudio';
 
-export type PlaybackClip = { key: string; source: MediaSource; sourceFootage: boolean; time: number; still?: boolean; muted?: boolean };
+export type PlaybackClip = { key: string; source: MediaSource; sourceFootage: boolean; time: number; still?: boolean; muted?: boolean;
+  /** Optional audio from another video, sampled on the same playback clock. */
+  audio?: { key: string; source: MediaSource; time: number } };
 export type PlaybackLayer = PlaybackClip & { opacity: number; gain: number; gainRate?: number };
 export type PlaybackSettings = { volume: number; muted: boolean; speed: number };
 type Deck = { decoder: FrameDecoder; source: string; used: number };
@@ -44,7 +46,9 @@ export class CanvasMediaDecks {
     let deck = this.decks.get(clip.key);
     if (deck && deck.source !== clip.source.url) { deck.decoder.dispose(); this.decks.delete(clip.key); deck = undefined; }
     if (!deck) {
-      if (this.decks.size >= 3) {
+      // An Idle loop with its source audio needs two decoders per visit:
+      // finished video plus raw audio, for both the current and next visit.
+      if (this.decks.size >= 4) {
         const unused = [...this.decks].filter(([key]) => !this.active.has(key)).sort((a, b) => a[1].used - b[1].used)[0];
         if (unused) { unused[1].decoder.dispose(); this.decks.delete(unused[0]); }
       }
@@ -52,15 +56,25 @@ export class CanvasMediaDecks {
     }
     deck.used = ++this.counter; return deck.decoder;
   }
-  prepare(clip: PlaybackClip) { if (!this.disposed && !this.active.has(clip.key)) this.obtain(clip).at(clip.time); }
+  prepare(clip: PlaybackClip) {
+    if (this.disposed) return;
+    if (!this.active.has(clip.key)) this.obtain(clip).at(clip.time);
+    if (clip.audio && !this.active.has(clip.audio.key)) this.obtain({ ...clip, ...clip.audio }).at(clip.audio.time);
+  }
   render(layers: PlaybackLayer[], playing: boolean, settings: PlaybackSettings) {
     if (this.disposed) return false;
     if (this.renderer.error) throw this.renderer.error;
     if (this.audio.error) throw this.audio.error;
     if (playing) this.audio.resume();
-    this.layers = layers; this.active = new Set(layers.map(layer => layer.key));
-    const assigned = layers.map(layer => { const decoder = this.obtain(layer); return { layer, decoder, sample: decoder.at(layer.time) }; });
-    const ready = this.renderer.ready && assigned.every(({ layer, decoder, sample }) => sample && (!playing || layer.still || layer.muted || decoder.audioReady(layer.time)));
+    this.layers = layers; this.active = new Set(layers.flatMap(layer => layer.audio ? [layer.key, layer.audio.key] : [layer.key]));
+    const assigned = layers.map(layer => {
+      const decoder = this.obtain(layer), sample = decoder.at(layer.time);
+      const audioDecoder = layer.audio ? this.obtain({ ...layer, ...layer.audio }) : decoder;
+      if (layer.audio) audioDecoder.at(layer.audio.time);
+      return { layer, decoder, sample, audioDecoder, audioKey: layer.audio?.key ?? layer.key, audioTime: layer.audio?.time ?? layer.time };
+    });
+    const ready = this.renderer.ready && assigned.every(({ layer, sample, audioDecoder, audioTime }) =>
+      sample && (!playing || layer.still || layer.muted || audioDecoder.audioReady(audioTime)));
     this.bufferedAhead = ready ? Math.max(0, Math.min(...assigned.map(({ layer, decoder }) => decoder.bufferedEnd - layer.time))) : 0;
     if (!ready) { this.audio.pause(); return false; }
     this.canvas.dataset.layerCount = String(layers.length);
@@ -69,9 +83,9 @@ export class CanvasMediaDecks {
       this.renderer.draw(assigned.map(({ layer, sample }) => ({ sample: sample!, opacity: layer.opacity, sourceFootage: layer.sourceFootage })), this.matchFraming);
       this.signature = signature;
     }
-    this.audio.retain(playing ? new Set(assigned.filter(({ layer }) => !layer.still && !layer.muted).map(({ layer }) => layer.key)) : new Set());
-    for (const { layer, decoder } of assigned) if (playing && !layer.still && !layer.muted) {
-      this.audio.render(layer.key, decoder, layer.time, layer.gain, layer.gainRate ?? 0, settings.muted ? 0 : settings.volume, settings.speed);
+    this.audio.retain(playing ? new Set(assigned.filter(({ layer }) => !layer.still && !layer.muted).map(({ audioKey }) => audioKey)) : new Set());
+    for (const { layer, audioDecoder, audioKey, audioTime } of assigned) if (playing && !layer.still && !layer.muted) {
+      this.audio.render(audioKey, audioDecoder, audioTime, layer.gain, layer.gainRate ?? 0, settings.muted ? 0 : settings.volume, settings.speed);
     }
     const visible = [...layers].reverse().find(layer => layer.opacity >= .5) ?? layers[0];
     const activeCues = this.captionsEnabled && visible?.sourceFootage ? this.cues.filter(cue => cue.startTime <= visible.time && cue.endTime > visible.time) : [];

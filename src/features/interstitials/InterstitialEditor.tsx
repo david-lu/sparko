@@ -19,9 +19,9 @@ import { sequenceActive } from '../call-response/sequence';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
-  status: AppStatus | null; active: boolean; onPreviewPlay: () => void; silent?: boolean;
+  status: AppStatus | null; active: boolean; onPreviewPlay: () => void;
 };
-export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, silent = false }: InterstitialEditorProps) {
+export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay }: InterstitialEditorProps) {
   const promptId = useId();
   const dependency = controller.dependency(selected.id);
   const kind = controller.clipKind(selected.id);
@@ -95,13 +95,23 @@ export default function InterstitialEditor({ selected, controller, engine, info,
           </div>
           <textarea id={promptId} aria-label="Interstitial prompt" rows={4} required maxLength={8000} placeholder="Describe the action, camera, sound and any spoken words…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
         </div>
+        {kind === 'idle' && <details className="interstitial-prompt-details">
+          <summary>Prompt passed to Comfy</summary>
+          <p>Next generation</p><pre>{generationPrompt(selected)}</pre>
+          {selected.requestPrompt && <><p>Latest submitted job</p><pre>{selected.requestPrompt}</pre></>}
+          {!selected.requestPrompt && (selected.requestId || currentResult) && <p>The submitted prompt was not saved for this older render.</p>}
+          <p>The reference tail keeps its original video and audio; prompt instructions apply to the generated section.</p>
+        </details>}
         {enhancementError && <p className="inline-error" role="alert">{enhancementError}</p>}
         <div className="interstitial-time-fields" key={selected.id}>
           <InterstitialTimeField name="start_range" label={method === 'comfy-extend' || method === 'comfy-loop' ? 'Reference tail' : 'Start range'} value={selected.start_range} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025} onChange={value => controller.edit(selected.id, { start_range: value })} />
           {method !== 'comfy-extend' && <InterstitialTimeField name="end_range" label={method === 'comfy-loop' ? 'Loop end reference' : 'End range'} value={selected.end_range} min={COMFY.minContextFrames / TIMELINE_FPS} max={INTERSTITIAL.maxRange} step={0.1} onChange={value => controller.edit(selected.id, { end_range: value })} />}
           <InterstitialTimeField name="Duration" label={method === 'comfy-loop' ? 'Loop duration' : 'Duration'} value={selected.duration} min={minimumDuration(method)} max={INTERSTITIAL.maxDuration} step={0.25} onChange={value => controller.edit(selected.id, { duration: value })} />
         </div>
-        {method === 'comfy-loop' && <p className="hint">Both visible boundaries use the Call ending. Idle loops are silent.</p>}
+        {kind === 'idle' && <label className="interstitial-option"><input type="checkbox" checked={!!selected.loopAudio}
+          disabled={!!currentResult && !currentResult.fullAssetId}
+          onChange={event => controller.edit(selected.id, { loopAudio: event.target.checked })} /> Play generated Idle audio</label>}
+        {kind === 'idle' && currentResult && !currentResult.fullAssetId && <p className="hint">Regenerate Idle to make its audio available.</p>}
         {controller.hasLinkedDuration(selected.id) && <p className="hint">Shared duration for all response branches. Changes apply to their next generation.</p>}
         {comfyPlan && <p className="hint">{comfyPlan.insertion.duration.toFixed(3)}s generated · {(comfyPlan.prefixFrames / TIMELINE_FPS).toFixed(3)}s / {(comfyPlan.suffixFrames / TIMELINE_FPS).toFixed(3)}s context</p>}
       </fieldset>
@@ -125,6 +135,6 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         : selected.phase === 'loading' ? { label: selected.progressDetails?.stage || 'Loading generated video', value: selected.progress } : undefined} />
     {fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
       heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
-      active={active} muted={silent || kind === 'idle' || method === 'comfy-loop'} onPlay={onPreviewPlay} />}
+      active={active} muted={(kind === 'idle' || method === 'comfy-loop') && !selected.loopAudio} onPlay={onPreviewPlay} />}
   </div>;
 }

@@ -34,7 +34,7 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
   const changed = after.interstitials.flatMap(item => Object.keys(item).filter(key => !same(item[key as keyof InterstitialEdit], previous.get(item.id)?.[key as keyof InterstitialEdit])).map(key => ({ id: item.id, key })));
   if (changed.some(change => change.key === 'time')) return { label: 'Move interstitial' };
   const field = changed[0]?.key;
-  const labels: Record<string, string> = { label: 'Rename interstitial', prompt: 'Edit prompt', duration: 'Change duration', start_range: 'Change start range', end_range: 'Change end range', method: 'Change generation method', enable_prompt_expansion: 'Change prompt expansion' };
+  const labels: Record<string, string> = { label: 'Rename interstitial', prompt: 'Edit prompt', duration: 'Change duration', start_range: 'Change start range', end_range: 'Change end range', method: 'Change generation method', enable_prompt_expansion: 'Change prompt expansion', loopAudio: 'Toggle Idle audio' };
   return { label: labels[field] ?? 'Edit interstitial',
     key: ['prompt', 'duration', 'start_range', 'end_range'].includes(field) && changed.every(change => change.key === field)
       ? changed.map(change => `${change.id}:${change.key}`).sort().join('|') : undefined };

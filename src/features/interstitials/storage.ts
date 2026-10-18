@@ -50,6 +50,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         method: normalizeGenerationMethod(item.method), generationSettings: readSettings(item.generationSettings),
         requestMethod: item.requestMethod === 'fal' || generationMethods.includes(item.requestMethod) ? item.requestMethod
           : item.requestId && (item.method === 'fal' || item.generationSettings?.method === 'fal') ? 'fal' : undefined,
+        requestPrompt: typeof item.requestPrompt === 'string' ? item.requestPrompt : undefined,
         requestReference: readReference(item.requestReference),
         requestInsertion: item.requestInsertion && [item.requestInsertion.start, item.requestInsertion.duration, item.requestInsertion.totalDuration].every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
           && item.requestInsertion.start >= 0 && item.requestInsertion.duration > 0 && item.requestInsertion.start + item.requestInsertion.duration <= item.requestInsertion.totalDuration + 0.1 ? item.requestInsertion : undefined,

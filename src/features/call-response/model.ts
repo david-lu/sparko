@@ -42,6 +42,8 @@ export type TimelineScene = {
   sourceTime?: number;
   /** Runtime render bounds, restored from the playable result when opening a project. */
   generated?: InterstitialResult;
+  /** Whether to play the original generated audio under the finished Idle loop. */
+  loopAudio?: boolean;
 };
 export type FlowEdge = {
   id: string;
@@ -333,7 +335,8 @@ export function resolveFlow(flow: CallResponseFlow, interstitials: Interstitial[
     const item = interstitials.find(item => item.id === scene.interstitialId), saved = item && playableResult(item);
     const result = saved?.fullAssetId && !saved.fullRange && saved === item?.result && item.requestInsertion
       ? { ...saved, fullRange: item.requestInsertion } : saved;
-    return result?.assetId ? { ...scene, generated: result, draft: false, label: item!.label, dialogue: item!.dialogue ?? scene.dialogue, clip: { ...scene.clip, assetId: result.assetId,
+    return result?.assetId ? { ...scene, generated: result, loopAudio: scene.clip.kind === 'idle' && !!item!.loopAudio,
+      draft: false, label: item!.label, dialogue: item!.dialogue ?? scene.dialogue, clip: { ...scene.clip, assetId: result.assetId,
       inFrame: Math.round(result.start * flow.fps), outFrame: Math.round((result.start + result.duration) * flow.fps) } }
       : item ? { ...scene, generated: undefined, draft: true, plannedFrames: Math.max(1, Math.round(item.duration * flow.fps)), dialogue: item.dialogue ?? scene.dialogue } : scene;
   });

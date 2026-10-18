@@ -13,13 +13,15 @@ describe('call-response project persistence', () => {
     const second = { ...pin, id: 'second', label: 'Second', time: 9, kind: 'call-response' as const };
     const a = createCallResponseDraft(pin, assetId, 20), b = createCallResponseDraft(second, assetId, 20);
     a.interstitials[1].loopAudio = true;
+    a.interstitials[1].requestPrompt = 'The exact Idle prompt sent to Comfy.';
     const project: Project = { id: 'drafts', name: 'Drafts', updatedAt: 0, source: { name: 'source.mp4', assetId },
       callResponse: a.flow, callResponses: [a.flow, b.flow], interstitials: [pin, second, ...a.interstitials, ...b.interstitials], subtitle: null, analysis: emptyAnalysis() };
     const signal = new AbortController().signal;
     const { project: restored } = await unpackProject(await packProject(project, [{ id: assetId, name: 'source.mp4', blob: new Blob(['video']) }], signal, () => {}), signal, () => {});
     expect(restored.callResponses).toHaveLength(2);
     expect(restored.interstitials[0].kind).toBe('regular');
-    expect(restored.interstitials[3]).toMatchObject({ method: 'comfy-loop', duration: 2, loopAudio: true, continuity: 'Shared setting' });
+    expect(restored.interstitials[3]).toMatchObject({ method: 'comfy-loop', duration: 2, loopAudio: true, continuity: 'Shared setting',
+      requestPrompt: 'The exact Idle prompt sent to Comfy.' });
     expect(restored.callResponses!.every(flow => flow.scenes.every(scene => scene.clip.assetId === restored.source.assetId))).toBe(true);
     expect(restored.callResponses![0].interstitial).toMatchObject({ brief: 'Shared setting', linkResponseDurations: false });
     expect(restored.callResponses![0].scenes.find(scene => scene.id === 'wait')).toMatchObject({ draft: true, plannedFrames: 48 });

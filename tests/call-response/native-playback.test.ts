@@ -106,28 +106,64 @@ describe('canvas flow playback', () => {
     expect(layers()[0].time).toBeGreaterThanOrEqual(2);
     player.dispose();
   });
-  it('uses both original Idle reference sections for fades and only the finished body for repeats', () => {
+  it('uses the original Idle body and reference sections for fades and repeats', () => {
     const flow = flowWithReferences(), idle = getScene(flow, 'wait');
     idle.generated = { ...idle.generated!, fullAssetId: 'mock:idle-full',
       fullRange: { start: 2, duration: 2.5, totalDuration: 6.5 } };
     expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'call-wait')!)).toMatchObject({ startFrame: -4, frames: 4 });
-    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!)).toMatchObject({ startFrame: 0, frames: 4 });
+    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!)).toMatchObject({ startFrame: -4, frames: 4 });
     const player = makePlayer(flow);
     player.seekScene('call', 94);
     expect(layers()[1]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: true });
     expect(layers()[1].time).toBeCloseTo(2 - 2 / 24);
     player.seekScene('wait', 0);
     expect(layers()).toHaveLength(1);
-    expect(layers()[0]).toMatchObject({ source: { id: 'mock:wait' }, time: 0, muted: true });
+    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, time: 2, muted: true });
     player.seekScene('wait', 47, true); advance();
     expect(player.session.loopIteration).toBe(2);
     expect(layers()).toHaveLength(1);
-    expect(layers()[0].source.id).toBe('mock:wait');
-    player.seekScene('correct', 2);
+    expect(layers()[0].source.id).toBe('mock:idle-full');
+    player.seekScene('wait', 46); player.branch('wait', 'correct'); player.pause();
     expect(layers()).toHaveLength(2);
     expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: true });
-    expect(layers()[0].time).toBeCloseTo(4.5 + 2 / 24);
+    expect(layers()[0].time).toBeCloseTo(6.5 - 2 / 24);
     expect(layers()[1].source.id).toBe('mock:correct');
+    expect(layers()[1].time).toBeCloseTo(2 - 2 / 24);
+    player.play(); advance();
+    expect(player.session.sceneId).toBe('wait');
+    expect(layers()[1].opacity).toBeGreaterThan(0);
+    expect(layers()[1].opacity).toBeLessThan(1);
+    advance();
+    expect(player.session).toMatchObject({ sceneId: 'correct', frame: 0 });
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0].time).toBeGreaterThanOrEqual(2);
+    expect(layers()[0].time).toBeLessThan(2 + 1 / 24);
+    player.dispose();
+  });
+  it('plays the original Idle audio with its video only when enabled', () => {
+    const flow = flowWithReferences(), idle = getScene(flow, 'wait');
+    idle.generated = { ...idle.generated!, fullAssetId: 'mock:idle-full',
+      fullRange: { start: 2, duration: 2, totalDuration: 6 } };
+    idle.loopAudio = true;
+    const player = makePlayer(flow);
+    player.seekScene('call', 94, true);
+    expect(layers()[1]).toMatchObject({ key: 'wait:1:reference', muted: false, source: { id: 'mock:idle-full' } });
+    advance(); advance();
+    expect(player.session.sceneId).toBe('wait');
+    expect(layers()[0].key).toBe('wait:1:body');
+    expect(layers()[0].source.id).toBe('mock:idle-full');
+    player.seekScene('wait', 24);
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]).toMatchObject({ key: 'wait:0:body', source: { id: 'mock:idle-full' }, muted: false, time: 3 });
+    expect(layers()[0].audio).toBeUndefined();
+    player.seekScene('wait', 46); player.branch('wait', 'correct'); player.pause();
+    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: false, time: 6 - 2 / 24 });
+    player.seekScene('wait', 24);
+    const session = { ...player.session };
+    idle.loopAudio = false; player.setFlow({ ...flow, scenes: [...flow.scenes] });
+    expect(player.session).toEqual(session);
+    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: true });
+    expect(layers()[0].audio).toBeUndefined();
     player.dispose();
   });
   it('starts a late answer fade when the answer is chosen and holds an opening frame without lead-in', () => {

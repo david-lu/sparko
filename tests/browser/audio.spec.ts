@@ -138,6 +138,39 @@ test('call-response generation references bridge 32 kHz audio into source audio 
   }
 });
 
+test('Idle uses audio from the full render while keeping the finished loop video', async ({ page }) => {
+  await prepareAudio(page);
+  await page.evaluate(async () => {
+    const { CanvasMediaDecks } = await import('/src/features/player/CanvasMediaDecks.ts' as string);
+    const clips = (window as any).audioFixture.clips;
+    const video = document.createElement('video'); document.body.append(video);
+    const decks = new CanvasMediaDecks(video, { width: 160, height: 90, duration: 1, fps: 24, hasAudio: false, codec: 'avc' }, false);
+    const audio = (decks as any).audio, analyser = audio.context.createAnalyser(); analyser.fftSize = 2048;
+    const createGain = audio.context.createGain.bind(audio.context);
+    audio.context.createGain = () => { const gain = createGain(); gain.connect(analyser); return gain; };
+    const state = { decks, enabled: true, ready: false, rms: () => {
+      const samples = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(samples);
+      return Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+    } };
+    const start = audio.context.currentTime;
+    const timer = setInterval(() => {
+      const frame = (audio.context.currentTime - start) % .9;
+      state.ready = decks.render([{ key: 'idle:body', source: clips[3].source, sourceFootage: false,
+        time: frame, muted: !state.enabled, opacity: 1, gain: 1,
+        audio: { key: 'idle:audio', source: clips[1].source, time: 2 + frame } }], true,
+      { volume: 1, muted: false, speed: 1 });
+    }, 16);
+    (window as any).idleAudioTest = { ...state, stop: () => { clearInterval(timer); decks.dispose(); }, setEnabled: (value: boolean) => { state.enabled = value; },
+      getReady: () => state.ready, getVideo: () => decks.layers[0]?.source.url === clips[3].source.url };
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).idleAudioTest.getReady()), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as any).idleAudioTest.rms()), { timeout: 20_000 }).toBeGreaterThan(.05);
+  expect(await page.evaluate(() => (window as any).idleAudioTest.getVideo())).toBe(true);
+  await page.evaluate(() => (window as any).idleAudioTest.setEnabled(false));
+  await expect.poll(() => page.evaluate(() => (window as any).idleAudioTest.rms())).toBeLessThan(.001);
+  await page.evaluate(() => (window as any).idleAudioTest.stop());
+});
+
 test('canvas playback schedules audible mixed-rate audio, silence and seeks on its shared clock', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await prepareAudio(page);

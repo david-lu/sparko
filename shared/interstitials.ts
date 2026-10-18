@@ -42,6 +42,8 @@ export type Interstitial = InterstitialSettings & {
   requestId?: string;
   /** Provider and bounds of the submitted job; editing the selector cannot reroute it. */
   requestMethod?: GenerationMethod | 'fal'; // Read only when migrating an older saved project.
+  /** Exact prompt sent for the latest accepted Comfy job. Older projects may not have this. */
+  requestPrompt?: string;
   requestInsertion?: InsertionRange;
   requestReference?: GenerationReference;
   result?: InterstitialResult;
@@ -54,15 +56,27 @@ export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', '
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
 export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', continuity, dialogue, loopAudio }: InterstitialSettings): InterstitialSettings =>
   ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, ...(continuity !== undefined ? { continuity } : {}), ...(dialogue !== undefined ? { dialogue } : {}), ...(loopAudio !== undefined ? { loopAudio } : {}) });
-export const generationPrompt = (item: Pick<InterstitialSettings, 'continuity' | 'prompt' | 'dialogue'>) => [item.continuity?.trim(), item.prompt.trim(),
-  item.dialogue?.trim() ? `Spoken dialogue, verbatim: ${item.dialogue.trim()}` : ''].filter(Boolean).join('\n\n');
+export function generationPrompt(item: Pick<InterstitialSettings, 'method' | 'continuity' | 'prompt' | 'dialogue'>) {
+  if (item.method === 'comfy-loop') {
+    // A loop can inherit a speech instruction from an enhanced Call or a shared brief.
+    // Keep the visual directions, but never ask H3 to speak during Idle.
+    const withoutSpeech = (value: string | undefined) => value?.replace(/\bEnglish speech only\.?/gi, '')
+      .replace(/(?:^|\n)\s*Spoken dialogue, verbatim:[^\n]*/gi, '').trim();
+    return [withoutSpeech(item.continuity), withoutSpeech(item.prompt),
+      'The character stays silent with their mouth closed throughout the generated loop. No speech, dialogue or lip movement. Only subtle ambient sound.']
+      .filter(Boolean).join('\n\n');
+  }
+  return [item.continuity?.trim(), item.prompt.trim(),
+    item.dialogue?.trim() ? `Spoken dialogue, verbatim: ${item.dialogue.trim()}` : ''].filter(Boolean).join('\n\n');
+}
 /** Bring legacy speech instructions into the visible prompt without changing submitted text. */
 export function promptOnlySettings<T extends InterstitialSettings>(settings: T): T {
   if (settings.dialogue === undefined) return settings;
-  return { ...settings, prompt: generationPrompt({ ...settings, continuity: undefined }), dialogue: undefined };
+  return { ...settings, prompt: generationPrompt({ prompt: settings.prompt, dialogue: settings.dialogue }), dialogue: undefined };
 }
 export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&
-  ([...new Set([...Object.keys(interstitialSettings(item)), ...Object.keys(interstitialSettings(item.generationSettings))])] as (keyof InterstitialSettings)[]).some(key => interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]);
+  ([...new Set([...Object.keys(interstitialSettings(item)), ...Object.keys(interstitialSettings(item.generationSettings))])] as (keyof InterstitialSettings)[])
+    .some(key => key !== 'loopAudio' && interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]);
 export const frameTime = (seconds: number, fps: number) => Math.round(seconds * fps) / fps;
 
 export function validateInterstitialDuration(duration: number, method: GenerationMethod = 'comfy') {

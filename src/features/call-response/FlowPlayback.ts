@@ -7,7 +7,7 @@ import { getScene } from './model';
 /** Canvas playback for every graph, including the original source ranges. */
 export class FlowPlayback {
   private playback: CanvasFlowPlayback;
-  constructor(readonly flow: CallResponseFlow, video: HTMLVideoElement, source: MediaSource,
+  constructor(public flow: CallResponseFlow, video: HTMLVideoElement, source: MediaSource,
     changed: (session: PlaybackSession, buffering: boolean, error?: string) => void, info?: MediaInfo, matchFraming = false, crossfade = true, crossfadeFrames?: number) {
     this.playback = new CanvasFlowPlayback(flow, video, source, changed, info ?? { width: video.videoWidth || 1280, height: video.videoHeight || 720, duration: 0, fps: flow.fps, codec: 'avc', hasAudio: true }, matchFraming, crossfade, crossfadeFrames);
   }
@@ -18,6 +18,7 @@ export class FlowPlayback {
   get bufferedAhead() { return this.playback.bufferedAhead; }
   requestPictureInPicture() { return this.playback.requestPictureInPicture(); }
   setSettings(settings: PlaybackSettings) { this.playback.setSettings(settings); }
+  setFlow(flow: CallResponseFlow) { this.flow = flow; this.playback.setFlow(flow); }
   setMatchFraming(value: boolean) { this.playback.setMatchFraming(value); }
   setCrossfade(value: boolean, frames?: number) { this.playback.setCrossfade(value, frames); }
   setSubtitles(track: TextTrack | null, cues: VTTCue[], enabled = true) { this.playback.setSubtitles(track, cues, enabled); }

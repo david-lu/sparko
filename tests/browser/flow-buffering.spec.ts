@@ -29,6 +29,8 @@ async function setup(page: Page, { retry = false, mismatch = false, native = fal
       const inFrame = scene.id === 'continue' ? 24 : generated && references ? 12 : 0;
       scene.clip = { ...scene.clip, assetId: source.id, inFrame, outFrame: inFrame + 24 };
       if (generated) scene.generated = { url: assets.url(source.id), start: inFrame / 24, duration: 1, totalDuration: references ? 2 : 1 };
+      if (references && scene.id === 'wait') scene.generated = { ...scene.generated!, fullAssetId: source.id,
+        fullRange: { start: .5, duration: 1, totalDuration: 2 } };
       scene.draft = false; scene.plannedFrames = undefined;
     }
     if (retry) flow.edges.find((edge: FlowEdge) => edge.id === 'incorrect-continue')!.to = 'wait';
@@ -87,14 +89,13 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('call', 22));
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await blend()).layers).toMatchObject([
-    { clip: 'call:0', opacity: 1, volume: .5, muted: false },
-    { clip: 'wait:1', opacity: .5, volume: 0, muted: true },
+    { clip: 'call:0:body', opacity: 1, volume: .5, muted: false },
+    { clip: 'wait:1:reference', opacity: .5, volume: 0, muted: true },
   ]);
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('correct', 2));
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await blend()).layers.map(layer => ({ clip: layer.clip!.split(':')[0], opacity: layer.opacity, volume: layer.volume, muted: layer.muted }))).toEqual([
-    { clip: 'wait', opacity: 1, volume: 0, muted: true },
-    { clip: 'correct', opacity: .5, volume: .5, muted: false },
+    { clip: 'correct', opacity: 1, volume: 1, muted: false },
   ]);
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('intro', 22));
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
@@ -128,8 +129,19 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
   }
   await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 23); p.branch('wait', 'incorrect'); p.pause(); });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  expect((await blend()).layers).toMatchObject([
+    { clip: 'wait:0:reference', muted: true, opacity: 1 },
+    { clip: 'incorrect:1:body', muted: true, opacity: 0 },
+  ]);
+  await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 22); p.branch('wait', 'incorrect'); p.pause(); });
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  const idleExit = await page.evaluate(() => (window as any).flowBufferTest.playback.playback.decks.layers.map((layer: { key: string; time: number }) => ({ key: layer.key, time: layer.time })));
+  expect(idleExit[0]).toMatchObject({ key: 'wait:0:reference' });
+  expect(idleExit[0].time).toBeCloseTo(2 - 2 / 24);
+  expect(idleExit[1].time).toBeCloseTo(.5 - 2 / 24);
+  await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('incorrect', 0));
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await blend()).layers).toHaveLength(1);
-  expect((await blend()).layers[0].clip).toMatch(/^wait:/);
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
 
@@ -188,6 +200,40 @@ test('idle loops and branches reuse generated media without encoding the source'
   // Preview decodes the original assets directly, including mixed audio sample rates.
   expect(result.encoded).toBe(0);
   expect(result.scenes).toEqual(['intro', 'call', 'wait', third.thirdScene, 'continue']);
+  await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
+});
+
+for (const loopAudio of [false, true]) test(`Idle ${loopAudio ? 'with' : 'without'} source audio stays buffered across repeated loop boundaries`, async ({ page }) => {
+  await setup(page, { references: true });
+  await page.evaluate(loopAudio => {
+    const state = (window as any).flowBufferTest;
+    const idle = state.flow.scenes.find((scene: { id: string }) => scene.id === 'wait');
+    idle.loopAudio = loopAudio;
+    // The saved finished loop is gray; the full original is green.
+    idle.generated.fullAssetId = state.flow.scenes.find((scene: { id: string }) => scene.id === 'correct').clip.assetId;
+    state.playback.setFlow(state.flow);
+    state.playback.seekScene('wait', 0);
+  }, loopAudio);
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  expect((await activePixel(page, 80))[1]).toBeGreaterThan(180);
+  await page.evaluate(() => {
+    const state = (window as any).flowBufferTest;
+    state.loopEvents = [];
+    const player = state.playback.playback;
+    const changed = player.changed;
+    player.changed = (session: PlaybackSession, buffering: boolean, error?: string) => {
+      if (session.sceneId === 'wait') state.loopEvents.push({ visit: session.visit, frame: session.frame, buffering });
+      changed(session, buffering, error);
+    };
+    state.playback.play();
+  });
+  await expect.poll(async () => (await read(page)).loopIteration, fast).toBeGreaterThanOrEqual(4);
+  const events = await page.evaluate(() => {
+    const state = (window as any).flowBufferTest;
+    state.playback.pause();
+    return state.loopEvents as { visit: number; frame: number; buffering: boolean }[];
+  });
+  expect(events.filter(event => event.visit > 0 && event.frame < 2 && event.buffering)).toEqual([]);
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
 

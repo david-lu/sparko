@@ -58,7 +58,7 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
           </button>
           <div className="clip-subpanel-body" id={`clip-panel-${scene.id}`}>
             {renderControls(scene.id)}
-            {item ? <InterstitialEditor {...editor} selected={item} silent={scene.clip.kind === 'idle'} /> : <p className="hint">This source clip has no generation settings.</p>}
+            {item ? <InterstitialEditor {...editor} selected={item} /> : <p className="hint">This source clip has no generation settings.</p>}
           </div>
         </section>;
       })}

@@ -25,8 +25,8 @@ function idleTransition(flow: CallResponseFlow, edge: FlowEdge, requestedFrames:
   const idle = enteringIdle ? after : before, full = idle.generated?.fullAssetId && idle.generated.fullRange;
   const contextFrames = !full ? Infinity : Math.floor((enteringIdle ? full.start : full.totalDuration - full.start - full.duration) * flow.fps + 1e-6);
   const frames = Math.max(0, Math.min(Math.floor(requestedFrames), sceneFrames(before), sceneFrames(after), contextFrames));
-  // The opening fade uses the original prefix before the cut; the exit uses its suffix after the loop completes.
-  return frames ? { before, after, startFrame: leavingIdle && full ? 0 : -frames, frames } : undefined;
+  // Both fades finish at their cut. Idle's ending reference plays over the last Idle frames on exit.
+  return frames ? { before, after, startFrame: -frames, frames } : undefined;
 }
 
 function candidateTransition(flow: CallResponseFlow, edge: FlowEdge, frames: number) {

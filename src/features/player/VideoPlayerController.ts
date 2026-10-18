@@ -89,8 +89,11 @@ export class VideoPlayerController {
   }
   setFlow(flow: CallResponseFlow, info?: MediaInfo, matchFraming = false, crossfade = true, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES) {
     if (!this.element || !this.source) return;
-    // Renaming the parent changes its editor metadata, not the current scene or playhead.
-    if (this.flowPlayback && (this.flowPlayback.flow === flow || JSON.stringify({ ...this.flowPlayback.flow, interstitial: undefined }) === JSON.stringify({ ...flow, interstitial: undefined }))) {
+    // Editor metadata and Idle audio do not change the clip sequence or playhead.
+    const mediaLayout = (value: CallResponseFlow) => JSON.stringify(value,
+      (key, part) => key === 'interstitial' || key === 'loopAudio' ? undefined : part);
+    if (this.flowPlayback && (this.flowPlayback.flow === flow || mediaLayout(this.flowPlayback.flow) === mediaLayout(flow))) {
+      this.flowPlayback.setFlow(flow);
       this.flowPlayback.setMatchFraming(matchFraming); this.flowPlayback.setCrossfade(crossfade, crossfadeFrames); return;
     }
     this.flowPlayback?.dispose(); this.flowPlayback = null;

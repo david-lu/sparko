@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('call-response references and finished Idle retain the generated clip resolution', async ({ page }) => {
   await page.goto('/');
   const dimensions = await page.evaluate(async () => {
-    const { ALL_FORMATS, BlobSource, BufferTarget, CanvasSource, Input, Mp4OutputFormat, Output } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
+    const { ALL_FORMATS, BlobSource, BufferTarget, CanvasSource, Input, Mp4OutputFormat, Output, VideoSampleSink } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const { assets } = await import('/src/features/project/assets.ts' as string);
     const { generationSource } = await import('/src/features/call-response/generation.ts' as string);
     const { finishLoop } = await import('/src/features/call-response/finishLoop.ts' as string);
@@ -31,7 +31,18 @@ test('call-response references and finished Idle retain the generated clip resol
         return [await track.getDisplayWidth(), await track.getDisplayHeight()];
       } finally { input.dispose(); }
     };
-    return { reference: await size(referenceBlob), idle: await size(finished.blob) };
+    const firstColor = async (media: Blob) => {
+      const input = new Input({ source: new BlobSource(media), formats: ALL_FORMATS });
+      try {
+        const track = (await input.getPrimaryVideoTrack())!;
+        const sample = (await new VideoSampleSink(track).samples(0).next()).value!;
+        const pixel = new OffscreenCanvas(1, 1), context = pixel.getContext('2d')!;
+        sample.drawWithFit(context, { fit: 'cover' }); sample.close();
+        return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+      } finally { input.dispose(); }
+    };
+    return { reference: await size(referenceBlob), idle: await size(finished.blob), first: await firstColor(finished.blob) };
   });
-  expect(dimensions).toEqual({ reference: [768, 1344], idle: [768, 1344] });
+  expect(dimensions).toMatchObject({ reference: [768, 1344], idle: [768, 1344] });
+  expect(dimensions.first[2]).toBeGreaterThan(dimensions.first[0]);
 });

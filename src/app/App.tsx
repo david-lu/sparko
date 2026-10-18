@@ -90,7 +90,7 @@ export default function App() {
   const sampleSource: MediaSource = { ...defaultSource,
     url: status ? status.defaultVideo.name === defaultSource.name ? status.defaultVideo.url : '' : defaultSource.url };
   const sourceVersion = useRef(0);
-  const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
+  const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, loopAudio: item.loopAudio, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
   const playableFlows = useMemo(() => savedFlows.filter(group => interstitialScenes(group).some(scene => {
     const item = interstitialState.items.find(item => item.id === scene.interstitialId);
     return !!(item && playableResult(item)?.assetId);

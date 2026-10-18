@@ -23,6 +23,8 @@ describe('interstitial prompt enhancement', () => {
     expect(result).toMatchObject({ model: AI_MODELS.promptEnhancement });
     expect(result.prompt).toContain('"What is 2 + 2?"');
     expect(result.prompt.endsWith(continuity)).toBe(true);
+    expect(result.prompt).toContain('The background must remain fixed and continuous, with no jumps, shifts, or sudden changes.');
+    expect(result.prompt).toContain('Particle effects, if present, must remain continuous with no jumps');
     expect(result.prompt.length).toBeLessThanOrEqual(600 + 1 + continuity.length);
     expect(result.prompt).not.toContain('\n');
     const [options, requestOptions] = respond.mock.calls[0];
@@ -30,10 +32,12 @@ describe('interstitial prompt enhancement', () => {
     expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft: input.prompt, kind: 'call' });
     expect(options.input[0].content[1]).toEqual({ type: 'input_image', image_url: input.referenceFrames[0], detail: 'low' });
     expect(options.instructions).toContain('Nothing may snap to a new position');
+    expect(options.instructions).toContain('The background must not jump, shift or suddenly change between frames');
+    expect(options.instructions).toContain('particle effects are present, their movement must remain continuous');
     expect(options.instructions).toContain('Write the entire prompt in English');
-    expect(options.instructions).toContain('translate non-English draft instructions and dialogue into natural English');
+    expect(options.instructions).toContain('translate non-English dialogue into natural English');
     expect(result.prompt).toContain('English speech only');
-    expect(options.instructions).toContain('returns to the starting pose');
+    expect(options.instructions).toContain('For a Call clip');
     expect(options.instructions).toContain('one or two short sentences');
     expect(options.instructions).toContain('Do not mention durations');
     expect(requestOptions.signal).toBe(input.signal);
@@ -44,21 +48,76 @@ describe('interstitial prompt enhancement', () => {
     const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: `Quiet breathing.\n\n${continuity}` });
     expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: 'Quiet breathing.', kind: 'idle' });
     expect(result.prompt).toContain('Characters do not talk. Keep everything mostly quiet, with only subtle ambient sound.');
+    expect(result.prompt).toContain('The background must remain fixed and continuous, with no jumps, shifts, or sudden changes.');
+    expect(result.prompt).toContain('Make this a perfect seamless loop: the first and last frames must match exactly');
+    expect(result.prompt).toContain('Particle effects, if present, must remain continuous with no jumps');
+    expect(result.prompt).toContain('particle state, with no visible jump when repeated');
     expect(result.prompt).not.toContain('English speech only');
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: result.prompt }) });
+    expect(respond.mock.calls[0][0].instructions).toContain('silent perfect seamless loop');
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'Quiet breathing.' }) });
     const repeated = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: result.prompt });
     expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text)).toMatchObject({ draft: 'Quiet breathing.', kind: 'idle' });
     expect(repeated.prompt).toBe(result.prompt);
   });
+  it('replaces the previous Idle suffix without stacking loop instructions', async () => {
+    const previousIdle = 'Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Characters do not talk. Keep everything mostly quiet, with only subtle ambient sound.';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: `Quiet breathing. ${previousIdle}` }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: `Quiet breathing. ${previousIdle}` });
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).draft).toBe('Quiet breathing.');
+    expect(result.prompt.match(/perfect seamless loop/g)).toHaveLength(1);
+    expect(result.prompt.match(/Characters do not talk/g)).toHaveLength(1);
+  });
+  it('replaces an existing perfect-loop suffix when adding particle continuity', async () => {
+    const previousIdle = 'Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Characters do not talk. Keep everything mostly quiet, with only subtle ambient sound. Make this a perfect seamless loop: the first and last frames must match exactly in character pose, framing, background and lighting, with no visible jump when repeated.';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'Quiet breathing.' }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: `Quiet breathing. ${previousIdle}` });
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).draft).toBe('Quiet breathing.');
+    expect(result.prompt.match(/perfect seamless loop/g)).toHaveLength(1);
+    expect(result.prompt.match(/Particle effects, if present/g)).toHaveLength(1);
+  });
+  it('uses separate instructions for every clip kind and excludes inherited speech from Idle context', async () => {
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'Quiet motion. English speech only.' }) });
+    const enhancer = createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt;
+    const kinds = ['interstitial', 'call', 'idle', 'response'] as const;
+    const results = [];
+    for (const kind of kinds) results.push(await enhancer({ ...input, kind, prompt: 'Quiet motion. English speech only.',
+      continuity: 'Keep the same scene. English speech only.', dialogue: 'Speak now.' }));
+    const instructions = respond.mock.calls.map(([options]) => options.instructions);
+    expect(new Set(instructions).size).toBe(4);
+    expect(instructions[0]).toContain('For a regular interstitial');
+    expect(instructions[1]).toContain('For a Call clip');
+    expect(instructions[2]).toContain('For an Idle clip');
+    expect(instructions[2]).toContain('Omit all dialogue, voices, speech and lip movement');
+    expect(instructions[3]).toContain('For a Response clip');
+    const idleContext = JSON.parse(respond.mock.calls[2][0].input[0].content[0].text);
+    expect(idleContext).toMatchObject({ draft: 'Quiet motion.', sharedContinuity: 'Keep the same scene.' });
+    expect(idleContext).not.toHaveProperty('separateDialogue');
+    expect(results[2].prompt).not.toContain('English speech only');
+    expect(results[2].prompt).toContain('Characters do not talk');
+  });
+  it('replaces the older continuity suffix when enhancing an existing clip again', async () => {
+    const previous = 'Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. English speech only.';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: `A small gesture. ${previous}` }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: `A small gesture. ${previous}` });
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).draft).toBe('A small gesture.');
+    expect(result.prompt).toBe(`A small gesture. ${continuity}`);
+  });
   it('enhances a shared continuity brief without treating it as a clip action or appending another brief', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: continuity }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, target: 'continuity', prompt: continuity });
+    const brief = 'Preserve the same character, framing and lighting.';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: brief }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, target: 'continuity', prompt: brief });
     const options = respond.mock.calls[0][0];
-    expect(JSON.parse(options.input[0].content[0].text).draft).toBe(continuity);
+    expect(JSON.parse(options.input[0].content[0].text).draft).toBe(brief);
     expect(options.instructions).toContain('shared continuity brief');
+    expect(options.instructions).toContain('background to remain continuous without jumps');
+    expect(options.instructions).toContain('particle effects must also move continuously without jumps');
     expect(options.instructions).toContain('Do not add stage-specific actions');
     expect(options.input[0].content[1].image_url).toBe(input.referenceFrames[0]);
-    expect(result.prompt).toBe(continuity);
+    expect(result.prompt).toBe(`${brief} The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames.`);
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: result.prompt }) });
+    const repeated = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, target: 'continuity', prompt: result.prompt });
+    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).draft).toBe(brief);
+    expect(repeated.prompt).toBe(result.prompt);
   });
   it.each([
     { status: 'incomplete', output_text: '{"prompt":"unfinished"}' },

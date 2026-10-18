@@ -25,7 +25,8 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
   const provider = () => { if (!providers.comfy) throw new HttpError(503, 'Comfy Cloud is not configured.'); return providers.comfy; };
   app.get('/api/comfy/status', authenticate, requireComfy, async (_req, res) => res.json(await provider().check()));
   app.post('/api/comfy/interstitials', authenticate, requireComfy, ...receive('video'), async (req, res) => {
-    const settings = schema.parse(req.body);
+    const parsed = schema.parse(req.body);
+    const settings = { ...parsed, prompt: parsed.prompt.replace(/\r\n/g, '\n') };
     let plan;
     try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); }
     catch (error) { throw new HttpError(400, (error as Error).message); }

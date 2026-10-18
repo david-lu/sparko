@@ -1,5 +1,5 @@
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
-import { frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, normalizeGenerationMethod, playableResult, promptOnlySettings, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
+import { frameTime, generationPrompt, hasUnsubmittedChanges, interstitialSettings, isGenerating, normalizeGenerationMethod, playableResult, promptOnlySettings, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import type { AppStatus, InsertionRange, PromptClipKind } from '../../../shared/contracts';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
@@ -226,11 +226,12 @@ export class InterstitialController {
       this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, result: undefined });
       const source = dependency?.reference ? await generationSource(item, dependency.reference, operation.signal) : { item, engine, info };
       operation.signal.throwIfAborted();
+      const submittedPrompt = generationPrompt(source.item);
       const job = await generateInterstitial(source.item, source.engine, source.info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });
       if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId).catch(() => undefined); return; }
-      this.patch(id, { requestId: job.requestId, requestMethod: method, requestInsertion: job.insertion, phase: 'queued', progress: undefined });
+      this.patch(id, { requestId: job.requestId, requestMethod: method, requestPrompt: submittedPrompt, requestInsertion: job.insertion, phase: 'queued', progress: undefined });
       await this.poll(id, job.requestId, operation.signal, job.insertion);
     } catch (error) { this.fail(id, operation, error); }
     finally { if (this.tasks.get(id) === operation) this.tasks.delete(id); }
