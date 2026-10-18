@@ -106,6 +106,30 @@ describe('canvas flow playback', () => {
     expect(layers()[0].time).toBeGreaterThanOrEqual(2);
     player.dispose();
   });
+  it('uses both original Idle reference sections for fades and only the finished body for repeats', () => {
+    const flow = flowWithReferences(), idle = getScene(flow, 'wait');
+    idle.generated = { ...idle.generated!, fullAssetId: 'mock:idle-full',
+      fullRange: { start: 2, duration: 2.5, totalDuration: 6.5 } };
+    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'call-wait')!)).toMatchObject({ startFrame: -4, frames: 4 });
+    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!)).toMatchObject({ startFrame: 0, frames: 4 });
+    const player = makePlayer(flow);
+    player.seekScene('call', 94);
+    expect(layers()[1]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: true });
+    expect(layers()[1].time).toBeCloseTo(2 - 2 / 24);
+    player.seekScene('wait', 0);
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]).toMatchObject({ source: { id: 'mock:wait' }, time: 0, muted: true });
+    player.seekScene('wait', 47, true); advance();
+    expect(player.session.loopIteration).toBe(2);
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0].source.id).toBe('mock:wait');
+    player.seekScene('correct', 2);
+    expect(layers()).toHaveLength(2);
+    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: true });
+    expect(layers()[0].time).toBeCloseTo(4.5 + 2 / 24);
+    expect(layers()[1].source.id).toBe('mock:correct');
+    player.dispose();
+  });
   it('starts a late answer fade when the answer is chosen and holds an opening frame without lead-in', () => {
     const flow = flowWithReferences(), response = getScene(flow, 'incorrect');
     response.generated = { ...response.generated!, start: 0 };

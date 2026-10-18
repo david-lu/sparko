@@ -139,6 +139,16 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   expect(children.every((item: any) => item.phase === 'ready' && item.result.assetId)).toBe(true);
   const idle = children.find((item: any) => item.method === 'comfy-loop');
   expect(idle.result.start).toBe(0);
+  expect(idle.result.fullAssetId).toBeTruthy();
+  expect(idle.result.fullRange.start).toBeGreaterThan(0);
+  expect(idle.result.fullRange.totalDuration - idle.result.fullRange.start - idle.result.fullRange.duration).toBeGreaterThan(0);
+  const idleClip = page.locator('.timeline-flow-clip.clip-idle');
+  const idleBody = (await idleClip.locator('.flow-clip-body').boundingBox())!;
+  const idleBefore = (await idleClip.locator('.timeline-reference-range.before').boundingBox())!;
+  const idleAfter = (await idleClip.locator('.timeline-reference-range.after').boundingBox())!;
+  expect(idleBefore.x + idleBefore.width).toBeCloseTo(idleBody.x, 1);
+  expect(idleAfter.x).toBeCloseTo(idleBody.x + idleBody.width, 1);
+  await expect(idleClip.locator('.flow-clip-body')).toHaveAttribute('title', /Generated .* · Full file .* · Dotted sections:/);
   expect(idle.result.reference.before.assetId).toBe(children.find((item: any) => item.method === 'comfy-extend').result.assetId);
   expect(children.filter((item: any) => item.method === 'comfy').every((item: any) => item.result.reference.before.assetId === idle.result.assetId)).toBe(true);
   await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(0);

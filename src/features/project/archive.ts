@@ -11,7 +11,10 @@ const number = z.number().finite().nonnegative();
 const text = z.string().max(50_000);
 const clipReferenceSchema = z.object({ sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
 const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge']).optional(), before: clipReferenceSchema, after: clipReferenceSchema.optional() });
-const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(), start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
+const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(),
+  fullRange: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
+    .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid full video boundaries.').optional(),
+  start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
   method: z.enum([...generationMethods, 'fal']).optional().transform(value => value === 'fal' || value === undefined ? 'comfy' as const : value),

@@ -12,6 +12,16 @@ test('the crossfade option uses saved reference overlaps and draws their exact t
   await expect(marks).toHaveCount(6);
   await expect(clip(page, 'call').locator('.flow-crossfade')).toHaveCount(1);
   await expect(clip(page, 'wait').locator('.flow-crossfade')).toHaveCount(2);
+  for (const id of ['call', 'wait', 'correct']) {
+    const body = (await clip(page, id).locator('.flow-clip-body').boundingBox())!;
+    const before = (await clip(page, id).locator('.timeline-reference-range.before').boundingBox())!;
+    const after = (await clip(page, id).locator('.timeline-reference-range.after').boundingBox())!;
+    expect(before.x + before.width).toBeCloseTo(body.x, 1);
+    expect(after.x).toBeCloseTo(body.x + body.width, 1);
+    expect(before.width).toBeCloseTo(body.width / 2, 1);
+    expect(after.width).toBeCloseTo(body.width / 2, 1);
+  }
+  await expect(clip(page, 'wait').locator('.flow-clip-body')).toHaveAttribute('title', /Generated 1\.00s · Full file 2\.00s/);
   const idleBounds = (await clip(page, 'wait').boundingBox())!;
   for (const mark of await clip(page, 'wait').locator('.flow-crossfade').all()) {
     const bounds = (await mark.boundingBox())!;

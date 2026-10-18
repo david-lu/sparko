@@ -22,15 +22,18 @@ function idleTransition(flow: CallResponseFlow, edge: FlowEdge, requestedFrames:
   const enteringIdle = after.clip.kind === 'idle' && (before.clip.kind === 'call' || before.clip.kind === 'response');
   const leavingIdle = before.clip.kind === 'idle' && (after.clip.kind === 'call' || after.clip.kind === 'response');
   if (!enteringIdle && !leavingIdle) return;
-  const frames = Math.max(0, Math.min(Math.floor(requestedFrames), sceneFrames(before), sceneFrames(after)));
-  return frames ? { before, after, startFrame: -frames, frames } : undefined;
+  const idle = enteringIdle ? after : before, full = idle.generated?.fullAssetId && idle.generated.fullRange;
+  const contextFrames = !full ? Infinity : Math.floor((enteringIdle ? full.start : full.totalDuration - full.start - full.duration) * flow.fps + 1e-6);
+  const frames = Math.max(0, Math.min(Math.floor(requestedFrames), sceneFrames(before), sceneFrames(after), contextFrames));
+  // The opening fade uses the original prefix before the cut; the exit uses its suffix after the loop completes.
+  return frames ? { before, after, startFrame: leavingIdle && full ? 0 : -frames, frames } : undefined;
 }
 
 function candidateTransition(flow: CallResponseFlow, edge: FlowEdge, frames: number) {
   return idleTransition(flow, edge, frames) ?? referenceTransition(flow, edge, frames);
 }
 
-/** Fade into or out of Idle before the cut; repeats stay untouched. */
+/** Fade through Idle's reference sections at entry and exit; repeats stay untouched. */
 export function flowTransition(flow: CallResponseFlow, edge: FlowEdge, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES) {
   const transition = candidateTransition(flow, edge, crossfadeFrames);
   if (!transition) return;

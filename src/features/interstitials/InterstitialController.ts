@@ -298,10 +298,12 @@ export class InterstitialController {
       signal.throwIfAborted();
       let blob = fetched.blob;
       let fullBlob: Blob | undefined;
+      let fullRange: Pick<typeof result, 'start' | 'duration' | 'totalDuration'> | undefined;
       const idle = this.flowFor(id)?.scenes.some(scene => scene.interstitialId === id && scene.clip.kind === 'idle');
       if (result.reference?.mode === 'loop' || idle && result.reference?.before) {
         this.patch(id, { progress: undefined, progressDetails: { stage: 'Matching loop boundaries' } });
         fullBlob = blob;
+        fullRange = { start: result.start, duration: result.duration, totalDuration: result.totalDuration };
         const loop = await finishLoop(blob, result, signal); blob = loop.blob; result = loop.result;
       }
       this.patch(id, { progress: undefined, progressDetails: { stage: 'Saving generated video' } });
@@ -309,7 +311,7 @@ export class InterstitialController {
       const fullAsset = fullBlob ? await assets.save(fullBlob, `${id}-full.mp4`, signal) : undefined;
       if (fullAsset) await assets.open(fullAsset.id);
       signal.throwIfAborted();
-      result = { ...result, assetId: asset.id, ...(fullAsset ? { fullAssetId: fullAsset.id } : {}) };
+      result = { ...result, assetId: asset.id, ...(fullAsset ? { fullAssetId: fullAsset.id, fullRange } : {}) };
       this.patch(id, { result });
     }
     this.patch(id, { phase: 'loading', progress: undefined, progressDetails: { stage: 'Checking generated video' } });

@@ -57,7 +57,8 @@ describe('interstitial lifecycle', () => {
     vi.mocked(finishLoop).mockResolvedValueOnce({ blob: loop, result: { ...result, start: 0, totalDuration: 5 } });
     const open = vi.spyOn(assets, 'open');
     await controller.resume(id);
-    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', result: { assetId: loopId, fullAssetId: fullId, start: 0, duration: 5 } });
+    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', result: { assetId: loopId, fullAssetId: fullId,
+      fullRange: { start: 2, duration: 5, totalDuration: 9 }, start: 0, duration: 5 } });
     expect(save.mock.calls.map(([blob]) => blob)).toEqual([loop, raw]);
     expect(open.mock.calls.map(([assetId]) => assetId)).toEqual([fullId, loopId]);
     expect(loadInterstitials('source')[0].result).toMatchObject({ assetId: loopId, fullAssetId: fullId });

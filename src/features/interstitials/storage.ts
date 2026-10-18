@@ -23,6 +23,8 @@ function readResult(value: unknown): InterstitialResult | undefined {
   const result = value as Partial<InterstitialResult>;
   if (typeof result.url !== 'string' || !(result.url.startsWith('https://') || /^\/api\/comfy\/assets\/[A-Za-z0-9_-]{8,128}\/content$/.test(result.url) || typeof result.assetId === 'string' && result.url === `asset:${result.assetId}`)) return;
   if (result.fullAssetId !== undefined && (typeof result.fullAssetId !== 'string' || !result.fullAssetId)) return;
+  if (result.fullRange && (![result.fullRange.start, result.fullRange.duration, result.fullRange.totalDuration].every(value => typeof value === 'number' && Number.isFinite(value))
+    || result.fullRange.start < 0 || result.fullRange.duration <= 0 || result.fullRange.start + result.fullRange.duration > result.fullRange.totalDuration + 0.1)) return;
   if (![result.start, result.duration, result.totalDuration].every(value => typeof value === 'number' && Number.isFinite(value))) return;
   if (result.start! >= 0 && result.duration! > 0 && result.start! + result.duration! <= result.totalDuration! + 0.1) return { ...result, reference: readReference(result.reference) } as InterstitialResult;
 }

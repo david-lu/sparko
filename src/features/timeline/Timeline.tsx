@@ -14,6 +14,7 @@ import { phaseLabel } from '../interstitials/status';
 import FlowTracks, { type FlowTimeline } from './FlowTracks';
 import { flowLayout } from '../call-response/model';
 import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
+import { referenceSections } from './referenceSections';
 
 const MAX_ZOOM = 32;
 export default function Timeline({ name, info, thumbnails, thumbnailsFailed = false, interstitials, selectedId, composition, time, duration, buffered, selection, height, maxHeight, onHeight, onMoveInterstitial, onRemoveInterstitial, onSelectInterstitial, onSeek, callResponse }: {
@@ -122,14 +123,27 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
           {composition?.segments.filter(segment => segment.kind === 'interstitial').map(segment => {
             const item = interstitials.find(item => item.id === segment.id);
             const busy = item && isGenerating(item);
-            return <button key={segment.id} className={`rendered-interstitial ${selectedId === segment.id ? 'selected' : ''} ${busy ? 'generating' : ''}`} aria-label={`Select rendered ${segment.label}`} title={`${segment.label} · ${busy ? phaseLabel(item) : `${((segment.endFrame - segment.startFrame) / composition.fps).toFixed(2)}s`}`}
+            const references = segment.generated && referenceSections(segment.generated);
+            const beforeFrames = (references?.before ?? 0) * composition.fps;
+            const afterFrames = (references?.after ?? 0) * composition.fps;
+            const bodyFrames = segment.endFrame - segment.startFrame;
+            const details = references && (references.before || references.after)
+              ? `Generated ${(bodyFrames / composition.fps).toFixed(2)}s · Full file ${references.total.toFixed(2)}s · Dotted sections: ${references.before.toFixed(2)}s before, ${references.after.toFixed(2)}s after`
+              : `${(bodyFrames / composition.fps).toFixed(2)}s`;
+            return <div key={segment.id} className="timeline-rendered-clip">
+              {beforeFrames > 0 && <span className="timeline-reference-range before" role="img" aria-label={`${segment.label}: ${references!.before.toFixed(2)} seconds of reference footage before the generated clip`}
+                style={{ left: `${(segment.startFrame - beforeFrames) / (composition.duration * composition.fps) * 100}%`, width: `${beforeFrames / (composition.duration * composition.fps) * 100}%` }} />}
+              {afterFrames > 0 && <span className="timeline-reference-range after" role="img" aria-label={`${segment.label}: ${references!.after.toFixed(2)} seconds of reference footage after the generated clip`}
+                style={{ left: `${segment.endFrame / (composition.duration * composition.fps) * 100}%`, width: `${afterFrames / (composition.duration * composition.fps) * 100}%` }} />}
+              <button className={`rendered-interstitial ${selectedId === segment.id ? 'selected' : ''} ${busy ? 'generating' : ''}`} aria-label={`Select rendered ${segment.label}`} title={`${segment.label} · ${busy ? phaseLabel(item) : details}`}
             style={{ left: `${segment.startFrame / composition.fps / duration * 100}%`, width: `${(segment.endFrame - segment.startFrame) / composition.fps / duration * 100}%` }} onClick={event => {
               const rect = track.current?.getBoundingClientRect();
               // Keyboard selection uses the anchor; pointer clicks seek within the expanded timeline.
               if (event.detail === 0 || !rect?.width) { onSelectInterstitial(segment.id); return; }
               const frame = Math.round((event.clientX - rect.left) / rect.width * duration * composition.fps);
               onSelectInterstitial(segment.id, Math.max(segment.startFrame, Math.min(segment.endFrame - 1, frame)) / composition.fps);
-            }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} /><span className="timeline-clip-label">{segment.label}</span>{busy && <ClipJobStatus label={segment.label} message={phaseLabel(item)} />}</button>;
+            }}><VideoFilmstrip url={segment.source.url} start={segment.sourceStart} end={segment.sourceStart + (segment.endFrame - segment.startFrame) / composition.fps} /><span className="timeline-clip-label">{segment.label}</span>{busy && <ClipJobStatus label={segment.label} message={phaseLabel(item)} />}</button>
+            </div>;
           })}
           {composition && <CrossfadeMarks composition={composition} width={contentWidth} />}
           <div className="playhead" style={{ left: `${progress}%` }} aria-hidden="true"><span /></div>

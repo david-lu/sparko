@@ -10,6 +10,7 @@ import { flowTransition } from '../call-response/transitions';
 import { isGenerating, type Interstitial } from '../../../shared/interstitials';
 import { phaseLabel } from '../interstitials/status';
 import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
+import { referenceSections } from './referenceSections';
 
 export type FlowTimeline = {
   flow: CallResponseFlow;
@@ -44,9 +45,17 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
       const stale = !!scene.interstitialId && !!value.staleClipIds?.has(scene.interstitialId);
       const row = branchScenes(groups.find(group => group.scenes.some(member => member.id === scene.id)) ?? flow).findIndex(branch => branch.id === scene.id);
       const outputs = flow.edges.filter(edge => edge.from === scene.id && edge.when !== 'pending');
+      const references = scene.generated && referenceSections(scene.generated);
+      const beforeWidth = (references?.before ?? 0) * flow.fps * unit;
+      const afterWidth = (references?.after ?? 0) * flow.fps * unit;
+      const durationTitle = references && (references.before || references.after)
+        ? ` · Generated ${(sceneFrames(scene) / flow.fps).toFixed(2)}s · Full file ${references.total.toFixed(2)}s · Dotted sections: ${references.before.toFixed(2)}s before, ${references.after.toFixed(2)}s after`
+        : ` · ${(sceneFrames(scene) / flow.fps).toFixed(1)}s`;
       return <div key={scene.id} className={`timeline-flow-clip clip-${scene.clip.kind} ${value.selectedSceneId === scene.id ? 'selected' : ''} ${active ? 'active' : ''} ${scene.draft ? 'draft' : ''} ${stale ? 'stale' : ''}`}
         style={{ left: bounds.x - offset, width: bounds.width, top: row < 0 ? undefined : `calc(50% + var(--timeline-clip-height) * ${row - rows / 2})` }} data-scene-id={scene.id} data-clip-kind={scene.clip.kind} data-active={active} data-stale={stale}>
-        <button className={`flow-clip-body ${value.selectedSceneId === scene.id ? 'selected' : ''}`} aria-label={`Select clip ${scene.label}`} title={`${scene.label} · ${(sceneFrames(scene) / flow.fps).toFixed(1)}s${idle ? ' · Idle: repeats until an answer' : ''}`} onClick={event => {
+        {beforeWidth > 0 && <span className="timeline-reference-range before" role="img" aria-label={`${scene.label}: ${references!.before.toFixed(2)} seconds of reference footage before the generated clip`} style={{ left: -beforeWidth, width: beforeWidth }} />}
+        {afterWidth > 0 && <span className="timeline-reference-range after" role="img" aria-label={`${scene.label}: ${references!.after.toFixed(2)} seconds of reference footage after the generated clip`} style={{ left: bounds.width, width: afterWidth }} />}
+        <button className={`flow-clip-body ${value.selectedSceneId === scene.id ? 'selected' : ''}`} aria-label={`Select clip ${scene.label}`} title={`${scene.label}${durationTitle}${idle ? ' · Idle: repeats until an answer' : ''}`} onClick={event => {
           const rect = event.currentTarget.getBoundingClientRect();
           value.onSelectScene(scene.id, event.detail === 0 ? 0 : Math.floor((event.clientX - rect.left) / rect.width * sceneFrames(scene)));
         }} aria-description={stale ? 'Stale: upstream video changed. Regenerate this clip to match.' : undefined} aria-pressed={value.selectedSceneId === scene.id}>

@@ -53,6 +53,14 @@ test('opens the saved sample project from the sample projects section', async ({
   await page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ }).click();
   await ready(page);
   expect((await activeProject(page)).interstitials[0].prompt).toBe('Saved example prompt');
+  const body = (await page.locator('.rendered-interstitial').boundingBox())!;
+  const before = (await page.locator('.timeline-reference-range.before').boundingBox())!;
+  const after = (await page.locator('.timeline-reference-range.after').boundingBox())!;
+  expect(before.x + before.width).toBeCloseTo(body.x, 1);
+  expect(after.x).toBeCloseTo(body.x + body.width, 1);
+  expect(before.width).toBeCloseTo(body.width / 2, 1);
+  expect(after.width).toBeCloseTo(body.width / 2, 1);
+  await expect(page.locator('.rendered-interstitial')).toHaveAttribute('title', /Generated 2\.00s · Full file 4\.00s/);
 });
 
 test('starts on the chooser and opens the example only when requested', async ({ page }) => {

@@ -95,6 +95,10 @@
 .timeline-section{--timeline-clip-height:76px}
 .timeline-track-space{display:flex;align-items:center;flex:1;min-height:18px}
 .timeline-track-space>.timeline-track{height:100%;max-height:var(--timeline-clip-height)}
+.timeline-rendered-clip{--clip-color:var(--clip-interstitial)}
+.timeline-reference-range{position:absolute;top:0;bottom:0;box-sizing:border-box;z-index:6;pointer-events:none;border:2px dotted var(--clip-color);background:color-mix(in srgb,var(--clip-color) 8%,transparent)}
+.timeline-reference-range.before{border-right:0;border-radius:var(--radius-sm) 0 0 var(--radius-sm)}
+.timeline-reference-range.after{border-left:0;border-radius:0 var(--radius-sm) var(--radius-sm) 0}
 
 .video-filmstrip{position:absolute;inset:0;display:flex;overflow:hidden;pointer-events:none;background:var(--surface);container-type:inline-size;container-name:clip}
 .video-filmstrip img{display:block;height:100%;width:0;flex:1;min-width:0;object-fit:cover;border-right:1px solid #0003}

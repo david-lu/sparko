@@ -38,12 +38,18 @@ export class CanvasFlowPlayback {
   get bufferedAhead() { return this.decks.bufferedAhead; }
   requestPictureInPicture() { return this.decks.requestPictureInPicture(); }
   private clip(session: PlaybackSession, frame = session.frame + this.remainder): PlaybackClip {
-    const scene = getScene(this.flow, session.sceneId), sourceFootage = scene.clip.assetId === this.source.assetId;
-    const url = sourceFootage ? this.source.url : assets.url(scene.clip.assetId);
+    const scene = getScene(this.flow, session.sceneId);
+    const context = scene.clip.kind === 'idle' && scene.generated?.fullAssetId && scene.generated.fullRange
+      && (frame < 0 || frame >= sceneFrames(scene));
+    const assetId = context ? scene.generated!.fullAssetId! : scene.clip.assetId;
+    const sourceFootage = assetId === this.source.assetId;
+    const url = sourceFootage ? this.source.url : assets.url(assetId);
     if (!url) throw new Error('This scene’s media is not available.');
-    return { key: `${scene.id}:${session.visit % 2}`, sourceFootage, muted: scene.clip.kind === 'idle',
-      source: sourceFootage ? this.source : { id: scene.clip.assetId, assetId: scene.clip.assetId, name: scene.label, url },
-      time: scene.draft ? scene.clip.inFrame / this.flow.fps : scene.generated
+    return { key: `${scene.id}:${session.visit % 2}:${context ? 'reference' : 'body'}`, sourceFootage, muted: scene.clip.kind === 'idle',
+      source: sourceFootage ? this.source : { id: assetId, assetId, name: scene.label, url },
+      time: context ? frame < 0 ? scene.generated!.fullRange!.start + frame / this.flow.fps
+        : scene.generated!.fullRange!.start + scene.generated!.fullRange!.duration + (frame - sceneFrames(scene)) / this.flow.fps
+        : scene.draft ? scene.clip.inFrame / this.flow.fps : scene.generated
         ? frame >= sceneFrames(scene) ? scene.generated.start + scene.generated.duration + (frame - sceneFrames(scene)) / this.flow.fps
           : scene.generated.start + frame / this.flow.fps
         : (scene.clip.inFrame + frame) / this.flow.fps, still: scene.draft };
@@ -70,10 +76,11 @@ export class CanvasFlowPlayback {
       if (weight < 0 || weight >= 1) continue;
       const before = { ...current, sceneId: transition.before.id, visit: entering ? Math.max(0, current.visit - 1) : current.visit };
       const after = { ...current, sceneId: transition.after.id, visit: entering ? current.visit : current.visit + 1 };
-      // Idle's opening frame is held on entry. On exit, use the response's lead-in when available.
+      // Blend the original Idle reference sections at either edge, keeping the loop body untouched.
       const beforeFrame = transition.before.clip.kind === 'idle' && offset >= 0
-        ? sceneFrames(transition.before) - 1 : sceneFrames(transition.before) + offset;
-      const afterFrame = transition.after.clip.kind === 'idle' && offset < 0 ? 0
+        ? transition.before.generated?.fullRange ? sceneFrames(transition.before) + offset : sceneFrames(transition.before) - 1
+        : sceneFrames(transition.before) + offset;
+      const afterFrame = transition.after.clip.kind === 'idle' && offset < 0 && !transition.after.generated?.fullRange ? 0
         : transition.before.clip.kind === 'idle' && offset < 0
           ? Math.max(offset, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6)) : offset;
       const rate = this.flow.fps / fadeFrames;
@@ -92,10 +99,12 @@ export class CanvasFlowPlayback {
         const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame);
         if (!next.finished) {
           const edge = nextEdge(this.flow, this.session), transition = this.crossfade && edge ? flowTransition(this.flow, edge, this.crossfadeFrames) : undefined;
-          const prepareFrame = transition?.after.clip.kind === 'idle' ? 0 : transition?.before.clip.kind === 'idle'
+          const prepareFrame = transition?.after.clip.kind === 'idle' ? transition.after.generated?.fullRange ? transition.startFrame : 0 : transition?.before.clip.kind === 'idle'
             ? Math.max(transition.startFrame, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6))
             : transition?.startFrame ?? 0;
           this.decks.prepare(this.clip(next, prepareFrame));
+          if (transition?.before.clip.kind === 'idle' && transition.before.generated?.fullRange)
+            this.decks.prepare(this.clip(this.session, sceneFrames(transition.before)));
         }
       }
       this.changed(this.session, this.buffering);

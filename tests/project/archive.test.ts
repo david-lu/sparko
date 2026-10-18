@@ -34,13 +34,14 @@ describe('portable project archives', () => {
     const full = { id: crypto.randomUUID(), name: 'idle-full.mp4', blob: new Blob(['reference, idle, reference'], { type: 'video/mp4' }) };
     const snapshot = structuredClone(project);
     const item = snapshot.interstitials[1];
-    item.result = { ...item.result!, fullAssetId: full.id };
+    item.result = { ...item.result!, fullAssetId: full.id, fullRange: { start: 2, duration: 5, totalDuration: 9 } };
     if (previous) { item.previousResult = item.result; item.result = undefined; item.phase = 'error'; }
     const restored = await unpackProject(await packProject(snapshot, [...media, full], signal(), progress), signal(), progress);
     const result = previous ? restored.project.interstitials[1].previousResult! : restored.project.interstitials[1].result!;
     expect(result.fullAssetId).toBeTruthy();
     expect(result.fullAssetId).not.toBe(full.id);
     expect(result.fullAssetId).not.toBe(result.assetId);
+    expect(result.fullRange).toEqual({ start: 2, duration: 5, totalDuration: 9 });
     expect(await restored.assets.find(asset => asset.id === result.fullAssetId)!.blob.text()).toBe(await full.blob.text());
     await expect(packProject(snapshot, media, signal(), progress)).rejects.toThrow(/missing/);
   });
