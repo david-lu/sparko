@@ -52,6 +52,36 @@ test('source-only editor playback loads captions and uses the canvas transport',
   expect(errors).toEqual([]);
 });
 
+test('redraws a replaced clip at the same playhead position', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(async () => {
+    const { CanvasMediaDecks } = await import('/src/features/player/CanvasMediaDecks.ts' as string);
+    const state = (window as any).nativeTest;
+    state.decks = new CanvasMediaDecks(document.querySelector('video')!, state.info, false);
+    state.current = state.generated.source;
+    state.renderCurrent = () => state.decks.render([{ key: 'same-clip', source: state.current,
+      sourceFootage: false, time: .5, opacity: 1, gain: 1 }], false, { volume: 1, muted: true, speed: 1 });
+  });
+  const ready = () => page.evaluate(() => (window as any).nativeTest.renderCurrent());
+  const pixel = async () => {
+    const screenshot = await page.locator('canvas.playback-canvas').screenshot();
+    return page.evaluate(async base64 => {
+      const image = new Image(); image.src = `data:image/png;base64,${base64}`; await image.decode();
+      const canvas = new OffscreenCanvas(image.width, image.height), context = canvas.getContext('2d')!;
+      context.drawImage(image, 0, 0); return [...context.getImageData(160, 60, 1, 1).data];
+    }, screenshot.toString('base64'));
+  };
+  await expect.poll(ready).toBe(true);
+  const before = await pixel();
+  expect(before[1]).toBeGreaterThan(200);
+  await page.evaluate(() => { (window as any).nativeTest.current = (window as any).nativeTest.legacy.source; });
+  await expect.poll(ready).toBe(true);
+  const after = await pixel();
+  expect(after[0]).toBeGreaterThan(200);
+  expect(after[1]).toBeLessThan(40);
+  await page.evaluate(() => (window as any).nativeTest.decks.dispose());
+});
+
 test('renders and crossfades decoded frames on one WebGPU canvas without native playback or preview encoding', async ({ page }) => {
   await setup(page, true, 60);
   await page.evaluate(async () => {

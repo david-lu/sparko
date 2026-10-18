@@ -25,7 +25,10 @@ function idleTransition(flow: CallResponseFlow, edge: FlowEdge, requestedFrames:
   // The Response was generated from the end of Idle's body. Its own saved
   // prefix length, not Idle's unrelated loop suffix, bounds this overlap.
   const submittedIdle = leavingIdle && after.generated.reference?.before;
-  if (submittedIdle && (submittedIdle.assetId !== before.clip.assetId || submittedIdle.outFrame !== before.clip.outFrame)) return;
+  const full = before.generated.fullAssetId && before.generated.fullRange;
+  const fullOutFrame = full ? Math.round(full.start * flow.fps) + sceneFrames(before) : undefined;
+  if (submittedIdle && !(submittedIdle.assetId === before.clip.assetId && submittedIdle.outFrame === before.clip.outFrame)
+    && !(full && submittedIdle.assetId === before.generated.fullAssetId && submittedIdle.outFrame === fullOutFrame)) return;
   const idlePrefix = after.clip.kind === 'idle' && after.generated.fullAssetId && after.generated.fullRange;
   const contextFrames = enteringIdle ? idlePrefix ? Math.floor(idlePrefix.start * flow.fps + 1e-6) : Infinity
     : Math.floor(after.generated.start * flow.fps + 1e-6);

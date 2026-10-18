@@ -160,6 +160,19 @@ describe('canvas flow playback', () => {
     expect(layers()[0].time).toBeLessThan(2 + 1 / 24);
     player.dispose();
   });
+  it('keeps the Idle to Response fade when the Response used the full Idle asset', () => {
+    const flow = flowWithReferences(), idle = getScene(flow, 'wait'), response = getScene(flow, 'correct');
+    idle.generated = { ...idle.generated!, fullAssetId: 'mock:idle-full',
+      fullRange: { start: 2, duration: 2, totalDuration: 6 } };
+    response.generated = { ...response.generated!, reference: { before: {
+      sceneId: idle.id, assetId: 'mock:idle-full', inFrame: 48, outFrame: 96,
+    } } };
+    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!)).toMatchObject({ startFrame: -4, frames: 4 });
+    const player = makePlayer(flow);
+    player.seekScene('wait', 46); player.branch('wait', 'correct'); player.pause();
+    expect(layers().map(layer => layer.source.id)).toEqual(['mock:idle-full', 'mock:correct']);
+    player.dispose();
+  });
   it('plays the original Idle audio with its video only when enabled', () => {
     const flow = flowWithReferences(), idle = getScene(flow, 'wait');
     idle.generated = { ...idle.generated!, fullAssetId: 'mock:idle-full',

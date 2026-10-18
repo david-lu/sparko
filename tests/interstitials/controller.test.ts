@@ -105,7 +105,7 @@ describe('interstitial lifecycle', () => {
     const legacy = { ...draft.interstitials[0], prompt: 'Ask gently.', dialogue: 'What do you think?' };
     controller.load('legacy', [{ ...legacy, generationSettings: interstitialSettings(legacy) }], [], draft.flow);
     const restored = controller.getSnapshot().items[0];
-    expect(restored.prompt).toContain('Spoken dialogue, verbatim: What do you think?');
+    expect(restored.prompt).toContain('<d>[English] What do you think?</d>');
     expect(restored.dialogue).toBeUndefined();
     expect(restored.generationSettings?.dialogue).toBeUndefined();
     expect(generationPrompt(restored)).toBe(generationPrompt(legacy));

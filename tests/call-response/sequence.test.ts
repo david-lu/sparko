@@ -61,8 +61,8 @@ describe('call-response generation sequence', () => {
     const references = vi.mocked(generationSource).mock.calls.map(call => call[1]);
     expect(references[0].before.assetId).toBe(example.flow.scenes[0].clip.assetId);
     expect(references[1].before.assetId).toBe('new-call');
-    expect(references[2].before.assetId).toBe(item(1).result!.assetId);
-    expect(references[3].before.assetId).toBe(item(1).result!.assetId);
+    expect(references[2].before.assetId).toBe(item(1).result!.fullAssetId);
+    expect(references[3].before.assetId).toBe(item(1).result!.fullAssetId);
     expect(references[2].after?.assetId).toBe(example.flow.scenes.at(-1)!.clip.assetId);
     expect(controller.getSnapshot().sequence).toMatchObject({ phase: 'ready', completedIds: ids });
     for (const id of ids) expect(controller.dependency(id)?.stale).toBe(false);

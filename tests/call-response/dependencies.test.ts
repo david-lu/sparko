@@ -15,6 +15,22 @@ describe('call-response generation dependencies', () => {
       expect(clipDependency(retry, items, id)).toMatchObject({ stale: false, reference: { before: { sceneId: 'wait' }, after: { sceneId: 'continue' } } });
     }
   });
+  it('uses the saved full Idle body as Response input without re-encoding the extracted loop', () => {
+    const { flow, items } = example();
+    const idle = items.find(item => item.id === 'call-response-wait')!;
+    idle.result = { ...idle.result!, assetId: 'trimmed-idle', fullAssetId: 'full-idle',
+      start: 0, duration: 2, totalDuration: 2,
+      fullRange: { start: 2, duration: 2, totalDuration: 6 } };
+    const before = clipDependency(flow, items, 'correct').reference!.before;
+    expect(before).toEqual({ sceneId: 'wait', assetId: 'full-idle', inFrame: 48, outFrame: 96 });
+    expect(referenceTiming(items[2], clipDependency(flow, items, 'correct').reference!)).toMatchObject({ before: 48 });
+    // Existing renders made from the trimmed loop remain valid until Idle changes.
+    items[2].result = { ...items[2].result!, reference: { ...items[2].result!.reference!,
+      before: { sceneId: 'wait', assetId: 'trimmed-idle', inFrame: 0, outFrame: 48 } } };
+    expect(clipDependency(flow, items, 'correct').stale).toBe(false);
+    items[2].result = { ...items[2].result!, reference: undefined };
+    expect(baselineReferences(flow, items)[2].result?.reference?.before.assetId).toBe('trimmed-idle');
+  });
   it('marks descendants stale after replacement, retains their media, and requires updates in order', () => {
     const { flow, items } = example();
     const call = items.find(item => item.id === 'call-response-call')!;

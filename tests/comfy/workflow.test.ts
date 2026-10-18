@@ -46,6 +46,8 @@ describe('H3 two-sided temporal bridge', () => {
     expect(graph.after.inputs).toMatchObject({ skip_first_frames: 39, frame_load_cap: 39 });
     expect(graph.place_before.inputs).toMatchObject({ source: ['encode_before', 0], index: 0 });
     expect(graph.place_after.inputs).toMatchObject({ source: ['encode_after', 0], index: -12 });
+    expect(graph.end_guide).toBeUndefined();
+    expect(graph.guider.inputs.conditioning).toEqual(['conditioning', 0]);
     expect(graph.middle_mask.inputs).toMatchObject({ frames: 226, ranges: '39:187' });
     expect(graph.freeze_video.inputs).toEqual({ samples: ['place_after', 0], mask: ['latent_mask', 0] });
     expect(graph.freeze_audio.inputs).toMatchObject({ start_time: 39 / 24, end_time: 187 / 24 });

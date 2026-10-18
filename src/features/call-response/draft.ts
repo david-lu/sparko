@@ -5,7 +5,7 @@ export const continuityBrief = 'Continue the same shot with the same character i
 export function scenePrompt(scene: TimelineScene) {
   if (scene.id === 'call') return 'Extend the preceding scene naturally. The character addresses the viewer and asks the question, then settles into a relaxed, attentive listening pose. End with the mouth closed and the camera still.';
   if (scene.id === 'wait') return 'A quiet seamless waiting loop. Begin and end in exactly the supplied listening pose. Use subtle breathing and a small blink, with minimal movement. No dialogue, no new action, no camera movement. Match the first and last frames.';
-  return `Begin in the Idle loop’s ending pose. Deliver the ${scene.label} response naturally, then smoothly return to the action, position, gaze and camera of the supplied parent continuation. Finish ready for the original footage to resume without a cut.`;
+  return `Begin in the Idle loop’s ending pose. Deliver the ${scene.label} response naturally, then gradually converge on the first frame of the supplied original continuation. Match its character pose, face, gaze, framing, background, lighting and color before the generated section ends. Keep the mouth closed after speaking; do not save a sudden correction for the cut back to the original footage.`;
 }
 export function draftClip(flow: CallResponseFlow, scene: TimelineScene): Interstitial {
   return { id: scene.interstitialId!, groupId: flow.interstitial.id, label: scene.label, time: flow.interstitial.time,

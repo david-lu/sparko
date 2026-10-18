@@ -41,7 +41,8 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
   const renderClip = (scene: TimelineScene, offset = 0) => {
       const bounds = box(scene.id), active = session?.sceneId === scene.id, idle = scene.clip.kind === 'idle';
       const fullIdle = idle && scene.generated?.fullAssetId && scene.generated.fullRange;
-      const url = assets.url(fullIdle ? scene.generated!.fullAssetId! : scene.clip.assetId);
+      const assetId = fullIdle ? scene.generated!.fullAssetId! : scene.clip.assetId;
+      const url = assets.url(assetId);
       const filmstripStart = fullIdle ? scene.generated!.fullRange!.start : scene.clip.inFrame / flow.fps;
       const filmstripEnd = fullIdle ? filmstripStart + scene.generated!.fullRange!.duration : scene.clip.outFrame / flow.fps;
       const item = items.find(item => item.id === scene.interstitialId);
@@ -64,7 +65,7 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
           value.onSelectScene(scene.id, event.detail === 0 ? 0 : Math.floor((event.clientX - rect.left) / rect.width * sceneFrames(scene)));
         }} aria-description={stale ? 'Stale: upstream video changed. Regenerate this clip to match.' : undefined} aria-pressed={value.selectedSceneId === scene.id}>
           {scene.draft ? <span className="flow-placeholder"><ClipStatusBadge status={clipStatus(item)} /></span>
-            : url ? <VideoFilmstrip url={url} start={filmstripStart} end={filmstripEnd} />
+            : url ? <VideoFilmstrip assetId={assetId} url={url} start={filmstripStart} end={filmstripEnd} />
               : <ClipLoading failed={!busy} message={busy ? phaseLabel(item) : 'Clip media unavailable'} />}
           {!scene.draft && url && busy && <ClipJobStatus label={scene.label} message={phaseLabel(item)} />}
           {stale && <span className="flow-clip-stale" title="Upstream video changed. Regenerate this clip to match.">Stale</span>}

@@ -79,7 +79,8 @@ export class CanvasMediaDecks {
     this.bufferedAhead = ready ? Math.max(0, Math.min(...assigned.map(({ layer, decoder }) => decoder.bufferedEnd - layer.time))) : 0;
     if (!ready) { this.audio.pause(); return false; }
     this.canvas.dataset.layerCount = String(layers.length);
-    const signature = assigned.map(({ layer, sample }) => `${layer.key}:${sample!.timestamp}:${layer.opacity}`).join('|') + this.matchFraming;
+    const signature = JSON.stringify([this.matchFraming, assigned.map(({ layer, sample }) =>
+      [layer.key, layer.source.url, layer.sourceFootage, sample!.timestamp, layer.opacity])]);
     if (signature !== this.signature) {
       this.renderer.draw(assigned.map(({ layer, sample }) => ({ sample: sample!, opacity: layer.opacity, sourceFootage: layer.sourceFootage })), this.matchFraming);
       this.signature = signature;

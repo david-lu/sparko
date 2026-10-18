@@ -66,7 +66,7 @@ test('replacing a loading clip ignores its late result and generation keeps the 
   await expect(clip.locator('img').first()).toBeVisible();
   const before = await clip.boundingBox();
   await page.getByRole('button', { name: 'Render clips' }).click();
-  await expect(clip.getByRole('status')).toHaveAttribute('aria-label', /Generating scene.*40%/);
+  await expect(clip.getByRole('status')).toHaveAttribute('aria-label', /Generating scene/);
   await expect(clip.locator('img').first()).toBeVisible();
   expect(await clip.boundingBox()).toEqual(before);
   await page.getByRole('button', { name: 'Finish generation' }).click();
@@ -90,4 +90,16 @@ test('zoom stretches the existing filmstrip without loading more frames', async 
   await expect(strip).toHaveAttribute('aria-busy', 'false');
   expect(await strip.evaluate(element => element.querySelector('img') === (window as Window & { initialFrame?: Element }).initialFrame)).toBe(true);
   expect((await strip.boundingBox())!.width).toBeGreaterThan(beforeWidth);
+});
+
+test('splitting a clip reuses its video asset thumbnails without showing a new loading state', async ({ page }) => {
+  await page.goto('/__clip-loading', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Switch clip' }).click();
+  const first = page.locator('#strip .video-filmstrip');
+  await expect(first.locator('img').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Split clip' }).click();
+  const second = page.locator('#split-strip .video-filmstrip');
+  await expect(first.locator('img').first()).toBeVisible();
+  await expect(second.locator('img').first()).toBeVisible();
+  await expect(page.locator('#strip .clip-loading, #split-strip .clip-loading')).toHaveCount(0);
 });

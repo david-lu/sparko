@@ -13,6 +13,7 @@ const noop = () => {};
 function Harness() {
   const [url, setUrl] = useState('/__clips/slow.mp4');
   const [stripWidth, setStripWidth] = useState(420);
+  const [split, setSplit] = useState(false);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   useEffect(() => {
@@ -29,10 +30,12 @@ function Harness() {
       <button onClick={() => setUrl('/__clips/new.mp4')}>Switch clip</button>
       <button onClick={() => setUrl('/__clips/broken.mp4')}>Fail clip</button>
       <button onClick={() => setStripWidth(width => width === 420 ? 840 : 420)}>Zoom filmstrip</button>
+      <button onClick={() => setSplit(true)}>Split clip</button>
       <button onClick={() => setGenerating(!generating)}>{generating ? 'Finish generation' : 'Render clips'}</button>
     </div>
     <div style={{ width: 'min(840px, 100%)' }}>
-      <button id="strip" aria-label="Select test clip" style={{ position: 'relative', width: stripWidth, maxWidth: '100%', height: 76, display: 'block' }}><VideoFilmstrip url={url} start={0} end={3} /></button>
+      <button id="strip" aria-label="Select test clip" style={{ position: 'relative', width: stripWidth, maxWidth: '100%', height: 76, display: 'block' }}><VideoFilmstrip url={url} start={0} end={split ? 1.5 : 3} /></button>
+      {split && <button id="split-strip" aria-label="Select split clip" style={{ position: 'relative', width: stripWidth, maxWidth: '100%', height: 76, display: 'block' }}><VideoFilmstrip url={url} start={1.5} end={3} /></button>}
       <button id="narrow-strip" aria-label="Select short clip" style={{ position: 'relative', width: 64, height: 76, display: 'block', marginTop: 10 }}><VideoFilmstrip url={url} start={0} end={3} /></button>
       <InterstitialPreview url={url} label="Test clip" downloadName="test.mp4" active onPlay={noop} />
     </div>

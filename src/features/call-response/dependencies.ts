@@ -5,6 +5,15 @@ import { branchScenes, clipTypeLabel, getScene, resolveFlow, type CallResponseFl
 export const predecessor = (flow: CallResponseFlow, id: SceneId): SceneId | undefined => id === 'intro' ? undefined
   : id === 'call' ? 'intro' : id === 'wait' ? 'call' : id === 'continue' ? branchScenes(flow)[0]?.id : 'wait';
 const reference = (scene: TimelineScene): ClipReference => ({ sceneId: scene.id, assetId: scene.clip.assetId, inFrame: scene.clip.inFrame, outFrame: scene.clip.outFrame });
+/** Playback reads the saved full Idle render. Reuse its body for Response input
+ * rather than encoding the extracted loop a second time. */
+const generationReference = (scene: TimelineScene, fps: number): ClipReference => {
+  const full = scene.clip.kind === 'idle' && scene.generated?.fullAssetId && scene.generated.fullRange;
+  if (!full) return reference(scene);
+  const inFrame = Math.round(full.start * fps);
+  return { sceneId: scene.id, assetId: scene.generated!.fullAssetId!, inFrame,
+    outFrame: inFrame + scene.clip.outFrame - scene.clip.inFrame };
+};
 const sameClip = (a?: ClipReference, b?: ClipReference) => a?.sceneId === b?.sceneId && a?.assetId === b?.assetId && a?.inFrame === b?.inFrame && a?.outFrame === b?.outFrame;
 export const sameReference = (a: GenerationReference, b: GenerationReference) => a.mode === b.mode && sameClip(a.before, b.before) && sameClip(a.after, b.after);
 export type ClipDependency = { reference?: GenerationReference; label: string; blocked?: string; stale: boolean };
@@ -20,7 +29,10 @@ function staleResult(flow: CallResponseFlow, items: Interstitial[], scene: Timel
   return [submitted.before, submitted.after].some(input => {
     if (!input) return false;
     const upstream = flow.scenes.find(scene => scene.id === input.sceneId);
-    return !upstream || !sameClip(input, reference(upstream)) || staleResult(flow, items, upstream, visited);
+    // Older Response jobs used the separately encoded loop. Keep their saved
+    // reference valid until the Idle video itself changes.
+    const matches = upstream && (sameClip(input, generationReference(upstream, flow.fps)) || sameClip(input, reference(upstream)));
+    return !upstream || !matches || staleResult(flow, items, upstream, visited);
   });
 }
 
@@ -30,7 +42,7 @@ export function clipDependency(flow: CallResponseFlow, items: Interstitial[], id
   const previous = getScene(resolved, previousId), upstream = items.find(item => item.id === previous.interstitialId);
   const label = clipTypeLabel(previous.clip, flow) || previous.label;
   const item = items.find(item => item.id === scene.interstitialId);
-  const input: GenerationReference = { before: reference(previous), ...(item?.method === 'comfy-extend' ? { mode: 'extend' as const }
+  const input: GenerationReference = { before: generationReference(previous, resolved.fps), ...(item?.method === 'comfy-extend' ? { mode: 'extend' as const }
     : item?.method === 'comfy-loop' ? { mode: 'loop' as const, after: reference(previous) }
     : scene.clip.kind === 'response' && id !== 'continue' ? { after: reference(getScene(resolved, 'continue')) } : {}) };
   const upstreamState = upstream && predecessor(flow, previousId) ? clipDependency(flow, items, previousId) : undefined;
@@ -46,7 +58,10 @@ export function baselineReferences(flow: CallResponseFlow, items: Interstitial[]
   return items.map(item => {
     if ((!item.result || item.result.reference) && (!item.previousResult || item.previousResult.reference)) return item;
     const scene = flow.scenes.find(scene => scene.interstitialId === item.id);
-    const input = scene && clipDependency(flow, items, scene.id).reference;
+    const current = scene && clipDependency(flow, items, scene.id).reference;
+    const previous = current && resolveFlow(flow, items).scenes.find(scene => scene.id === current.before.sceneId);
+    // Results without saved provenance predate the full-Idle reference path.
+    const input = current && previous?.clip.kind === 'idle' ? { ...current, before: reference(previous) } : current;
     return input ? { ...item,
       result: item.result && !item.result.reference ? { ...item.result, reference: input } : item.result,
       previousResult: item.previousResult && !item.previousResult.reference ? { ...item.previousResult, reference: input } : item.previousResult,

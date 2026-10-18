@@ -14,6 +14,15 @@ const idle: Interstitial = {
 };
 
 describe('Idle prompt sent to Comfy', () => {
+  it('keeps H3 sections in order when adding reference continuity and a separate spoken line', () => {
+    const prompt = 'integrated_multimodal_description: [Shot 1] The girl turns toward the camera.\noverall_soundscape: Quiet room tone.\nnon_diegetic_music: N/A';
+    const result = generationPrompt({ ...idle, method: 'comfy-extend', continuity: 'Keep the same shot.', prompt, dialogue: 'What do you think?' });
+    expect(result).toBe('integrated_multimodal_description: [Shot 1] The girl turns toward the camera. Keep the same shot. The character (S1) says once: <d>[English] What do you think?</d>. After speaking, they keep their mouth closed and remain silent.\noverall_soundscape: Quiet room tone.\nnon_diegetic_music: N/A');
+    const silent = generationPrompt({ ...idle, prompt, continuity: 'Keep the same shot.', dialogue: 'What do you think?' });
+    expect(silent).not.toContain('What do you think?');
+    expect(silent).toContain('The character stays silent');
+    expect(silent.split('\n')).toHaveLength(3);
+  });
   it('removes inherited speech instructions and legacy dialogue while retaining scene direction', async () => {
     vi.mocked(request).mockResolvedValue({ ready: true });
     vi.mocked(sendForm).mockResolvedValue({ requestId: 'idle-job', status: 'IN_QUEUE' });
@@ -34,7 +43,7 @@ describe('Idle prompt sent to Comfy', () => {
   it('keeps a regular clip\'s speech instruction and preserves legacy Idle prompt migration', () => {
     expect(generationPrompt({ ...idle, method: 'comfy' })).toContain('English speech only.');
     const restored = promptOnlySettings(idle);
-    expect(restored.prompt).toContain('Spoken dialogue, verbatim: Say hello');
+    expect(restored.prompt).toContain('<d>[English] Say hello</d>');
     expect(restored.prompt).not.toContain('No speech, dialogue or lip movement');
     expect(generationPrompt(restored)).not.toContain('Say hello');
   });

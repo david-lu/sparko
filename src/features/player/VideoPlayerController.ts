@@ -89,9 +89,11 @@ export class VideoPlayerController {
   }
   setFlow(flow: CallResponseFlow, info?: MediaInfo, matchFraming = false, crossfade = true, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES) {
     if (!this.element || !this.source) return;
-    // Editor metadata and Idle audio do not change the clip sequence or playhead.
+    // Overlay text, answer matching, and editor labels can change without
+    // replacing the media canvas or moving the playhead. Scene/edge structure
+    // and clip media still determine when playback must be rebuilt.
     const mediaLayout = (value: CallResponseFlow) => JSON.stringify(value,
-      (key, part) => key === 'interstitial' || key === 'loopAudio' ? undefined : part);
+      (key, part) => ['interstitial', 'loopAudio', 'interaction', 'label', 'dialogue'].includes(key) ? undefined : part);
     if (this.flowPlayback && (this.flowPlayback.flow === flow || mediaLayout(this.flowPlayback.flow) === mediaLayout(flow))) {
       this.flowPlayback.setFlow(flow);
       this.flowPlayback.setMatchFraming(matchFraming); this.flowPlayback.setCrossfade(crossfade, crossfadeFrames); return;

@@ -27,9 +27,9 @@ export class CanvasFlowPlayback {
       if (this.disposed) return;
       const elapsed = this.decks.elapsed();
       if (this.session.playing && !this.buffering) {
-        this.remainder += elapsed * flow.fps * this.settings.speed;
+        this.remainder += elapsed * this.flow.fps * this.settings.speed;
         const frames = Math.floor(this.remainder); this.remainder -= frames;
-        if (frames) this.session = advanceSession(flow, this.session, frames);
+        if (frames) this.session = advanceSession(this.flow, this.session, frames);
       }
       this.render(); this.animation = requestAnimationFrame(tick);
     };

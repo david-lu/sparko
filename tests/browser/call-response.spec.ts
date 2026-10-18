@@ -354,6 +354,9 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
 test('response button hue and saturation update the player and survive reload', async ({ page }) => {
   await openExample(page);
   await selectIdle(page);
+  await expect(page.locator('.playback-canvas')).toBeVisible();
+  await page.locator('.playback-canvas').evaluate(canvas => { (window as any).buttonEditCanvas = canvas; });
+  const sameCanvas = () => page.evaluate(() => document.querySelector('.playback-canvas') === (window as any).buttonEditCanvas);
   const editor = page.getByRole('group', { name: 'Question and responses' });
   const hue = editor.getByRole('slider', { name: 'Button 1 hue' });
   const saturation = editor.getByRole('slider', { name: 'Button 1 saturation' });
@@ -365,11 +368,20 @@ test('response button hue and saturation update the player and survive reload', 
   await expect(second).toHaveCSS('--choice-fill', '#daccff');
   const addAnswer = editor.getByRole('button', { name: 'Add answer' });
   const before = await addAnswer.evaluate(element => (element as HTMLElement).offsetTop);
+  await editor.getByRole('textbox', { name: 'Question' }).fill('A new question?');
+  await expect(page.locator('.player-branch-question')).toHaveText('A new question?');
+  expect(await sameCanvas()).toBe(true);
+  await editor.getByRole('textbox', { name: 'Button 1 text' }).fill('New answer');
+  await editor.getByRole('textbox', { name: 'Button 1 text' }).press('Enter');
+  await expect(page.locator('.video-stage').getByRole('button', { name: 'Choose New answer' })).toBeVisible();
+  expect(await sameCanvas()).toBe(true);
   await hue.fill('210');
   await saturation.fill('45');
-  await selectIdle(page);
-  await expect(first).toHaveCSS('--choice-fill', 'hsl(210 45% 80%)');
-  await expect(first).toHaveCSS('--choice-shadow', 'hsl(210 45% 45%)');
+  expect(await sameCanvas()).toBe(true);
+  await expect(page.locator('.buffering')).toHaveCount(0);
+  const renamed = page.locator('.video-stage').getByRole('button', { name: 'Choose New answer' });
+  await expect(renamed).toHaveCSS('--choice-fill', 'hsl(210 45% 80%)');
+  await expect(renamed).toHaveCSS('--choice-shadow', 'hsl(210 45% 45%)');
   await expect(second).toHaveCSS('--choice-fill', '#daccff');
   expect(await addAnswer.evaluate(element => (element as HTMLElement).offsetTop)).toBe(before);
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveAttribute('title', /Change button color/);
@@ -382,12 +394,12 @@ test('response button hue and saturation update the player and survive reload', 
   await selectIdle(page);
   await expect(editor.getByRole('slider', { name: 'Button 1 hue' })).toHaveValue('210');
   await expect(editor.getByRole('slider', { name: 'Button 1 saturation' })).toHaveValue('45');
-  await expect(first).toHaveCSS('--choice-fill', 'hsl(210 45% 80%)');
+  await expect(renamed).toHaveCSS('--choice-fill', 'hsl(210 45% 80%)');
   await page.setViewportSize({ width: 390, height: 844 });
   await hue.scrollIntoViewIfNeeded();
   await expect(hue).toBeInViewport();
   await expect(saturation).toBeInViewport();
-  await expect(first).toBeInViewport();
+  await expect(renamed).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
