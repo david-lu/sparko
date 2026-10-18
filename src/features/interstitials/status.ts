@@ -1,12 +1,11 @@
-import { generationProvider, type Interstitial } from '../../../shared/interstitials';
+import type { Interstitial } from '../../../shared/interstitials';
 import { estimateComfyProgress } from '../../../shared/comfy-progress';
 
-const isComfyJob = (item: Interstitial) => generationProvider(item.requestMethod ?? item.generationSettings?.method ?? item.method) === 'comfy';
-export const renderingProgress = (item: Interstitial) => isComfyJob(item) ? estimateComfyProgress(item.progressDetails) : item.progress;
+export const renderingProgress = (item: Interstitial) => estimateComfyProgress(item.progressDetails);
 function renderingLabel(item: Interstitial) {
   const progress = renderingProgress(item);
   const steps = item.progressDetails?.step === undefined || !item.progressDetails.steps ? '' : ` · step ${item.progressDetails.step}/${item.progressDetails.steps}`;
-  return `${item.progressDetails?.stage || 'Generating scene'}${steps}${progress === undefined ? '' : ` · ${Math.round(progress * 100)}%${isComfyJob(item) ? ' estimated overall' : ' overall'}`}`;
+  return `${item.progressDetails?.stage || 'Generating scene'}${steps}${progress === undefined ? '' : ` · ${Math.round(progress * 100)}% estimated overall`}`;
 }
 
 export const phaseLabel = (item: Interstitial) => ({

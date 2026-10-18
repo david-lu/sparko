@@ -4,7 +4,6 @@ export const AI_MODELS = {
   promptEnhancement: 'gpt-6.1-sol',
   transcription: 'gpt-4o-mini-transcribe',
   gemini: 'gemini-3.8-flash',
-  fal: 'minimax/h3-max/insert-video',
   voiceActivity: 'v5', // Silero, evaluated locally in the browser.
 } as const;
 
@@ -38,8 +37,8 @@ export const VOICE_DETECTION = {
 export const INTERSTITIAL = {
   defaultRange: 2, maxRange: 4, minStartRange: 1.625, minEndRange: 0.1,
   defaultDuration: 6, minDuration: 5, maxDuration: 13,
-  enablePromptExpansion: false, // Default for new drafts; editable per interstitial.
-  resolution: '768p', maxReferenceBytes: 50 * 1024 * 1024,
-  referenceFps: TIMELINE_FPS, // H3 Max validates insertion times at 24 fps.
+  enablePromptExpansion: false, // Retained for older saved project metadata.
+  maxReferenceBytes: 50 * 1024 * 1024,
+  referenceFps: TIMELINE_FPS,
   pollMilliseconds: 2500,
 } as const;

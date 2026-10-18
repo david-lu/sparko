@@ -125,7 +125,7 @@ async function runConversion(input: Input, output: Output<OutputFormat, BufferTa
 }
 
 /** Export an arbitrary range to H.264/AAC MP4. Deliberately has no download or editing UI. */
-export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { maxHeight?: number; frameRate?: number } = {}): Promise<Blob> {
+export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { maxHeight?: number; maxDimension?: number; frameRate?: number } = {}): Promise<Blob> {
   options.signal?.throwIfAborted();
   await ensureAac();
   const input = openInput(source);
@@ -133,14 +133,16 @@ export async function exportMp4(source: MediaSource, slice: Slice, options: Task
     validateSlice(slice, await input.computeDuration());
     const track = await input.getPrimaryVideoTrack();
     if (!track) throw new Error('This source has no video to export.');
-    const sourceHeight = await track.getDisplayHeight();
+    const [sourceWidth, sourceHeight] = await Promise.all([track.getDisplayWidth(), track.getDisplayHeight()]);
+    const scaleDimension = options.maxDimension && Math.max(sourceWidth, sourceHeight) > options.maxDimension
+      ? sourceWidth >= sourceHeight ? { width: options.maxDimension } : { height: options.maxDimension }
+      : options.maxHeight && sourceHeight > options.maxHeight ? { height: options.maxHeight } : {};
     const target = new BufferTarget();
     const output = new Output({ target, format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
     const conversion = await Conversion.init({
       input, output, tracks: 'primary', trim: slice,
       // Re-encode to honor arbitrary boundaries instead of expanding to nearby keyframes.
-      video: { codec: 'avc', forceTranscode: true, frameRate: options.frameRate,
-        ...(options.maxHeight && sourceHeight > options.maxHeight ? { height: options.maxHeight } : {}) },
+      video: { codec: 'avc', forceTranscode: true, frameRate: options.frameRate, ...scaleDimension },
       audio: { codec: 'aac', forceTranscode: true },
     });
     return await runConversion(input, output, conversion, options);

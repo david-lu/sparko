@@ -14,27 +14,34 @@ const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'br
 const resultSchema = z.object({ url: text, assetId: z.uuid(), start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
-  method: z.enum(generationMethods).default('fal'),
+  method: z.enum([...generationMethods, 'fal']).optional().transform(value => value === 'fal' || value === undefined ? 'comfy' as const : value),
   continuity: text.optional(), dialogue: text.optional(), loopAudio: z.boolean().optional(),
   start_range: number.max(4), end_range: number.max(4), prompt: text,
   duration: number.min(1).max(INTERSTITIAL.maxDuration).default(INTERSTITIAL.defaultDuration),
   enable_prompt_expansion: z.boolean().default(INTERSTITIAL.enablePromptExpansion),
 });
+function preserveLegacyJobProvider(value: unknown) {
+  if (!value || typeof value !== 'object') return value;
+  const item = value as Record<string, unknown>;
+  const settings = item.generationSettings as Record<string, unknown> | undefined;
+  return item.requestId && item.requestMethod === undefined && (item.method === 'fal' || settings?.method === 'fal')
+    ? { ...item, requestMethod: 'fal' } : value;
+}
 const projectSchema = z.object({
   id: text, name: z.string().min(1).max(1000), updatedAt: number,
   callResponse: callResponseSchema.optional(),
   callResponses: z.array(callResponseSchema).max(100).optional(),
   source: z.object({ name: z.string().min(1).max(1000), assetId: z.uuid(), originalAssetId: z.uuid().optional() }),
-  interstitials: z.array(z.object({
+  interstitials: z.array(z.preprocess(preserveLegacyJobProvider, z.object({
     id: z.string().min(1).max(200), label: z.string().max(1000), time: number, kind: z.enum(['regular', 'call-response']).optional(), groupId: text.optional(),
     ...settingsSchema.shape, generationSettings: settingsSchema.optional(),
-    requestMethod: z.enum(generationMethods).optional(),
+    requestMethod: z.enum([...generationMethods, 'fal']).optional(),
     requestReference: generationReferenceSchema.optional(),
     requestInsertion: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
       .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid job boundaries.').optional(),
     phase: z.enum(['draft', 'preparing', 'uploading', 'queued', 'rendering', 'loading', 'ready', 'error', 'cancelled']),
     requestId: z.string().regex(/^[A-Za-z0-9_-]{8,128}$/).optional(), result: resultSchema.optional(), previousResult: resultSchema.optional(), error: text.optional(),
-  })).max(1000).refine(items => new Set(items.map(item => item.id)).size === items.length, 'Duplicate interstitial IDs.')
+  }))).max(1000).refine(items => new Set(items.map(item => item.id)).size === items.length, 'Duplicate interstitial IDs.')
     .refine(items => items.every(item => item.phase !== 'ready' || item.result), 'A completed interstitial is missing its media.'),
   subtitle: z.object({ name: text, assetId: z.uuid() }).nullable(),
   analysis: z.object({ slice: z.object({ start: number, end: number }), provider: z.enum(['openai', 'gemini']), instructions: text,

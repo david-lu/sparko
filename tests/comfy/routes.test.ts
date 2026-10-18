@@ -12,8 +12,8 @@ vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: cla
   dispose() {}
 } }));
 const comfy = { check: vi.fn(), submit: vi.fn(), status: vi.fn(), events: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn() };
-const providers: Providers = { configured: { openai: false, gemini: false, fal: true, comfy: true }, models: { openai: 'test', gemini: 'test' },
-  openai: vi.fn(), gemini: vi.fn(), voice: vi.fn(), falUpload: vi.fn(), falSubmit: vi.fn(), falCancel: vi.fn(), falStatus: vi.fn(), enhancePrompt: vi.fn(), comfy };
+const providers: Providers = { configured: { openai: false, gemini: false, comfy: true }, models: { openai: 'test', gemini: 'test' },
+  openai: vi.fn(), gemini: vi.fn(), voice: vi.fn(), enhancePrompt: vi.fn(), comfy };
 let app: Express;
 beforeAll(async () => { app = await createApp({ providers }); app.use(errorHandler); });
 beforeEach(() => {
@@ -25,10 +25,9 @@ const submit = (before = '1.625', after = '1.625') => request(app).post('/api/co
   .field('before', before).field('after', after).field('duration', '6').field('prompt', 'Bridge this scene').attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
-  it('validates the reference and dispatches only to Comfy', async () => {
+  it('validates the reference and dispatches to Comfy', async () => {
     await submit().expect(202);
     expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { mode: 'bridge', before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 960, height: 544, hasAudio: true });
-    expect(providers.falSubmit).not.toHaveBeenCalled();
   });
   it('rejects off-grid windows, missing context, and unavailable providers before submission', async () => {
     await submit('2', '2').expect(400);

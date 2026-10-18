@@ -3,7 +3,24 @@ import { playableResult, type CallResponseInterstitial, type Interstitial, type 
 export type SceneId = string;
 /** Stable answer IDs, independent of the text displayed to the user. */
 export type Outcome = string;
-export type AnswerOption = { id: Outcome; label: string; values: string[]; sceneId: SceneId };
+export type AnswerColor = { hue: number; saturation: number };
+export type AnswerOption = { id: Outcome; label: string; values: string[]; sceneId: SceneId; color?: AnswerColor };
+const defaultAnswerColors = [
+  { hue: 43, saturation: 100, fill: '#ffe49a', shadow: '#b18a3d' },
+  { hue: 258, saturation: 100, fill: '#daccff', shadow: '#8b76b8' },
+  { hue: 164, saturation: 70, fill: '#aff0df', shadow: '#589f8e' },
+  { hue: 19, saturation: 100, fill: '#ffcbb4', shadow: '#b77e65' },
+];
+export function answerColor(answer: AnswerOption, index: number): AnswerColor {
+  const fallback = defaultAnswerColors[index % defaultAnswerColors.length];
+  return answer.color ?? { hue: fallback.hue, saturation: fallback.saturation };
+}
+export function answerColorStyle(answer: AnswerOption, index: number) {
+  const fallback = defaultAnswerColors[index % defaultAnswerColors.length];
+  if (!answer.color) return { '--choice-fill': fallback.fill, '--choice-shadow': fallback.shadow };
+  const { hue, saturation } = answer.color;
+  return { '--choice-fill': `hsl(${hue} ${saturation}% 80%)`, '--choice-shadow': `hsl(${hue} ${Math.min(saturation, 70)}% 45%)` };
+}
 type ClipMedia = { id: string; assetId: string; inFrame: number; outFrame: number };
 export type VideoClip = ClipMedia & { kind: 'video' };
 export type CallClip = ClipMedia & { kind: 'call' };
@@ -106,12 +123,14 @@ export function addAnswer(flow: CallResponseFlow): CallResponseFlow {
   });
 }
 
-export function editAnswer(flow: CallResponseFlow, id: Outcome, patch: Partial<Pick<AnswerOption, 'label' | 'values'>>): CallResponseFlow {
+export function editAnswer(flow: CallResponseFlow, id: Outcome, patch: Partial<Pick<AnswerOption, 'label' | 'values' | 'color'>>): CallResponseFlow {
   const answer = flow.interaction.answers.find(answer => answer.id === id);
   if (!answer) return flow;
   const label = patch.label === undefined ? answer.label : patch.label.trim().slice(0, 200) || answer.label;
   const values = patch.values ? [...new Set(patch.values.map(value => value.trim().slice(0, 200)).filter(Boolean))].slice(0, 100) : answer.values;
-  return { ...flow, interaction: { ...flow.interaction, answers: flow.interaction.answers.map(answer => answer.id === id ? { ...answer, label, values } : answer) },
+  const color = patch.color ? { hue: Math.max(0, Math.min(360, Math.round(patch.color.hue))),
+    saturation: Math.max(0, Math.min(100, Math.round(patch.color.saturation))) } : answer.color;
+  return { ...flow, interaction: { ...flow.interaction, answers: flow.interaction.answers.map(answer => answer.id === id ? { ...answer, label, values, ...(color ? { color } : {}) } : answer) },
     scenes: label === answer.label ? flow.scenes : flow.scenes.map(scene => scene.id === answer.sceneId ? { ...scene, label } : scene),
     edges: flow.edges.map(edge => edge.when === id ? { ...edge, label } : edge) };
 }

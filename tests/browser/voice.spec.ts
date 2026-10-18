@@ -33,7 +33,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/test-tone.wav', async route => route.fulfill({ contentType: 'audio/wav', body: wavFixture(1) }));
   await page.route('**/api/status', async route => {
     const response = await route.fetch(); const body = await response.json();
-    await route.fulfill({ json: { ...body, providers: { openai: true, gemini: true, fal: true } } });
+    await route.fulfill({ json: { ...body, providers: { openai: true, gemini: true, comfy: true } } });
   });
   await page.goto('/');
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.duration)).toBeGreaterThan(0);

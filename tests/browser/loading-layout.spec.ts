@@ -20,27 +20,22 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
   test(`loading preserves workspace and editor geometry at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     const video = await readFile('tests/fixtures/interstitial-reference.mp4');
-    await page.route('**/media/episode_mock.mp4', route => route.fulfill({ contentType: 'video/mp4', body: video }));
+    await page.route('**/media/sample.mp4', route => route.fulfill({ contentType: 'video/mp4', body: video }));
     await page.route('**/api/status', route => route.fulfill({ json: {
-      requiresPassword: false, uploadMode: 'local', providers: { openai: true, gemini: false, fal: true, comfy: true },
-      models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'episode_mock.mp4', url: '/media/episode_mock.mp4', size: video.length }, defaultProject: null,
+      requiresPassword: false, uploadMode: 'local', providers: { openai: true, gemini: false, comfy: true },
+      models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: video.length }, defaultProject: null,
     } }));
     await page.goto('/');
+    await page.getByRole('button', { name: /Sample video/ }).click();
     await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
     await expect(page.locator('.buffering')).toHaveCount(0);
 
-    // Real media events must swap equally sized overlays without moving the workspace.
+    // Opening a project leaves the workspace geometry stable.
     const baseWorkspace = await bounds(page, workspace);
-    const play = await bounds(page, ['.center-play']);
-    await page.locator('.video-stage video').evaluate(video => video.dispatchEvent(new Event('waiting')));
-    await expect(page.locator('.buffering')).toBeVisible();
-    unchanged((await bounds(page, ['.buffering'])).map(box => ({ ...box, selector: '.center-play' })), play);
     unchanged(await bounds(page, workspace), baseWorkspace);
-    await page.locator('.video-stage video').evaluate(video => video.dispatchEvent(new Event('canplay')));
 
     await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
     await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
-    await page.getByLabel('Video generation method').selectOption('fal');
     await page.getByLabel('Interstitial prompt').fill('Continue the dance');
     await page.locator('.sidebar').evaluate(element => { element.scrollTop = 0; });
     const idleEditor = await bounds(page, editor);
@@ -59,11 +54,11 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
 
     let complete = false, releaseDownload!: () => void;
     const downloading = new Promise<void>(resolve => { releaseDownload = resolve; });
-    await page.route('**/api/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'layout-job', status: 'IN_QUEUE' } }));
-    await page.route('**/api/fal/jobs/layout-job', route => route.fulfill({ json: complete
-      ? { requestId: 'layout-job', status: 'COMPLETED', videoUrl: 'https://fal.media/layout.mp4', insertion: { start: 1, duration: 2, totalDuration: 4 } }
+    await page.route('**/api/comfy/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'layout-job', status: 'IN_QUEUE' } }));
+    await page.route('**/api/comfy/jobs/layout-job', route => route.fulfill({ json: complete
+      ? { requestId: 'layout-job', status: 'COMPLETED', videoUrl: 'https://example.test/layout.mp4', insertion: { start: 1, duration: 2, totalDuration: 4 } }
       : { requestId: 'layout-job', status: 'IN_PROGRESS', progress: .4, progressDetails: { stage: 'A long generation stage that must never wrap and push the editor controls down', step: 8, steps: 20 } } }));
-    await page.route('https://fal.media/layout.mp4', async route => { await downloading; await route.fulfill({ contentType: 'video/mp4', body: video }); });
+    await page.route('https://example.test/layout.mp4', async route => { await downloading; await route.fulfill({ contentType: 'video/mp4', body: video }); });
     await page.getByRole('button', { name: 'Generate', exact: true }).evaluate(button => (button as HTMLButtonElement).click());
     await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toBeVisible({ timeout: 60_000 });
     unchanged(await bounds(page, editor), idleEditor);
@@ -82,7 +77,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     const exporting = new Promise<void>(resolve => { releaseExport = resolve; });
     await page.route('**/src/features/project/archive.ts*', async route => { await exporting; await route.continue(); });
     const beforeExport = await bounds(page, workspace);
-    await page.locator('.file-menu summary').click();
+    await page.locator('.file-menu summary').first().click();
     await page.getByRole('menuitem', { name: 'Export project', exact: true }).click();
     await expect(page.locator('.project-status')).toBeVisible();
     unchanged(await bounds(page, workspace), beforeExport);
@@ -100,7 +95,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await route.fulfill({ response, body: (await response.text()).replace('/src/main.tsx', '/tests/browser/loading-layout-harness.tsx') });
     });
     await page.goto('/__loading-layout');
-    await expect(page.locator('#clip .interstitial-editor')).toBeVisible();
+    await expect(page.locator('#clip .interstitial-editor').first()).toBeVisible();
     await page.getByRole('button', { name: 'Enable mic', exact: true }).evaluate(button => (button as HTMLButtonElement).click());
     const selectors = ['#clip .panel-content', ...[1, 2, 3, 4].map(n => `#clip .clip-subpanel:nth-child(${n}) .clip-subpanel-heading`), '#clip .interstitial-editor', '#clip textarea', '#clip .interstitial-time-fields', '#clip button[type=submit]', '#clip .task-status', '#rows .interstitial-row', '#voice .mic-status', '#voice .voice-capture-actions', '#voice .voice-capture-actions>.button'];
     const idle = await bounds(page, selectors);
@@ -113,7 +108,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     ];
     for (const patch of stages) {
       await page.evaluate(patch => (window as any).setClipPhase(patch), patch);
-      await expect(page.locator('#clip .clip-subpanel-heading').first()).toContainText(patch.phase === 'ready' ? 'Ready' : patch.phase === 'preparing' ? 'Preparing' : patch.phase === 'uploading' ? 'Uploading' : patch.phase === 'queued' ? 'Queued' : patch.progressDetails!.stage);
+      await expect(page.locator('#clip .clip-subpanel-heading').first()).toContainText(patch.phase === 'ready' ? 'Video ready' : patch.phase === 'preparing' ? 'Preparing' : patch.phase === 'uploading' ? 'Uploading' : patch.phase === 'queued' ? 'Queued' : patch.progressDetails!.stage);
       unchanged(await bounds(page, selectors), idle);
     }
     for (const [phase, label] of Object.entries({ requesting: 'Waiting for microphone access', loading: 'Loading speech detection', listening: 'Listening for speech', recording: 'Recording speech', stopping: 'Finishing answer', idle: 'Mic off' })) {

@@ -83,7 +83,7 @@ describe('interstitial prompt enhancement', () => {
 });
 
 describe('prompt enhancement API', () => {
-  const enhancePrompt = vi.fn(), configured = { openai: true, gemini: false, fal: false };
+  const enhancePrompt = vi.fn(), configured = { openai: true, gemini: false, comfy: false };
   const app = express(); app.use(protectRequests, express.json());
   addPromptEnhancementRoutes(app, { configured, enhancePrompt }); app.use(errorHandler);
   beforeEach(() => { configured.openai = true; enhancePrompt.mockResolvedValue({ prompt: `A restrained gesture.\n\n${continuity}`, model: AI_MODELS.promptEnhancement }); });

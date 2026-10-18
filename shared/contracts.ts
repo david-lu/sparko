@@ -27,7 +27,7 @@ export type CaptionResult = {
 export type AppStatus = {
   uploadMode: 'local' | 'blob';
   requiresPassword: boolean;
-  providers: Record<Provider | 'fal', boolean> & { comfy?: boolean };
+  providers: Record<Provider | 'comfy', boolean>;
   models: Record<Provider, string>;
   defaultVideo: { name: string; url: string; size: number };
   defaultProject?: { url: string } | null;
@@ -53,7 +53,6 @@ export type GenerationJob = {
   videoUrl?: string;
   insertion?: InsertionRange;
 };
-export type FalJob = GenerationJob;
 
 export function validateSlice(slice: Slice, duration: number, maxDuration = Infinity): void {
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('The video is not ready yet.');

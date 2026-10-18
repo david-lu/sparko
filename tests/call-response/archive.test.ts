@@ -48,7 +48,7 @@ describe('call-response project persistence', () => {
     const id = crypto.randomUUID(), example = createTimelineExample(id, 12);
     let flow = addAnswer(example.flow);
     const answer = flow.interaction.answers.at(-1)!;
-    flow = editAnswer(flow, answer.id, { label: 'Try another puzzle', values: ['Skip', 'Next please'] });
+    flow = editAnswer(flow, answer.id, { label: 'Try another puzzle', values: ['Skip', 'Next please'], color: { hue: 212, saturation: 42 } });
     const scene = flow.scenes.find(scene => scene.id === answer.sceneId)!;
     const items = [...example.interstitials, { ...example.interstitials[2], id: scene.interstitialId!, label: scene.label }];
     const project: Project = { id: 'custom', name: 'Custom answers', updatedAt: 0, source: { name: 'source.mp4', assetId: id },
@@ -57,9 +57,18 @@ describe('call-response project persistence', () => {
     const packed = await packProject(project, [{ id, name: 'source.mp4', blob: new Blob(['video bytes'], { type: 'video/mp4' }) }], signal, () => {});
     const restored = (await unpackProject(packed, signal, () => {})).project;
     expect(restored.callResponse!.interaction).toEqual(flow.interaction);
+    expect(restored.callResponse!.interaction.answers.at(-1)?.color).toEqual({ hue: 212, saturation: 42 });
     expect(answerSession(restored.callResponse!, previewScene(restored.callResponse!, 'wait'), 'next please').outcome).toBe(answer.id);
     expect(clipDependency(restored.callResponse!, restored.interstitials, answer.sceneId)).toMatchObject({ stale: false,
       reference: { before: { sceneId: 'wait', assetId: restored.source.assetId }, after: { sceneId: 'continue' } } });
+  });
+  it('accepts legacy answers without colors and rejects out-of-range color values', () => {
+    const flow = createTimelineExample(crypto.randomUUID(), 12).flow;
+    expect(callResponseSchema.parse(flow).interaction.answers.every(answer => !answer.color)).toBe(true);
+    for (const color of [{ hue: -1, saturation: 50 }, { hue: 20, saturation: 101 }, { hue: 20.5, saturation: 50 }]) {
+      const answers = flow.interaction.answers.map((answer, index) => index ? answer : { ...answer, color });
+      expect(callResponseSchema.safeParse({ ...flow, interaction: { ...flow.interaction, answers } }).success).toBe(false);
+    }
   });
   it('migrates a legacy example into one parent and rejects invalid ownership', () => {
     const { flow } = createTimelineExample(crypto.randomUUID(), 12);

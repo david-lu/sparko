@@ -42,11 +42,10 @@ describe('Comfy render progress estimates', () => {
     expect(renderingProgress(job({ progress: .98 }))).toBeUndefined();
     expect(renderingProgress(job({ progress: .98, progressDetails: { stage: 'Generating scene', nodesDone: 32, nodesTotal: 33 } }))).toBeUndefined();
   });
-  it('uses the submitted Comfy provider after editable settings change and after reload', () => {
-    const item = job({ method: 'fal', progress: .98, progressDetails: { stage: comfyStage('numeric-id', 'SamplerCustomAdvanced'), step: 9, steps: 20 } });
+  it('keeps Comfy progress estimates after saving and loading', () => {
+    const item = job({ progress: .98, progressDetails: { stage: comfyStage('numeric-id', 'SamplerCustomAdvanced'), step: 9, steps: 20 } });
     expect(renderingProgress(JSON.parse(JSON.stringify(item)))).toBeCloseTo(.455);
     expect(phaseLabel(item)).toContain('46% estimated overall');
-    expect(renderingProgress({ ...item, requestMethod: 'fal' })).toBe(.98);
     expect(phaseLabel({ ...item, phase: 'loading', progress: .25, progressDetails: { stage: 'Downloading generated video' } })).toBe('Downloading generated video · 25%');
   });
 });

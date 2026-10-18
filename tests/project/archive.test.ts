@@ -39,6 +39,17 @@ describe('portable project archives', () => {
     const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
     expect(restored.project.interstitials[0]).toMatchObject({ method: 'comfy', requestMethod: 'comfy', requestInsertion: item.requestInsertion, generationSettings: { method: 'comfy' } });
   });
+  it('marks a pending legacy job as Fal when its old archive omitted the submitted provider', async () => {
+    const blob = await packProject(project, media, signal(), progress);
+    const legacy = await rewrite(blob, value => {
+      const item = value.project.interstitials[0];
+      item.method = 'fal'; item.phase = 'queued'; item.requestId = 'legacy-job-1234';
+      item.generationSettings = { method: 'fal', start_range: 2, end_range: 3, duration: 7.5, prompt: 'A new scene', enable_prompt_expansion: true };
+      delete item.requestMethod;
+    });
+    const restored = await unpackProject(legacy, signal(), progress);
+    expect(restored.project.interstitials[0]).toMatchObject({ method: 'comfy', requestMethod: 'fal', generationSettings: { method: 'comfy' } });
+  });
   it('includes and remaps the retained original alongside the prepared working video', async () => {
     const original = { id: crypto.randomUUID(), name: 'original.mp4', blob: new Blob(['original bytes']) };
     const snapshot = { ...project, source: { ...project.source, originalAssetId: original.id } };
@@ -57,7 +68,7 @@ describe('portable project archives', () => {
     expect(manifest).not.toMatch(/https:|blob:/);
     const restored = await unpackProject(blob, signal(), progress);
     expect(restored.project.id).not.toBe(project.id);
-    expect(restored.project.interstitials[0]).toEqual({ ...project.interstitials[0], method: 'fal' });
+    expect(restored.project.interstitials[0]).toMatchObject({ ...project.interstitials[0], method: 'comfy' });
     expect(restored.project.interstitials.map(item => item.enable_prompt_expansion)).toEqual([true, false]);
     expect(restored.project.interstitials[1].result).toMatchObject({ start: 2, duration: 5, totalDuration: 9 });
     expect(restored.project.source.assetId).not.toBe(sourceId);

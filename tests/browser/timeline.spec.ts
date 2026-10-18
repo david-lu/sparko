@@ -2,7 +2,7 @@ import { expect, test, type Page } from './fixtures';
 import type { Interstitial as Pin } from '../../shared/interstitials';
 
 const savedPins = (page: Page): Promise<Pin[]> => page.evaluate(() => JSON.parse(localStorage.getItem('sparko:interstitials:v1:default:sample.mp4') || '[]'));
-const videoTime = (page: Page) => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime);
+const videoTime = async (page: Page) => Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).inputValue());
 const paused = (page: Page) => page.locator('video').evaluate((video: HTMLVideoElement) => video.paused);
 async function addPin(page: Page, time: number) {
   await page.getByRole('slider', { name: 'Video timeline' }).fill(String(time));
@@ -13,12 +13,12 @@ async function addPin(page: Page, time: number) {
 }
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.duration), { timeout: 60_000 }).toBeGreaterThan(0);
+  await page.getByRole('button', { name: /Sample video/ }).click();
+  await expect.poll(async () => Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max')), { timeout: 60_000 }).toBeGreaterThan(0);
 });
 
 test('pins drag without seeking, reorder, persist, and delete from the panel or keyboard', async ({ page }) => {
   await addPin(page, 20);
-  await page.getByLabel('Video generation method').selectOption('fal');
   await page.getByRole('textbox', { name: 'Interstitial prompt' }).fill('Opening');
   await addPin(page, 60);
   const duration = Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max'));
@@ -49,13 +49,14 @@ test('pins drag without seeking, reorder, persist, and delete from the panel or 
 test('failed generation pins can move while preserving the job, and Delete respects text editing', async ({ page }) => {
   await page.route('**/api/status', async route => {
     const response = await route.fetch(); const status = await response.json();
-    await route.fulfill({ json: { ...status, providers: { ...status.providers, fal: true } } });
+    await route.fulfill({ json: { ...status, providers: { ...status.providers, comfy: true } } });
   });
-  await page.route('**/api/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'failed-job-1234', status: 'IN_QUEUE' } }));
-  await page.route('**/api/fal/jobs/failed-job-1234', route => route.request().method() === 'DELETE'
+  await page.route('**/api/comfy/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'failed-job-1234', status: 'IN_QUEUE' } }));
+  await page.route('**/api/comfy/jobs/failed-job-1234', route => route.request().method() === 'DELETE'
     ? route.fulfill({ json: { requestId: 'failed-job-1234', status: 'CANCELLED' } })
-    : route.fulfill({ status: 422, json: { error: 'fal.ai rejected the reference timing.' } }));
+    : route.fulfill({ status: 422, json: { error: 'Comfy Cloud rejected the reference timing.' } }));
   await page.reload();
+  await page.getByRole('button', { name: /Sample video/ }).click();
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
   await addPin(page, 20);
   const prompt = page.getByRole('textbox', { name: 'Interstitial prompt' });
@@ -64,7 +65,7 @@ test('failed generation pins can move while preserving the job, and Delete respe
   await expect(prompt).toHaveValue(' scene');
   await expect(page.locator('.timeline-pin')).toHaveCount(1);
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
-  await expect(page.getByText('fal.ai rejected the reference timing.')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('Comfy Cloud rejected the reference timing.')).toBeVisible({ timeout: 60_000 });
   const marker = page.locator('.timeline-pin');
   const box = (await marker.boundingBox())!;
   const track = (await page.locator('.timeline-track').boundingBox())!;
@@ -72,7 +73,6 @@ test('failed generation pins can move while preserving the job, and Delete respe
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
   await page.mouse.move(track.x + track.width * 40 / duration, box.y + box.height / 2, { steps: 8 }); await page.mouse.up();
   expect((await savedPins(page))[0]).toMatchObject({ time: 40, requestId: 'failed-job-1234', phase: 'error', prompt: ' scene' });
-  await page.reload();
   await marker.click();
   await page.getByRole('button', { name: 'All interstitials' }).click();
   await page.getByRole('button', { name: 'Select Interstitial 1', exact: true }).click();

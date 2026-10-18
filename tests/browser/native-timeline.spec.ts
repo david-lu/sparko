@@ -35,7 +35,7 @@ async function setup(page: Page, moving = false, sourceFps = 25) {
 test('source-only editor playback loads captions and uses the canvas transport', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/status', route => route.fulfill({ json: { uploadMode: 'local', requiresPassword: false,
-    providers: { openai: false, gemini: false, fal: false, comfy: false }, models: { openai: 'mock', gemini: 'mock', fal: 'mock' },
+    providers: { openai: false, gemini: false, comfy: false }, models: { openai: 'mock', gemini: 'mock' },
     defaultVideo: { name: 'sample.mp4', size: 0, url: '/media/sample.mp4' } } }));
   await page.route('**/media/sample.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
   await page.goto('/'); await page.getByRole('button', { name: /Sample video/ }).click();
@@ -151,7 +151,7 @@ test('opening a sparko file preserves mismatched originals and their reference b
     const { readAsset } = await import('/src/features/project/database.ts' as string);
     const { Input, UrlSource, ALL_FORMATS } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const project = { id: 'test', name: 'Native archive', updatedAt: Date.now(), source: { name: 'Source.mp4', assetId: s.legacy.asset.id, originalAssetId: s.source.asset.id },
-      interstitials: [{ id: 'generated', label: 'Generated', time: 1, phase: 'ready', method: 'fal', prompt: '', start_range: 1, end_range: 1, duration: 1, enable_prompt_expansion: false,
+      interstitials: [{ id: 'generated', label: 'Generated', time: 1, phase: 'ready', method: 'comfy', prompt: '', start_range: 1, end_range: 1, duration: 1, enable_prompt_expansion: false,
         result: { url: s.generated.source.url, assetId: s.generated.asset.id, start: .5, duration: 1, totalDuration: 2 } }], subtitle: null, analysis: emptyAnalysis() };
     const archive = await packProject(project, [s.source.asset, s.legacy.asset, s.generated.asset], new AbortController().signal, () => {});
     const interstitials = new InterstitialController(), controller = new ProjectController(interstitials);
@@ -198,7 +198,7 @@ test('cancelling interstitial validation during import preserves the active proj
     await controller.openVideo(new File([s.source.asset.blob], 'Existing.mp4', { type: 'video/mp4' }));
     const before = await readActiveProject(), countBefore = await count();
     const project = { id: 'test', name: 'Cancelled import', updatedAt: Date.now(), source: { name: 'Source.mp4', assetId: s.source.asset.id },
-      interstitials: [{ id: 'generated', label: 'Generated', time: 1, phase: 'ready', method: 'fal', prompt: '', start_range: 1, end_range: 1, duration: 1, enable_prompt_expansion: false,
+      interstitials: [{ id: 'generated', label: 'Generated', time: 1, phase: 'ready', method: 'comfy', prompt: '', start_range: 1, end_range: 1, duration: 1, enable_prompt_expansion: false,
         result: { url: s.generated.source.url, assetId: s.generated.asset.id, start: .5, duration: 1, totalDuration: 2 } }], subtitle: null, analysis: emptyAnalysis() };
     const archive = await packProject(project, [s.source.asset, s.generated.asset], new AbortController().signal, () => {});
     let cancelled = false;

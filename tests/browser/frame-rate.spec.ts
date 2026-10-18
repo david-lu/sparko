@@ -191,7 +191,7 @@ test('opens a saved 25 fps source without moving its drafts', async ({ page }) =
   expect(prepared.project.interstitials[0].duration).toBe(6);
   await page.getByRole('button', { name: 'Select Opening', exact: true }).click();
   await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6');
-  await expect(page.getByRole('checkbox', { name: 'Prompt expansion', exact: true })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Prompt expansion', exact: true })).toHaveCount(0);
 });
 
 test('prepares a large source at 1080p while preserving aspect ratio and the 24 fps clock', async ({ page }) => {

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { referenceRange, type Interstitial } from '../../shared/interstitials';
-import { INTERSTITIAL } from '../../shared/constants';
+import type { Interstitial } from '../../shared/interstitials';
 import { TimelineComposition } from '../../src/media/TimelineComposition';
 
 const source = { id: 'source', name: 'Original', url: '/original.mp4' };
@@ -64,29 +63,5 @@ describe('frame-based timeline composition', () => {
     expect(composition.itemTime(item('end', 25 / 24))).toBe(25 / 24);
     expect(composition.segments.at(-1)?.id).toBe('end');
     expect(new TimelineComposition(source, { ...info, duration: 0.01 }, []).duration).toBe(1 / 24);
-  });
-});
-describe('reference clips', () => {
-  it('spans one frame on the 24 fps reference clock', () => {
-    expect(referenceRange(item('draft', 6), 12)).toEqual({ start: 4, end: 8, insertAt: 2, resumeAt: 49 / 24, fps: 24 });
-  });
-  it.each([6, 6.01, 6.04, 6.5])('keeps distinct 24 fps positions for an anchor at %s', time => {
-    for (const start_range of [1.625, 2, 2.01, 3.999]) {
-      const range = referenceRange({ ...item('draft', time), start_range }, 12);
-      expect(Math.floor(range.resumeAt * INTERSTITIAL.referenceFps)).toBeGreaterThan(Math.floor(range.insertAt * INTERSTITIAL.referenceFps));
-      expect(range.resumeAt - range.insertAt).toBeGreaterThanOrEqual(1 / INTERSTITIAL.referenceFps - 1e-9);
-      expect(range.resumeAt * 24).toBeCloseTo(Math.round(range.resumeAt * 24), 8);
-      expect(range.start + range.insertAt).toBeCloseTo(Math.round(time * 24) / 24, 8);
-    }
-  });
-  it('requires return footage after the replacement on both frame clocks', () => {
-    expect(() => referenceRange(item('near-end', 11.96), 12)).toThrow('return transition');
-    expect(() => referenceRange(item('near-end', 11.95), 12)).toThrow('return transition');
-  });
-  it('rejects impossible context and ranges over four seconds before uploading', () => {
-    for (const draft of [{ ...item('a', 4), start_range: 5 }, { ...item('b', 4), end_range: 4.01 }, item('c', 0), item('d', 12)]) {
-      expect(() => referenceRange(draft, 12)).toThrow();
-    }
-    expect(referenceRange(item('valid', 11), 12).end).toBe(12);
   });
 });

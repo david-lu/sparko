@@ -1,10 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { answerLabel, getScene, interactionFor, type Outcome, type SceneId } from '../call-response/model';
+import { answerColorStyle, getScene, interactionFor, type Outcome, type SceneId } from '../call-response/model';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 
 const EXIT_MS = 220;
 const HOLD_MS = 1000;
-type Choice = { id: string; label: string; outcome: Outcome };
+type Choice = { id: string; label: string; outcome: Outcome; style: CSSProperties };
 type Presentation = {
   sceneId: SceneId; question: string; choices: Choice[]; selectedId: string | null;
   phase: 'choosing' | 'dismissing' | 'holding' | 'exiting' | 'done';
@@ -19,7 +19,11 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   const outcome = value.session?.outcome;
   const choices = useMemo(() => value.flow.edges
     .filter(edge => edge.from === idleId && value.flow.interaction.answers.some(answer => answer.id === edge.when))
-    .map(edge => ({ id: edge.id, outcome: edge.when, label: answerLabel(value.flow, edge.when) })), [value.flow, idleId]);
+    .map(edge => {
+      const index = value.flow.interaction.answers.findIndex(answer => answer.id === edge.when);
+      const answer = value.flow.interaction.answers[index];
+      return { id: edge.id, outcome: edge.when, label: answer.label, style: answerColorStyle(answer, index) as CSSProperties };
+    }), [value.flow, idleId]);
   const [presentation, setPresentation] = useState<Presentation | null>(null);
 
   useEffect(() => {
@@ -64,7 +68,7 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
     onDoubleClick={event => event.stopPropagation()}>
     {presentation.question.trim() && <p id={questionId} className="player-branch-question">{presentation.question}</p>}
     {presentation.choices.map((choice, index) => <button key={choice.id}
-      style={{ animationDelay: selectedId ? '0ms' : `${Math.min(index, 6) * 100}ms` }}
+      style={{ ...choice.style, animationDelay: selectedId ? '0ms' : `${Math.min(index, 6) * 100}ms` }}
       aria-label={`Choose ${choice.label}`} aria-pressed={selectedId === choice.id} aria-disabled={!!selectedId}
       tabIndex={selectedId && selectedId !== choice.id ? -1 : undefined}
       onClick={() => {

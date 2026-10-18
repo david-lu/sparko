@@ -6,7 +6,7 @@ const enhanced = 'In the same continuous shot, she gently asks, "What is 2 + 2?"
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', async route => {
     const response = await route.fetch();
-    await route.fulfill({ json: { ...await response.json(), providers: { openai: true, gemini: false, fal: true, comfy: true } } });
+    await route.fulfill({ json: { ...await response.json(), providers: { openai: true, gemini: false, comfy: true } } });
   });
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
 test('enhances with visual references, stays editable, and supports undo, redo and persistence', async ({ page }) => {
   let finish!: () => void, generations = 0;
   const waiting = new Promise<void>(resolve => { finish = resolve; });
-  await page.route('**/api/interstitials', route => { generations++; return route.fulfill({ status: 500, json: { error: 'Unexpected generation' } }); });
+  await page.route('**/api/comfy/interstitials', route => { generations++; return route.fulfill({ status: 500, json: { error: 'Unexpected generation' } }); });
   await page.route('**/api/interstitials/enhance-prompt', async route => {
     const body = route.request().postDataJSON();
     expect(body).toMatchObject({ prompt: original, duration: 6, kind: 'interstitial' });

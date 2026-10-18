@@ -1,9 +1,9 @@
 import { expect, test } from './fixtures';
 
-test('Comfy generation, provider changes during a job, reload recovery, and Fal regeneration', async ({ page }) => {
-  await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, fal: true, comfy: true } } }); });
+test('Comfy generation, status recovery, and regeneration', async ({ page }) => {
+  await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, comfy: true } } }); });
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
-  let complete = false, failStatus = false, comfySubmissions = 0, falSubmissions = 0;
+  let complete = false, failStatus = false, comfySubmissions = 0;
   const progressDetails = { stage: 'Generating video and audio', step: 9, steps: 20 };
   await page.route('**/api/comfy/jobs/comfy-test-job/events', route => route.fulfill({ contentType: 'text/event-stream',
     body: `event: progress\ndata: ${JSON.stringify({ type: 'progress', progress: .98, progressDetails })}\n\n` }));
@@ -19,9 +19,8 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
     : route.fulfill({ json: complete
       ? { requestId: 'comfy-test-job', status: 'COMPLETED', videoUrl: '/api/comfy/assets/comfy-test-asset/content' }
       : { requestId: 'comfy-test-job', status: 'IN_PROGRESS', progress: .98, progressDetails } }));
-  await page.route('**/api/interstitials', route => { falSubmissions++; return route.fulfill({ status: 202, json: { requestId: 'fal-next-job', status: 'IN_QUEUE' } }); });
-  await page.route('**/api/fal/jobs/fal-next-job', route => route.fulfill({ json: { requestId: 'fal-next-job', status: 'COMPLETED', videoUrl: 'https://fal.media/comfy-test-fal.mp4', insertion: { start: 2, duration: 6, totalDuration: 226 / 24 } } }));
   await page.goto('/');
+  await page.getByRole('button', { name: /Sample video/ }).click();
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
   const bytes = await page.evaluate(async () => {
     const { Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
@@ -39,11 +38,9 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
     await downloading;
     return route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) });
   });
-  await page.route('https://fal.media/comfy-test-fal.mp4', route => route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) }));
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('5');
   await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
-  const method = page.getByRole('combobox', { name: 'Video generation method' });
-  await expect(method).toHaveValue('comfy');
+  await expect(page.getByRole('combobox', { name: 'Video generation method' })).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion' })).toHaveCount(0);
   await expect(page.getByText(/6.167s generated/)).toBeVisible();
   await page.getByLabel('Interstitial prompt').fill('Continue the motion');
@@ -60,10 +57,6 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
   await page.getByRole('button', { name: 'Check result', exact: true }).click();
   await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', '0.455');
   expect(comfySubmissions).toBe(1);
-  await method.selectOption('fal');
-  await page.reload();
-  await page.getByRole('button', { name: 'Select Untitled', exact: true }).click();
-  await expect(method).toHaveValue('fal');
   await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', '0.455');
   complete = true;
   await expect(page.locator('.task-status')).toContainText('Downloading generated video');
@@ -78,8 +71,8 @@ test('Comfy generation, provider changes during a job, reload recovery, and Fal 
   const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click(); await download;
   await page.screenshot({ path: 'test-results/comfy-interstitial.png' });
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
-  await expect.poll(async () => (await saved()).requestMethod).toBe('fal');
+  await expect.poll(async () => comfySubmissions).toBe(2);
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
-  expect((await saved()).result.duration).toBe(6);
-  expect(comfySubmissions).toBe(1); expect(falSubmissions).toBe(1);
+  expect((await saved()).result.duration).toBe(148 / 24);
+  expect((await saved()).requestMethod).toBe('comfy');
 });

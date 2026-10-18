@@ -14,7 +14,7 @@ async function openDraft(page: Page) {
   });
   await page.route('**/media/sample.mp4', route => route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) }));
   await page.route('**/api/status', route => route.fulfill({ json: { uploadMode: 'local', requiresPassword: false,
-    providers: { openai: false, gemini: false, fal: false, comfy: true }, models: {},
+    providers: { openai: false, gemini: false, comfy: true }, models: {},
     defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4' } } }));
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
   await page.goto('/');

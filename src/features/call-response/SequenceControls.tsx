@@ -1,6 +1,6 @@
 import { Clapperboard, Play, X } from 'lucide-react';
 import type { InterstitialEditorProps } from '../interstitials/InterstitialEditor';
-import { generationProvider, hasUnsubmittedChanges, isGenerating, type Interstitial } from '../../../shared/interstitials';
+import { hasUnsubmittedChanges, isGenerating, type Interstitial } from '../../../shared/interstitials';
 import { clipTypeLabel, type CallResponseFlow } from './model';
 import { generationOrder, sequenceActive } from './sequence';
 
@@ -13,7 +13,7 @@ export default function SequenceControls({ flow, items, controller, engine, info
   const clips = ids.flatMap(id => items.find(item => item.id === id) ?? []);
   const busy = clips.some(isGenerating);
   const missingPrompt = clips.find(item => !item.prompt.trim());
-  const disconnected = clips.find(item => !status?.providers[generationProvider(item.method)]);
+  const disconnected = clips.find(() => !status?.providers.comfy);
   const disabled = !engine || !info || !clips.length || busy || sequenceActive(globalSequence) || !!missingPrompt || !!disconnected;
   const canContinue = sequence && ['cancelled', 'error'].includes(sequence.phase) && sequence.ids.join('|') === ids.join('|');
   const activeScene = flow.scenes.find(scene => scene.interstitialId === sequence?.activeId);
@@ -32,7 +32,6 @@ export default function SequenceControls({ flow, items, controller, engine, info
     <p className={sequence?.phase === 'error' ? 'inline-error' : 'hint'} role={sequence?.phase === 'error' ? 'alert' : 'status'}>{message}</p>
     <p className="hint">Edit any clip at any time. Waiting clips use your latest edits; running clips keep their submitted settings.</p>
     {!running && missingPrompt && <p className="hint">Add a prompt for {missingPrompt.label} to generate the whole sequence.</p>}
-    {!running && disconnected && status && <p className="hint">Connect {generationProvider(disconnected.method) === 'comfy' ? 'Comfy Cloud' : 'fal.ai'} to generate {disconnected.label}.</p>}
-    {!running && busy && <p className="hint">Finish or cancel the current clip generation before starting the sequence.</p>}
+    {!running && disconnected && status && <p className="hint">Connect Comfy Cloud to generate {disconnected.label}.</p>}
   </div>;
 }

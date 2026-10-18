@@ -1,5 +1,5 @@
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
-import { frameTime, generationProvider, hasUnsubmittedChanges, interstitialSettings, isGenerating, playableResult, promptOnlySettings, type Interstitial, type InterstitialSettings, type GenerationMethod } from '../../../shared/interstitials';
+import { frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, normalizeGenerationMethod, playableResult, promptOnlySettings, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import type { AppStatus, InsertionRange, PromptClipKind } from '../../../shared/contracts';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
@@ -16,7 +16,6 @@ import { draftClip } from '../call-response/draft';
 import { finishLoop } from '../call-response/finishLoop';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null; sequence: GenerationSequence | null };
-const requestMethod = (item: Interstitial): GenerationMethod => item.requestMethod ?? item.generationSettings?.method ?? 'fal';
 const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   const abort = () => { clearTimeout(timer); reject(signal.reason); };
   const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, INTERSTITIAL.pollMilliseconds);
@@ -53,9 +52,16 @@ export class InterstitialController {
     this.callResponse = this.callResponses[0];
     this.linkedDurationIds = linkedDurationIds;
     const loaded = (items ?? loadInterstitials(sourceId)).map(item => {
-      const restored = { ...promptOnlySettings(item), method: item.method ?? 'fal' as const, duration: item.duration ?? INTERSTITIAL.defaultDuration,
+      const legacyJob = (item.requestMethod as string | undefined) === 'fal'
+        || (!item.requestMethod && (item.generationSettings?.method as string | undefined) === 'fal');
+      const restored = { ...promptOnlySettings(item), method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
         enable_prompt_expansion: item.enable_prompt_expansion ?? INTERSTITIAL.enablePromptExpansion };
-      return { ...restored, generationSettings: item.generationSettings ? promptOnlySettings(item.generationSettings) : (item.result || item.requestId ? interstitialSettings(restored) : undefined) };
+      const generationSettings = item.generationSettings
+        ? promptOnlySettings({ ...item.generationSettings, method: normalizeGenerationMethod(item.generationSettings.method) })
+        : (item.result || item.requestId ? interstitialSettings(restored) : undefined);
+      return { ...restored, generationSettings, requestMethod: legacyJob ? undefined : item.requestMethod,
+        ...(legacyJob && item.requestId && !item.result ? { requestId: undefined, phase: 'error' as const,
+          error: 'This older generation job cannot resume. Generate again with Comfy Cloud.' } : {}) };
     });
     const linked = loaded.filter(item => this.callResponse?.interstitial.linkResponseDurations !== false && linkedDurationIds.includes(item.id));
     const duration = Math.max(...linked.map(item => item.duration));
@@ -163,7 +169,7 @@ export class InterstitialController {
         if (!item) throw new Error('A clip was removed. Start a new sequence.');
         this.update({ sequence: { ids, completedIds: [...completedIds], activeId: id, phase: 'running' } });
         if (!item.prompt.trim()) throw new Error(`Add a prompt for ${item.label} to continue.`);
-        if (providers && !providers[generationProvider(item.method)]) throw new Error(`${item.label}: ${generationProvider(item.method) === 'comfy' ? 'Comfy Cloud' : 'fal.ai'} is not connected.`);
+        if (providers && !providers.comfy) throw new Error(`${item.label}: Comfy Cloud is not connected.`);
         const blocked = this.dependency(id)?.blocked;
         if (blocked) throw new Error(blocked);
         // Read editable fields and references only when this clip's turn starts.
@@ -209,13 +215,13 @@ export class InterstitialController {
     const dependency = this.dependency(id);
     if (dependency?.blocked) { this.update({ error: dependency.blocked }); return; }
     const operation = new AbortController(); this.tasks.set(id, operation);
-    const method = item.method ?? 'fal';
+    const method = normalizeGenerationMethod(item.method);
     this.patch(id, { phase: 'preparing', error: undefined, progress: 0, progressDetails: undefined, queuePosition: undefined,
       previousResult: playableResult(item), result: undefined, requestId: item.phase === 'ready' ? undefined : item.requestId,
-      requestMethod: requestMethod(item), generationSettings: interstitialSettings(item), requestReference: dependency?.reference });
+      requestMethod: item.requestMethod, generationSettings: interstitialSettings(item), requestReference: dependency?.reference });
     try {
       // A failed status request may still belong to an active job. Retire it before resubmitting.
-      if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId, requestMethod(item));
+      if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId);
       operation.signal.throwIfAborted();
       this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, result: undefined });
       const source = dependency?.reference ? await generationSource(item, dependency.reference, operation.signal) : { item, engine, info };
@@ -223,9 +229,9 @@ export class InterstitialController {
       const job = await generateInterstitial(source.item, source.engine, source.info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });
-      if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId, method).catch(() => undefined); return; }
+      if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId).catch(() => undefined); return; }
       this.patch(id, { requestId: job.requestId, requestMethod: method, requestInsertion: job.insertion, phase: 'queued', progress: undefined });
-      await this.poll(id, job.requestId, operation.signal, method, job.insertion);
+      await this.poll(id, job.requestId, operation.signal, job.insertion);
     } catch (error) { this.fail(id, operation, error); }
     finally { if (this.tasks.get(id) === operation) this.tasks.delete(id); }
   }
@@ -243,15 +249,15 @@ export class InterstitialController {
     try {
       this.patch(id, { phase: item.result ? 'loading' : 'queued', error: undefined, progress: undefined, progressDetails: undefined, queuePosition: undefined });
       if (item.result) await this.loadResult(id, item.result, operation.signal);
-      else if (item.requestId) await this.poll(id, item.requestId, operation.signal, requestMethod(item), item.requestInsertion);
+      else if (item.requestId) await this.poll(id, item.requestId, operation.signal, item.requestInsertion);
       else throw new Error('No generation job was saved. Retry to generate the scene.');
     } catch (error) { this.fail(id, operation, error); }
     finally { if (this.tasks.get(id) === operation) this.tasks.delete(id); }
   }
-  private async poll(id: string, requestId: string, signal: AbortSignal, method: GenerationMethod, submittedInsertion?: InsertionRange) {
+  private async poll(id: string, requestId: string, signal: AbortSignal, submittedInsertion?: InsertionRange) {
     const stream = new AbortController(), streamSignal = AbortSignal.any([signal, stream.signal]);
     let liveRevision = 0;
-    if (generationProvider(method) === 'comfy') void watchComfyJob(requestId, streamSignal, event => {
+    void watchComfyJob(requestId, streamSignal, event => {
       if (streamSignal.aborted) return;
       liveRevision++;
       if (event.type === 'progress') this.patch(id, { phase: 'rendering', progress: event.progress, progressDetails: event.progressDetails, queuePosition: undefined });
@@ -261,7 +267,7 @@ export class InterstitialController {
     try { for (;;) {
       signal.throwIfAborted();
       const revisionAtRequest = liveRevision;
-      const job = await getInterstitialJob(requestId, signal, method);
+      const job = await getInterstitialJob(requestId, signal);
       signal.throwIfAborted();
       if (job.status === 'CANCELLED') { this.patch(id, { phase: 'cancelled' }); return; }
       if (job.status === 'COMPLETED') {
@@ -334,7 +340,7 @@ export class InterstitialController {
     this.tasks.get(id)?.abort(); this.tasks.delete(id);
     const source = this.sourceId;
     try {
-      if (item.requestId && !item.result) await cancelInterstitialJob(item.requestId, requestMethod(item));
+      if (item.requestId && !item.result) await cancelInterstitialJob(item.requestId);
       if (source === this.sourceId) this.patch(id, { phase: 'cancelled', progress: undefined, error: undefined });
       return true;
     } catch (error) {

@@ -21,7 +21,7 @@ const example = createTimelineExample('00000000-0000-4000-8000-000000000001', 20
 const clips = new InterstitialController(); clips.setCallResponse(example.flow);
 const player = new VideoPlayerController();
 player.getSourceDuration = () => 20;
-const status: AppStatus = { providers: { openai: true, gemini: false, fal: true }, models: { openai: 'test', gemini: 'test' },
+const status: AppStatus = { providers: { openai: true, gemini: false, comfy: true }, models: { openai: 'test', gemini: 'test' },
   uploadMode: 'local', requiresPassword: false, defaultVideo: { name: '', url: '', size: 0 } };
 const value: FlowTimeline = { flow: example.flow, session: null, selectedSceneId: 'call', selectedEdgeId: null, selectedInterstitial: false,
   onSelectInterstitial: noop, onRemoveInterstitial: noop, onRenameInterstitial: noop, onAddAnswer: noop, onRemoveAnswer: noop,

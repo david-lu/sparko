@@ -1,5 +1,5 @@
 import { INTERSTITIAL } from '../../../shared/constants';
-import { generationMethods, interstitialSettings, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
+import { generationMethods, interstitialSettings, normalizeGenerationMethod, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
 
 function readReference(value: unknown): GenerationReference | undefined {
   const validClip = (clip: ClipReference) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
@@ -11,10 +11,11 @@ function readReference(value: unknown): GenerationReference | undefined {
 function readSettings(value: unknown): InterstitialSettings | undefined {
   if (!value || typeof value !== 'object') return;
   const settings = value as InterstitialSettings;
-  if (settings.method !== undefined && !generationMethods.includes(settings.method)) return;
+  const method = (value as { method?: string }).method;
+  if (method !== undefined && method !== 'fal' && !generationMethods.includes(method as InterstitialSettings['method'] & string)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
-  return interstitialSettings(settings);
+  return interstitialSettings({ ...settings, method: normalizeGenerationMethod(method) });
 }
 
 function readResult(value: unknown): InterstitialResult | undefined {
@@ -43,8 +44,9 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         end_range: Number.isFinite(item.end_range) ? item.end_range : INTERSTITIAL.defaultRange,
         duration: Number.isFinite(item.duration) ? item.duration : INTERSTITIAL.defaultDuration,
         enable_prompt_expansion: typeof item.enable_prompt_expansion === 'boolean' ? item.enable_prompt_expansion : INTERSTITIAL.enablePromptExpansion,
-        method: generationMethods.includes(item.method) ? item.method : 'fal', generationSettings: readSettings(item.generationSettings),
-        requestMethod: generationMethods.includes(item.requestMethod) ? item.requestMethod : undefined,
+        method: normalizeGenerationMethod(item.method), generationSettings: readSettings(item.generationSettings),
+        requestMethod: item.requestMethod === 'fal' || generationMethods.includes(item.requestMethod) ? item.requestMethod
+          : item.requestId && (item.method === 'fal' || item.generationSettings?.method === 'fal') ? 'fal' : undefined,
         requestReference: readReference(item.requestReference),
         requestInsertion: item.requestInsertion && [item.requestInsertion.start, item.requestInsertion.duration, item.requestInsertion.totalDuration].every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
           && item.requestInsertion.start >= 0 && item.requestInsertion.duration > 0 && item.requestInsertion.start + item.requestInsertion.duration <= item.requestInsertion.totalDuration + 0.1 ? item.requestInsertion : undefined,

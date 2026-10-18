@@ -14,6 +14,7 @@ import { phaseLabel } from '../../src/features/interstitials/status';
 vi.mock('../../src/features/interstitials/api', () => ({ generateInterstitial: vi.fn(), getInterstitialJob: vi.fn(), cancelInterstitialJob: vi.fn() }));
 vi.mock('../../src/features/interstitials/progress-stream', () => ({ watchComfyJob: vi.fn() }));
 vi.mock('../../src/features/call-response/generation', () => ({ generationSource: vi.fn() }));
+vi.mock('../../src/features/call-response/finishLoop', () => ({ finishLoop: vi.fn(async (blob, result) => ({ blob, result })) }));
 vi.mock('../../src/media/MediaEngine', () => ({ MediaEngine: class { inspect() { return Promise.resolve({ duration: 9, fps: 25 }); } dispose() {} } }));
 vi.mock('../../src/features/project/assets', () => ({ assets: {
   fetch: async () => ({ id: 'fetched-asset', name: 'video.mp4', blob: new Blob(['video']) }),
@@ -29,9 +30,9 @@ beforeEach(() => {
   controller = new InterstitialController(); controller.load('source');
 });
 afterEach(() => { controller.dispose(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-const add = () => { const item = controller.add(5, 20); controller.edit(item.id, { method: 'fal', prompt: 'A scene' }); return item.id; };
-const completed = { requestId: 'saved-job-1234', status: 'COMPLETED' as const, videoUrl: 'https://fal.media/result.mp4', insertion: { start: 2, duration: 5, totalDuration: 9 } };
-const replacement = { ...completed, requestId: 'replacement-job-1234', videoUrl: 'https://fal.media/replacement.mp4', insertion: { start: 2, duration: 6, totalDuration: 9 } };
+const add = () => { const item = controller.add(5, 20); controller.edit(item.id, { prompt: 'A scene' }); return item.id; };
+const completed = { requestId: 'saved-job-1234', status: 'COMPLETED' as const, videoUrl: 'https://example.test/result.mp4', insertion: { start: 2, duration: 5, totalDuration: 9 } };
+const replacement = { ...completed, requestId: 'replacement-job-1234', videoUrl: 'https://example.test/replacement.mp4', insertion: { start: 2, duration: 6, totalDuration: 9 } };
 async function readyScene() {
   const id = add();
   vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
@@ -107,7 +108,7 @@ describe('interstitial lifecycle', () => {
       read({ requestId: completed.requestId, status: 'IN_QUEUE', progress: 0 });
       await vi.advanceTimersByTimeAsync(0);
       expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'rendering', progress: .4, progressDetails: { step: 8 } });
-      controller.edit(id, { method: 'fal' });
+      controller.edit(id, { duration: 7 });
       await vi.advanceTimersByTimeAsync(2500);
       read({ requestId: completed.requestId, status: 'IN_PROGRESS', progress: .9, progressDetails: { stage: 'Decoding video' } });
       await vi.advanceTimersByTimeAsync(0);
@@ -115,7 +116,7 @@ describe('interstitial lifecycle', () => {
       expect(controller.getSnapshot().items[0].progressDetails?.step).toBeUndefined();
       await vi.advanceTimersByTimeAsync(2500);
       read(completed); await generation;
-      expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', method: 'fal', requestMethod: 'comfy', progressDetails: undefined });
+      expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', method: 'comfy', requestMethod: 'comfy', progressDetails: undefined });
       expect(signal.aborted).toBe(true);
       update({ type: 'progress', progress: .8, progressDetails: { stage: 'Old update', step: 16, steps: 20 } });
       expect(controller.getSnapshot().items[0].phase).toBe('ready');
@@ -214,7 +215,7 @@ describe('interstitial lifecycle', () => {
     controller.select('parent');
     vi.mocked(cancelInterstitialJob).mockResolvedValue({ requestId: completed.requestId, status: 'CANCELLED' });
     expect(await controller.removeMany(['parent', first, second])).toBe(true);
-    expect(cancelInterstitialJob).toHaveBeenCalledExactlyOnceWith(completed.requestId, 'comfy');
+    expect(cancelInterstitialJob).toHaveBeenCalledExactlyOnceWith(completed.requestId);
     finish(completed);
     await Promise.resolve();
     expect(controller.getSnapshot().items.map(item => item.id)).toEqual([unrelated]);
@@ -307,41 +308,40 @@ describe('interstitial lifecycle', () => {
     controller.edit(correct, { duration: 7 });
     expect(controller.getSnapshot().items.map(item => item.duration)).toEqual([7, 8]);
   });
-  it('pins a Comfy job to its submitted provider and bounds while the editor switches back to Fal', async () => {
-    const id = add(); controller.edit(id, { method: 'comfy' });
+  it('pins a Comfy job to its submitted bounds while the editor changes', async () => {
+    const id = add();
     let finish!: (job: typeof completed) => void;
     vi.mocked(generateInterstitial).mockResolvedValue({ requestId: 'comfy-job-123', status: 'IN_QUEUE', insertion: completed.insertion });
     vi.mocked(getInterstitialJob).mockReturnValue(new Promise(resolve => { finish = resolve; }));
     const generation = controller.generate(id, media, info);
     await vi.waitFor(() => expect(controller.getSnapshot().items[0].phase).toBe('queued'));
-    controller.edit(id, { method: 'fal', duration: 7 });
-    expect(getInterstitialJob).toHaveBeenCalledWith('comfy-job-123', expect.any(AbortSignal), 'comfy');
+    controller.edit(id, { duration: 7 });
+    expect(getInterstitialJob).toHaveBeenCalledWith('comfy-job-123', expect.any(AbortSignal));
     finish({ ...completed, requestId: 'comfy-job-123', videoUrl: '/api/comfy/assets/comfy-asset/content', insertion: undefined as any });
     await generation;
-    expect(controller.getSnapshot().items[0]).toMatchObject({ method: 'fal', requestMethod: 'comfy', generationSettings: { method: 'comfy' }, phase: 'ready', result: completed.insertion });
+    expect(controller.getSnapshot().items[0]).toMatchObject({ method: 'comfy', duration: 7, requestMethod: 'comfy', generationSettings: { method: 'comfy', duration: 6 }, phase: 'ready', result: completed.insertion });
     expect(hasUnsubmittedChanges(controller.getSnapshot().items[0])).toBe(true);
     expect(loadInterstitials('source')[0]).toMatchObject({ requestMethod: 'comfy', requestInsertion: completed.insertion, result: { url: '/api/comfy/assets/comfy-asset/content' } });
   });
-  it('resumes saved Comfy jobs and cancels through Comfy after the draft method changes', async () => {
+  it('resumes saved Comfy jobs and cancels through Comfy', async () => {
     const id = add();
     const item = controller.getSnapshot().items[0];
     vi.mocked(getInterstitialJob).mockImplementation(() => new Promise(() => undefined));
-    controller.load('source', [{ ...item, method: 'fal', requestMethod: 'comfy', requestId: 'comfy-job-123', requestInsertion: completed.insertion, phase: 'queued' }]);
+    controller.load('source', [{ ...item, requestMethod: 'comfy', requestId: 'comfy-job-123', requestInsertion: completed.insertion, phase: 'queued' }]);
     await vi.waitFor(() => expect(getInterstitialJob).toHaveBeenCalled());
     await controller.cancel(id);
-    expect(cancelInterstitialJob).toHaveBeenCalledWith('comfy-job-123', 'comfy');
+    expect(cancelInterstitialJob).toHaveBeenCalledWith('comfy-job-123');
     expect(controller.getSnapshot().items[0].phase).toBe('cancelled');
   });
-  it('cancels an old Fal job through Fal when retrying with Comfy', async () => {
+  it('cancels an uncertain Comfy job before retrying', async () => {
     const id = add();
     vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
     vi.mocked(getInterstitialJob).mockRejectedValueOnce(new Error('Poll interrupted'));
     await controller.generate(id, media, info);
-    controller.edit(id, { method: 'comfy' });
     vi.mocked(getInterstitialJob).mockResolvedValue(completed);
     await controller.generate(id, media, info);
-    expect(cancelInterstitialJob).toHaveBeenCalledWith(completed.requestId, 'fal');
-    expect(getInterstitialJob).toHaveBeenLastCalledWith(completed.requestId, expect.any(AbortSignal), 'comfy');
+    expect(cancelInterstitialJob).toHaveBeenCalledWith(completed.requestId);
+    expect(getInterstitialJob).toHaveBeenLastCalledWith(completed.requestId, expect.any(AbortSignal));
   });
   it('migrates existing pins without losing labels or source times', () => {
     localStorage.setItem('sparko:pins:v1:legacy', JSON.stringify([{ id: 'a', label: 'Pin 1', time: 3 }, { id: 'b', label: 'Opening', time: 6 }]));
@@ -479,7 +479,7 @@ describe('interstitial lifecycle', () => {
     await vi.waitFor(() => expect(controller.getSnapshot().items[0].phase).toBe('queued'));
     await controller.cancel(original.id);
     finish(replacement); await retry;
-    expect(cancelInterstitialJob).toHaveBeenCalledExactlyOnceWith(replacement.requestId, 'fal');
+    expect(cancelInterstitialJob).toHaveBeenCalledExactlyOnceWith(replacement.requestId);
     expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'cancelled', previousResult: original.result, result: undefined });
     expect(playableResult(controller.getSnapshot().items[0])).toEqual(original.result);
     controller.load('source');
@@ -493,7 +493,7 @@ describe('interstitial lifecycle', () => {
     vi.mocked(cancelInterstitialJob).mockResolvedValue({ requestId: completed.requestId, status: 'CANCELLED' });
     const generation = controller.generate(id, media, info); controller.load('different-source');
     finish({ requestId: completed.requestId, status: 'IN_QUEUE' }); await generation;
-    expect(controller.getSnapshot().items).toEqual([]); expect(cancelInterstitialJob).toHaveBeenCalledWith(completed.requestId, 'fal');
+    expect(controller.getSnapshot().items).toEqual([]); expect(cancelInterstitialJob).toHaveBeenCalledWith(completed.requestId);
   });
   it('retries failed polling without submitting another generation', async () => {
     const id = add(); vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
@@ -517,7 +517,7 @@ describe('interstitial lifecycle', () => {
     await Promise.all([controller.generate(id, media, info), controller.generate(id, media, info)]);
     expect(generateInterstitial).toHaveBeenCalledTimes(2);
     expect(vi.mocked(generateInterstitial).mock.calls[1][0]).toMatchObject(changes);
-    expect(cancelInterstitialJob).toHaveBeenCalledExactlyOnceWith(completed.requestId, 'fal');
+    expect(cancelInterstitialJob).toHaveBeenCalledExactlyOnceWith(completed.requestId);
     expect(controller.getSnapshot().items).toHaveLength(1);
     expect(controller.getSnapshot().items[0]).toMatchObject({ ...changes, id, time: 5, phase: 'ready', requestId: 'retry-job-1234', error: undefined });
   });

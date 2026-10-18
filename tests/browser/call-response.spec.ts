@@ -75,8 +75,8 @@ async function selectIdle(page: Page) {
 }
 async function openExample(page: Page, prepare?: () => Promise<void>, generation = false, references = false) {
   await page.route('**/api/status', route => route.fulfill({ json: {
-    uploadMode: 'local', requiresPassword: false, providers: { openai: false, gemini: false, fal: generation, comfy: false },
-    models: { openai: 'mock', gemini: 'mock', fal: 'mock' },
+    uploadMode: 'local', requiresPassword: false, providers: { openai: false, gemini: false, comfy: generation },
+    models: { openai: 'mock', gemini: 'mock' },
     defaultVideo: { name: 'sample.mp4', size: 0, url: '/media/sample.mp4' },
   } }));
   await page.route('**/media/sample.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
@@ -333,6 +333,46 @@ test('custom answers drive stacked clips, player buttons, undo and saved project
   const desktopRow = (await clip(page, id).boundingBox())!, desktopArea = (await page.locator('.timeline-scroll').boundingBox())!;
   expect(desktopRow.y + desktopRow.height).toBeLessThanOrEqual(desktopArea.y + desktopArea.height + 1);
   await page.screenshot({ path: 'test-results/arbitrary-answers-desktop.png' });
+});
+
+test('response button hue and saturation update the player and survive reload', async ({ page }) => {
+  await openExample(page);
+  await selectIdle(page);
+  const editor = page.getByRole('group', { name: 'Question and responses' });
+  const hue = editor.getByRole('slider', { name: 'Button 1 hue' });
+  const saturation = editor.getByRole('slider', { name: 'Button 1 saturation' });
+  const first = branchButton(page, 'correct');
+  const second = branchButton(page, 'incorrect');
+  await expect(hue).toHaveValue('43');
+  await expect(saturation).toHaveValue('100');
+  await expect(first).toHaveCSS('--choice-fill', '#ffe49a');
+  await expect(second).toHaveCSS('--choice-fill', '#daccff');
+  const addAnswer = editor.getByRole('button', { name: 'Add answer' });
+  const before = await addAnswer.evaluate(element => (element as HTMLElement).offsetTop);
+  await hue.fill('210');
+  await saturation.fill('45');
+  await selectIdle(page);
+  await expect(first).toHaveCSS('--choice-fill', 'hsl(210 45% 80%)');
+  await expect(first).toHaveCSS('--choice-shadow', 'hsl(210 45% 45%)');
+  await expect(second).toHaveCSS('--choice-fill', '#daccff');
+  expect(await addAnswer.evaluate(element => (element as HTMLElement).offsetTop)).toBe(before);
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveAttribute('title', /Change button color/);
+  await expect.poll(() => page.evaluate(async () => {
+    const { readActiveProject } = await import('/src/features/project/database.ts' as string);
+    return (await readActiveProject()).callResponse.interaction.answers[0].color;
+  })).toEqual({ hue: 210, saturation: 45 });
+  await reloadWorkingProject(page);
+  await page.locator('.timeline-pin').click();
+  await selectIdle(page);
+  await expect(editor.getByRole('slider', { name: 'Button 1 hue' })).toHaveValue('210');
+  await expect(editor.getByRole('slider', { name: 'Button 1 saturation' })).toHaveValue('45');
+  await expect(first).toHaveCSS('--choice-fill', 'hsl(210 45% 80%)');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await hue.scrollIntoViewIfNeeded();
+  await expect(hue).toBeInViewport();
+  await expect(saturation).toBeInViewport();
+  await expect(first).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
 test('untouched legacy response names become A and B on reload without changing media or routes', async ({ page }) => {
@@ -659,16 +699,16 @@ test('one timeline container opens child subpanels and regeneration follows the 
   test.setTimeout(120_000);
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   let submissions = 0;
-  await page.route('**/api/interstitials', async route => {
+  await page.route('**/api/comfy/interstitials', async route => {
     submissions++;
     expect(route.request().postDataBuffer()!.toString('latin1')).toContain('ftyp');
     await route.fulfill({ status: 202, json: { requestId: `child-render-${submissions}`, status: 'IN_QUEUE' } });
   });
-  await page.route('**/api/fal/jobs/child-render-*', route => route.fulfill({ json: {
-    requestId: route.request().url().split('/').at(-1), status: 'COMPLETED', videoUrl: `https://fal.media/child-${submissions}.mp4`,
+  await page.route('**/api/comfy/jobs/child-render-*', route => route.fulfill({ json: {
+    requestId: route.request().url().split('/').at(-1), status: 'COMPLETED', videoUrl: `https://example.test/child-${submissions}.mp4`,
     insertion: { start: 0, duration: 4, totalDuration: 4 },
   } }));
-  await page.route('https://fal.media/child-*.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
+  await page.route('https://example.test/child-*.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
   await openExample(page, undefined, true);
   const container = page.getByRole('button', { name: 'Select entire Untitled', exact: true });
   const parent = page.getByLabel('Call Response Interstitial panel', { exact: true });
@@ -694,7 +734,7 @@ test('one timeline container opens child subpanels and regeneration follows the 
   await child('Call').getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect(child('Call').getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled({ timeout: 30_000 });
   expect(submissions).toBe(1);
-  await expect(child('Idle').locator('.clip-subpanel-heading small')).toHaveText('Stale · Needs regeneration');
+  await expect(child('Idle').locator('.clip-subpanel-heading small')).toHaveText('Upstream video changed. Regenerate this clip.');
   await expect(clip(page, 'call')).toHaveAttribute('data-stale', 'false');
   for (const id of ['wait', 'correct', 'incorrect']) {
     await expect(clip(page, id)).toHaveAttribute('data-stale', 'true');
@@ -718,14 +758,19 @@ test('one timeline container opens child subpanels and regeneration follows the 
   await child('A Response').getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect(child('A Response').getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled({ timeout: 30_000 });
   expect(submissions).toBe(3);
-  await expect(child('A Response').locator('.clip-subpanel-heading small')).toHaveText('Ready');
-  await expect(child('B Response').locator('.clip-subpanel-heading small')).toHaveText('Stale · Needs regeneration');
+  await expect(child('A Response').locator('.clip-subpanel-heading small')).toHaveText('Generated video available');
+  await expect(child('B Response').locator('.clip-subpanel-heading small')).toHaveText('Upstream video changed. Regenerate this clip.');
   await expect(clip(page, 'correct')).toHaveAttribute('data-stale', 'false');
   await expect(page.locator('.timeline-flow-clip[data-stale=true]')).toHaveCount(1);
+  await expect.poll(() => page.evaluate(async () => {
+    const { readActiveProject } = await import('/src/features/project/database.ts' as string);
+    const item = (await readActiveProject()).interstitials.find((item: any) => item.id === 'call-response-correct');
+    return item?.phase === 'ready' && !!item.result?.assetId;
+  })).toBe(true);
   await reloadWorkingProject(page);
   await container.click({ position: { x: 5, y: 5 } });
-  await expect(child('A Response').locator('.clip-subpanel-heading small')).toHaveText('Ready');
-  await expect(child('B Response').locator('.clip-subpanel-heading small')).toHaveText('Stale · Needs regeneration');
+  await expect(child('A Response').locator('.clip-subpanel-heading small')).toHaveText('Generated video available');
+  await expect(child('B Response').locator('.clip-subpanel-heading small')).toHaveText('Upstream video changed. Regenerate this clip.');
   await expect(clip(page, 'incorrect')).toHaveAttribute('data-stale', 'true');
   await expect(clip(page, 'incorrect').getByText('Stale', { exact: true })).toBeVisible();
   await child('Call').locator('.clip-subpanel-heading').click();

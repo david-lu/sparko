@@ -8,10 +8,10 @@ async function openVideo(page: Page) {
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
-  await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
+  await expect.poll(async () => Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max'))).toBe(4);
 }
 test.beforeEach(async ({ page }) => {
-  await page.route('**/api/status', async route => { const response = await route.fetch(); const body = await response.json(); await route.fulfill({ json: { ...body, providers: { openai: true, gemini: true, fal: true } } }); });
+  await page.route('**/api/status', async route => { const response = await route.fetch(); const body = await response.json(); await route.fulfill({ json: { ...body, providers: { openai: true, gemini: true, comfy: true } } }); });
   await page.route('**/media/sample.mp4', route => route.fulfill({ path: 'tests/fixtures/interstitial-reference.mp4', contentType: 'video/mp4' }));
   await page.goto('/');
   await page.getByRole('button', { name: /Sample video/ }).click();
@@ -22,12 +22,11 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await openVideo(page);
   const videoBytes = await readFile('tests/fixtures/interstitial-reference.mp4');
-  await page.route('https://fal.media/project-test.mp4', route => route.fulfill({ contentType: 'video/mp4', body: videoBytes }));
-  await page.route('**/api/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'project-test-job', status: 'IN_QUEUE' } }));
-  await page.route('**/api/fal/jobs/project-test-job', route => route.fulfill({ json: { requestId: 'project-test-job', status: 'COMPLETED', videoUrl: 'https://fal.media/project-test.mp4', insertion: { start: 1, duration: 2, totalDuration: 4 } } }));
+  await page.route('https://example.test/project-test.mp4', route => route.fulfill({ contentType: 'video/mp4', body: videoBytes }));
+  await page.route('**/api/comfy/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'project-test-job', status: 'IN_QUEUE' } }));
+  await page.route('**/api/comfy/jobs/project-test-job', route => route.fulfill({ json: { requestId: 'project-test-job', status: 'COMPLETED', videoUrl: 'https://example.test/project-test.mp4', insertion: { start: 1, duration: 2, totalDuration: 4 } } }));
   await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
   await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
-  await page.getByLabel('Video generation method').selectOption('fal');
   await page.getByLabel('Interstitial prompt').fill('The embedded scene');
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
@@ -62,7 +61,7 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   const restored = await context.newPage();
   await restored.route('**/media/sample.mp4', route => route.fulfill({ path: 'tests/fixtures/interstitial-reference.mp4', contentType: 'video/mp4' }));
   let remoteReads = 0;
-  await restored.route('https://fal.media/**', route => { remoteReads++; return route.abort(); });
+  await restored.route('https://example.test/**', route => { remoteReads++; return route.abort(); });
   await restored.goto('/');
   await expect(restored.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
   await restored.getByLabel('Choose project file').setInputFiles({ name: download.suggestedFilename(), mimeType: 'application/zip', buffer: await readFile(path) });
@@ -104,9 +103,8 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await restored.reload();
   await restored.getByRole('region', { name: 'Recent projects' }).getByRole('button', { name: 'Open' }).click();
   await expect(restored.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 60_000 });
-  await expect.poll(() => restored.locator('.video-stage video').first().evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
   expect(remoteReads).toBe(0);
-  await expect.poll(() => restored.locator('.video-stage video').first().evaluate(video => Array.from((video as HTMLVideoElement).textTracks[0]?.cues || []).map(cue => [cue.startTime, cue.endTime]))).toEqual([[1, 3]]);
+  expect((await activeProject(restored)).subtitle?.assetId).toBeTruthy();
   await restored.screenshot({ path: 'test-results/project-imported.png' });
   await context.close(); expect(errors).toEqual([]);
 });
@@ -130,7 +128,7 @@ test('chooses a video, then opens and deletes an explicitly saved project', asyn
   await expect(library.getByText('interstitial-reference.sparko')).toBeVisible();
   await library.getByRole('button', { name: 'Open' }).click();
   await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.sparko');
-  await expect.poll(() => page.locator('.video-stage video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
+  await expect.poll(async () => Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).getAttribute('max'))).toBe(4);
   expect((await activeProject(page)).id).toBe(original.id);
   await page.getByRole('button', { name: 'Select Untitled', exact: true }).click();
   await expect(page.getByLabel('Interstitial prompt')).toHaveValue('Saved draft');

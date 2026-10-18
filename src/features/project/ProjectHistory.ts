@@ -17,6 +17,11 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
     const previousAnswers = before.callResponse.interaction.answers, answers = after.callResponse.interaction.answers;
     if (answers.length > previousAnswers.length) return { label: 'Add answer' };
     if (answers.length < previousAnswers.length) return { label: 'Remove answer' };
+    const colorEdits = answers.filter((answer, index) => !same(answer.color, previousAnswers[index]?.color));
+    if (colorEdits.length === 1 && same({ ...before.callResponse.interaction, answers: undefined }, { ...after.callResponse.interaction, answers: undefined })
+      && answers.every((answer, index) => same({ ...answer, color: undefined }, { ...previousAnswers[index], color: undefined }))) {
+      return { label: 'Change button color', key: `answer:${colorEdits[0].id}:color` };
+    }
     if (!same(before.callResponse.interaction, after.callResponse.interaction)) return { label: 'Edit answer' };
     const changedType = after.callResponse.scenes.some(scene => before.callResponse!.scenes.find(previous => previous.id === scene.id)?.clip.kind !== scene.clip.kind);
     return { label: changedType ? 'Change clip type' : 'Edit call-response connections' };

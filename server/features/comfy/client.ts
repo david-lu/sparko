@@ -26,7 +26,7 @@ export class ComfyClient {
   }
   async response(path: string, options: RequestInit = {}): Promise<Response> {
     if (!this.key) throw new HttpError(503, 'COMFY_CLOUD_API_KEY is missing. Add it to .env and restart the server.');
-    // Invalid optional Comfy settings must not prevent the Fal server from starting.
+    // Invalid optional Comfy settings must not prevent the app server from starting.
     let base: URL;
     try { base = new URL(this.baseUrl); } catch { throw new HttpError(503, 'COMFY_BASE_URL must be a valid HTTPS endpoint.'); }
     if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) throw new HttpError(503, 'COMFY_BASE_URL must be an HTTPS endpoint without credentials or query parameters.');

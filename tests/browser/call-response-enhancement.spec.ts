@@ -2,7 +2,7 @@ import { expect, test } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', route => route.fulfill({ json: {
-    uploadMode: 'local', requiresPassword: false, providers: { openai: true, gemini: false, fal: true, comfy: true },
+    uploadMode: 'local', requiresPassword: false, providers: { openai: true, gemini: false, comfy: true },
     models: {}, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: 0 },
   } }));
   await page.goto('/');

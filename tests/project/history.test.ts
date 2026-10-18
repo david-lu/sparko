@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ProjectHistory, projectEdit } from '../../src/features/project/ProjectHistory';
 import { emptyAnalysis, type Project } from '../../src/features/project/types';
-import { createTimelineExample } from '../../src/features/call-response/model';
+import { createTimelineExample, editAnswer } from '../../src/features/call-response/model';
 
 const project = (): Project => ({ id: 'project', name: 'Video', source: { name: 'video.mp4', assetId: 'source' }, updatedAt: 0,
   subtitle: null, analysis: emptyAnalysis(), interstitials: [{ id: 'clip', label: 'Interstitial 1', time: 2,
@@ -51,6 +51,15 @@ describe('project edit history', () => {
     expect(history.target('undo')).toEqual(projectEdit(start));
     history.commit('undo'); expect(history.undoLabel).toBeNull();
     history.commit('redo'); expect(history.target('undo')).toEqual(projectEdit(start));
+  });
+  it('groups consecutive color slider changes for one button into one undo step', () => {
+    const history = new ProjectHistory(), example = createTimelineExample('source', 10);
+    const start = { ...project(), callResponse: example.flow, interstitials: example.interstitials };
+    const first = { ...start, callResponse: editAnswer(example.flow, 'correct', { color: { hue: 120, saturation: 100 } }) };
+    const next = { ...first, callResponse: editAnswer(first.callResponse, 'correct', { color: { hue: 130, saturation: 50 } }) };
+    history.record(start, first, 0); history.record(first, next, 100);
+    expect(history.undoLabel).toBe('Change button color');
+    expect(history.target('undo')).toEqual(projectEdit(start));
   });
   it('records linked duration edits together, retains only its limit, and clears on project switch', () => {
     const history = new ProjectHistory(2);
