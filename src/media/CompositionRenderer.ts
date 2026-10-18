@@ -7,19 +7,22 @@ import { CompositionAudioCrossfade } from './CompositionAudioCrossfade';
 import { CompositionAudioWriter } from './CompositionAudioWriter';
 import { generatedClipFit } from './videoFraming';
 
-type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
+type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; maxDimension?: number;
+  beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
 
 /** Encodes one continuous frame/sample clock, including across different source assets. */
 export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean }, output: Output, options: Options) {
   await ensureAac();
   options.signal.throwIfAborted();
-  const scale = Math.min(1, (options.preview ? 720 : 1080) / composition.info.height);
+  const scale = Math.min(1, (options.preview ? 720 : 1080) / composition.info.height,
+    (options.maxDimension ?? Infinity) / Math.max(composition.info.width, composition.info.height));
   const canvas = new OffscreenCanvas(Math.max(2, Math.round(composition.info.width * scale / 2) * 2), Math.max(2, Math.round(composition.info.height * scale / 2) * 2));
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) throw new Error('Unable to create the timeline renderer.');
   const fitFor = async (segment: TimelineSegment, track: InputVideoTrack) => composition.matchFraming && segment.kind === 'interstitial'
     ? generatedClipFit(await track.getDisplayWidth(), await track.getDisplayHeight(), canvas.width, canvas.height) : 'contain' as const;
-  const video = new CanvasSource(canvas, { codec: 'avc', ...(options.preview ? { fullCodecString: 'avc1.42002a' } : {}), quality: new Quality('medium'), keyFrameInterval: 1, latencyMode: 'quality' });
+  const video = new CanvasSource(canvas, { codec: 'avc', ...(options.preview ? { fullCodecString: 'avc1.42002a' } : {}),
+    quality: new Quality(options.preview ? 'medium' : 'high'), keyFrameInterval: 1, latencyMode: 'quality' });
   const audio = new AudioSampleSource({ codec: 'aac', quality: new Quality('medium') });
   const audioWriter = new CompositionAudioWriter(async sample => { options.signal.throwIfAborted(); await audio.add(sample); });
   const transitions = composition.crossfade === false ? [] : compositionTransitions(composition.segments, composition.crossfadeFrames, composition.fps);

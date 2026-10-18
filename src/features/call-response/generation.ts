@@ -33,7 +33,8 @@ export async function generationSource(item: Interstitial, input: GenerationRefe
   ];
   const engine: Pick<MediaEngine, 'exportMp4'> = { exportMp4: async (slice, options = {}) => {
     const target = new BufferTarget(), output = new Output({ target, format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-    await renderComposition({ info, fps: TIMELINE_FPS, segments }, output, { ...slice, signal, preview: true, onProgress: options.onProgress });
+    await renderComposition({ info, fps: TIMELINE_FPS, segments }, output,
+      { ...slice, signal, maxDimension: options.maxDimension, onProgress: options.onProgress });
     return new Blob([target.buffer!], { type: 'video/mp4' });
   } };
   return { engine, info: { ...info, duration: timing.duration }, item: { ...item, time: timing.time } };
