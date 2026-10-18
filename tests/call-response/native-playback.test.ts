@@ -84,14 +84,22 @@ describe('canvas flow playback', () => {
     expect(layers()).toHaveLength(1); expect(player.session).toEqual(session);
     player.dispose();
   });
-  it('keeps the full Idle cycle and chosen response body untouched when there is no shared reference interval', () => {
-    const player = makePlayer(); player.seekScene('wait', 47);
-    player.branch('wait', 'incorrect'); player.pause();
+  it('fades Call into silent Idle and silent Idle into the chosen response', () => {
+    const player = makePlayer(); player.seekScene('call', 94);
+    expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['call', 'wait']);
+    expect(layers().map(layer => layer.gain)).toEqual([.5, 0]);
+    expect(layers()[1]).toMatchObject({ time: 0, muted: true });
+    player.seekScene('wait', 24);
+    expect(layers()).toHaveLength(1); expect(layers()[0]).toMatchObject({ gain: 0, muted: true });
+    player.seekScene('wait', 47); player.branch('wait', 'incorrect'); player.pause();
     expect(layers()).toHaveLength(1); expect(layers()[0].key).toMatch(/^wait:/);
-    player.play(); advance();
+    player.play(); advance(); advance();
     expect(player.session).toMatchObject({ sceneId: 'incorrect', outcome: 'incorrect' });
-    expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['incorrect']);
-    expect(layers()[0].gain).toBe(1);
+    expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['wait', 'incorrect']);
+    expect(layers()[0].gain).toBe(0);
+    expect(layers()[1].gain).toBeGreaterThan(0);
+    expect(layers()[1].gain).toBeLessThan(.5);
+    expect(layers()[0]).toMatchObject({ muted: true, time: (48 - 1) / 24 });
     player.dispose();
   });
   it('changes fade length in place for both automatic cuts and responses, retaining it when toggled', () => {
@@ -109,24 +117,33 @@ describe('canvas flow playback', () => {
     expect(layers()).toHaveLength(1);
     player.dispose();
   });
-  it('limits long fades to references and never fades any generated body frame', () => {
+  it('caps long fades while keeping the silent Idle cycle free of fades', () => {
     const flow = flowWithReferences();
     const incoming = flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!, 48)!;
+    const callToIdle = flowTransition(flow, flow.edges.find(edge => edge.id === 'call-wait')!, 48)!;
     const outgoing = flowTransition(flow, flow.edges.find(edge => edge.id === 'correct-continue')!, 48)!;
-    expect(incoming).toBeUndefined();
+    expect(callToIdle).toMatchObject({ startFrame: -48, frames: 48 });
+    expect(incoming).toMatchObject({ startFrame: 0, frames: 48 });
     expect(outgoing).toMatchObject({ startFrame: 0, frames: 24 });
+    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-loop')!, 48)).toBeUndefined();
+    const retry = flow.edges.find(edge => edge.id === 'incorrect-continue')!;
+    retry.to = 'wait';
+    expect(flowTransition(flow, retry)).toMatchObject({ startFrame: -4, frames: 4 });
     const player = makePlayer(flow); player.setCrossfade(true, 48);
-    for (const scene of flow.scenes.filter(scene => scene.generated)) for (let frame = 0; frame < sceneFrames(scene); frame++) {
-      player.seekScene(scene.id, frame);
+    for (let frame = 0; frame < sceneFrames(getScene(flow, 'wait')); frame++) {
+      player.seekScene('wait', frame);
       expect(layers()).toHaveLength(1);
-      expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1 });
+      expect(layers()[0]).toMatchObject({ opacity: 1, gain: 0, muted: true });
     }
+    player.seekScene('call', 20); expect(layers()).toHaveLength(1);
+    player.seekScene('correct', 60); expect(layers()).toHaveLength(1);
     player.dispose();
   });
   it('does not fade Idle repeats or advance a fade while either deck buffers', () => {
     const player = makePlayer(); player.seekScene('wait', 47, true); advance();
     expect(player.session).toMatchObject({ sceneId: 'wait', loopIteration: 2 });
     expect(layers()).toHaveLength(1);
+    expect(layers()[0]).toMatchObject({ gain: 0, muted: true });
     player.seekScene('intro', 68, true); render.mockReturnValue(false); player.play();
     const frame = player.session.frame; advance(); advance();
     expect(player.session.frame).toBe(frame); expect(layers()).toHaveLength(2);

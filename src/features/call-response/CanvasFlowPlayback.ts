@@ -41,7 +41,7 @@ export class CanvasFlowPlayback {
     const scene = getScene(this.flow, session.sceneId), sourceFootage = scene.clip.assetId === this.source.assetId;
     const url = sourceFootage ? this.source.url : assets.url(scene.clip.assetId);
     if (!url) throw new Error('This scene’s media is not available.');
-    return { key: `${scene.id}:${session.visit % 2}`, sourceFootage,
+    return { key: `${scene.id}:${session.visit % 2}`, sourceFootage, muted: scene.clip.kind === 'idle',
       source: sourceFootage ? this.source : { id: scene.clip.assetId, assetId: scene.clip.assetId, name: scene.label, url },
       time: scene.draft ? scene.clip.inFrame / this.flow.fps : scene.generated
         ? frame >= sceneFrames(scene) ? scene.generated.start + scene.generated.duration + (frame - sceneFrames(scene)) / this.flow.fps
@@ -50,7 +50,8 @@ export class CanvasFlowPlayback {
   }
   private layers(): PlaybackLayer[] {
     const current = this.session, frame = current.frame + this.remainder;
-    const single = [{ ...this.clip(current), opacity: 1, gain: 1 }];
+    const currentClip = this.clip(current);
+    const single = [{ ...currentClip, opacity: 1, gain: currentClip.muted ? 0 : 1 }];
     if (!this.crossfade) return single;
     const previous = current.lastEdgeId ? this.flow.edges.find(edge => edge.id === current.lastEdgeId) : undefined;
     const response = this.flow.interaction.answers.find(answer => answer.id === current.outcome)?.sceneId;
@@ -65,10 +66,14 @@ export class CanvasFlowPlayback {
       if (weight < 0 || weight >= 1) continue;
       const before = { ...current, sceneId: transition.before.id, visit: entering ? Math.max(0, current.visit - 1) : current.visit };
       const after = { ...current, sceneId: transition.after.id, visit: entering ? current.visit : current.visit + 1 };
-      const beforeFrame = sceneFrames(transition.before) + offset;
+      // Hold Idle's boundary frame during fades so its first and last moving frames still meet on every repeat.
+      const beforeFrame = transition.before.clip.kind === 'idle' && offset >= 0
+        ? sceneFrames(transition.before) - 1 : sceneFrames(transition.before) + offset;
+      const afterFrame = transition.after.clip.kind === 'idle' && offset < 0 ? 0 : offset;
       const rate = this.flow.fps / transition.frames;
-      return [{ ...this.clip(before, beforeFrame), opacity: 1, gain: 1 - weight, gainRate: -rate },
-        { ...this.clip(after, offset), opacity: weight, gain: weight, gainRate: rate }];
+      const beforeClip = this.clip(before, beforeFrame), afterClip = this.clip(after, afterFrame);
+      return [{ ...beforeClip, opacity: 1, gain: beforeClip.muted ? 0 : 1 - weight, gainRate: beforeClip.muted ? 0 : -rate },
+        { ...afterClip, opacity: weight, gain: afterClip.muted ? 0 : weight, gainRate: afterClip.muted ? 0 : rate }];
     }
     return single;
   }
@@ -78,8 +83,8 @@ export class CanvasFlowPlayback {
       if (!this.session.finished) {
         const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame);
         if (!next.finished) {
-          const edge = nextEdge(this.flow, this.session), transition = this.crossfade && edge && flowTransition(this.flow, edge, this.crossfadeFrames);
-          this.decks.prepare(this.clip(next, transition ? transition.startFrame : 0));
+          const edge = nextEdge(this.flow, this.session), transition = this.crossfade && edge ? flowTransition(this.flow, edge, this.crossfadeFrames) : undefined;
+          this.decks.prepare(this.clip(next, transition?.after.clip.kind === 'idle' ? 0 : transition?.startFrame ?? 0));
         }
       }
       this.changed(this.session, this.buffering);

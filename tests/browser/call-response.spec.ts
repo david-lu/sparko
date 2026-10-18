@@ -9,7 +9,9 @@ const branchButton = (page: Page, outcome: string) => page.locator('.video-stage
 test('the crossfade option uses saved reference overlaps and draws their exact timeline spans', async ({ page }) => {
   await openExample(page, undefined, false, true);
   const marks = page.getByRole('img', { name: /^Crossfade:/ });
-  await expect(marks).toHaveCount(3);
+  await expect(marks).toHaveCount(6);
+  await expect(clip(page, 'call').locator('.flow-crossfade')).toHaveCount(1);
+  await expect(clip(page, 'wait').locator('.flow-crossfade')).toHaveCount(2);
   await expect(marks.first()).toHaveAttribute('title', /4 frames \(0\.17 s\)/);
   const seekEntryFade = async () => {
     const bounds = (await clip(page, 'intro').boundingBox())!;
@@ -48,7 +50,7 @@ test('the crossfade option uses saved reference overlaps and draws their exact t
   await expect(marks).toHaveCount(0); await expect.poll(visible).toBe(1);
   await expect(clip(page, 'intro')).toHaveAttribute('data-active', 'true');
   await toggle.click();
-  await expect(marks).toHaveCount(3); await expect.poll(visible).toBe(2);
+  await expect(marks).toHaveCount(6); await expect.poll(visible).toBe(2);
   await expect(clip(page, 'intro')).toHaveAttribute('data-active', 'true');
   await reloadWorkingProject(page);
   await page.getByText('Options', { exact: true }).click();

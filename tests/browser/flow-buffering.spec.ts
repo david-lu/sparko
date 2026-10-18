@@ -68,7 +68,8 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
   const blend = async () => {
     const layers = await page.evaluate(() => {
       const decks = (window as any).flowBufferTest.playback.playback.decks;
-      return (decks.layers as { key: string; opacity: number; gain: number }[]).map(layer => ({ clip: layer.key, opacity: layer.opacity, volume: layer.gain, muted: true }));
+      return (decks.layers as { key: string; opacity: number; gain: number; muted?: boolean }[]).map(layer =>
+        ({ clip: layer.key, opacity: layer.opacity, volume: layer.gain, muted: !!layer.muted }));
     });
     return { layers, pixel: await activePixel(page, 80) };
   };
@@ -79,10 +80,22 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
     expect(rendered.layers.map(layer => layer.clip!.split(':')[0])).toEqual([before, after]);
     expect(rendered.layers.map(layer => layer.opacity)).toEqual([1, .5]);
     expect(rendered.layers.map(layer => layer.volume)).toEqual([.5, .5]);
-    expect(rendered.layers.every(layer => layer.muted)).toBe(true);
+    expect(rendered.layers.every(layer => !layer.muted)).toBe(true);
     if (scene === 'intro') { expect(rendered.pixel[0]).toBeGreaterThan(200); expect(rendered.pixel[1]).toBeGreaterThan(80); expect(rendered.pixel[1]).toBeLessThan(160); }
     if (scene === 'continue') { expect(rendered.pixel[0]).toBeGreaterThan(80); expect(rendered.pixel[1]).toBeGreaterThan(80); expect(rendered.pixel[2]).toBeLessThan(20); }
   }
+  await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('call', 22));
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  expect((await blend()).layers).toMatchObject([
+    { clip: 'call:0', opacity: 1, volume: .5, muted: false },
+    { clip: 'wait:1', opacity: .5, volume: 0, muted: true },
+  ]);
+  await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('correct', 2));
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  expect((await blend()).layers.map(layer => ({ clip: layer.clip!.split(':')[0], opacity: layer.opacity, volume: layer.volume, muted: layer.muted }))).toEqual([
+    { clip: 'wait', opacity: 1, volume: 0, muted: true },
+    { clip: 'correct', opacity: .5, volume: .5, muted: false },
+  ]);
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('intro', 22));
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   const original = await read(page);
@@ -105,12 +118,13 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await blend()).layers.map(layer => layer.opacity)).toEqual([1, .25]);
   expect((await blend()).layers.map(layer => layer.volume)).toEqual([.75, .25]);
-  for (const scene of ['call', 'wait', 'correct', 'incorrect']) for (const frame of [0, 1, 22, 23]) {
+  await page.evaluate(() => (window as any).flowBufferTest.playback.setCrossfade(true, 4));
+  for (const [scene, frames] of [['call', [0, 1, 10]], ['wait', [0, 1, 22, 23]], ['correct', [6, 22, 23]], ['incorrect', [6, 22, 23]]] as const) for (const frame of frames) {
     await page.evaluate(({ scene, frame }) => (window as any).flowBufferTest.playback.seekScene(scene, frame), { scene, frame });
     await expect.poll(async () => (await read(page)).buffering).toBe(false);
     const rendered = await blend();
     expect(rendered.layers).toHaveLength(1);
-    expect(rendered.layers[0]).toMatchObject({ opacity: 1, volume: 1 });
+    expect(rendered.layers[0]).toMatchObject({ opacity: 1, volume: scene === 'wait' ? 0 : 1, muted: scene === 'wait' });
   }
   await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 23); p.branch('wait', 'incorrect'); p.pause(); });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);

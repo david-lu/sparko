@@ -19,9 +19,9 @@ import { sequenceActive } from '../call-response/sequence';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
-  status: AppStatus | null; active: boolean; onPreviewPlay: () => void;
+  status: AppStatus | null; active: boolean; onPreviewPlay: () => void; silent?: boolean;
 };
-export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay }: InterstitialEditorProps) {
+export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, silent = false }: InterstitialEditorProps) {
   const promptId = useId();
   const dependency = controller.dependency(selected.id);
   const kind = controller.clipKind(selected.id);
@@ -107,8 +107,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
           {method !== 'comfy-extend' && <InterstitialTimeField name="end_range" label={method === 'comfy-loop' ? 'Loop end reference' : 'End range'} value={selected.end_range} min={generationProvider(method) === 'comfy' ? COMFY.minContextFrames / TIMELINE_FPS : INTERSTITIAL.minEndRange} max={INTERSTITIAL.maxRange} step={0.1} onChange={value => controller.edit(selected.id, { end_range: value })} />}
           <InterstitialTimeField name="Duration" label={method === 'comfy-loop' ? 'Loop duration' : 'Duration'} value={selected.duration} min={minimumDuration(method)} max={INTERSTITIAL.maxDuration} step={0.25} onChange={value => controller.edit(selected.id, { duration: value })} />
         </div>
-        {method === 'comfy-loop' && <><p className="hint">Both visible boundaries use the Call ending.</p>
-          <label className="interstitial-option"><input type="checkbox" checked={selected.loopAudio ?? false} onChange={event => controller.edit(selected.id, { loopAudio: event.target.checked })} /> Include generated loop audio</label></>}
+        {method === 'comfy-loop' && <p className="hint">Both visible boundaries use the Call ending. Idle loops are silent.</p>}
         {controller.hasLinkedDuration(selected.id) && <p className="hint">Shared duration for all response branches. Changes apply to their next generation.</p>}
         {comfyPlan && <p className="hint">{comfyPlan.insertion.duration.toFixed(3)}s generated · {(comfyPlan.prefixFrames / TIMELINE_FPS).toFixed(3)}s / {(comfyPlan.suffixFrames / TIMELINE_FPS).toFixed(3)}s context</p>}
         {method === 'fal' && <label className="interstitial-option"><input type="checkbox" checked={selected.enable_prompt_expansion}
@@ -132,6 +131,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
       progress={selected.phase === 'preparing' ? { label: 'Preparing reference', value: selected.progress || 0 }
         : selected.phase === 'rendering' ? { label: 'Generating interstitial', value: renderingProgress(selected), title: generationProvider(requestMethod) === 'comfy' ? 'Estimated render progress: preparation 5%, sampler 90%, decoding and saving 5%.' : 'Generation progress reported by the provider' }
         : selected.phase === 'loading' ? { label: selected.progressDetails?.stage || 'Loading generated video', value: selected.progress } : undefined} />
-    {fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName} active={active} onPlay={onPreviewPlay} />}
+    {fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
+      active={active} muted={silent || method === 'comfy-loop'} onPlay={onPreviewPlay} />}
   </div>;
 }

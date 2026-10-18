@@ -39,7 +39,7 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
         <option value="">Keep waiting</option>{value.flow.interaction.answers.map(answer => <option key={answer.id} value={answer.id}>{answer.label}</option>)}
       </select></label>
     </fieldset>
-    <p className="hint">Call → Idle → Responses → Parent video. Each clip appears on the timeline when it finishes generating.</p>
+    <p className="hint">Call → Idle → Responses → Parent video. Idle repeats silently; only its entry and exit crossfade. Each clip appears on the timeline when it finishes generating.</p>
     <label className="interstitial-option" data-project-edit><input type="checkbox" checked={value.flow.interstitial.linkResponseDurations !== false} onChange={event => value.onChange?.({ ...value.flow, interstitial: { ...value.flow.interstitial, linkResponseDurations: event.target.checked } })} /> Link response durations</label>
     <SequenceControls {...editor} flow={value.flow} items={items} />
     <div className="call-response-subpanels" ref={panels}>
@@ -58,7 +58,7 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
           </button>
           <div className="clip-subpanel-body" id={`clip-panel-${scene.id}`}>
             {renderControls(scene.id)}
-            {item ? <InterstitialEditor {...editor} selected={item} /> : <p className="hint">This source clip has no generation settings.</p>}
+            {item ? <InterstitialEditor {...editor} selected={item} silent={scene.clip.kind === 'idle'} /> : <p className="hint">This source clip has no generation settings.</p>}
           </div>
         </section>;
       })}

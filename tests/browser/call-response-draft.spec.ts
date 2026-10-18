@@ -46,6 +46,7 @@ test('creation uses separate fixed types and call-response drafts stay off the t
   await expect(page.getByLabel('Button 2 text')).toHaveValue('B');
   await expect(clips.nth(0).getByLabel('Video generation method')).toHaveValue('comfy-extend');
   await expect(clips.nth(1).getByLabel('Video generation method')).toHaveValue('comfy-loop');
+  await expect(clips.nth(1).getByLabel('Include generated loop audio')).toHaveCount(0);
   await expect(clips.nth(2).getByLabel('Video generation method')).toHaveValue('comfy');
   await expect(page.locator('.timeline-flow-clip')).toHaveCount(0);
   await expect(page.locator('.timeline-interstitial-group')).toHaveCount(0);
@@ -118,13 +119,14 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   await expect(callClip).toHaveAttribute('data-active', 'true');
   await page.locator('.video-stage').hover();
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect.poll(() => page.locator('.video-stage > video').evaluateAll(videos => videos.some(video => !(video as HTMLVideoElement).paused && (video as HTMLVideoElement).currentTime > 2))).toBe(true);
+  await expect.poll(() => callClip.locator('.flow-playhead').evaluate(element => parseFloat((element as HTMLElement).style.left))).toBeGreaterThan(10);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   releaseIdle = true;
   await expect.poll(() => submissions.length, { timeout: 30_000 }).toBe(3);
   await expect(finishedClips).toHaveCount(2);
   await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(2);
   await expect(page.locator('.timeline-flow-clip.clip-idle')).not.toHaveClass(/\bdraft\b/);
+  await expect(clips.nth(1).locator('.interstitial-preview video')).toHaveJSProperty('muted', true);
   releaseResponses = true;
   await expect(page.getByRole('status').filter({ hasText: 'All 4 clips generated.' })).toBeVisible({ timeout: 60_000 });
   await expect(clips.locator('.clip-status-badge')).toHaveText(['Video ready', 'Video ready', 'Video ready', 'Video ready']);

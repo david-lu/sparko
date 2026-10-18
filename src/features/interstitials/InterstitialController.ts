@@ -291,9 +291,10 @@ export class InterstitialController {
       });
       signal.throwIfAborted();
       let blob = fetched.blob;
-      if (result.reference?.mode === 'loop') {
+      const idle = this.flowFor(id)?.scenes.some(scene => scene.interstitialId === id && scene.clip.kind === 'idle');
+      if (result.reference?.mode === 'loop' || idle && result.reference?.before) {
         this.patch(id, { progress: undefined, progressDetails: { stage: 'Matching loop boundaries' } });
-        const loop = await finishLoop(blob, result, signal, this.state.items.find(item => item.id === id)?.generationSettings?.loopAudio); blob = loop.blob; result = loop.result;
+        const loop = await finishLoop(blob, result, signal); blob = loop.blob; result = loop.result;
       }
       this.patch(id, { progress: undefined, progressDetails: { stage: 'Saving generated video' } });
       const asset = await assets.save(blob, fetched.name, signal);

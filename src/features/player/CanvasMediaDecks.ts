@@ -73,7 +73,7 @@ export class CanvasMediaDecks {
     for (const { layer, decoder } of assigned) if (playing && !layer.still && !layer.muted) {
       this.audio.render(layer.key, decoder, layer.time, layer.gain, layer.gainRate ?? 0, settings.muted ? 0 : settings.volume, settings.speed);
     }
-    const visible = [...layers].reverse().find(layer => layer.gain >= .5) ?? layers[0];
+    const visible = [...layers].reverse().find(layer => layer.opacity >= .5) ?? layers[0];
     const activeCues = this.captionsEnabled && visible?.sourceFootage ? this.cues.filter(cue => cue.startTime <= visible.time && cue.endTime > visible.time) : [];
     const captionSignature = activeCues.map(cue => `${cue.startTime}:${cue.endTime}:${cue.text}`).join('|');
     if (captionSignature !== this.captionSignature) {
