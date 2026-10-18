@@ -10,6 +10,9 @@ import { groupCallResponse, lockCallResponseStructure, migrateDefaultAnswerLabel
 import { createCallResponseDraft } from '../call-response/draft';
 import { frameTime, type Interstitial } from '../../../shared/interstitials';
 import { ProjectHistory } from './ProjectHistory';
+// Open/save must remain available in an already-open tab after a deployment
+// removes old hashed chunks. Load archive support with the application.
+import { packProject, unpackProject } from './archive';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
   busy: boolean; message: string; progress: number | null; error: string | null;
@@ -430,7 +433,6 @@ export class ProjectController {
         const asset = await readAsset(id); signal.throwIfAborted();
         if (!asset) throw new Error('An asset is missing. Export was cancelled to avoid an incomplete project.'); stored.push(asset);
       }
-      const { packProject } = await import('./archive');
       const blob = await packProject(snapshot, stored, signal, (message, progress) => this.update({ message, progress }));
       signal.throwIfAborted();
       return { blob, name: `${snapshot.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'project'}.sparko` };
@@ -444,7 +446,6 @@ export class ProjectController {
     await this.task('Reading project', signal => this.restoreArchive(file, signal));
   }
   private async restoreArchive(file: Blob, signal: AbortSignal) {
-    const { unpackProject } = await import('./archive');
     const imported = await unpackProject(file, signal, (message, progress) => this.update({ message, progress }));
     this.update({ message: 'Checking project media', progress: null });
     const byId = new Map(imported.assets.map(asset => [asset.id, asset]));
