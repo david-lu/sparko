@@ -1,7 +1,7 @@
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { z } from 'zod';
 import { generationMethods, interstitialSettings, maskInjections } from '../../../shared/interstitials';
-import { INTERSTITIAL } from '../../../shared/constants';
+import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
 import { assetIds, type Asset, type Project } from './types';
 import { callResponseSchema } from '../call-response/schema';
 
@@ -34,6 +34,7 @@ function preserveLegacyJobProvider(value: unknown) {
 }
 const projectSchema = z.object({
   id: text, name: z.string().min(1).max(1000), updatedAt: number,
+  crossfadeFrames: z.number().int().min(2).max(2 * TIMELINE_FPS).refine(value => value % 2 === 0).optional(),
   callResponse: callResponseSchema.optional(),
   callResponses: z.array(callResponseSchema).max(100).optional(),
   source: z.object({ name: z.string().min(1).max(1000), assetId: z.uuid(), originalAssetId: z.uuid().optional() }),

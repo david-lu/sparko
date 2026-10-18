@@ -10,8 +10,8 @@ export const AI_MODELS = {
 export const MAX_ANALYSIS_SECONDS = 120;
 // Project playback, editing and composed exports share this frame clock.
 export const TIMELINE_FPS = 24;
-// Default dissolve length within the saved reference overlap.
-export const INTERSTITIAL_CROSSFADE_FRAMES = 4;
+// Default dissolve length within the saved reference overlap (0.5 seconds).
+export const INTERSTITIAL_CROSSFADE_FRAMES = 12;
 export const COMFY_MODELS = {
   diffusion: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
   textEncoder: 'qwen3vl_32b_minimax_h3_int8_convrot.safetensors',

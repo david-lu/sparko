@@ -6,6 +6,7 @@ import { assets } from './assets';
 import { clearActiveProject, deleteSavedProject, forgetRecentFile, listRecentFiles, listSavedProjects, readActiveProject, readAsset, readProject, rememberRecentFile, storageError, writeProject, type RecentFile } from './database';
 import { activeFlows, projectFlows, withFlows, assetIds, emptyAnalysis, type AnalysisState, type Asset, type Project } from './types';
 import { TIMELINE_FPS } from '../../../shared/constants';
+import { maxCrossfadeFrames, savedCrossfadeFrames } from '../player/preferences';
 import { groupCallResponse, lockCallResponseStructure, migrateDefaultAnswerLabels, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
 import { createCallResponseDraft } from '../call-response/draft';
 import { frameTime, type Interstitial } from '../../../shared/interstitials';
@@ -76,7 +77,7 @@ export class ProjectController {
   }
   private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = [], savedProjectId: string | null = null, workingId = this.draftId) {
     signal.throwIfAborted();
-    project = { ...project, id: workingId, saved: false };
+    project = { ...project, id: workingId, saved: false, crossfadeFrames: project.crossfadeFrames ?? savedCrossfadeFrames() };
     const renamedClips = new Map<string, { before: string; after: string }>();
     if (projectFlows(project).length) project = withFlows(project, projectFlows(project).map(flow => {
       const grouped = lockCallResponseStructure(migrateDefaultAnswerLabels(groupCallResponse(flow)));
@@ -170,7 +171,7 @@ export class ProjectController {
   }
   private create(source: MediaSource): Project {
     return { id: source.id, name: source.name.replace(/\.[^.]+$/, ''), source: { name: source.name, url: source.url },
-      updatedAt: Date.now(), interstitials: [], subtitle: null, analysis: emptyAnalysis() };
+      updatedAt: Date.now(), crossfadeFrames: savedCrossfadeFrames(), interstitials: [], subtitle: null, analysis: emptyAnalysis() };
   }
   async openDefault(source: MediaSource) {
     await this.task('Opening sample video', async signal => {
@@ -333,7 +334,7 @@ export class ProjectController {
       } finally {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
-          ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, subtitle: target.subtitle } : {}),
+          ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, subtitle: target.subtitle, crossfadeFrames: target.crossfadeFrames } : {}),
           interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() }, false);
       }
     });
@@ -406,6 +407,12 @@ export class ProjectController {
   }
   updateAnalysis(analysis: AnalysisState, record = true) {
     if (this.state.project) this.save({ ...this.state.project, analysis, updatedAt: Date.now() }, record);
+  }
+  setCrossfadeFrames(value: number) {
+    const project = this.state.project;
+    if (!project || this.state.busy || !Number.isFinite(value)) return;
+    const frames = Math.max(2, Math.min(maxCrossfadeFrames, Math.round(value / 2) * 2));
+    if (project.crossfadeFrames !== frames) this.save({ ...project, crossfadeFrames: frames, updatedAt: Date.now() });
   }
   async setSubtitle(file: File) {
     const projectId = this.state.project?.id; if (!projectId) return;

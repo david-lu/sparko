@@ -38,7 +38,7 @@ const flowWithReferences = () => {
   return flow;
 };
 const makePlayer = (flow = flowWithReferences()) => new FlowPlayback(flow, { volume: 1, muted: false, playbackRate: 1, currentTime: 0, play: vi.fn(), pause: vi.fn() } as unknown as HTMLVideoElement,
-  { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, vi.fn());
+  { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, vi.fn(), undefined, false, true, 4);
 
 describe('canvas flow playback', () => {
   it('keeps scene time and seeking independent of MediaSource support', async () => {
@@ -130,8 +130,8 @@ describe('canvas flow playback', () => {
     const flow = flowWithReferences(), idle = getScene(flow, 'wait');
     idle.generated = { ...idle.generated!, fullAssetId: 'mock:idle-full',
       fullRange: { start: 2, duration: 2, totalDuration: 6 } };
-    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'call-wait')!)).toMatchObject({ startFrame: -4, frames: 4 });
-    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!)).toMatchObject({ startFrame: -4, frames: 4 });
+    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'call-wait')!, 4)).toMatchObject({ startFrame: -4, frames: 4 });
+    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!, 4)).toMatchObject({ startFrame: -4, frames: 4 });
     const player = makePlayer(flow);
     player.seekScene('call', 94);
     expect(layers()[1]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: true });
@@ -167,7 +167,7 @@ describe('canvas flow playback', () => {
     response.generated = { ...response.generated!, reference: { before: {
       sceneId: idle.id, assetId: 'mock:idle-full', inFrame: 48, outFrame: 96,
     } } };
-    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!)).toMatchObject({ startFrame: -4, frames: 4 });
+    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!, 4)).toMatchObject({ startFrame: -4, frames: 4 });
     const player = makePlayer(flow);
     player.seekScene('wait', 46); player.branch('wait', 'correct'); player.pause();
     expect(layers().map(layer => layer.source.id)).toEqual(['mock:idle-full', 'mock:correct']);
@@ -263,7 +263,7 @@ describe('canvas flow playback', () => {
     expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-loop')!, 48)).toBeUndefined();
     const retry = flow.edges.find(edge => edge.id === 'incorrect-continue')!;
     retry.to = 'wait';
-    expect(flowTransition(flow, retry)).toMatchObject({ startFrame: -4, frames: 4 });
+    expect(flowTransition(flow, retry)).toMatchObject({ startFrame: -12, frames: 12 });
     const player = makePlayer(flow); player.setCrossfade(true, 48);
     for (let frame = 0; frame < sceneFrames(getScene(flow, 'wait')); frame++) {
       player.seekScene('wait', frame);

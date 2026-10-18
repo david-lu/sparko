@@ -9,7 +9,7 @@ const segment = (kind: TimelineSegment['kind'], startFrame: number, endFrame: nu
 describe('interstitial crossfades', () => {
   it('fades exclusively in the reference handles before and after the generated body', () => {
     const segments = [segment('source', 0, 24), segment('interstitial', 24, 168, 2), segment('source', 168, 216, 1)];
-    const before = structuredClone(segments), fades = compositionTransitions(segments);
+    const before = structuredClone(segments), fades = compositionTransitions(segments, 4);
     expect(fades.map(fade => [fade.startFrame, fade.endFrame])).toEqual([[20, 24], [168, 172]]);
     expect(segments).toEqual(before);
     expect([20, 21, 22, 23].map(frame => transitionWeight(fades[0], frame + .5))).toEqual([.125, .375, .625, .875]);
@@ -17,7 +17,7 @@ describe('interstitial crossfades', () => {
     expect(segmentTime(fades[1].before, 169, 24)).toBeCloseTo(8 + 1 / 24);
   });
   it('never fades across adjacent generated bodies, missing references, or gaps', () => {
-    const fades = compositionTransitions([segment('source', 0, 24), segment('interstitial', 24, 26, 1), segment('interstitial', 26, 30, 1), segment('source', 30, 54)]);
+    const fades = compositionTransitions([segment('source', 0, 24), segment('interstitial', 24, 26, 1), segment('interstitial', 26, 30, 1), segment('source', 30, 54)], 4);
     expect(fades.map(fade => [fade.startFrame, fade.endFrame])).toEqual([[20, 24], [30, 34]]);
     expect(compositionTransitions([segment('source', 0, 24), segment('interstitial', 25, 49)])).toEqual([]);
     const body = { ...segment('interstitial', 24, 48), generated: { url: '', start: 0, duration: 1, totalDuration: 1 } };

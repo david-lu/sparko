@@ -9,7 +9,9 @@ export const maxCrossfadeFrames = 2 * TIMELINE_FPS;
 export function savedCrossfadeFrames() {
   try {
     const value = Number(localStorage.getItem(crossfadeLengthPreference));
-    if (Number.isFinite(value) && value >= 2) return Math.min(maxCrossfadeFrames, Math.round(value / 2) * 2);
+    // Four frames was written automatically for every visitor by the old default.
+    // Keep other browser choices when migrating a project to its own setting.
+    if (Number.isFinite(value) && value >= 2 && value !== 4) return Math.min(maxCrossfadeFrames, Math.round(value / 2) * 2);
   } catch { /* Use the default when storage is unavailable. */ }
   return INTERSTITIAL_CROSSFADE_FRAMES;
 }

@@ -4,7 +4,8 @@ import CallResponseControls from '../features/call-response/CallResponseControls
 import { addAnswer, branchScenes, interstitialScenes, resolveFlow, type SceneId } from '../features/call-response/model';
 import type { FlowTimeline } from '../features/timeline/FlowTracks';
 import Player from '../features/player/Player';
-import PlaybackOptions, { crossfadePreference, savedCrossfadePreference, crossfadeLengthPreference, savedCrossfadeFrames, framingPreference, savedFramingPreference } from '../features/player/PlaybackOptions';
+import PlaybackOptions, { crossfadePreference, savedCrossfadePreference, framingPreference, savedFramingPreference } from '../features/player/PlaybackOptions';
+import { INTERSTITIAL_CROSSFADE_FRAMES } from '../../shared/constants';
 import InterstitialPanel from '../features/interstitials/InterstitialPanel';
 import { InterstitialController } from '../features/interstitials/InterstitialController';
 import { ProjectController } from '../features/project/ProjectController';
@@ -50,6 +51,7 @@ export default function App() {
   const interstitialState = useSyncExternalStore(interstitials.subscribe, interstitials.getSnapshot);
   const [projects] = useState(() => new ProjectController(interstitials));
   const projectState = useSyncExternalStore(projects.subscribe, projects.getSnapshot);
+  const crossfadeFrames = projectState.project?.crossfadeFrames ?? INTERSTITIAL_CROSSFADE_FRAMES;
   const source = projectState.source || defaultSource;
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [startReady, setStartReady] = useState(false);
@@ -58,8 +60,6 @@ export default function App() {
   const [closePrompt, setClosePrompt] = useState(false);
   const [crossfade, setCrossfade] = useState(savedCrossfadePreference);
   useEffect(() => { try { localStorage.setItem(crossfadePreference, String(crossfade)); } catch { /* Apply without persistence. */ } }, [crossfade]);
-  const [crossfadeFrames, setCrossfadeFrames] = useState(savedCrossfadeFrames);
-  useEffect(() => { try { localStorage.setItem(crossfadeLengthPreference, String(crossfadeFrames)); } catch { /* Apply without persistence. */ } }, [crossfadeFrames]);
   const [matchFraming, setMatchFraming] = useState(savedFramingPreference);
   useEffect(() => { try { localStorage.setItem(framingPreference, String(matchFraming)); } catch { /* Apply without persistence. */ } }, [matchFraming]);
   const [selectedFlowScene, setSelectedFlowScene] = useState<SceneId | null>(null);
@@ -282,7 +282,7 @@ export default function App() {
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void saveAsFile(); }}><Save size={14} />Save as new file</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>
-      <PlaybackOptions crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={setCrossfadeFrames} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
+      <PlaybackOptions crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
       <div className="history-controls" role="group" aria-label="Edit history">
         <button className="icon-button small" aria-label="Undo" aria-keyshortcuts="Control+Z Meta+Z" title={`${projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo'} (Ctrl/Cmd+Z)`}
           disabled={projectState.busy || !projectState.undoLabel} onClick={() => { controller.pause(); void projects.undo(); }}><Undo2 size={14} /></button>

@@ -28,7 +28,7 @@ test('the crossfade option uses saved reference overlaps and draws their exact t
     expect(bounds.x).toBeCloseTo(idleBounds.x + idleBounds.width - bounds.width, 1);
     expect(bounds.x + bounds.width).toBeCloseTo(idleBounds.x + idleBounds.width, 1);
   }
-  await expect(marks.first()).toHaveAttribute('title', /4 frames \(0\.17 s\)/);
+  await expect(marks.first()).toHaveAttribute('title', /12 frames \(0\.50 s\)/);
   const seekEntryFade = async () => {
     const bounds = (await clip(page, 'intro').boundingBox())!;
     await clip(page, 'intro').locator('.flow-clip-body').click({ position: { x: bounds.width * 46.5 / 48, y: 5 } });
@@ -40,7 +40,9 @@ test('the crossfade option uses saved reference overlaps and draws their exact t
   await page.getByText('Options', { exact: true }).click();
   const toggle = page.getByRole('menuitemcheckbox', { name: /Interstitial crossfades/ });
   const length = page.getByRole('slider', { name: 'Crossfade length', exact: true });
-  await expect(length).toHaveAttribute('aria-valuetext', '0.17 seconds');
+  await expect(length).toHaveAttribute('aria-valuetext', '0.50 seconds');
+  await length.fill('2');
+  await expect(marks.first()).toHaveAttribute('title', /2 frames \(0\.08 s\)/);
   await length.fill('12');
   await expect(length).toHaveAttribute('aria-valuetext', '0.50 seconds');
   for (const mark of await marks.all()) await expect(mark).toHaveAttribute('title', /12 frames \(0\.50 s\)/);

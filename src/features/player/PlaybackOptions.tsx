@@ -26,7 +26,7 @@ export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrame
         min={2} max={maxCrossfadeFrames} step={2} value={crossfadeFrames} disabled={!crossfade}
         onKeyDown={event => { if (event.key !== 'Escape') event.stopPropagation(); }}
         onChange={event => onCrossfadeFrames(Number(event.target.value))} />
-      <small>Limited to reference overlap.</small>
+      <small>Saved with this project. Limited to reference overlap.</small>
     </label>
     <button role="menuitemcheckbox" aria-checked={matchFraming} onClick={() => onMatchFraming(!matchFraming)}
       title="Match generated clips to the parent frame with a small center crop (up to 5%). Larger aspect differences keep the full image.">

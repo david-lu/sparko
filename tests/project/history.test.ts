@@ -9,6 +9,15 @@ const project = (): Project => ({ id: 'project', name: 'Video', source: { name: 
 function prompt(value: Project, text: string): Project { return { ...value, interstitials: value.interstitials.map(item => ({ ...item, prompt: text })) }; }
 
 describe('project edit history', () => {
+  it('records crossfade length as a project edit and merges slider changes', () => {
+    const history = new ProjectHistory(), start = { ...project(), crossfadeFrames: 12 };
+    const first = { ...start, crossfadeFrames: 14 }, next = { ...start, crossfadeFrames: 16 };
+    history.record(start, first, 0); history.record(first, next, 100);
+    expect(history.undoLabel).toBe('Change crossfade length');
+    expect(history.target('undo')?.crossfadeFrames).toBe(12);
+    history.commit('undo');
+    expect(history.target('redo')?.crossfadeFrames).toBe(16);
+  });
   it('groups consecutive typing, round-trips it, and starts a separate group after undo', () => {
     const history = new ProjectHistory(), start = project(), first = prompt(start, 'H'), next = prompt(first, 'Hello');
     history.record(start, first, 0); history.record(first, next, 100);

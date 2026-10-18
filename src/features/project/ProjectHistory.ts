@@ -2,14 +2,15 @@ import { interstitialSettings, type Interstitial, type InterstitialSettings } fr
 import type { Project } from './types';
 
 export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId'> & InterstitialSettings;
-export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'subtitle'> & { interstitials: InterstitialEdit[] };
+export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'subtitle' | 'crossfadeFrames'> & { interstitials: InterstitialEdit[] };
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
   return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item) })),
-    callResponse: project.callResponse, callResponses: project.callResponses, subtitle: project.subtitle };
+    callResponse: project.callResponse, callResponses: project.callResponses, subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }
 function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' | 'key'> {
+  if (before.crossfadeFrames !== after.crossfadeFrames) return { label: 'Change crossfade length', key: 'crossfadeFrames' };
   if (!same(before.callResponse, after.callResponse)) {
     if (!after.callResponse) return { label: 'Remove call-response interstitial' };
     if (!before.callResponse) return { label: 'Add call-response interstitial' };

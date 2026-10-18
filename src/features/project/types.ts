@@ -7,6 +7,7 @@ export type AnalysisState = { slice: Slice; provider: Provider; instructions: st
 export type Project = {
   id: string; name: string; updatedAt: number; saved?: boolean;
   source: { name: string; assetId?: string; originalAssetId?: string; url?: string };
+  crossfadeFrames?: number;
   interstitials: Interstitial[];
   callResponse?: CallResponseFlow;
   callResponses?: CallResponseFlow[];

@@ -30,6 +30,11 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('stores the crossfade duration with the project', async () => {
+    const snapshot = { ...project, crossfadeFrames: 14 };
+    const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
+    expect(restored.project.crossfadeFrames).toBe(14);
+  });
   it.each(['uniform', 'vignette'] as const)('preserves per-clip %s masks and the settings used by the saved render', async maskInjection => {
     const snapshot = structuredClone(project);
     const item = snapshot.interstitials[1];
