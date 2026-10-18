@@ -48,7 +48,7 @@ export class CanvasMediaDecks {
         const unused = [...this.decks].filter(([key]) => !this.active.has(key)).sort((a, b) => a[1].used - b[1].used)[0];
         if (unused) { unused[1].decoder.dispose(); this.decks.delete(unused[0]); }
       }
-      deck = { decoder: new FrameDecoder(clip.source, clip.time), source: clip.source.url, used: ++this.counter }; this.decks.set(clip.key, deck);
+      deck = { decoder: new FrameDecoder(clip.source, clip.time, this.audio.context.sampleRate), source: clip.source.url, used: ++this.counter }; this.decks.set(clip.key, deck);
     }
     deck.used = ++this.counter; return deck.decoder;
   }

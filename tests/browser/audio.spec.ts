@@ -149,6 +149,13 @@ test('canvas playback schedules audible mixed-rate audio, silence and seeks on i
     const state = { video, stream: null as any, error: null as string | null, time: 0, start: (time: number) => { state.stream.seek(time); state.stream.play(); } };
     state.stream = new CanvasTimelinePlayback(composition, video, (time: number, _playing: boolean, _buffering: boolean, error?: string) => { state.time = time; state.error = error ?? null; });
     const audio = state.stream.decks.audio, analyser = audio.context.createAnalyser(); analyser.fftSize = 2048;
+    const rates = new Set<number>(), createBufferSource = audio.context.createBufferSource.bind(audio.context);
+    audio.context.createBufferSource = () => {
+      const source = createBufferSource(), start = source.start.bind(source);
+      source.start = (...args: Parameters<AudioBufferSourceNode['start']>) => { rates.add(source.buffer!.sampleRate); start(...args); };
+      return source;
+    };
+    (state as any).scheduledRates = () => ({ actual: [...rates], expected: audio.context.sampleRate });
     const createGain = audio.context.createGain.bind(audio.context);
     audio.context.createGain = () => { const gain = createGain(); gain.connect(analyser); return gain; };
     (state as any).rms = () => { const samples = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(samples); return Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length); };
@@ -163,6 +170,8 @@ test('canvas playback schedules audible mixed-rate audio, silence and seeks on i
   await page.evaluate(() => (window as any).audioPlayback.start(6.75));
   await expect.poll(() => page.evaluate(() => (window as any).audioPlayback.time), { timeout: 20_000 }).toBeGreaterThan(9.9);
   expect(await page.evaluate(() => (window as any).audioPlayback.error)).toBeNull();
+  const rates = await page.evaluate(() => (window as any).audioPlayback.scheduledRates());
+  expect(rates.actual).toEqual([rates.expected]);
   expect(errors).toEqual([]);
   await page.evaluate(() => { (window as any).audioPlayback.stream.dispose(); });
 });

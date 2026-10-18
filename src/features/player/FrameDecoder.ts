@@ -1,5 +1,6 @@
 import { AudioBufferSink, VideoSampleSink, type Input, type VideoSample, type WrappedAudioBuffer } from 'mediabunny';
 import { openInput, type MediaSource } from '../../media/media';
+import { resampledAudio } from '../../media/ResampledAudio';
 
 /** Sequential, bounded decode queues. Seeking discards the old iterator and its frames. */
 export class FrameDecoder {
@@ -24,7 +25,7 @@ export class FrameDecoder {
   duration = 0;
   hasAudio = false;
   error?: Error;
-  constructor(source: MediaSource, time: number) {
+  constructor(source: MediaSource, time: number, private audioSampleRate: number) {
     this.input = openInput(source); this.requested = time;
     void this.open().catch(error => { if (!this.disposed) this.error = error; });
   }
@@ -46,7 +47,8 @@ export class FrameDecoder {
     this.frames.forEach(frame => frame.close()); this.frames = []; this.audio = [];
     this.videoEnded = false; this.audioEnded = !this.audioSink; this.videoPump = false; this.audioPump = false;
     this.videoIterator = this.videoSink!.samples(this.start);
-    this.audioIterator = this.audioSink?.buffers(Math.max(0, time));
+    // A little preroll warms the codec and resampling filter when seeking into a clip.
+    this.audioIterator = this.audioSink ? resampledAudio(this.audioSink.buffers(Math.max(0, time - .1)), this.audioSampleRate) : undefined;
     this.fillVideo(); this.fillAudio();
   }
   private clamp(time: number) { return Math.max(this.first, Math.min(this.duration - 1e-6, time)); }

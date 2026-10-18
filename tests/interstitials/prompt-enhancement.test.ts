@@ -43,7 +43,12 @@ describe('interstitial prompt enhancement', () => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: `Quiet breathing.\n\n${continuity}` }) });
     const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: `Quiet breathing.\n\n${continuity}` });
     expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: 'Quiet breathing.', kind: 'idle' });
-    expect(result.prompt.split(continuity)).toHaveLength(2);
+    expect(result.prompt).toContain('Characters do not talk. Keep everything mostly quiet, with only subtle ambient sound.');
+    expect(result.prompt).not.toContain('English speech only');
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: result.prompt }) });
+    const repeated = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: result.prompt });
+    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text)).toMatchObject({ draft: 'Quiet breathing.', kind: 'idle' });
+    expect(repeated.prompt).toBe(result.prompt);
   });
   it('enhances a shared continuity brief without treating it as a clip action or appending another brief', async () => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: continuity }) });
