@@ -17,6 +17,7 @@ export const COMFY_MODELS = {
   textEncoder: 'qwen3vl_32b_minimax_h3_int8_convrot.safetensors',
   videoVae: 'minimax_h3_video_vae_fp16.safetensors',
   audioVae: 'minimax_h3_audio_vae_fp32.safetensors',
+  frameInterpolation: 'film_net_fp16.safetensors',
 } as const;
 export const COMFY = {
   baseUrl: 'https://cloud.comfy.org', maxDimension: 1344, maxShortEdge: 768, minContextFrames: 39,

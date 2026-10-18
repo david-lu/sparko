@@ -4,6 +4,12 @@ import type { GenerationProgress, InsertionRange } from './contracts.js';
 export type GenerationMethod = 'comfy' | 'comfy-extend' | 'comfy-loop';
 export const generationMethods = ['comfy', 'comfy-extend', 'comfy-loop'] as const;
 export const normalizeGenerationMethod = (method: unknown): GenerationMethod => generationMethods.includes(method as GenerationMethod) ? method as GenerationMethod : 'comfy';
+export const maskInjections = ['standard', 'uniform', 'vignette'] as const;
+export type MaskInjection = typeof maskInjections[number];
+export const normalizeMaskInjection = (value: unknown, legacyInterpolation?: unknown): MaskInjection =>
+  maskInjections.includes(value as MaskInjection) ? value as MaskInjection : legacyInterpolation === true ? 'uniform' : 'standard';
+export const clipMaskInjection = (item: Pick<InterstitialSettings, 'method' | 'maskInjection' | 'interpolateMiddle'>): MaskInjection =>
+  item.method === 'comfy-extend' ? 'standard' : normalizeMaskInjection(item.maskInjection, item.interpolateMiddle);
 export const minimumDuration = (method: GenerationMethod = 'comfy') => method === 'comfy-loop' ? INTERSTITIAL.minStartRange : INTERSTITIAL.minDuration;
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
 export type ClipReference = { sceneId: string; assetId: string; inFrame: number; outFrame: number };
@@ -29,6 +35,10 @@ export type InterstitialSettings = {
   continuity?: string;
   dialogue?: string;
   loopAudio?: boolean;
+  /** How the interpolated reference is injected into the next generation. */
+  maskInjection?: MaskInjection;
+  /** Read-only migration for projects saved with the original interpolation toggle. */
+  interpolateMiddle?: boolean;
 };
 export type Interstitial = InterstitialSettings & {
   id: string; label: string;
@@ -54,8 +64,9 @@ export type Interstitial = InterstitialSettings & {
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
-export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', continuity, dialogue, loopAudio }: InterstitialSettings): InterstitialSettings =>
-  ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, ...(continuity !== undefined ? { continuity } : {}), ...(dialogue !== undefined ? { dialogue } : {}), ...(loopAudio !== undefined ? { loopAudio } : {}) });
+export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', continuity, dialogue, loopAudio, maskInjection, interpolateMiddle }: InterstitialSettings): InterstitialSettings =>
+  ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle }),
+    ...(continuity !== undefined ? { continuity } : {}), ...(dialogue !== undefined ? { dialogue } : {}), ...(loopAudio !== undefined ? { loopAudio } : {}) });
 export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&
   ([...new Set([...Object.keys(interstitialSettings(item)), ...Object.keys(interstitialSettings(item.generationSettings))])] as (keyof InterstitialSettings)[])
     .some(key => !['loopAudio', 'continuity', 'dialogue'].includes(key) && interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]);

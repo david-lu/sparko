@@ -4,6 +4,8 @@ import { bridgeWorkflow } from '../../server/features/comfy/workflow';
 
 const input = { before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge the scene', width: 960, height: 544, hasAudio: true };
 const catalog = Object.fromEntries(Object.values(bridgeWorkflow('input-asset', input, 0)).map(node => [node.class_type, {}]));
+const interpolationCatalog = Object.fromEntries(Object.values(bridgeWorkflow('input-asset', { ...input, interpolateMiddle: true }, 0)).map(node => [node.class_type, {}]));
+const vignetteCatalog = Object.fromEntries(Object.values(bridgeWorkflow('input-asset', { ...input, maskInjection: 'vignette' }, 0, 'mask-asset')).map(node => [node.class_type, {}]));
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const collect = async <T>(stream: AsyncIterable<T>) => { const items: T[] = []; for await (const item of stream) items.push(item); return items; };
 
@@ -14,12 +16,14 @@ describe('Comfy Cloud v2 adapter', () => {
     expect(await provider.check()).toMatchObject({ ready: false, message: 'COMFY_BASE_URL must be a valid HTTPS endpoint.' });
     expect(transport).not.toHaveBeenCalled();
   });
-  it('checks capabilities, uploads a typed asset, and submits once with an idempotency key', async () => {
-    const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(catalog)).mockResolvedValueOnce(reply({ id: 'input-asset' })).mockResolvedValueOnce(reply({ id: 'comfy-job-123', status: 'queued' }));
+  it.each(['standard', 'uniform', 'vignette'] as const)('checks capabilities, uploads typed assets, and submits once with %s masks', async maskInjection => {
+    const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(maskInjection === 'vignette' ? vignetteCatalog : maskInjection === 'uniform' ? interpolationCatalog : catalog)).mockResolvedValueOnce(reply({ id: 'input-asset' }));
+    if (maskInjection === 'vignette') transport.mockResolvedValueOnce(reply({ id: 'mask-asset' }));
+    transport.mockResolvedValueOnce(reply({ id: 'comfy-job-123', status: 'queued' }));
     const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret-key' }, transport);
-    const job = await provider.submit(new Blob(['video'], { type: 'video/mp4' }), input);
+    const job = await provider.submit(new Blob(['video'], { type: 'video/mp4' }), { ...input, maskInjection });
     expect(job).toMatchObject({ requestId: 'comfy-job-123', insertion: { start: 1.625, duration: 148 / 24 }, status: 'IN_QUEUE' });
-    expect(transport.mock.calls.map(([url]) => String(url))).toEqual(['https://cloud.comfy.org/api/object_info', 'https://cloud.comfy.org/api/v2/assets', 'https://cloud.comfy.org/api/v2/jobs']);
+    expect(transport.mock.calls.map(([url]) => String(url))).toEqual(['https://cloud.comfy.org/api/object_info', 'https://cloud.comfy.org/api/v2/assets', ...(maskInjection === 'vignette' ? ['https://cloud.comfy.org/api/v2/assets'] : []), 'https://cloud.comfy.org/api/v2/jobs']);
     const upload = transport.mock.calls[1][1]!.body as FormData;
     expect(upload.get('content_type')).toBe('video/mp4');
     expect(upload.get('file')).toBeInstanceOf(Blob);
@@ -28,14 +32,39 @@ describe('Comfy Cloud v2 adapter', () => {
     const fileOffset = multipart.indexOf('name="file";');
     expect(multipart.indexOf('name="content_type"')).toBeLessThan(fileOffset);
     expect(multipart.indexOf('name="file_path"')).toBeLessThan(fileOffset);
-    const submit = transport.mock.calls[2][1]!;
+    if (maskInjection === 'vignette') {
+      const maskUpload = transport.mock.calls[2][1]!.body as FormData;
+      expect([...maskUpload.keys()]).toEqual(['content_type', 'file_path', 'file']);
+      expect(maskUpload.get('content_type')).toBe('image/png');
+      const png = new Uint8Array(await (maskUpload.get('file') as Blob).arrayBuffer());
+      expect([...png.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    }
+    const submit = transport.mock.calls.at(-1)![1]!;
     expect(submit.headers).toMatchObject({ Authorization: 'Bearer secret-key', 'Idempotency-Key': expect.any(String) });
     const body = JSON.parse(String(submit.body));
     expect(body.workflow.before.inputs.video).toEqual({ __type: 'core/ASSET', info: { id: 'input-asset' } });
     expect(body.workflow.conditioning.inputs.prompt).toBe(input.prompt);
+    expect(body.workflow.middle_strength?.inputs.value).toBe(maskInjection === 'uniform' ? 0.97 : undefined);
+    if (maskInjection === 'vignette') expect(body.workflow.vignette_image.inputs.image.info.id).toBe('mask-asset');
     expect(body.extra_data).toBeUndefined();
+    expect(await provider.check(maskInjection)).toEqual({ ready: true });
+    expect(transport).toHaveBeenCalledTimes(maskInjection === 'vignette' ? 4 : 3);
+  });
+  it('checks FILM separately from cached standard readiness before uploading', async () => {
+    const transport = vi.fn<typeof fetch>().mockImplementation(async () => reply(catalog));
+    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport);
     expect(await provider.check()).toEqual({ ready: true });
-    expect(transport).toHaveBeenCalledTimes(3);
+    await expect(provider.submit(new Blob(), { ...input, interpolateMiddle: true })).rejects.toThrow('FrameInterpolationModelLoader');
+    expect(await provider.check()).toEqual({ ready: true });
+    expect(transport).toHaveBeenCalledTimes(2);
+    expect(transport.mock.calls.every(([url]) => String(url).endsWith('/api/object_info'))).toBe(true);
+  });
+  it('does not reuse uniform readiness when vignette image nodes are missing', async () => {
+    const transport = vi.fn<typeof fetch>().mockImplementation(async () => reply(interpolationCatalog));
+    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport);
+    expect(await provider.check('uniform')).toEqual({ ready: true });
+    await expect(provider.submit(new Blob(), { ...input, maskInjection: 'vignette' })).rejects.toThrow('LoadImage');
+    expect(transport).toHaveBeenCalledTimes(2);
   });
   it('refuses missing nodes before uploading and reports the actual missing dependency', async () => {
     const transport = vi.fn<typeof fetch>().mockResolvedValue(reply({}));

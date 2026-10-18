@@ -43,6 +43,30 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
+  it('migrates browser-saved interpolation without marking the existing render as edited', async () => {
+    const item = await readyScene();
+    const { maskInjection: _mode, ...legacy } = item;
+    const { maskInjection: _submittedMode, ...submitted } = item.generationSettings!;
+    localStorage.setItem(interstitialKey('source'), JSON.stringify([{ ...legacy, interpolateMiddle: true,
+      generationSettings: { ...submitted, interpolateMiddle: true } }]));
+    controller.load('source');
+    const restored = controller.getSnapshot().items[0];
+    expect(restored).toMatchObject({ maskInjection: 'uniform', generationSettings: { maskInjection: 'uniform' } });
+    expect(restored.interpolateMiddle).toBeUndefined();
+    expect(hasUnsubmittedChanges(restored)).toBe(false);
+  });
+  it('persists mask edits separately from the last render and other clips', async () => {
+    const item = await readyScene();
+    const otherId = controller.add(10, 20).id;
+    controller.edit(item.id, { maskInjection: 'vignette' });
+    const saved = loadInterstitials('source');
+    expect(saved.find(clip => clip.id === item.id)).toMatchObject({ maskInjection: 'vignette', generationSettings: { maskInjection: 'standard' } });
+    expect(saved.find(clip => clip.id === otherId)?.maskInjection).toBe('standard');
+    controller.load('source');
+    expect(hasUnsubmittedChanges(controller.getSnapshot().items.find(clip => clip.id === item.id)!)).toBe(true);
+    controller.edit(item.id, { maskInjection: 'standard' });
+    expect(hasUnsubmittedChanges(controller.getSnapshot().items.find(clip => clip.id === item.id)!)).toBe(false);
+  });
   it('retains the full idle generation while using the finished loop for playback', async () => {
     const id = add(), raw = new Blob(['reference, generated middle, reference'], { type: 'video/mp4' });
     const loop = new Blob(['repeatable middle'], { type: 'video/mp4' });

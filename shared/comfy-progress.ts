@@ -7,7 +7,13 @@ const stages: Record<string, string> = {
   place_before: 'Preparing reference context', place_after: 'Preparing reference context', joint: 'Preparing video and audio',
   video_vae: 'Loading video decoder', audio_vae: 'Loading audio decoder',
   conditioning: 'Encoding prompt', encode_before: 'Encoding reference clips', encode_after: 'Encoding reference clips',
+  interpolation_model: 'Loading motion interpolator', interpolate_middle: 'Preparing interpolated frames', encode_target: 'Encoding interpolated video',
+  last_before: 'Preparing reference frames', first_after: 'Preparing reference frames', boundary_frames: 'Preparing reference frames',
+  target_prefix: 'Preparing interpolated video', interpolated_target: 'Preparing interpolated video',
   middle_mask: 'Preparing video mask', latent_mask: 'Preparing video mask', freeze_video: 'Preparing video mask',
+  middle_strength: 'Preparing video mask', scale_middle_mask: 'Preparing video mask',
+  vignette_image: 'Preparing vignette mask', vignette_gradient: 'Preparing vignette mask', vignette_amplitude: 'Preparing vignette mask',
+  vignette_scaled: 'Preparing vignette mask', vignette_floor: 'Preparing vignette mask', vignette_mask: 'Preparing vignette mask',
   gap_audio: 'Preparing audio context', audio_prefix: 'Preparing audio context', audio_full: 'Preparing audio context',
   encode_audio: 'Encoding reference audio', fit_audio: 'Preparing audio context', freeze_audio: 'Preparing audio mask',
   sample: 'Generating video and audio', decode_video: 'Decoding video', decode_audio: 'Decoding audio', output: 'Encoding MP4',
@@ -19,6 +25,7 @@ const classes: Record<string, string> = {
   VAELoader: 'Loading decoder', VAEEncode: 'Encoding reference clips', VAEEncodeAudio: 'Encoding reference audio',
   SamplerCustomAdvanced: stages.sample, VAEDecode: stages.decode_video, VAEDecodeAudio: stages.decode_audio,
   VHS_VideoCombine: stages.output,
+  FrameInterpolate: 'Interpolating reference motion',
 };
 export const comfyStage = (node?: string | null, nodeClass?: string | null) => stages[node ?? ''] || classes[nodeClass ?? ''] || 'Generating scene';
 

@@ -3,7 +3,7 @@ import { Clapperboard, RotateCcw } from 'lucide-react';
 import { COMFY, INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
 import { comfyReferenceRange } from '../../../shared/comfy';
 import type { AppStatus } from '../../../shared/contracts';
-import { minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, type Interstitial } from '../../../shared/interstitials';
+import { clipMaskInjection, minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, type Interstitial } from '../../../shared/interstitials';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import type { InterstitialController } from './InterstitialController';
@@ -16,6 +16,7 @@ import { enhancePrompt } from './enhance-prompt';
 import EnhancePromptActions from './EnhancePromptActions';
 import TaskStatus from '../../shared/TaskStatus';
 import { sequenceActive } from '../call-response/sequence';
+import MaskInjectionField from './MaskInjectionField';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -109,6 +110,8 @@ export default function InterstitialEditor({ selected, controller, engine, info,
           {method !== 'comfy-extend' && <InterstitialTimeField name="end_range" label={method === 'comfy-loop' ? 'Loop end reference' : 'End range'} value={selected.end_range} min={COMFY.minContextFrames / TIMELINE_FPS} max={INTERSTITIAL.maxRange} step={0.1} onChange={value => controller.edit(selected.id, { end_range: value })} />}
           <InterstitialTimeField name="Duration" label={method === 'comfy-loop' ? 'Loop duration' : 'Duration'} value={selected.duration} min={minimumDuration(method)} max={INTERSTITIAL.maxDuration} step={0.25} onChange={value => controller.edit(selected.id, { duration: value })} />
         </div>
+        <MaskInjectionField key={`mask:${selected.id}`} value={clipMaskInjection(selected)} hasEndReference={method !== 'comfy-extend'}
+          onChange={maskInjection => controller.edit(selected.id, { maskInjection })} />
         {kind === 'idle' && <label className="interstitial-option"><input type="checkbox" checked={!!selected.loopAudio}
           disabled={!!currentResult && !currentResult.fullAssetId}
           onChange={event => controller.edit(selected.id, { loopAudio: event.target.checked })} /> Play generated Idle audio</label>}

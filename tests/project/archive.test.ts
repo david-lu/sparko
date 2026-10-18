@@ -30,6 +30,34 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it.each(['uniform', 'vignette'] as const)('preserves per-clip %s masks and the settings used by the saved render', async maskInjection => {
+    const snapshot = structuredClone(project);
+    const item = snapshot.interstitials[1];
+    item.generationSettings = interstitialSettings(item);
+    item.maskInjection = maskInjection;
+    const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
+    const saved = restored.project.interstitials[1];
+    expect(saved).toMatchObject({ maskInjection, generationSettings: { maskInjection: 'standard' } });
+    expect(hasUnsubmittedChanges(saved)).toBe(true);
+    expect(interstitialSettings(restored.project.interstitials[0]).maskInjection).toBe('standard');
+    saved.maskInjection = 'standard';
+    expect(hasUnsubmittedChanges(saved)).toBe(false);
+    delete saved.generationSettings!.maskInjection;
+    expect(hasUnsubmittedChanges(saved)).toBe(false);
+  });
+  it('migrates the old interpolation toggle in editable and submitted archive settings', async () => {
+    const blob = await packProject(project, media, signal(), progress);
+    const legacy = await rewrite(blob, value => {
+      const item = value.project.interstitials[1];
+      delete item.maskInjection; item.interpolateMiddle = true;
+      item.generationSettings = { ...interstitialSettings(item), maskInjection: undefined, interpolateMiddle: true };
+    });
+    const restored = await unpackProject(legacy, signal(), progress);
+    const item = restored.project.interstitials[1];
+    expect(item).toMatchObject({ maskInjection: 'uniform', generationSettings: { maskInjection: 'uniform' } });
+    expect(hasUnsubmittedChanges(item)).toBe(false);
+    expect(item.interpolateMiddle).toBeUndefined();
+  });
   it.each([false, true])('keeps the full idle preview when the loop is retained as a previous result: %s', async previous => {
     const full = { id: crypto.randomUUID(), name: 'idle-full.mp4', blob: new Blob(['reference, idle, reference'], { type: 'video/mp4' }) };
     const snapshot = structuredClone(project);

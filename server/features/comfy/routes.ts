@@ -7,6 +7,7 @@ import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
 import { z } from 'zod';
 import { COMFY, INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants.js';
 import { comfyBridgePlan, comfyDimensions } from '../../../shared/comfy.js';
+import { maskInjections, normalizeMaskInjection } from '../../../shared/interstitials.js';
 import { authenticate } from '../../hosting.js';
 import { HttpError, requireProvider } from '../../shared/http.js';
 import type { Providers } from '../../providers.js';
@@ -17,7 +18,11 @@ const frameRange = z.coerce.number().finite().min(COMFY.minContextFrames / TIMEL
   .refine(value => Math.abs(value * TIMELINE_FPS - Math.round(value * TIMELINE_FPS)) < 1e-6, 'Reference ranges must use whole 24 fps frames.');
 const schema = z.object({ before: frameRange, after: z.union([frameRange, z.coerce.number().refine(value => value === 0)]),
   mode: z.enum(['bridge', 'extend', 'loop']).default('bridge'),
-  duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().min(1).max(8000).refine(value => !!value.trim(), 'Add a prompt before generating.') });
+  maskInjection: z.enum(maskInjections).optional(),
+  interpolateMiddle: z.enum(['true', 'false']).optional(),
+  duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().min(1).max(8000).refine(value => !!value.trim(), 'Add a prompt before generating.') })
+  .transform(({ interpolateMiddle, ...value }) => ({ ...value, maskInjection: normalizeMaskInjection(value.maskInjection, interpolateMiddle === 'true') }))
+  .refine(value => value.maskInjection === 'standard' || value.mode !== 'extend', 'Interpolation requires both start and end references.');
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 
 export function addComfyRoutes(app: Express, providers: Providers, receive: UploadReceiver) {

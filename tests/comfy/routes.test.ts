@@ -21,13 +21,28 @@ beforeEach(() => {
   comfy.submit.mockResolvedValue({ requestId: 'comfy-job-123', status: 'IN_QUEUE', insertion: { start: 39 / 24, duration: 148 / 24, totalDuration: 226 / 24 } });
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
-const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene') => request(app).post('/api/comfy/interstitials').set('x-sparko-request', '1')
-  .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
+const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene', fields: Record<string, string> = {}) => request(app).post('/api/comfy/interstitials').set('x-sparko-request', '1')
+  .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
   it('validates the reference and dispatches to Comfy', async () => {
     await submit().expect(202);
-    expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { mode: 'bridge', before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 1280, height: 736, hasAudio: true });
+    expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { mode: 'bridge', maskInjection: 'standard', before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 1280, height: 736, hasAudio: true });
+  });
+  it.each(['true', 'false'])('migrates the legacy interpolation switch: %s', async interpolateMiddle => {
+    await submit('1.625', '1.625', 'Exact prompt', { interpolateMiddle }).expect(202);
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ maskInjection: interpolateMiddle === 'true' ? 'uniform' : 'standard', prompt: 'Exact prompt' });
+  });
+  it.each(['standard', 'uniform', 'vignette'])('passes the selected mask mode unchanged: %s', async maskInjection => {
+    await submit('1.625', '1.625', 'Exact prompt', { maskInjection }).expect(202);
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ maskInjection, prompt: 'Exact prompt' });
+  });
+  it('rejects invalid interpolation settings and extensions without an end reference', async () => {
+    await submit('1.625', '1.625', 'Exact', { interpolateMiddle: 'yes' }).expect(400);
+    await submit('1.625', '0', 'Exact', { mode: 'extend', interpolateMiddle: 'true' }).expect(400);
+    await submit('1.625', '1.625', 'Exact', { maskInjection: 'unknown' }).expect(400);
+    await submit('1.625', '0', 'Exact', { mode: 'extend', maskInjection: 'vignette' }).expect(400);
+    expect(comfy.submit).not.toHaveBeenCalled();
   });
   it('passes the entered prompt through to Comfy without rewriting it', async () => {
     await submit('1.625', '1.625', 'First direction.\r\n\r\nSecond direction.').expect(202);

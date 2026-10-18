@@ -7,6 +7,8 @@ import { comfyBridgePlan } from '../../../shared/comfy.js';
 import { HttpError } from '../../shared/http.js';
 import { ComfyClient } from './client.js';
 import { bridgeWorkflow, type BridgeInput } from './workflow.js';
+import { normalizeMaskInjection, type MaskInjection } from '../../../shared/interstitials.js';
+import { vignetteGradientPng } from './vignette.js';
 import { generationProgress, progressSchema } from './progress.js';
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
@@ -17,7 +19,7 @@ const jobSchema = statusSchema.extend({ id, progress: progressSchema.nullable().
 });
 export type ComfyReadiness = { ready: boolean; message?: string };
 export interface ComfyProvider {
-  check(): Promise<ComfyReadiness>;
+  check(maskInjection?: MaskInjection): Promise<ComfyReadiness>;
   submit(file: Blob, input: BridgeInput): Promise<GenerationJob>;
   status(requestId: string): Promise<GenerationJob>;
   events(requestId: string, signal: AbortSignal): AsyncIterable<GenerationEvent>;
@@ -27,23 +29,27 @@ export interface ComfyProvider {
 
 export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fetch = fetch): ComfyProvider {
   const client = new ComfyClient(env, transport);
-  let checked: Promise<ComfyReadiness> | undefined, checkedAt = 0;
-  const check = () => {
+  const checks = new Map<MaskInjection, { promise: Promise<ComfyReadiness>; at: number }>();
+  const check = (maskInjection: MaskInjection = 'standard') => {
     if (!client.configured) return Promise.resolve({ ready: false, message: 'Add COMFY_CLOUD_API_KEY to .env and restart the server.' });
-    if (checked && Date.now() - checkedAt < 60_000) return checked;
-    checkedAt = Date.now();
-    return checked = (async () => {
+    const cached = checks.get(maskInjection);
+    if (cached && Date.now() - cached.at < 60_000) return cached.promise;
+    const promise = (async () => {
       const nodes = await client.call<Record<string, { input?: { required?: Record<string, unknown[]> } }>>('/api/object_info', { signal: AbortSignal.timeout(15_000) });
-      const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true }, 0);
+      const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, maskInjection }, 0, 'preflight-mask');
       const missing = [...new Set(Object.values(graph).map(node => node.class_type))].filter(name => !nodes[name]);
       if (missing.length) return { ready: false, message: `Comfy is missing required nodes: ${missing.join(', ')}.` };
-      for (const [node, field, model] of [['UNETLoader', 'unet_name', COMFY_MODELS.diffusion], ['CLIPLoader', 'clip_name', COMFY_MODELS.textEncoder], ['VAELoader', 'vae_name', COMFY_MODELS.videoVae], ['VAELoader', 'vae_name', COMFY_MODELS.audioVae]]) {
+      const models = [['UNETLoader', 'unet_name', COMFY_MODELS.diffusion], ['CLIPLoader', 'clip_name', COMFY_MODELS.textEncoder], ['VAELoader', 'vae_name', COMFY_MODELS.videoVae], ['VAELoader', 'vae_name', COMFY_MODELS.audioVae]];
+      if (maskInjection !== 'standard') models.push(['FrameInterpolationModelLoader', 'model_name', COMFY_MODELS.frameInterpolation]);
+      for (const [node, field, model] of models) {
         const definition = nodes[node].input?.required?.[field];
         const options = Array.isArray(definition?.[0]) ? definition[0] as unknown[] : (definition?.[1] as { options?: unknown[] } | undefined)?.options;
         if (options && !options.includes(model)) return { ready: false, message: `Comfy is missing model ${model}.` };
       }
       return { ready: true };
     })().catch(error => ({ ready: false, message: client.message(error instanceof Error ? error.message : error) }));
+    checks.set(maskInjection, { promise, at: Date.now() });
+    return promise;
   };
   const status = async (requestId: string): Promise<GenerationJob> => {
     const data = jobSchema.parse(await client.call(`/api/v2/jobs/${encodeURIComponent(id.parse(requestId))}`));
@@ -78,13 +84,20 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       }
     },
     async submit(file, input) {
-      const readiness = await check();
+      const maskInjection = input.mode === 'extend' ? 'standard' : normalizeMaskInjection(input.maskInjection, input.interpolateMiddle);
+      const readiness = await check(maskInjection);
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
       const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
       // Comfy reads multipart uploads sequentially: metadata must arrive before the file.
       const body = new FormData(); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`); body.set('file', file, 'reference.mp4');
       const uploaded = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body }));
-      const workflow = bridgeWorkflow(uploaded.id, input, randomInt(0, 2 ** 48 - 1));
+      let vignetteAssetId: string | undefined;
+      if (maskInjection === 'vignette') {
+        const maskBody = new FormData(); maskBody.set('content_type', 'image/png'); maskBody.set('file_path', `sparko-vignette-${randomUUID()}.png`);
+        maskBody.set('file', new Blob([vignetteGradientPng(input.width, input.height)], { type: 'image/png' }), 'vignette.png');
+        vignetteAssetId = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body: maskBody })).id;
+      }
+      const workflow = bridgeWorkflow(uploaded.id, { ...input, maskInjection }, randomInt(0, 2 ** 48 - 1), vignetteAssetId);
       // Never automatically retry a paid submission after an ambiguous network error.
       const job = jobSchema.parse(await client.call('/api/v2/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() }, body: JSON.stringify({ workflow }) }));
       return { requestId: job.id, status: 'IN_QUEUE', insertion: plan.insertion };

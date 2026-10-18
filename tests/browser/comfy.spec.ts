@@ -12,6 +12,8 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
     const form = await new Response(Uint8Array.from(route.request().postDataBuffer()!), { headers: { 'Content-Type': route.request().headers()['content-type'] } }).formData();
     expect(form.get('before')).toBe('1.625'); expect(form.get('after')).toBe('1.625'); expect(form.get('duration')).toBe('6');
     expect(form.get('prompt')).toBe('Continue the motion'); expect((form.get('video') as File).size).toBeGreaterThan(1000);
+    expect(form.get('maskInjection')).toBe(comfySubmissions === 1 ? 'vignette' : 'standard');
+    expect(form.has('interpolateMiddle')).toBe(false);
     await route.fulfill({ status: 202, json: { requestId: 'comfy-test-job', status: 'IN_QUEUE', insertion: { start: 39 / 24, duration: 148 / 24, totalDuration: 226 / 24 } } });
   });
   await page.route('**/api/comfy/jobs/comfy-test-job', route => failStatus
@@ -44,8 +46,17 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion' })).toHaveCount(0);
   await expect(page.getByText(/6.167s generated/)).toBeVisible();
   await page.getByLabel('Interstitial prompt').fill('Continue the motion');
+  const mask = page.getByRole('button', { name: /^Mask injection:/ });
+  await expect(mask).toContainText('Standard generation');
+  await mask.click();
+  await page.getByRole('radio', { name: /FILM \+ vignette mask/ }).click();
+  await expect(mask).toContainText('FILM + vignette');
+  await page.setViewportSize({ width: 390, height: 844 });
+  const optionPosition = () => mask.evaluate(element => element.getBoundingClientRect().top - element.closest('form')!.getBoundingClientRect().top);
+  const optionTop = await optionPosition();
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', '0.455', { timeout: 60_000 });
+  expect(await optionPosition()).toBeCloseTo(optionTop, 0);
   await expect(page.locator('.timeline-generation-spinner')).toHaveCount(1);
   await expect(page.locator('.task-status')).toContainText('Generating video and audio · step 9/20 · 46% estimated overall');
   await expect(page.locator('.task-status')).not.toContainText('98%');
@@ -66,13 +77,19 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);
   expect((await saved()).requestMethod).toBe('comfy');
+  expect((await saved()).generationSettings.maskInjection).toBe('vignette');
+  expect(await optionPosition()).toBeCloseTo(optionTop, 0);
   await expect(page.getByLabel('Generated video for Untitled')).toBeVisible();
   await expect(page.locator('.rendered-interstitial')).toHaveCount(1);
   const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click(); await download;
   await page.screenshot({ path: 'test-results/comfy-interstitial.png' });
+  await mask.click();
+  await page.getByRole('radio', { name: /Standard generation/ }).click();
+  await expect(page.locator('.interstitial-edited')).toHaveText('Edited');
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect.poll(async () => comfySubmissions).toBe(2);
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);
   expect((await saved()).requestMethod).toBe('comfy');
+  expect((await saved()).generationSettings.maskInjection).toBe('standard');
 });

@@ -31,6 +31,48 @@ const saved = (page: Page) => page.evaluate(async () => {
   return readActiveProject();
 });
 
+test('mask modes and individual help work independently for Idle and each Response', async ({ page }) => {
+  await openDraft(page);
+  const clips = page.locator('.clip-subpanel');
+  const masks = clips.getByRole('button', { name: /^Mask injection:/ });
+  const menu = page.getByRole('dialog', { name: 'Mask injection options' });
+  await expect(masks).toHaveCount(4);
+  await masks.first().click();
+  await expect(menu.getByRole('radio', { name: /FILM \+ uniform/ })).toBeDisabled();
+  await expect(menu.getByRole('radio', { name: /FILM \+ vignette/ })).toBeDisabled();
+  await menu.getByRole('button', { name: 'About FILM + vignette mask' }).click();
+  await expect(menu.getByRole('note')).toContainText('no end reference');
+  await page.keyboard.press('Escape');
+  await expect(masks.first()).toBeFocused();
+  await masks.nth(1).click(); await menu.getByRole('radio', { name: /FILM \+ uniform/ }).click();
+  await expect(masks.nth(1)).toContainText('FILM + uniform');
+  await masks.nth(2).click(); await menu.getByRole('radio', { name: /FILM \+ vignette/ }).click();
+  const settings = async () => (await saved(page)).interstitials.filter((item: any) => item.groupId).map((item: any) => item.maskInjection ?? 'standard');
+  await expect.poll(settings).toEqual(['standard', 'uniform', 'vignette', 'standard']);
+  await page.getByRole('button', { name: 'All interstitials' }).click();
+  await page.locator('.interstitial-clips .interstitial-row').nth(1).click();
+  await expect(masks.nth(1)).toContainText('FILM + uniform');
+  await expect(masks.nth(2)).toContainText('FILM + vignette');
+  await expect(masks.nth(3)).toContainText('Standard');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await masks.nth(1).scrollIntoViewIfNeeded();
+  await expect(masks.nth(1)).toBeInViewport();
+  const before = await masks.nth(1).boundingBox();
+  await masks.nth(1).press('Enter');
+  for (const [name, phrase] of [['Standard generation', 'maximum freedom'], ['FILM + uniform mask', '0.97'], ['FILM + vignette mask', '0.95']]) {
+    await menu.getByRole('button', { name: `About ${name}`, exact: true }).click();
+    await expect(menu.getByRole('note')).toContainText(phrase);
+  }
+  expect((await masks.nth(1).boundingBox())?.y).toBeCloseTo(before!.y, 0);
+  const bounds = await menu.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  expect(bounds!.y).toBeGreaterThanOrEqual(0); expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(844);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.screenshot({ path: 'test-results/mask-injection-mobile.png' });
+  await menu.getByRole('radio', { name: /Standard generation/ }).click();
+  await expect.poll(settings).toEqual(['standard', 'standard', 'vignette', 'standard']);
+});
+
 test('creation uses separate fixed types and call-response drafts reserve timeline slots', async ({ page }) => {
   await openDraft(page);
   const clips = page.locator('.clip-subpanel');

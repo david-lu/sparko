@@ -1,6 +1,6 @@
 import { INTERSTITIAL } from '../../../shared/constants';
 import type { GenerationJob } from '../../../shared/contracts';
-import type { Interstitial } from '../../../shared/interstitials';
+import { clipMaskInjection, type Interstitial } from '../../../shared/interstitials';
 import { comfyDimensions, comfyReferenceRange } from '../../../shared/comfy';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
@@ -22,6 +22,7 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   body.set('before', String(range.insertAt)); body.set('after', String(range.after));
   body.set('duration', String(item.duration)); body.set('prompt', item.prompt);
   body.set('mode', range.mode);
+  body.set('maskInjection', clipMaskInjection(item));
   onProgress('uploading');
   return sendForm<GenerationJob>('/api/comfy/interstitials', body, signal);
 }

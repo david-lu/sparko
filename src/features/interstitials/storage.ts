@@ -1,5 +1,5 @@
 import { INTERSTITIAL } from '../../../shared/constants';
-import { generationMethods, interstitialSettings, normalizeGenerationMethod, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
+import { clipMaskInjection, generationMethods, interstitialSettings, normalizeGenerationMethod, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
 
 function readReference(value: unknown): GenerationReference | undefined {
   const validClip = (clip: ClipReference) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
@@ -43,6 +43,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
       const result = readResult(item.result);
       return [{ id: item.id, label: typeof item.label === 'string' ? item.label.replace(/^Pin (\d+)$/, 'Interstitial $1') : 'Interstitial', time: item.time, kind: item.kind === 'call-response' ? 'call-response' : item.kind === 'regular' ? 'regular' : undefined, groupId: typeof item.groupId === 'string' ? item.groupId : undefined,
         continuity: typeof item.continuity === 'string' ? item.continuity : undefined, dialogue: typeof item.dialogue === 'string' ? item.dialogue : undefined, loopAudio: typeof item.loopAudio === 'boolean' ? item.loopAudio : undefined,
+        maskInjection: clipMaskInjection(item),
         start_range: Number.isFinite(item.start_range) ? item.start_range : INTERSTITIAL.defaultRange,
         end_range: Number.isFinite(item.end_range) ? item.end_range : INTERSTITIAL.defaultRange,
         duration: Number.isFinite(item.duration) ? item.duration : INTERSTITIAL.defaultDuration,
