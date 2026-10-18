@@ -62,18 +62,26 @@ export class CanvasFlowPlayback {
       const transition = edge && flowTransition(this.flow, edge, this.crossfadeFrames);
       if (!transition) continue;
       const offset = entering ? frame : frame - sceneFrames(transition.before);
-      const weight = (offset - transition.startFrame) / transition.frames;
+      // An answer chosen during the fade window only uses the Idle frames that remain.
+      const fadeStart = !entering && transition.before.clip.kind === 'idle' && current.outcomeQueuedFrame !== undefined
+        ? Math.max(transition.startFrame, current.outcomeQueuedFrame - sceneFrames(transition.before)) : transition.startFrame;
+      const fadeFrames = transition.startFrame < 0 && fadeStart > transition.startFrame ? -fadeStart : transition.frames;
+      const weight = (offset - fadeStart) / fadeFrames;
       if (weight < 0 || weight >= 1) continue;
       const before = { ...current, sceneId: transition.before.id, visit: entering ? Math.max(0, current.visit - 1) : current.visit };
       const after = { ...current, sceneId: transition.after.id, visit: entering ? current.visit : current.visit + 1 };
-      // Hold Idle's boundary frame during fades so its first and last moving frames still meet on every repeat.
+      // Idle's opening frame is held on entry. On exit, use the response's lead-in when available.
       const beforeFrame = transition.before.clip.kind === 'idle' && offset >= 0
         ? sceneFrames(transition.before) - 1 : sceneFrames(transition.before) + offset;
-      const afterFrame = transition.after.clip.kind === 'idle' && offset < 0 ? 0 : offset;
-      const rate = this.flow.fps / transition.frames;
+      const afterFrame = transition.after.clip.kind === 'idle' && offset < 0 ? 0
+        : transition.before.clip.kind === 'idle' && offset < 0
+          ? Math.max(offset, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6)) : offset;
+      const rate = this.flow.fps / fadeFrames;
       const beforeClip = this.clip(before, beforeFrame), afterClip = this.clip(after, afterFrame);
+      const mutedBeforeCut = afterClip.muted || transition.before.clip.kind === 'idle' && offset < 0;
       return [{ ...beforeClip, opacity: 1, gain: beforeClip.muted ? 0 : 1 - weight, gainRate: beforeClip.muted ? 0 : -rate },
-        { ...afterClip, opacity: weight, gain: afterClip.muted ? 0 : weight, gainRate: afterClip.muted ? 0 : rate }];
+        { ...afterClip, muted: mutedBeforeCut, opacity: weight, gain: mutedBeforeCut ? 0 : weight,
+          gainRate: mutedBeforeCut ? 0 : rate }];
     }
     return single;
   }
@@ -84,7 +92,10 @@ export class CanvasFlowPlayback {
         const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame);
         if (!next.finished) {
           const edge = nextEdge(this.flow, this.session), transition = this.crossfade && edge ? flowTransition(this.flow, edge, this.crossfadeFrames) : undefined;
-          this.decks.prepare(this.clip(next, transition?.after.clip.kind === 'idle' ? 0 : transition?.startFrame ?? 0));
+          const prepareFrame = transition?.after.clip.kind === 'idle' ? 0 : transition?.before.clip.kind === 'idle'
+            ? Math.max(transition.startFrame, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6))
+            : transition?.startFrame ?? 0;
+          this.decks.prepare(this.clip(next, prepareFrame));
         }
       }
       this.changed(this.session, this.buffering);

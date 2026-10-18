@@ -84,22 +84,43 @@ describe('canvas flow playback', () => {
     expect(layers()).toHaveLength(1); expect(player.session).toEqual(session);
     player.dispose();
   });
-  it('fades Call into silent Idle and silent Idle into the chosen response', () => {
+  it('fades into the chosen response entirely within silent Idle', () => {
     const player = makePlayer(); player.seekScene('call', 94);
     expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['call', 'wait']);
     expect(layers().map(layer => layer.gain)).toEqual([.5, 0]);
     expect(layers()[1]).toMatchObject({ time: 0, muted: true });
     player.seekScene('wait', 24);
     expect(layers()).toHaveLength(1); expect(layers()[0]).toMatchObject({ gain: 0, muted: true });
-    player.seekScene('wait', 47); player.branch('wait', 'incorrect'); player.pause();
+    player.seekScene('wait', 43); player.branch('wait', 'incorrect'); player.pause();
     expect(layers()).toHaveLength(1); expect(layers()[0].key).toMatch(/^wait:/);
     player.play(); advance(); advance();
-    expect(player.session).toMatchObject({ sceneId: 'incorrect', outcome: 'incorrect' });
+    expect(player.session).toMatchObject({ sceneId: 'wait', outcome: 'incorrect' });
     expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['wait', 'incorrect']);
-    expect(layers()[0].gain).toBe(0);
-    expect(layers()[1].gain).toBeGreaterThan(0);
-    expect(layers()[1].gain).toBeLessThan(.5);
-    expect(layers()[0]).toMatchObject({ muted: true, time: (48 - 1) / 24 });
+    expect(layers()[0].gain).toBe(0); expect(layers()[1].gain).toBe(0);
+    expect(layers()[1].opacity).toBeGreaterThan(0);
+    expect(layers()[1].time).toBeLessThan(2);
+    for (let i = 0; i < 4; i++) advance();
+    expect(player.session).toMatchObject({ sceneId: 'incorrect', outcome: 'incorrect' });
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]).toMatchObject({ muted: false, opacity: 1, gain: 1 });
+    expect(layers()[0].time).toBeGreaterThanOrEqual(2);
+    player.dispose();
+  });
+  it('starts a late answer fade when the answer is chosen and holds an opening frame without lead-in', () => {
+    const flow = flowWithReferences(), response = getScene(flow, 'incorrect');
+    response.generated = { ...response.generated!, start: 0 };
+    const player = makePlayer(flow); player.seekScene('wait', 46);
+    player.branch('wait', 'incorrect');
+    expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['wait', 'incorrect']);
+    expect(layers()[1]).toMatchObject({ opacity: 0, time: 0, muted: true });
+    advance();
+    expect(player.session).toMatchObject({ sceneId: 'wait', frame: 47 });
+    expect(layers()[1]).toMatchObject({ time: 0, muted: true });
+    expect(layers()[1].opacity).toBeGreaterThan(0);
+    advance();
+    expect(player.session.sceneId).toBe('incorrect');
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1, muted: false });
     player.dispose();
   });
   it('changes fade length in place for both automatic cuts and responses, retaining it when toggled', () => {
@@ -114,7 +135,8 @@ describe('canvas flow playback', () => {
     player.seekScene('continue', 3);
     expect(layers().map(layer => layer.gain)).toEqual([.75, .25]);
     player.seekScene('wait', 47); player.branch('wait', 'incorrect'); player.pause();
-    expect(layers()).toHaveLength(1);
+    expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['wait', 'incorrect']);
+    expect(layers()[1].opacity).toBe(0);
     player.dispose();
   });
   it('caps long fades while keeping the silent Idle cycle free of fades', () => {
@@ -123,7 +145,7 @@ describe('canvas flow playback', () => {
     const callToIdle = flowTransition(flow, flow.edges.find(edge => edge.id === 'call-wait')!, 48)!;
     const outgoing = flowTransition(flow, flow.edges.find(edge => edge.id === 'correct-continue')!, 48)!;
     expect(callToIdle).toMatchObject({ startFrame: -48, frames: 48 });
-    expect(incoming).toMatchObject({ startFrame: 0, frames: 48 });
+    expect(incoming).toMatchObject({ startFrame: -48, frames: 48 });
     expect(outgoing).toMatchObject({ startFrame: 0, frames: 24 });
     expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-loop')!, 48)).toBeUndefined();
     const retry = flow.edges.find(edge => edge.id === 'incorrect-continue')!;

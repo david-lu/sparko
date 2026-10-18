@@ -23,20 +23,23 @@ function idleTransition(flow: CallResponseFlow, edge: FlowEdge, requestedFrames:
   const leavingIdle = before.clip.kind === 'idle' && (after.clip.kind === 'call' || after.clip.kind === 'response');
   if (!enteringIdle && !leavingIdle) return;
   const frames = Math.max(0, Math.min(Math.floor(requestedFrames), sceneFrames(before), sceneFrames(after)));
-  return frames ? { before, after, startFrame: enteringIdle ? -frames : 0, frames } : undefined;
+  return frames ? { before, after, startFrame: -frames, frames } : undefined;
 }
 
 function candidateTransition(flow: CallResponseFlow, edge: FlowEdge, frames: number) {
   return idleTransition(flow, edge, frames) ?? referenceTransition(flow, edge, frames);
 }
 
-/** Generated clips fade against Idle's held opening or closing frame; repeats stay untouched. */
+/** Fade into or out of Idle before the cut; repeats stay untouched. */
 export function flowTransition(flow: CallResponseFlow, edge: FlowEdge, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES) {
   const transition = candidateTransition(flow, edge, crossfadeFrames);
   if (!transition) return;
   const entering = transition.startFrame < 0, source = entering ? transition.before : transition.after;
-  const neighbors = flow.edges.filter(other => entering ? other.to === source.id : other.from === source.id);
-  const competing = Math.max(0, ...neighbors.map(other => candidateTransition(flow, other, crossfadeFrames)?.frames ?? 0));
+  const competing = Math.max(0, ...flow.edges.filter(other => other.id !== edge.id).map(other => {
+    const candidate = candidateTransition(flow, other, crossfadeFrames);
+    if (!candidate || (candidate.startFrame < 0) === entering) return 0;
+    return (candidate.startFrame < 0 ? candidate.before : candidate.after).id === source.id ? candidate.frames : 0;
+  }));
   if (transition.frames + competing > sceneFrames(source)) {
     transition.frames = Math.min(transition.frames, entering ? Math.ceil(sceneFrames(source) / 2) : Math.floor(sceneFrames(source) / 2));
     transition.startFrame = entering ? -transition.frames : 0;

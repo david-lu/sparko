@@ -12,6 +12,12 @@ test('the crossfade option uses saved reference overlaps and draws their exact t
   await expect(marks).toHaveCount(6);
   await expect(clip(page, 'call').locator('.flow-crossfade')).toHaveCount(1);
   await expect(clip(page, 'wait').locator('.flow-crossfade')).toHaveCount(2);
+  const idleBounds = (await clip(page, 'wait').boundingBox())!;
+  for (const mark of await clip(page, 'wait').locator('.flow-crossfade').all()) {
+    const bounds = (await mark.boundingBox())!;
+    expect(bounds.x).toBeCloseTo(idleBounds.x + idleBounds.width - bounds.width, 1);
+    expect(bounds.x + bounds.width).toBeCloseTo(idleBounds.x + idleBounds.width, 1);
+  }
   await expect(marks.first()).toHaveAttribute('title', /4 frames \(0\.17 s\)/);
   const seekEntryFade = async () => {
     const bounds = (await clip(page, 'intro').boundingBox())!;

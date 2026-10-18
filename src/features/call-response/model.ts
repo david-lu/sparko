@@ -238,6 +238,7 @@ export type PlaybackSession = {
   finished: boolean;
   loopIteration: number;
   outcome: Outcome | null;
+  outcomeQueuedFrame?: number;
   answer: string;
   attempts: number;
   visit: number;
@@ -260,8 +261,9 @@ export function answerSession(flow: CallResponseFlow, session: PlaybackSession, 
   const interaction = interactionFor(flow, session.sceneId);
   const outcome = interaction.answers.find(option => [option.label, ...option.values].some(value => normalizeAnswer(value) === normalized))?.id
     ?? interaction.fallbackAnswerId;
+  const queued = outcome && flow.edges.some(edge => edge.from === session.sceneId && edge.when === outcome) ? outcome : null;
   return { ...session, answer: answer.trim(), attempts: session.attempts + 1,
-    outcome: outcome && flow.edges.some(edge => edge.from === session.sceneId && edge.when === outcome) ? outcome : null };
+    outcome: queued, outcomeQueuedFrame: queued ? session.frame : undefined };
 }
 
 export function nextEdge(flow: CallResponseFlow, session: PlaybackSession) {
@@ -286,7 +288,8 @@ export function advanceSession(flow: CallResponseFlow, session: PlaybackSession,
     const enteringWait = getScene(flow, edge.to).clip.kind === 'idle' && !looping;
     state = { ...state, sceneId: edge.to, frame: 0, visit: state.visit + 1,
       loopIteration: looping ? state.loopIteration + 1 : 1,
-      outcome: enteringWait ? null : state.outcome, answer: enteringWait ? '' : state.answer,
+      outcome: enteringWait ? null : state.outcome, outcomeQueuedFrame: enteringWait ? undefined : state.outcomeQueuedFrame,
+      answer: enteringWait ? '' : state.answer,
       lastEdgeId: edge.id, traversedEdgeIds: [...new Set([...state.traversedEdgeIds, edge.id])] };
   }
   return state;
@@ -297,7 +300,7 @@ export function branchSession(flow: CallResponseFlow, session: PlaybackSession, 
   if (getScene(flow, session.sceneId).clip.kind !== 'idle' || session.outcome
     || !flow.interaction.answers.some(answer => answer.id === outcome)
     || !flow.edges.some(edge => edge.from === session.sceneId && edge.when === outcome)) return session;
-  return { ...session, outcome, answer: `[Debug: ${outcome}]`, attempts: session.attempts + 1 };
+  return { ...session, outcome, outcomeQueuedFrame: session.frame, answer: `[Debug: ${outcome}]`, attempts: session.attempts + 1 };
 }
 
 export function createTimelineExample(assetId: string, duration: number) {
