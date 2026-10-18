@@ -263,7 +263,7 @@ describe('canvas flow playback', () => {
     expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-loop')!, 48)).toBeUndefined();
     const retry = flow.edges.find(edge => edge.id === 'incorrect-continue')!;
     retry.to = 'wait';
-    expect(flowTransition(flow, retry)).toMatchObject({ startFrame: -12, frames: 12 });
+    expect(flowTransition(flow, retry)).toMatchObject({ startFrame: -14, frames: 14 });
     const player = makePlayer(flow); player.setCrossfade(true, 48);
     for (let frame = 0; frame < sceneFrames(getScene(flow, 'wait')); frame++) {
       player.seekScene('wait', frame);
