@@ -11,6 +11,7 @@ import { isGenerating, type Interstitial } from '../../../shared/interstitials';
 import { phaseLabel } from '../interstitials/status';
 import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
 import { referenceSections } from './referenceSections';
+import { ClipStatusBadge, clipStatus } from '../call-response/ClipStatus';
 
 export type FlowTimeline = {
   flow: CallResponseFlow;
@@ -53,7 +54,7 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
       const afterWidth = (references?.after ?? 0) * flow.fps * unit;
       const durationTitle = references && (references.before || references.after)
         ? ` · Generated ${(sceneFrames(scene) / flow.fps).toFixed(2)}s · Full file ${references.total.toFixed(2)}s · Dotted sections: ${references.before.toFixed(2)}s before, ${references.after.toFixed(2)}s after`
-        : ` · ${(sceneFrames(scene) / flow.fps).toFixed(1)}s`;
+        : ` · ${scene.draft ? 'Planned ' : ''}${(sceneFrames(scene) / flow.fps).toFixed(1)}s`;
       return <div key={scene.id} className={`timeline-flow-clip clip-${scene.clip.kind} ${value.selectedSceneId === scene.id ? 'selected' : ''} ${active ? 'active' : ''} ${scene.draft ? 'draft' : ''} ${stale ? 'stale' : ''}`}
         style={{ left: bounds.x - offset, width: bounds.width, top: row < 0 ? undefined : `calc(50% + var(--timeline-clip-height) * ${row - rows / 2})` }} data-scene-id={scene.id} data-clip-kind={scene.clip.kind} data-active={active} data-stale={stale}>
         {beforeWidth > 0 && <span className="timeline-reference-range before" role="img" aria-label={`${scene.label}: ${references!.before.toFixed(2)} seconds of reference footage before the generated clip`} style={{ left: -beforeWidth, width: beforeWidth }} />}
@@ -62,8 +63,10 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
           const rect = event.currentTarget.getBoundingClientRect();
           value.onSelectScene(scene.id, event.detail === 0 ? 0 : Math.floor((event.clientX - rect.left) / rect.width * sceneFrames(scene)));
         }} aria-description={stale ? 'Stale: upstream video changed. Regenerate this clip to match.' : undefined} aria-pressed={value.selectedSceneId === scene.id}>
-          {url ? <VideoFilmstrip url={url} start={filmstripStart} end={filmstripEnd} /> : <ClipLoading failed={!busy} message={busy ? phaseLabel(item) : 'Clip media unavailable'} />}
-          {url && busy && <ClipJobStatus label={scene.label} message={phaseLabel(item)} />}
+          {scene.draft ? <span className="flow-placeholder"><ClipStatusBadge status={clipStatus(item)} /></span>
+            : url ? <VideoFilmstrip url={url} start={filmstripStart} end={filmstripEnd} />
+              : <ClipLoading failed={!busy} message={busy ? phaseLabel(item) : 'Clip media unavailable'} />}
+          {!scene.draft && url && busy && <ClipJobStatus label={scene.label} message={phaseLabel(item)} />}
           {stale && <span className="flow-clip-stale" title="Upstream video changed. Regenerate this clip to match.">Stale</span>}
           <span className={`timeline-clip-label ${scene.clip.kind !== 'video' ? 'flow-clip-type' : ''}`}>
             {idle && <Repeat2 size={13} role="img" aria-label="Loops until an answer" />}

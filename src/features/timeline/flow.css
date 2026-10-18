@@ -33,5 +33,11 @@
 .call-response-controls{border-bottom:1px solid var(--line);padding:13px 12px}.call-response-controls h2{margin-bottom:9px}.call-response-controls .field{margin-bottom:9px}.flow-connection-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #ffffff09;background:transparent;width:100%;font-size:10px;color:var(--text-secondary);text-align:left}.flow-connection-row small{color:var(--muted)}
 @media(max-width:660px){.timeline-section.has-flow{min-height:270px}.workspace-grid:has(.has-flow){grid-template-rows:minmax(370px,62%) minmax(0,1fr)}.timeline-section.has-flow .timeline-heading .timeline-actions>.icon-button{display:none}}
 .timeline-flow-clip.draft .flow-clip-body::after{border-style:dashed}.timeline-flow-clip.draft .timeline-clip-label{background:#1a1d25d9}
+.flow-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:18px 3px 2px;background:color-mix(in srgb,var(--clip-color) 10%,var(--surface))}
+.flow-placeholder .clip-status-badge{--clip-state-color:#c5bdb2;flex:0 1 auto;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.flow-placeholder .clip-status-badge[data-status=waiting]{--clip-state-color:#e4c076}
+.flow-placeholder .clip-status-badge[data-status=generating]{--clip-state-color:#91c6f6}
+.flow-placeholder .clip-status-badge[data-status=failed]{--clip-state-color:#f28d83}
+.flow-placeholder .clip-status-badge[data-status=cancelled]{--clip-state-color:#c9a1de}
 .timeline-flow-clip.stale .flow-clip-body::after{border-color:#e1c17b;border-style:dashed}
 .flow-clip-stale{position:absolute;top:27px;left:4px;z-index:3;max-width:calc(100% - 8px);padding:2px 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid #e1c17b80;border-radius:var(--radius-sm);background:#2d2519ed;color:#f6d895;font:10px/14px var(--mono)}

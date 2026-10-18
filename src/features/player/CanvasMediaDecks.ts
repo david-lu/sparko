@@ -6,7 +6,7 @@ import { CanvasAudio } from './CanvasAudio';
 export type PlaybackClip = { key: string; source: MediaSource; sourceFootage: boolean; time: number; still?: boolean; muted?: boolean;
   /** Optional audio from another video, sampled on the same playback clock. */
   audio?: { key: string; source: MediaSource; time: number } };
-export type PlaybackLayer = PlaybackClip & { opacity: number; gain: number; gainRate?: number };
+export type PlaybackLayer = PlaybackClip & { opacity: number; gain: number; gainRate?: number; musicGain?: number };
 export type PlaybackSettings = { volume: number; muted: boolean; speed: number };
 type Deck = { decoder: FrameDecoder; source: string; used: number };
 
@@ -42,6 +42,7 @@ export class CanvasMediaDecks {
   }
   get video() { return this.primary; }
   elapsed() { return this.audio.elapsed(); }
+  prepareMusic(url: string) { void this.audio.prepareMusic(url); }
   private obtain(clip: PlaybackClip) {
     let deck = this.decks.get(clip.key);
     if (deck && deck.source !== clip.source.url) { deck.decoder.dispose(); this.decks.delete(clip.key); deck = undefined; }
@@ -61,7 +62,7 @@ export class CanvasMediaDecks {
     if (!this.active.has(clip.key)) this.obtain(clip).at(clip.time);
     if (clip.audio && !this.active.has(clip.audio.key)) this.obtain({ ...clip, ...clip.audio }).at(clip.audio.time);
   }
-  render(layers: PlaybackLayer[], playing: boolean, settings: PlaybackSettings) {
+  render(layers: PlaybackLayer[], playing: boolean, settings: PlaybackSettings, musicGain = 0) {
     if (this.disposed) return false;
     if (this.renderer.error) throw this.renderer.error;
     if (this.audio.error) throw this.audio.error;
@@ -87,6 +88,7 @@ export class CanvasMediaDecks {
     for (const { layer, audioDecoder, audioKey, audioTime } of assigned) if (playing && !layer.still && !layer.muted) {
       this.audio.render(audioKey, audioDecoder, audioTime, layer.gain, layer.gainRate ?? 0, settings.muted ? 0 : settings.volume, settings.speed);
     }
+    this.audio.renderMusic(musicGain > 0, playing, settings.muted ? 0 : settings.volume * musicGain * .35, settings.speed);
     const visible = [...layers].reverse().find(layer => layer.opacity >= .5) ?? layers[0];
     const activeCues = this.captionsEnabled && visible?.sourceFootage ? this.cues.filter(cue => cue.startTime <= visible.time && cue.endTime > visible.time) : [];
     const captionSignature = activeCues.map(cue => `${cue.startTime}:${cue.endTime}:${cue.text}`).join('|');

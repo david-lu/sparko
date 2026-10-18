@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Minus, Plus, SkipBack, SkipForward } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, Thumbnail } from '../../media/media';
-import { isGenerating, playableResult, type Interstitial } from '../../../shared/interstitials';
+import { isGenerating, type Interstitial } from '../../../shared/interstitials';
 import type { TimelineComposition } from '../../media/TimelineComposition';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import ResizeHandle from '../../shared/ResizeHandle';
@@ -35,7 +35,7 @@ export default function Timeline({ name, info, thumbnails, thumbnailsFailed = fa
   const anchor = useRef<{ ratio: number; x: number } | null>(null);
   const markers = interstitials.filter(item => !item.groupId && item.kind !== 'call-response').map(item => ({ ...item, time: callResponse ? (() => { const scene = callResponse.flow.scenes.find(scene => scene.interstitialId === item.id); return scene ? flowLayout(callResponse.flow).starts[scene.id] / callResponse.flow.fps : item.time; })() : composition?.itemTime(item) ?? item.time }));
   const sourceHover = hover ? composition?.sourceTime(hover.time) ?? hover.time : 0;
-  const interstitialCount = interstitials.filter(item => !item.groupId && item.kind !== 'call-response' && playableResult(item)).length + (callResponse?.groups?.length ?? (callResponse ? 1 : 0));
+  const interstitialCount = markers.length + (callResponse?.groups?.length ?? (callResponse ? 1 : 0));
   const changeZoom = useCallback((value: number, x?: number) => {
     const scroll = viewport.current;
     const next = Math.max(1, Math.min(MAX_ZOOM, value));

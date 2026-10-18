@@ -91,11 +91,7 @@ export default function App() {
     url: status ? status.defaultVideo.name === defaultSource.name ? status.defaultVideo.url : '' : defaultSource.url };
   const sourceVersion = useRef(0);
   const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, loopAudio: item.loopAudio, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
-  const playableFlows = useMemo(() => savedFlows.filter(group => interstitialScenes(group).some(scene => {
-    const item = interstitialState.items.find(item => item.id === scene.interstitialId);
-    return !!(item && playableResult(item)?.assetId);
-  })), [savedFlows, readyKey]);
-  const flow = useMemo(() => info && source.assetId ? composeFlows(playableFlows, interstitialState.items, source.assetId, info.duration) : undefined, [playableFlows, readyKey, info, source.assetId]);
+  const flow = useMemo(() => info && source.assetId ? composeFlows(savedFlows, interstitialState.items, source.assetId, info.duration) : undefined, [savedFlows, readyKey, info, source.assetId]);
   const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, crossfadeFrames, matchFraming }) : null, [source, info, readyKey, crossfade, crossfadeFrames, matchFraming]);
   useEffect(() => { if (!projectState.source) return; if (flow && info) controller.setFlow(flow, info, matchFraming, crossfade, crossfadeFrames); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming, crossfade, crossfadeFrames, projectState.source]);
   useEffect(() => {
@@ -255,9 +251,8 @@ export default function App() {
       onBranch: (id, outcome) => controller.branchFlow(runtimeId(groupId, id), prefix + outcome),
     };
   });
-  const playableGroupTimelines = groupTimelines.filter(group => playableFlows.some(ready => ready.interstitial.id === group.flow.interstitial.id));
   const groupForScene = (id: string) => groupTimelines.find(group => group.flow.interstitial.id === flow?.scenes.find(scene => scene.id === id)?.groupId) ?? groupTimelines[0];
-  const flowTimeline: FlowTimeline | undefined = flow && playableGroupTimelines.length ? { ...playableGroupTimelines[0], flow, groups: playableGroupTimelines, session: player.flow, crossfade, crossfadeFrames,
+  const flowTimeline: FlowTimeline | undefined = flow && groupTimelines.length ? { ...groupTimelines[0], flow, groups: groupTimelines, session: player.flow, crossfade, crossfadeFrames,
     selectedSceneId: selectedRuntimeScene ?? null, selectedEdgeId: selectedFlowEdge,
     onSelectInterstitial: id => groupTimelines.find(group => group.flow.interstitial.id === (id ?? flow.interstitial.id))?.onSelectInterstitial(),
     onRemoveInterstitial: id => removeInterstitial(id ?? flow.interstitial.id),
@@ -317,7 +312,7 @@ export default function App() {
         <InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
           callResponse={panelTimeline} groups={groupTimelines}
           renderClipControls={clipControls}
-          connectedIds={flow?.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : [])}
+          connectedIds={groupTimelines.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []))}
           engine={engine} info={info} status={status} active onAddRegular={addInterstitial} onAddCallResponse={addCallResponse} onSelect={selectInterstitial} onRemove={removeInterstitial} onPreviewPlay={() => controller.pause()} />
       </aside></div>
     </main></>}

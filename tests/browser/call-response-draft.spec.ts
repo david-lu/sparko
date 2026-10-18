@@ -31,7 +31,7 @@ const saved = (page: Page) => page.evaluate(async () => {
   return readActiveProject();
 });
 
-test('creation uses separate fixed types and call-response drafts stay off the timeline', async ({ page }) => {
+test('creation uses separate fixed types and call-response drafts reserve timeline slots', async ({ page }) => {
   await openDraft(page);
   const clips = page.locator('.clip-subpanel');
   await expect(clips).toHaveCount(4);
@@ -52,9 +52,12 @@ test('creation uses separate fixed types and call-response drafts stay off the t
   await idleAudio.check();
   await expect.poll(async () => (await saved(page)).interstitials.find((item: any) => item.method === 'comfy-loop').loopAudio).toBe(true);
   await idleAudio.uncheck();
-  await expect(page.locator('.timeline-flow-clip')).toHaveCount(0);
-  await expect(page.locator('.timeline-interstitial-group')).toHaveCount(0);
-  await expect(page.locator('.timeline-section .source-entire')).toBeVisible();
+  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(4);
+  await expect(page.locator('.timeline-interstitial-group')).toHaveCount(1);
+  await expect(page.locator('.timeline-flow-clip.draft .flow-placeholder .clip-status-badge')).toHaveText(['Draft', 'Draft', 'Draft', 'Draft']);
+  await expect(page.locator('.timeline-flow-clip.draft video')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add regular interstitial' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add call-response interstitial' })).toHaveCount(0);
   await expect(page.locator('.timeline-actions').getByRole('button', { name: /Add interstitial/ })).toHaveCount(0);
   await expect(page.getByLabel('Interstitial type')).toHaveCount(0);
   await clips.nth(0).getByLabel('Interstitial prompt').fill('Ask gently, then settle into the listening pose.');
@@ -67,10 +70,10 @@ test('creation uses separate fixed types and call-response drafts stay off the t
   await expect(page.getByRole('button', { name: 'Add regular interstitial' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add call-response interstitial' })).toBeVisible();
   await expect(page.locator('.interstitial-clips .clip-status-badge')).toHaveText(['Draft', 'Draft', 'Draft', 'Draft']);
-  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('8');
+  await page.locator('.timeline-flow-tracks > .timeline-flow-clip.clip-video').last().getByRole('button', { name: 'Select clip Parent video' }).click();
   await page.getByRole('button', { name: 'Add call-response interstitial' }).click();
   await expect.poll(async () => (await saved(page)).callResponses.length).toBe(2);
-  await expect(page.locator('.timeline-flow-clip')).toHaveCount(0);
+  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(8);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect.poll(async () => (await saved(page)).callResponses.length).toBe(1);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
@@ -78,8 +81,21 @@ test('creation uses separate fixed types and call-response drafts stay off the t
   await page.getByRole('button', { name: 'All interstitials' }).click();
   await page.getByRole('button', { name: 'Add regular interstitial' }).click();
   await expect(page.getByLabel('Interstitial type')).toHaveCount(0);
-  await expect(page.locator('.timeline-pin')).toHaveCount(1);
+  await expect(page.locator('.timeline-flow-clip.clip-video.draft')).toHaveCount(1);
+  await expect(page.locator('.interstitial-title').getByRole('button', { name: 'Remove Untitled' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Add regular interstitial' })).toHaveCount(0);
   expect((await saved(page)).interstitials.filter((item: { groupId?: string; kind?: string }) => !item.groupId && item.kind !== 'call-response')).toHaveLength(1);
+  await page.locator('.interstitial-title').getByRole('button', { name: 'Remove Untitled' }).click();
+  await expect(page.locator('.timeline-flow-clip.clip-video.draft')).toHaveCount(0);
+  await expect(page.locator('.timeline-interstitial-group')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Add regular interstitial' }).click();
+  await page.getByRole('button', { name: 'All interstitials' }).click();
+  const regularRow = page.locator('.interstitial-list > li:not(.interstitial-group)');
+  await expect(regularRow.getByRole('button', { name: 'Remove Untitled' })).toBeEnabled();
+  await regularRow.getByRole('button', { name: 'Remove Untitled' }).click();
+  await expect(regularRow).toHaveCount(0);
+  await expect(page.locator('.timeline-interstitial-group')).toHaveCount(2);
+  expect((await saved(page)).interstitials.filter((item: { groupId?: string; kind?: string }) => !item.groupId && item.kind !== 'call-response')).toHaveLength(0);
 });
 
 test('Comfy generates in dependency order with live edits, individual regeneration and cancellation', async ({ page }) => {
@@ -115,8 +131,8 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   await expect(clips.nth(1)).toHaveAttribute('data-status', 'generating');
   const finishedClips = page.locator('.timeline-interstitial-group .timeline-flow-clip:not(.draft)');
   await expect(finishedClips).toHaveCount(1);
-  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(1);
-  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(0);
+  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(4);
+  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(3);
   const callClip = page.locator('.timeline-flow-clip.clip-call');
   await expect(callClip).toBeVisible();
   await callClip.locator('.flow-clip-body').focus(); await page.keyboard.press('Enter');
@@ -128,7 +144,8 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   releaseIdle = true;
   await expect.poll(() => submissions.length, { timeout: 30_000 }).toBe(3);
   await expect(finishedClips).toHaveCount(2);
-  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(2);
+  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(4);
+  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(2);
   await expect(page.locator('.timeline-flow-clip.clip-idle')).not.toHaveClass(/\bdraft\b/);
   await expect(clips.nth(1).locator('.interstitial-preview video')).toHaveJSProperty('muted', true);
   releaseResponses = true;
@@ -191,8 +208,8 @@ test('Comfy generates in dependency order with live edits, individual regenerati
   expect(staleBounds!.y).toBeGreaterThanOrEqual(labelBounds!.y + labelBounds!.height);
   await page.getByRole('button', { name: 'Add answer', exact: true }).click();
   await expect(finishedClips).toHaveCount(4);
-  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(4);
-  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(0);
+  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(5);
+  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(1);
 });
 
 test('reopening a partially generated project keeps its finished clip on the timeline', async ({ page }) => {
@@ -217,6 +234,7 @@ test('reopening a partially generated project keeps its finished clip on the tim
   await expect(page.locator('.clip-subpanel').nth(1)).toHaveAttribute('data-status', 'failed');
   await expect(page.locator('.timeline-flow-clip.clip-call')).toBeVisible();
   await expect(page.locator('.timeline-flow-clip.clip-call')).not.toHaveClass(/\bdraft\b/);
-  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(1);
-  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(0);
+  await expect(page.locator('.timeline-flow-clip.clip-idle .clip-status-badge')).toHaveAttribute('data-status', 'failed');
+  await expect(page.locator('.timeline-interstitial-group .timeline-flow-clip')).toHaveCount(4);
+  await expect(page.locator('.timeline-flow-clip.draft')).toHaveCount(3);
 });

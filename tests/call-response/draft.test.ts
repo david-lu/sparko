@@ -50,28 +50,26 @@ describe('call-response drafts', () => {
     expect(answerSession(flow, previewScene(flow, 'a/wait'), 'A').outcome).toBe('a/correct');
     expect(flow.edges.every(edge => flow.scenes.some(scene => scene.id === edge.to) && flow.scenes.some(scene => scene.id === edge.from))).toBe(true);
   });
-  it.each([false, true])('shows only finished stages with no draft time or dangling connections (parent pin: %s)', parentPin => {
+  it.each([false, true])('reserves draft slots and replaces them with generated clips (parent pin: %s)', parentPin => {
     const draft = createCallResponseDraft(pin(), 'source', 20);
     for (const completed of [['call'], ['call', 'wait'], ['call', 'wait', 'incorrect'], ['correct']]) {
       const items = draft.interstitials.map(item => completed.some(id => item.id === `pin:${id}`) ? ready(item) : item);
       const flow = composeFlows([draft.flow], [...(parentPin ? [pin()] : []), ...items], 'source', 20)!;
       const layout = flowLayout(flow);
-      expect(interstitialScenes(flow).map(scene => scene.localId ?? scene.id)).toEqual(completed);
-      expect(flow.scenes.some(scene => scene.draft)).toBe(false);
-      expect(layout.totalFrames).toBe(480 + completed.reduce((sum, id) => sum + (id === 'wait' ? 48 : 144), 0));
+      expect(interstitialScenes(flow).map(scene => scene.localId ?? scene.id)).toEqual(['call', 'wait', 'correct', 'incorrect']);
+      expect(interstitialScenes(flow).filter(scene => scene.draft).map(scene => scene.localId ?? scene.id))
+        .toEqual(['call', 'wait', 'correct', 'incorrect'].filter(id => !completed.includes(id)));
+      expect(layout.totalFrames).toBe(480 + 144 + 48 + 144);
       expect(flow.edges.every(edge => flow.scenes.some(scene => scene.id === edge.from) && flow.scenes.some(scene => scene.id === edge.to))).toBe(true);
-      expect(playbackPath(flow, startSession(flow))).toEqual(flow.scenes.map(scene => scene.id));
+      expect(playbackPath(flow, startSession(flow)).map(id => id.split('/').at(-1)))
+        .toEqual(parentPin ? ['source:0', 'call', 'wait', 'correct', 'source:1'] : ['intro', 'call', 'wait', 'correct', 'continue']);
       const continuation = flow.scenes.at(-1)!;
-      expect(layout.starts[continuation.id]).toBe(120 + layout.totalFrames - 480);
-      expect(flow.interaction.answers.map(answer => answer.sceneId.split('/').at(-1))).toEqual(completed.filter(id => !['call', 'wait'].includes(id)));
-      if (!completed.includes('wait')) {
-        expect(advanceSession(flow, startSession(flow, true), layout.totalFrames)).toMatchObject({ sceneId: continuation.id, finished: true });
-      } else if (completed.includes('incorrect')) {
-        const waiting = flow.scenes.find(scene => scene.clip.kind === 'idle')!;
-        const answered = answerSession(flow, { ...previewScene(flow, waiting.id), playing: true }, 'B');
-        expect(advanceSession(flow, answered, 48).sceneId).toBe(flow.interaction.answers[0].sceneId);
-        expect(answerSession(flow, previewScene(flow, waiting.id), 'A').outcome).toBeNull();
-      }
+      expect(layout.starts[continuation.id]).toBe(120 + 144 + 48 + 144);
+      expect(flow.interaction.answers.map(answer => answer.sceneId.split('/').at(-1))).toEqual(['correct', 'incorrect']);
+      const waiting = flow.scenes.find(scene => scene.clip.kind === 'idle')!;
+      const answered = answerSession(flow, { ...previewScene(flow, waiting.id), playing: true }, 'B');
+      expect(advanceSession(flow, answered, 48).sceneId.split('/').at(-1)).toBe('incorrect');
+      expect(answerSession(flow, previewScene(flow, waiting.id), 'A').outcome?.split('/').at(-1)).toBe('correct');
     }
     expect(draft.flow.scenes.filter(scene => scene.draft)).toHaveLength(4);
   });

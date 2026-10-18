@@ -6,7 +6,7 @@ import type { PlaybackLayer } from '../../src/features/player/CanvasMediaDecks';
 import { flowTransition } from '../../src/features/call-response/transitions';
 
 afterEach(() => vi.unstubAllGlobals());
-const render = vi.hoisted(() => vi.fn((_layers: PlaybackLayer[], _playing: boolean) => true));
+const render = vi.hoisted(() => vi.fn((_layers: PlaybackLayer[], _playing: boolean, _settings?: unknown, _musicGain?: number) => true));
 vi.mock('../../src/features/project/assets', () => ({ assets: { url: (id: string) => `blob:${id}` } }));
 
 vi.mock('../../src/features/player/CanvasMediaDecks', () => ({ CanvasMediaDecks: class {
@@ -14,7 +14,8 @@ vi.mock('../../src/features/player/CanvasMediaDecks', () => ({ CanvasMediaDecks:
   constructor(public video: HTMLVideoElement) {}
   elapsed() { const current = performance.now(), elapsed = (current - this.last) / 1000; this.last = current; return elapsed; }
   setMatchFraming() {}
-  render(layers: PlaybackLayer[], playing: boolean) { return render(layers, playing); }
+  render(layers: PlaybackLayer[], playing: boolean, settings: unknown, musicGain?: number) { return render(layers, playing, settings, musicGain); }
+  prepareMusic() {}
   prepare() {} prepareMedia() {} setSubtitles() {} pause() {} dispose() {}
 } }));
 
@@ -104,6 +105,25 @@ describe('canvas flow playback', () => {
     expect(layers()).toHaveLength(1);
     expect(layers()[0]).toMatchObject({ muted: false, opacity: 1, gain: 1 });
     expect(layers()[0].time).toBeGreaterThanOrEqual(2);
+    player.dispose();
+  });
+  it('keeps the soundtrack active across Idle repeats and fades it at scene boundaries', () => {
+    const player = makePlayer();
+    player.seekScene('call', 94);
+    expect(render.mock.calls.at(-1)?.[3]).toBeCloseTo(.5);
+    player.seekScene('wait', 24, true);
+    expect(render.mock.calls.at(-1)?.[3]).toBe(1);
+    for (let i = 0; i < 25; i++) advance();
+    expect(player.session.loopIteration).toBeGreaterThan(1);
+    expect(render.mock.calls.at(-1)?.[3]).toBe(1);
+    player.pause();
+    player.seekScene('wait', 46);
+    player.branch('wait', 'correct');
+    advance();
+    expect(render.mock.calls.at(-1)?.[3]).toBeGreaterThan(0);
+    expect(render.mock.calls.at(-1)?.[3]).toBeLessThan(1);
+    player.seekScene('correct', 0);
+    expect(render.mock.calls.at(-1)?.[3]).toBe(0);
     player.dispose();
   });
   it('aligns the saved Idle body and Response prefix at their fade', () => {
@@ -253,7 +273,7 @@ describe('canvas flow playback', () => {
     expect(player.session.frame).toBeGreaterThan(frame);
     player.dispose();
   });
-  it('restores saved bounds for a partial project and skips a missing return reference', () => {
+  it('restores saved bounds for a partial project and retains its draft slots', () => {
     const { flow, interstitials } = createTimelineExample('mock:original', 8);
     const items = interstitials.map(item => item.id === getScene(flow, 'call').interstitialId ? item : { ...item, phase: 'draft' as const, result: undefined });
     const call = items.find(item => item.id === getScene(flow, 'call').interstitialId)!;
@@ -265,7 +285,8 @@ describe('canvas flow playback', () => {
     expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['call']);
     expect(getScene(partial, 'call').generated).toEqual(call.result);
     expect(flowTransition(partial, partial.edges.find(edge => edge.from === 'call')!, 48)).toBeUndefined();
-    expect(partial.scenes.map(scene => scene.id)).toEqual(['intro', 'call', 'continue']);
+    expect(partial.scenes.map(scene => scene.id)).toEqual(['intro', 'call', 'wait', 'correct', 'incorrect', 'continue']);
+    expect(partial.scenes.filter(scene => scene.draft).map(scene => scene.id)).toEqual(['wait', 'correct', 'incorrect']);
     player.dispose();
   });
 });

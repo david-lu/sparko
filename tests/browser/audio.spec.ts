@@ -171,6 +171,46 @@ test('Idle uses audio from the full render while keeping the finished loop video
   await page.evaluate(() => (window as any).idleAudioTest.stop());
 });
 
+test('Idle soundtrack loops on the playback clock and follows pause, mute and exit', async ({ page }) => {
+  await page.route('**/__music-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Music test</title>' }));
+  await page.goto('/__music-test');
+  await page.evaluate(async () => {
+    const { CanvasAudio } = await import('/src/features/player/CanvasAudio.ts' as string);
+    const { default: url } = await import('/assets/working-something-out-loop.wav?url' as string);
+    const audio = new CanvasAudio();
+    await audio.prepareMusic(url);
+    const analyser = audio.context.createAnalyser(); analyser.fftSize = 2048;
+    const createGain = audio.context.createGain.bind(audio.context);
+    audio.context.createGain = () => { const gain = createGain(); gain.connect(analyser); return gain; };
+    const sources: AudioBufferSourceNode[] = [];
+    const createSource = audio.context.createBufferSource.bind(audio.context);
+    audio.context.createBufferSource = () => { const source = createSource(); sources.push(source); return source; };
+    await audio.context.resume();
+    audio.renderMusic(true, true, .4, 1);
+    (window as any).musicTest = { audio, sources, rms: () => {
+      const samples = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(samples);
+      return Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+    } };
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeGreaterThan(.01);
+  expect(await page.evaluate(() => {
+    const source = (window as any).musicTest.sources[0] as AudioBufferSourceNode;
+    return { loop: source.loop, duration: source.buffer?.duration };
+  })).toMatchObject({ loop: true, duration: 29.84 });
+  await page.evaluate(() => (window as any).musicTest.audio.renderMusic(true, true, 0, 1));
+  await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeLessThan(.001);
+  await page.evaluate(() => (window as any).musicTest.audio.renderMusic(true, true, .4, 1));
+  await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeGreaterThan(.01);
+  await page.evaluate(() => (window as any).musicTest.audio.pause());
+  await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeLessThan(.001);
+  await page.evaluate(() => (window as any).musicTest.audio.renderMusic(true, true, .4, 1.5));
+  await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeGreaterThan(.01);
+  expect(await page.evaluate(() => (window as any).musicTest.sources.at(-1).playbackRate.value)).toBe(1.5);
+  await page.evaluate(() => (window as any).musicTest.audio.renderMusic(false, true, 0, 1));
+  await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeLessThan(.001);
+  await page.evaluate(() => (window as any).musicTest.audio.dispose());
+});
+
 test('canvas playback schedules audible mixed-rate audio, silence and seeks on its shared clock', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await prepareAudio(page);

@@ -5,6 +5,7 @@ import { CanvasMediaDecks, type PlaybackClip, type PlaybackLayer, type PlaybackS
 import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, nextEdge, previewScene, sceneFrames, startSession,
   type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
 import { flowTransition } from './transitions';
+import idleMusicUrl from '../../../assets/working-something-out-loop.wav?url';
 
 /** Scene playback through the shared Mediabunny/GPU renderer and audio clock. */
 export class CanvasFlowPlayback {
@@ -21,6 +22,7 @@ export class CanvasFlowPlayback {
     this.session = startSession(flow);
     this.settings = { volume: primary.volume, muted: primary.muted, speed: primary.playbackRate };
     this.decks = new CanvasMediaDecks(primary, info, matchFraming);
+    this.decks.prepareMusic(idleMusicUrl);
     const tick = () => {
       if (this.disposed) return;
       const elapsed = this.decks.elapsed();
@@ -61,7 +63,8 @@ export class CanvasFlowPlayback {
   private layers(): PlaybackLayer[] {
     const current = this.session, frame = current.frame + this.remainder;
     const currentClip = this.clip(current);
-    const single = [{ ...currentClip, opacity: 1, gain: currentClip.muted ? 0 : 1 }];
+    const single = [{ ...currentClip, opacity: 1, gain: currentClip.muted ? 0 : 1,
+      musicGain: getScene(this.flow, current.sceneId).clip.kind === 'idle' ? 1 : 0 }];
     if (!this.crossfade) return single;
     const previous = current.lastEdgeId ? this.flow.edges.find(edge => edge.id === current.lastEdgeId) : undefined;
     const response = this.flow.interaction.answers.find(answer => answer.id === current.outcome)?.sceneId;
@@ -89,15 +92,18 @@ export class CanvasFlowPlayback {
       const rate = this.flow.fps / fadeFrames;
       const beforeClip = this.clip(before, beforeFrame), afterClip = this.clip(after, afterFrame);
       const mutedBeforeCut = afterClip.muted || transition.before.clip.kind === 'idle' && offset < 0;
-      return [{ ...beforeClip, opacity: 1, gain: beforeClip.muted ? 0 : 1 - weight, gainRate: beforeClip.muted ? 0 : -rate },
+      return [{ ...beforeClip, opacity: 1, gain: beforeClip.muted ? 0 : 1 - weight, gainRate: beforeClip.muted ? 0 : -rate,
+        musicGain: transition.before.clip.kind === 'idle' ? 1 - weight : 0 },
         { ...afterClip, muted: mutedBeforeCut, opacity: weight, gain: mutedBeforeCut ? 0 : weight,
-          gainRate: mutedBeforeCut ? 0 : rate }];
+          gainRate: mutedBeforeCut ? 0 : rate, musicGain: transition.after.clip.kind === 'idle' ? weight : 0 }];
     }
     return single;
   }
   private render() {
     try {
-      this.buffering = !this.decks.render(this.layers(), this.session.playing, this.settings);
+      const layers = this.layers();
+      this.buffering = !this.decks.render(layers, this.session.playing, this.settings,
+        layers.reduce((gain, layer) => gain + (layer.musicGain ?? 0), 0));
       if (!this.session.finished) {
         const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame);
         if (!next.finished) {

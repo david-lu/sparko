@@ -11,8 +11,8 @@ import AnswerEditor from './AnswerEditor';
 import ContinuityBriefEditor from './ContinuityBriefEditor';
 import { ClipStatusBadge, clipStatus } from './ClipStatus';
 
-export default function CallResponsePanel({ value, items, onBack, renderControls, createActions, ...editor }: Omit<InterstitialEditorProps, 'selected'> & {
-  value: FlowTimeline; items: Interstitial[]; onBack: () => void; renderControls: (id: SceneId) => ReactNode; createActions?: ReactNode;
+export default function CallResponsePanel({ value, items, onBack, renderControls, ...editor }: Omit<InterstitialEditorProps, 'selected'> & {
+  value: FlowTimeline; items: Interstitial[]; onBack: () => void; renderControls: (id: SceneId) => ReactNode;
 }) {
   const members = interstitialScenes(value.flow);
   const panels = useRef<HTMLDivElement>(null);
@@ -23,7 +23,6 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
   }, [value.selectedSceneId]);
   return <div className="panel-content interstitial-panel call-response-panel" aria-label="Call Response Interstitial panel">
     <button className="text-button interstitial-back" onClick={onBack}><ArrowLeft size={13} /> All interstitials</button>
-    {createActions}
     <div className="interstitial-title"><InterstitialName key={value.flow.interstitial.id} name={value.flow.interstitial.label} onChange={value.onRenameInterstitial} />
       <button className="icon-button small" aria-label={`Remove ${value.flow.interstitial.label}`} onClick={() => value.onRemoveInterstitial()}><Trash2 size={14} /></button>
     </div>
@@ -39,7 +38,7 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
         <option value="">Keep waiting</option>{value.flow.interaction.answers.map(answer => <option key={answer.id} value={answer.id}>{answer.label}</option>)}
       </select></label>
     </fieldset>
-    <p className="hint">Call → Idle → Responses → Parent video. Idle repeats silently; only its entry and exit crossfade. Each clip appears on the timeline when it finishes generating.</p>
+    <p className="hint">Call → Idle → Responses → Parent video. Draft clips show planned slots on the timeline; generated video replaces each slot when ready. Idle repeats silently; only its entry and exit crossfade.</p>
     <label className="interstitial-option" data-project-edit><input type="checkbox" checked={value.flow.interstitial.linkResponseDurations !== false} onChange={event => value.onChange?.({ ...value.flow, interstitial: { ...value.flow.interstitial, linkResponseDurations: event.target.checked } })} /> Link response durations</label>
     <SequenceControls {...editor} flow={value.flow} items={items} />
     <div className="call-response-subpanels" ref={panels}>

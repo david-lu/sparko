@@ -54,7 +54,6 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
   </div>;
   if (callResponse && renderClipControls && (callResponse.selectedInterstitial || members.some(scene => scene.interstitialId === selectedId || scene.id === callResponse.selectedSceneId))) {
     return <CallResponsePanel value={callResponse} items={items} onBack={() => onSelect(null)} renderControls={renderClipControls}
-      createActions={createActions}
       controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />;
   }
   if (!selected) return <div className="panel-content interstitial-panel">
@@ -96,7 +95,6 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
   </div>;
   return <div className="panel-content interstitial-panel">
     <button className="text-button interstitial-back" onClick={() => onSelect(null)}><ArrowLeft size={13} /> All interstitials</button>
-    {createActions}
     <div className="interstitial-title">
       <InterstitialName key={selected.id} name={selected.label} onChange={name => controller.rename(selected.id, name)} />
       {selected.phase === 'draft' && <span className="interstitial-draft">Draft</span>}
