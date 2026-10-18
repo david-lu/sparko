@@ -5,6 +5,7 @@ import { addAnswer, answerSession, createTimelineExample, editAnswer, previewSce
 import { callResponseSchema } from '../../src/features/call-response/schema';
 import { baselineReferences, clipDependency } from '../../src/features/call-response/dependencies';
 import { createCallResponseDraft } from '../../src/features/call-response/draft';
+import { interstitialSettings } from '../../shared/interstitials';
 
 describe('call-response project persistence', () => {
   it('round-trips multiple draft pins, an inactive variant and short Comfy loop settings', async () => {
@@ -97,5 +98,28 @@ describe('call-response project persistence', () => {
     expect(clipDependency(result.project.callResponse!, result.project.interstitials, 'correct').stale).toBe(false);
     project.callResponse!.scenes[0].clip.outFrame = 0;
     await expect(packProject(project, assets, signal, () => {})).rejects.toThrow();
+  });
+  it('preserves each generation’s own reference settings and generated boundaries', async () => {
+    const assetId = crypto.randomUUID(), { flow, interstitials } = createTimelineExample(assetId, 12);
+    const idle = interstitials.find(item => item.id === 'call-response-wait')!;
+    const response = interstitials.find(item => item.id === 'call-response-correct')!;
+    idle.generationSettings = { ...interstitialSettings(idle), start_range: 2, end_range: 2 };
+    idle.result = { ...idle.result!, start: 0, duration: 2, totalDuration: 2,
+      fullAssetId: assetId, fullRange: { start: 2, duration: 2, totalDuration: 6 } };
+    response.generationSettings = { ...interstitialSettings(response), start_range: 1.625, end_range: 3 };
+    response.result = { ...response.result!, start: 1.625, duration: 4, totalDuration: 6.625 };
+    const project: Project = { id: 'ranges', name: 'Ranges', updatedAt: 0, source: { name: 'source.mp4', assetId },
+      callResponse: flow, interstitials, subtitle: null, analysis: emptyAnalysis() };
+    const signal = new AbortController().signal;
+    const saved = (await unpackProject(await packProject(project,
+      [{ id: assetId, name: 'source.mp4', blob: new Blob(['video bytes'], { type: 'video/mp4' }) }], signal, () => {}), signal, () => {})).project;
+    expect(saved.interstitials.find(item => item.id === idle.id)).toMatchObject({
+      generationSettings: { start_range: 2, end_range: 2 },
+      result: { start: 0, duration: 2, totalDuration: 2, fullRange: { start: 2, duration: 2, totalDuration: 6 } },
+    });
+    expect(saved.interstitials.find(item => item.id === response.id)).toMatchObject({
+      generationSettings: { start_range: 1.625, end_range: 3 },
+      result: { start: 1.625, duration: 4, totalDuration: 6.625 },
+    });
   });
 });

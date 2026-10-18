@@ -7,11 +7,14 @@ import { authenticate } from '../../hosting.js';
 import { HttpError, requireProvider } from '../../shared/http.js';
 import type { Providers } from '../../providers.js';
 
+const motionContinuity = 'Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes.';
+const previousMotionContinuity = 'Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting.';
 const originalVisualContinuity = 'Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps.';
 const backgroundContinuity = 'The background must remain fixed and continuous, with no jumps, shifts, or sudden changes.';
 const particleContinuity = 'Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames.';
 const previousVisualContinuity = `${originalVisualContinuity} ${backgroundContinuity}`;
-const visualContinuity = `${previousVisualContinuity} ${particleContinuity}`;
+const previousExactVisualContinuity = `Keep the same shot, background, framing and character placement. ${previousMotionContinuity} ${backgroundContinuity} ${particleContinuity}`;
+const visualContinuity = `Keep the same shot, background, framing and character placement. ${motionContinuity} ${backgroundContinuity} ${particleContinuity}`;
 export const continuity = `${visualContinuity} English speech only.`;
 const idleSoundContinuity = 'Characters do not talk. Keep everything mostly quiet, with only subtle ambient sound.';
 const previousPerfectLoopContinuity = 'Make this a perfect seamless loop: the first and last frames must match exactly in character pose, framing, background and lighting, with no visible jump when repeated.';
@@ -19,15 +22,20 @@ const perfectLoopContinuity = 'Make this a perfect seamless loop: the first and 
 const idleContinuity = `${visualContinuity} ${idleSoundContinuity} ${perfectLoopContinuity}`;
 const stripContinuity = (prompt: string) => [continuity, idleContinuity,
   `${visualContinuity} ${idleSoundContinuity}`,
+  `${previousExactVisualContinuity} English speech only.`,
+  `${previousExactVisualContinuity} ${idleSoundContinuity} ${perfectLoopContinuity}`,
+  `${previousExactVisualContinuity} ${idleSoundContinuity}`,
   `${previousVisualContinuity} ${idleSoundContinuity} ${previousPerfectLoopContinuity}`,
   `${previousVisualContinuity} ${idleSoundContinuity}`,
   `${previousVisualContinuity} English speech only.`,
   `${originalVisualContinuity} English speech only.`,
   `${originalVisualContinuity} ${idleSoundContinuity}`]
-  .reduce((draft, suffix) => draft.replaceAll(suffix, ''), prompt).trim();
+  .reduce((draft, suffix) => draft.replaceAll(suffix, ''), prompt)
+  .replaceAll(motionContinuity, '').replaceAll(previousMotionContinuity, '').trim();
 const stripSpeechDirections = (prompt: string) => prompt.replace(/\bEnglish speech only\.?/gi, '')
   .replace(/(?:^|\n)\s*Spoken dialogue, verbatim:[^\n]*/gi, '').trim();
-const stripSharedContinuity = (prompt: string) => stripSpeechDirections(prompt.replaceAll(backgroundContinuity, '').replaceAll(particleContinuity, ''));
+const stripSharedContinuity = (prompt: string) => stripSpeechDirections(prompt.replaceAll(motionContinuity, '').replaceAll(previousMotionContinuity, '')
+  .replaceAll(backgroundContinuity, '').replaceAll(particleContinuity, ''));
 const maxRewrite = 600;
 const inputSchema = z.object({
   prompt: z.string().trim().min(1).max(8000),
@@ -81,7 +89,8 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
       const draft = isContinuity ? stripSharedContinuity(result.data.prompt) : stripContinuity(result.data.prompt);
       const prompt = (input.kind === 'idle' && !isContinuity ? stripSpeechDirections(draft) : draft).replace(/\s+/g, ' ').trim();
       if (!prompt) throw new HttpError(502, 'OpenAI returned an empty enhanced prompt. Try again.');
-      return { prompt: isContinuity ? `${prompt} ${backgroundContinuity} ${particleContinuity}` : `${prompt} ${input.kind === 'idle' ? idleContinuity : continuity}`, model: AI_MODELS.promptEnhancement };
+      return { prompt: isContinuity ? `${prompt} ${motionContinuity} ${backgroundContinuity} ${particleContinuity}`
+        : `${prompt} ${input.kind === 'idle' ? idleContinuity : continuity}`, model: AI_MODELS.promptEnhancement };
     } catch (error) {
       if (error instanceof HttpError) throw error;
       if (input.signal.aborted) throw new HttpError(504, 'Prompt enhancement timed out or was cancelled. Try again.');

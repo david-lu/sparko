@@ -39,7 +39,10 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
   const box = (id: SceneId) => ({ x: layout.starts[id] * unit, width: sceneFrames(getScene(flow, id)) * unit });
   const renderClip = (scene: TimelineScene, offset = 0) => {
       const bounds = box(scene.id), active = session?.sceneId === scene.id, idle = scene.clip.kind === 'idle';
-      const url = assets.url(scene.clip.assetId);
+      const fullIdle = idle && scene.generated?.fullAssetId && scene.generated.fullRange;
+      const url = assets.url(fullIdle ? scene.generated!.fullAssetId! : scene.clip.assetId);
+      const filmstripStart = fullIdle ? scene.generated!.fullRange!.start : scene.clip.inFrame / flow.fps;
+      const filmstripEnd = fullIdle ? filmstripStart + scene.generated!.fullRange!.duration : scene.clip.outFrame / flow.fps;
       const item = items.find(item => item.id === scene.interstitialId);
       const busy = item && isGenerating(item);
       const stale = !!scene.interstitialId && !!value.staleClipIds?.has(scene.interstitialId);
@@ -59,7 +62,7 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
           const rect = event.currentTarget.getBoundingClientRect();
           value.onSelectScene(scene.id, event.detail === 0 ? 0 : Math.floor((event.clientX - rect.left) / rect.width * sceneFrames(scene)));
         }} aria-description={stale ? 'Stale: upstream video changed. Regenerate this clip to match.' : undefined} aria-pressed={value.selectedSceneId === scene.id}>
-          {url ? <VideoFilmstrip url={url} start={scene.clip.inFrame / flow.fps} end={scene.clip.outFrame / flow.fps} /> : <ClipLoading failed={!busy} message={busy ? phaseLabel(item) : 'Clip media unavailable'} />}
+          {url ? <VideoFilmstrip url={url} start={filmstripStart} end={filmstripEnd} /> : <ClipLoading failed={!busy} message={busy ? phaseLabel(item) : 'Clip media unavailable'} />}
           {url && busy && <ClipJobStatus label={scene.label} message={phaseLabel(item)} />}
           {stale && <span className="flow-clip-stale" title="Upstream video changed. Regenerate this clip to match.">Stale</span>}
           <span className={`timeline-clip-label ${scene.clip.kind !== 'video' ? 'flow-clip-type' : ''}`}>

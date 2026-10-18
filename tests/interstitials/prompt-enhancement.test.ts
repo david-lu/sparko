@@ -13,6 +13,7 @@ vi.mock('openai', async importOriginal => ({
 }));
 const input: EnhancePromptInput = { prompt: 'She asks, "What is 2 + 2?"', kind: 'call', duration: 6,
   referenceFrames: ['data:image/jpeg;base64,YQ=='], signal: new AbortController().signal };
+const motionContinuity = 'Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes.';
 beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
 
@@ -25,6 +26,7 @@ describe('interstitial prompt enhancement', () => {
     expect(result.prompt.endsWith(continuity)).toBe(true);
     expect(result.prompt).toContain('The background must remain fixed and continuous, with no jumps, shifts, or sudden changes.');
     expect(result.prompt).toContain('Particle effects, if present, must remain continuous with no jumps');
+    expect(result.prompt).toContain(motionContinuity);
     expect(result.prompt.length).toBeLessThanOrEqual(600 + 1 + continuity.length);
     expect(result.prompt).not.toContain('\n');
     const [options, requestOptions] = respond.mock.calls[0];
@@ -83,6 +85,7 @@ describe('interstitial prompt enhancement', () => {
     for (const kind of kinds) results.push(await enhancer({ ...input, kind, prompt: 'Quiet motion. English speech only.',
       continuity: 'Keep the same scene. English speech only.', dialogue: 'Speak now.' }));
     const instructions = respond.mock.calls.map(([options]) => options.instructions);
+    for (const result of results) expect(result.prompt.split(motionContinuity)).toHaveLength(2);
     expect(new Set(instructions).size).toBe(4);
     expect(instructions[0]).toContain('For a regular interstitial');
     expect(instructions[1]).toContain('For a Call clip');
@@ -101,6 +104,11 @@ describe('interstitial prompt enhancement', () => {
     const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: `A small gesture. ${previous}` });
     expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).draft).toBe('A small gesture.');
     expect(result.prompt).toBe(`A small gesture. ${continuity}`);
+    const lastWording = 'Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. English speech only.';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'A small gesture.' }) });
+    const updated = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: `A small gesture. ${lastWording}` });
+    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).draft).toBe('A small gesture.');
+    expect(updated.prompt).toBe(`A small gesture. ${continuity}`);
   });
   it('enhances a shared continuity brief without treating it as a clip action or appending another brief', async () => {
     const brief = 'Preserve the same character, framing and lighting.';
@@ -113,7 +121,7 @@ describe('interstitial prompt enhancement', () => {
     expect(options.instructions).toContain('particle effects must also move continuously without jumps');
     expect(options.instructions).toContain('Do not add stage-specific actions');
     expect(options.input[0].content[1].image_url).toBe(input.referenceFrames[0]);
-    expect(result.prompt).toBe(`${brief} The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames.`);
+    expect(result.prompt).toBe(`${brief} ${motionContinuity} The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames.`);
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: result.prompt }) });
     const repeated = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, target: 'continuity', prompt: result.prompt });
     expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).draft).toBe(brief);

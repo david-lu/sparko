@@ -106,10 +106,10 @@ describe('canvas flow playback', () => {
     expect(layers()[0].time).toBeGreaterThanOrEqual(2);
     player.dispose();
   });
-  it('uses the original Idle body and reference sections for fades and repeats', () => {
+  it('aligns the saved Idle body and Response prefix at their fade', () => {
     const flow = flowWithReferences(), idle = getScene(flow, 'wait');
     idle.generated = { ...idle.generated!, fullAssetId: 'mock:idle-full',
-      fullRange: { start: 2, duration: 2.5, totalDuration: 6.5 } };
+      fullRange: { start: 2, duration: 2, totalDuration: 6 } };
     expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'call-wait')!)).toMatchObject({ startFrame: -4, frames: 4 });
     expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!)).toMatchObject({ startFrame: -4, frames: 4 });
     const player = makePlayer(flow);
@@ -125,8 +125,8 @@ describe('canvas flow playback', () => {
     expect(layers()[0].source.id).toBe('mock:idle-full');
     player.seekScene('wait', 46); player.branch('wait', 'correct'); player.pause();
     expect(layers()).toHaveLength(2);
-    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: true });
-    expect(layers()[0].time).toBeCloseTo(6.5 - 2 / 24);
+    expect(layers()[0]).toMatchObject({ key: 'wait:0:body', source: { id: 'mock:idle-full' }, muted: true });
+    expect(layers()[0].time).toBeCloseTo(2 + 2 - 2 / 24);
     expect(layers()[1].source.id).toBe('mock:correct');
     expect(layers()[1].time).toBeCloseTo(2 - 2 / 24);
     player.play(); advance();
@@ -157,7 +157,8 @@ describe('canvas flow playback', () => {
     expect(layers()[0]).toMatchObject({ key: 'wait:0:body', source: { id: 'mock:idle-full' }, muted: false, time: 3 });
     expect(layers()[0].audio).toBeUndefined();
     player.seekScene('wait', 46); player.branch('wait', 'correct'); player.pause();
-    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: false, time: 6 - 2 / 24 });
+    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: false });
+    expect(layers()[0].time).toBeCloseTo(4 - 2 / 24);
     player.seekScene('wait', 24);
     const session = { ...player.session };
     idle.loopAudio = false; player.setFlow({ ...flow, scenes: [...flow.scenes] });
@@ -166,21 +167,40 @@ describe('canvas flow playback', () => {
     expect(layers()[0].audio).toBeUndefined();
     player.dispose();
   });
-  it('starts a late answer fade when the answer is chosen and holds an opening frame without lead-in', () => {
+  it('does not fade into a Response with no saved prefix range', () => {
     const flow = flowWithReferences(), response = getScene(flow, 'incorrect');
     response.generated = { ...response.generated!, start: 0 };
     const player = makePlayer(flow); player.seekScene('wait', 46);
     player.branch('wait', 'incorrect');
-    expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['wait', 'incorrect']);
-    expect(layers()[1]).toMatchObject({ opacity: 0, time: 0, muted: true });
+    expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-incorrect')!)).toBeUndefined();
+    expect(layers()).toHaveLength(1);
     advance();
     expect(player.session).toMatchObject({ sceneId: 'wait', frame: 47 });
-    expect(layers()[1]).toMatchObject({ time: 0, muted: true });
-    expect(layers()[1].opacity).toBeGreaterThan(0);
+    expect(layers()).toHaveLength(1);
     advance();
     expect(player.session.sceneId).toBe('incorrect');
     expect(layers()).toHaveLength(1);
     expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1, muted: false });
+    player.dispose();
+  });
+  it('caps an Idle to Response fade by that Response generation’s saved prefix', () => {
+    const flow = flowWithReferences(), idle = getScene(flow, 'wait'), response = getScene(flow, 'correct');
+    idle.generated = { ...idle.generated!, fullAssetId: 'mock:idle-full',
+      fullRange: { start: 2, duration: 2, totalDuration: 8 } };
+    response.generated = { ...response.generated!, start: 3 / 24,
+      reference: { before: { sceneId: idle.id, assetId: idle.clip.assetId, inFrame: idle.clip.inFrame, outFrame: idle.clip.outFrame } } };
+    const edge = flow.edges.find(edge => edge.id === 'wait-correct')!;
+    expect(flowTransition(flow, edge, 12)).toMatchObject({ startFrame: -3, frames: 3 });
+    const player = makePlayer(flow); player.setCrossfade(true, 12);
+    player.seekScene('wait', 44); player.branch('wait', 'correct'); player.pause();
+    expect(layers()).toHaveLength(1);
+    player.seekScene('wait', 45); player.branch('wait', 'correct'); player.pause();
+    expect(layers()).toHaveLength(2);
+    expect(layers()[0]).toMatchObject({ key: 'wait:0:body', source: { id: 'mock:idle-full' } });
+    expect(layers()[0].time).toBeCloseTo(2 + 45 / 24);
+    expect(layers()[1]).toMatchObject({ source: { id: 'mock:correct' }, time: 0 });
+    response.generated.reference!.before.assetId = 'mock:other-idle';
+    expect(flowTransition(flow, edge, 12)).toBeUndefined();
     player.dispose();
   });
   it('changes fade length in place for both automatic cuts and responses, retaining it when toggled', () => {

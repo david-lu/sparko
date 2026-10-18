@@ -80,12 +80,9 @@ export class CanvasFlowPlayback {
       if (weight < 0 || weight >= 1) continue;
       const before = { ...current, sceneId: transition.before.id, visit: entering ? Math.max(0, current.visit - 1) : current.visit };
       const after = { ...current, sceneId: transition.after.id, visit: entering ? current.visit : current.visit + 1 };
-      // Use Idle's original reference frames at entry and exit; unbranched repeats keep the loop body.
-      const idleSuffix = transition.before.clip.kind === 'idle' && transition.before.generated?.fullRange;
-      const suffixFrames = idleSuffix ? Math.floor((idleSuffix.totalDuration - idleSuffix.start - idleSuffix.duration) * this.flow.fps + 1e-6) : 0;
-      const beforeFrame = idleSuffix && offset < 0 ? sceneFrames(transition.before) + suffixFrames + offset
-        : transition.before.clip.kind === 'idle' && offset >= 0 && !idleSuffix ? sceneFrames(transition.before) - 1
-          : sceneFrames(transition.before) + offset;
+      // Match the tail of Idle's body to the saved prefix of this Response.
+      const beforeFrame = transition.before.clip.kind === 'idle' && offset >= 0 && !transition.before.generated?.fullRange
+        ? sceneFrames(transition.before) - 1 : sceneFrames(transition.before) + offset;
       const afterFrame = transition.after.clip.kind === 'idle' && offset < 0 && !transition.after.generated?.fullRange ? 0
         : transition.before.clip.kind === 'idle' && offset < 0
           ? Math.max(offset, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6)) : offset;
@@ -109,11 +106,6 @@ export class CanvasFlowPlayback {
             ? Math.max(transition.startFrame, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6))
             : transition?.startFrame ?? 0;
           this.decks.prepare(this.clip(next, prepareFrame));
-          const suffix = transition?.before.clip.kind === 'idle' && transition.before.generated?.fullRange;
-          if (transition && suffix) {
-            const frames = Math.floor((suffix.totalDuration - suffix.start - suffix.duration) * this.flow.fps + 1e-6);
-            this.decks.prepare(this.clip(this.session, sceneFrames(transition.before) + frames - transition.frames));
-          }
         }
       }
       this.changed(this.session, this.buffering);

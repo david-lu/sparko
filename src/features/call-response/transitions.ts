@@ -22,10 +22,15 @@ function idleTransition(flow: CallResponseFlow, edge: FlowEdge, requestedFrames:
   const enteringIdle = after.clip.kind === 'idle' && (before.clip.kind === 'call' || before.clip.kind === 'response');
   const leavingIdle = before.clip.kind === 'idle' && (after.clip.kind === 'call' || after.clip.kind === 'response');
   if (!enteringIdle && !leavingIdle) return;
-  const idle = enteringIdle ? after : before, full = idle.generated?.fullAssetId && idle.generated.fullRange;
-  const contextFrames = !full ? Infinity : Math.floor((enteringIdle ? full.start : full.totalDuration - full.start - full.duration) * flow.fps + 1e-6);
+  // The Response was generated from the end of Idle's body. Its own saved
+  // prefix length, not Idle's unrelated loop suffix, bounds this overlap.
+  const submittedIdle = leavingIdle && after.generated.reference?.before;
+  if (submittedIdle && (submittedIdle.assetId !== before.clip.assetId || submittedIdle.outFrame !== before.clip.outFrame)) return;
+  const idlePrefix = after.clip.kind === 'idle' && after.generated.fullAssetId && after.generated.fullRange;
+  const contextFrames = enteringIdle ? idlePrefix ? Math.floor(idlePrefix.start * flow.fps + 1e-6) : Infinity
+    : Math.floor(after.generated.start * flow.fps + 1e-6);
   const frames = Math.max(0, Math.min(Math.floor(requestedFrames), sceneFrames(before), sceneFrames(after), contextFrames));
-  // Both fades finish at their cut. Idle's ending reference plays over the last Idle frames on exit.
+  // Both fades finish at their cut; Idle repeats do not fade.
   return frames ? { before, after, startFrame: -frames, frames } : undefined;
 }
 

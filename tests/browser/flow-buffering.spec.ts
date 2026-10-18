@@ -130,14 +130,14 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
   await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 23); p.branch('wait', 'incorrect'); p.pause(); });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await blend()).layers).toMatchObject([
-    { clip: 'wait:0:reference', muted: true, opacity: 1 },
+    { clip: 'wait:0:body', muted: true, opacity: 1 },
     { clip: 'incorrect:1:body', muted: true, opacity: 0 },
   ]);
   await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 22); p.branch('wait', 'incorrect'); p.pause(); });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   const idleExit = await page.evaluate(() => (window as any).flowBufferTest.playback.playback.decks.layers.map((layer: { key: string; time: number }) => ({ key: layer.key, time: layer.time })));
-  expect(idleExit[0]).toMatchObject({ key: 'wait:0:reference' });
-  expect(idleExit[0].time).toBeCloseTo(2 - 2 / 24);
+  expect(idleExit[0]).toMatchObject({ key: 'wait:0:body' });
+  expect(idleExit[0].time).toBeCloseTo(.5 + 1 - 2 / 24);
   expect(idleExit[1].time).toBeCloseTo(.5 - 2 / 24);
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('incorrect', 0));
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
