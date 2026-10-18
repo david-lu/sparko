@@ -5,11 +5,73 @@ const clip = (page: Page, id: string) => page.locator(`.timeline-flow-clip[data-
 const video = (page: Page) => page.locator('.video-stage > video').first();
 const selectedEditor = (page: Page) => page.locator('.clip-subpanel.selected, .sidebar > .call-response-controls');
 const branchButton = (page: Page, outcome: string) => page.locator('.video-stage').getByRole('button', { name: `Choose ${outcome === 'correct' ? 'A' : outcome === 'incorrect' ? 'B' : outcome}`, exact: true });
+
+test('the crossfade option uses saved reference overlaps and draws their exact timeline spans', async ({ page }) => {
+  await openExample(page, undefined, false, true);
+  const marks = page.getByRole('img', { name: /^Crossfade:/ });
+  await expect(marks).toHaveCount(3);
+  await expect(marks.first()).toHaveAttribute('title', /4 frames \(0\.17 s\)/);
+  const seekEntryFade = async () => {
+    const bounds = (await clip(page, 'intro').boundingBox())!;
+    await clip(page, 'intro').locator('.flow-clip-body').click({ position: { x: bounds.width * 46.5 / 48, y: 5 } });
+  };
+  await seekEntryFade();
+  await expect(page.locator('.buffering')).toHaveCount(0);
+  const visible = () => page.locator('.playback-canvas').evaluate(canvas => Number((canvas as HTMLCanvasElement).dataset.layerCount));
+  await expect.poll(visible).toBe(2);
+  await page.getByText('Options', { exact: true }).click();
+  const toggle = page.getByRole('menuitemcheckbox', { name: /Interstitial crossfades/ });
+  const length = page.getByRole('slider', { name: 'Crossfade length', exact: true });
+  await expect(length).toHaveAttribute('aria-valuetext', '0.17 seconds');
+  await length.fill('12');
+  await expect(length).toHaveAttribute('aria-valuetext', '0.50 seconds');
+  for (const mark of await marks.all()) await expect(mark).toHaveAttribute('title', /12 frames \(0\.50 s\)/);
+  await expect(clip(page, 'intro')).toHaveAttribute('data-active', 'true');
+  const exactMark = async (frames: number) => {
+    const source = (await clip(page, 'intro').boundingBox())!, mark = (await marks.first().boundingBox())!;
+    expect(mark.width).toBeCloseTo(source.width / 48 * frames, 1);
+    expect(mark.x + mark.width).toBeCloseTo(source.x + source.width, 1);
+    expect(mark.x).toBeCloseTo(source.x + source.width - source.width / 48 * frames, 1);
+  };
+  await exactMark(12);
+  await length.fill('48');
+  await expect(marks.first()).toHaveAttribute('title', /12 frames \(0\.50 s\)/);
+  await exactMark(12); // Saved prefix is only half a second, regardless of the option.
+  await length.fill('2'); await exactMark(2); // No minimum pixel width.
+  await length.fill('12');
+  const framing = page.getByRole('menuitemcheckbox', { name: 'Match generated framing' });
+  const beforeToggle = await framing.boundingBox();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(length).toBeDisabled();
+  expect(await framing.boundingBox()).toEqual(beforeToggle);
+  await expect(marks).toHaveCount(0); await expect.poll(visible).toBe(1);
+  await expect(clip(page, 'intro')).toHaveAttribute('data-active', 'true');
+  await toggle.click();
+  await expect(marks).toHaveCount(3); await expect.poll(visible).toBe(2);
+  await expect(clip(page, 'intro')).toHaveAttribute('data-active', 'true');
+  await reloadWorkingProject(page);
+  await page.getByText('Options', { exact: true }).click();
+  await expect(length).toHaveValue('12');
+  await expect(length).toHaveAttribute('aria-valuetext', '0.50 seconds');
+  await expect(marks.first()).toHaveAttribute('title', /12 frames \(0\.50 s\)/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(length).toBeInViewport();
+  const mobileBounds = await framing.boundingBox();
+  await toggle.click();
+  expect(await framing.boundingBox()).toEqual(mobileBounds);
+  await toggle.click();
+  await length.focus(); await page.keyboard.press('ArrowRight');
+  await expect(length).toHaveValue('14');
+  await expect(video(page)).toHaveJSProperty('paused', true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.screenshot({ path: 'test-results-native-playback/crossfade-options-mobile.png' });
+});
 async function selectIdle(page: Page) {
   await clip(page, 'wait').getByRole('button', { name: 'Select clip Idle · waiting for an answer', exact: true }).focus();
   await page.keyboard.press('Enter');
 }
-async function openExample(page: Page, prepare?: () => Promise<void>, generation = false) {
+async function openExample(page: Page, prepare?: () => Promise<void>, generation = false, references = false) {
   await page.route('**/api/status', route => route.fulfill({ json: {
     uploadMode: 'local', requiresPassword: false, providers: { openai: false, gemini: false, fal: generation, comfy: false },
     models: { openai: 'mock', gemini: 'mock', fal: 'mock' },
@@ -20,16 +82,25 @@ async function openExample(page: Page, prepare?: () => Promise<void>, generation
   await page.getByRole('button', { name: /Sample video/ }).click();
   await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
   await prepare?.();
-  const duration = await video(page).evaluate(element => (element as HTMLVideoElement).duration);
-  await page.evaluate(async duration => {
+  const duration = await page.evaluate(async () => {
+    const { readActiveProject } = await import('/src/features/project/database.ts' as string);
+    const { assets } = await import('/src/features/project/assets.ts' as string);
+    const { inspectMedia } = await import('/src/media/media.ts' as string);
+    const project = await readActiveProject(), { url } = await assets.open(project.source.assetId);
+    return (await inspectMedia({ id: project.id, name: project.source.name, url })).duration;
+  });
+  await page.evaluate(async ({ duration, references }) => {
     const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
     const { createTimelineExample } = await import('/src/features/call-response/model.ts' as string);
     const current = await readActiveProject();
     const example = createTimelineExample(current.source.assetId, duration);
+    if (references) for (const item of example.interstitials) {
+      item.result = { ...item.result, start: .5, duration: 1, totalDuration: 2 };
+    }
     await writeProject({ ...current, id: `project:${crypto.randomUUID()}`, name: 'Test call response',
       saved: true, updatedAt: Date.now(), interstitials: example.interstitials,
       callResponse: example.flow, callResponses: [example.flow], subtitle: null });
-  }, duration);
+  }, { duration, references });
   await page.reload();
   const example = page.getByRole('region', { name: 'Recent projects' }).locator('.project-start-row').filter({ hasText: 'Test call response' });
   await example.getByRole('button', { name: 'Open' }).click();

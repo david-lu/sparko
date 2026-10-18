@@ -4,7 +4,7 @@ import CallResponseControls from '../features/call-response/CallResponseControls
 import { addAnswer, branchScenes, interstitialScenes, resolveFlow, type SceneId } from '../features/call-response/model';
 import type { FlowTimeline } from '../features/timeline/FlowTracks';
 import Player from '../features/player/Player';
-import PlaybackOptions, { crossfadePreference, savedCrossfadePreference, framingPreference, savedFramingPreference } from '../features/player/PlaybackOptions';
+import PlaybackOptions, { crossfadePreference, savedCrossfadePreference, crossfadeLengthPreference, savedCrossfadeFrames, framingPreference, savedFramingPreference } from '../features/player/PlaybackOptions';
 import InterstitialPanel from '../features/interstitials/InterstitialPanel';
 import { InterstitialController } from '../features/interstitials/InterstitialController';
 import { ProjectController } from '../features/project/ProjectController';
@@ -58,6 +58,8 @@ export default function App() {
   const [closePrompt, setClosePrompt] = useState(false);
   const [crossfade, setCrossfade] = useState(savedCrossfadePreference);
   useEffect(() => { try { localStorage.setItem(crossfadePreference, String(crossfade)); } catch { /* Apply without persistence. */ } }, [crossfade]);
+  const [crossfadeFrames, setCrossfadeFrames] = useState(savedCrossfadeFrames);
+  useEffect(() => { try { localStorage.setItem(crossfadeLengthPreference, String(crossfadeFrames)); } catch { /* Apply without persistence. */ } }, [crossfadeFrames]);
   const [matchFraming, setMatchFraming] = useState(savedFramingPreference);
   useEffect(() => { try { localStorage.setItem(framingPreference, String(matchFraming)); } catch { /* Apply without persistence. */ } }, [matchFraming]);
   const [selectedFlowScene, setSelectedFlowScene] = useState<SceneId | null>(null);
@@ -94,8 +96,8 @@ export default function App() {
     return !!(item && playableResult(item)?.assetId);
   })), [savedFlows, readyKey]);
   const flow = useMemo(() => info && source.assetId ? composeFlows(playableFlows, interstitialState.items, source.assetId, info.duration) : undefined, [playableFlows, readyKey, info, source.assetId]);
-  const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, matchFraming }) : null, [source, info, readyKey, crossfade, matchFraming]);
-  useEffect(() => { if (!projectState.source) return; if (flow && info) controller.setFlow(flow, info, matchFraming); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming, projectState.source]);
+  const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, crossfadeFrames, matchFraming }) : null, [source, info, readyKey, crossfade, crossfadeFrames, matchFraming]);
+  useEffect(() => { if (!projectState.source) return; if (flow && info) controller.setFlow(flow, info, matchFraming, crossfade, crossfadeFrames); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming, crossfade, crossfadeFrames, projectState.source]);
   useEffect(() => {
     controller.pause(); setSelectedFlowScene(null); setSelectedFlowEdge(null);
   }, [controller, projectState.historyRevision]);
@@ -255,7 +257,7 @@ export default function App() {
   });
   const playableGroupTimelines = groupTimelines.filter(group => playableFlows.some(ready => ready.interstitial.id === group.flow.interstitial.id));
   const groupForScene = (id: string) => groupTimelines.find(group => group.flow.interstitial.id === flow?.scenes.find(scene => scene.id === id)?.groupId) ?? groupTimelines[0];
-  const flowTimeline: FlowTimeline | undefined = flow && playableGroupTimelines.length ? { ...playableGroupTimelines[0], flow, groups: playableGroupTimelines, session: player.flow,
+  const flowTimeline: FlowTimeline | undefined = flow && playableGroupTimelines.length ? { ...playableGroupTimelines[0], flow, groups: playableGroupTimelines, session: player.flow, crossfade, crossfadeFrames,
     selectedSceneId: selectedRuntimeScene ?? null, selectedEdgeId: selectedFlowEdge,
     onSelectInterstitial: id => groupTimelines.find(group => group.flow.interstitial.id === (id ?? flow.interstitial.id))?.onSelectInterstitial(),
     onRemoveInterstitial: id => removeInterstitial(id ?? flow.interstitial.id),
@@ -289,7 +291,7 @@ export default function App() {
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void saveAsFile(); }}><Save size={14} />Save as new file</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>
-      <PlaybackOptions crossfade={crossfade} onCrossfade={setCrossfade} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
+      <PlaybackOptions crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={setCrossfadeFrames} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
       <div className="history-controls" role="group" aria-label="Edit history">
         <button className="icon-button small" aria-label="Undo" aria-keyshortcuts="Control+Z Meta+Z" title={`${projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo'} (Ctrl/Cmd+Z)`}
           disabled={projectState.busy || !projectState.undoLabel} onClick={() => { controller.pause(); void projects.undo(); }}><Undo2 size={14} /></button>

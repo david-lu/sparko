@@ -57,7 +57,7 @@ export function composeFlows(flows: CallResponseFlow[], items: Interstitial[], a
       cursor += Math.max(0, ...branches.map(sceneFrames));
     } else {
       const item = event.item!, result = playableResult(item), id = `regular:${item.id}`;
-      add({ id, interstitialId: item.id, label: item.label, role: 'source', dialogue: '', draft: !result,
+      add({ id, interstitialId: item.id, label: item.label, role: 'source', dialogue: '', draft: !result, generated: result,
         sourceTime: item.time, plannedFrames: Math.round(item.duration * fps), clip: { id, kind: 'video', assetId: result?.assetId ?? assetId,
           inFrame: result ? Math.round(result.start * fps) : Math.max(0, Math.round(item.time * fps) - 1),
           outFrame: result ? Math.round((result.start + result.duration) * fps) : Math.max(1, Math.round(item.time * fps)) } });

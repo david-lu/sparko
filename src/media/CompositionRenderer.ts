@@ -10,7 +10,7 @@ import { generatedClipFit } from './videoFraming';
 type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
 
 /** Encodes one continuous frame/sample clock, including across different source assets. */
-export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & { crossfade?: boolean; matchFraming?: boolean }, output: Output, options: Options) {
+export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean }, output: Output, options: Options) {
   await ensureAac();
   options.signal.throwIfAborted();
   const scale = Math.min(1, (options.preview ? 720 : 1080) / composition.info.height);
@@ -22,7 +22,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
   const video = new CanvasSource(canvas, { codec: 'avc', ...(options.preview ? { fullCodecString: 'avc1.42002a' } : {}), quality: new Quality('medium'), keyFrameInterval: 1, latencyMode: 'quality' });
   const audio = new AudioSampleSource({ codec: 'aac', quality: new Quality('medium') });
   const audioWriter = new CompositionAudioWriter(async sample => { options.signal.throwIfAborted(); await audio.add(sample); });
-  const transitions = composition.crossfade === false ? [] : compositionTransitions(composition.segments);
+  const transitions = composition.crossfade === false ? [] : compositionTransitions(composition.segments, composition.crossfadeFrames, composition.fps);
   const normalizedAudio = new AudioNormalizer(async sample => {
     options.signal.throwIfAborted();
     const offset = Math.round(sample.timestamp * COMPOSITION_AUDIO_RATE);

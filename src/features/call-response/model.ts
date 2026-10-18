@@ -1,4 +1,4 @@
-import { playableResult, type CallResponseInterstitial, type Interstitial } from '../../../shared/interstitials';
+import { playableResult, type CallResponseInterstitial, type Interstitial, type InterstitialResult } from '../../../shared/interstitials';
 /** Clip types and connections shared by the project, timeline and video player. */
 export type SceneId = string;
 /** Stable answer IDs, independent of the text displayed to the user. */
@@ -23,6 +23,8 @@ export type TimelineScene = {
   groupId?: string;
   localId?: string;
   sourceTime?: number;
+  /** Runtime render bounds, restored from the playable result when opening a project. */
+  generated?: InterstitialResult;
 };
 export type FlowEdge = {
   id: string;
@@ -307,9 +309,9 @@ export function resolveFlow(flow: CallResponseFlow, interstitials: Interstitial[
   const scenes = flow.scenes.map(scene => {
     if (!scene.interstitialId) return scene;
     const item = interstitials.find(item => item.id === scene.interstitialId), result = item && playableResult(item);
-    return result?.assetId ? { ...scene, draft: false, label: item!.label, dialogue: item!.dialogue ?? scene.dialogue, clip: { ...scene.clip, assetId: result.assetId,
+    return result?.assetId ? { ...scene, generated: result, draft: false, label: item!.label, dialogue: item!.dialogue ?? scene.dialogue, clip: { ...scene.clip, assetId: result.assetId,
       inFrame: Math.round(result.start * flow.fps), outFrame: Math.round((result.start + result.duration) * flow.fps) } }
-      : item ? { ...scene, draft: true, plannedFrames: Math.max(1, Math.round(item.duration * flow.fps)), dialogue: item.dialogue ?? scene.dialogue } : scene;
+      : item ? { ...scene, generated: undefined, draft: true, plannedFrames: Math.max(1, Math.round(item.duration * flow.fps)), dialogue: item.dialogue ?? scene.dialogue } : scene;
   });
   for (const scene of scenes.filter(scene => scene.draft)) {
     const before = scenes.find(previous => previous.id === (scene.id === 'call' ? 'intro' : scene.id === 'wait' ? 'call' : 'wait'));

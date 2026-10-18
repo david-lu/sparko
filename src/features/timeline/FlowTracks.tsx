@@ -5,6 +5,8 @@ import { assets } from '../project/assets';
 import { answerLabel, branchScenes, clipTypeLabel, flowLayout, getScene, interstitialScenes, sceneFrames, type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId, type TimelineScene } from '../call-response/model';
 import VideoFilmstrip from './VideoFilmstrip';
 import './flow.css';
+import './crossfades.css';
+import { flowTransition } from '../call-response/transitions';
 import { isGenerating, type Interstitial } from '../../../shared/interstitials';
 import { phaseLabel } from '../interstitials/status';
 import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
@@ -16,6 +18,8 @@ export type FlowTimeline = {
   selectedEdgeId: string | null;
   selectedInterstitial: boolean;
   staleClipIds?: ReadonlySet<string>;
+  crossfade?: boolean;
+  crossfadeFrames?: number;
   onSelectInterstitial: (id?: string) => void;
   onRemoveInterstitial: (id?: string) => void;
   onRenameInterstitial: (name: string) => void;
@@ -54,6 +58,14 @@ export default function FlowTracks({ value, width, items = [] }: { value: FlowTi
             <span>{scene.clip.kind === 'video' ? scene.label : clipTypeLabel(scene.clip, flow)}{scene.draft ? ' · Draft' : ''}</span>
           </span>
         </button>
+        {value.crossfade !== false && outputs.map((edge, index) => {
+          const transition = flowTransition(flow, edge, value.crossfadeFrames); if (!transition) return null;
+          const label = `Crossfade: ${scene.label} to ${transition.after.label}, ${transition.frames} frames (${(transition.frames / flow.fps).toFixed(2)} s)`;
+          return <span key={edge.id} className="timeline-crossfade flow-crossfade" role="img" aria-label={label} title={label}
+            style={{ left: bounds.width + (transition.startFrame + transition.frames / 2) * unit, width: transition.frames * unit, top: `${index / outputs.length * 100}%`, height: `${100 / outputs.length}%` }}>
+            <svg viewBox="0 0 20 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0L20 60H0Z" /><path d="M20 0L0 60H20Z" /><path className="crossfade-lines" d="M0 0L20 60M20 0L0 60" /></svg>
+          </span>;
+        })}
         {flow.edges.filter(edge => edge.from === scene.id).map(edge => <button key={edge.id}
           className={`timeline-flow-edge flow-output-port ${edge.when === 'pending' ? 'flow-repeat-port' : ''} ${value.selectedEdgeId === edge.id ? 'selected' : ''}`}
           aria-label={edge.when === 'pending' ? `Inspect repeat from ${scene.label}` : `Inspect ${answerLabel(flow, edge.when)} from ${scene.label}`}

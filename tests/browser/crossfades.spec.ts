@@ -25,9 +25,9 @@ test('crossfades blend video and mixed-rate audio in exports, previews and parti
     };
     const sourceUrl = await fixture('#ee0000', 48000, 440, 3), generatedUrl = await fixture('#00ee00', 32000, 880, 4);
     const results = [];
-    try { for (const mode of ['export', 'preview', 'disabled', 'partial']) {
+    try { for (const mode of ['export', 'preview', 'disabled', 'partial', 'long']) {
       const composition = new TimelineComposition({ id: 'source', name: 'Source', url: sourceUrl }, { duration: 3, fps: 24, width: 160, height: 96, hasAudio: true, codec: 'avc' },
-        [{ id: 'generated', label: 'Generated', time: 1, phase: 'ready', result: { url: generatedUrl, start: 1, duration: 2, totalDuration: 4 } }], { crossfade: mode !== 'disabled' });
+        [{ id: 'generated', label: 'Generated', time: 1, phase: 'ready', result: { url: generatedUrl, start: 1, duration: 2, totalDuration: 4 } }], { crossfade: mode !== 'disabled', crossfadeFrames: mode === 'long' ? 12 : undefined });
       const start = mode === 'partial' ? 23 / 24 : 0, end = mode === 'partial' ? 26 / 24 : composition.duration;
       const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
       try { await renderComposition(composition, output, { start, end, signal: new AbortController().signal, preview: mode === 'preview' }); }
@@ -36,7 +36,7 @@ test('crossfades blend video and mixed-rate audio in exports, previews and parti
       try {
         const video = await input.getPrimaryVideoTrack(), audio = await input.getPrimaryAudioTrack();
         const sink = new CanvasSink(video, { width: 1, height: 1, fit: 'fill' });
-        const frames = mode === 'partial' ? [23, 24, 25] : [12, 21, 22, 23, 24, 25, 26, 48, 69, 70, 71, 72, 73, 74, 96];
+        const frames = mode === 'partial' ? [23, 24, 25] : [12, 16, 21, 22, 23, 24, 25, 26, 48, 69, 70, 71, 72, 73, 74, 75, 76, 96];
         const colors = [];
         for (const frame of frames) { const sample = await sink.getCanvas(frame / 24 - start + 1e-7); colors.push([...sample.canvas.getContext('2d').getImageData(0, 0, 1, 1).data]); }
         const rate = await audio.getSampleRate(), data = new Float32Array(Math.ceil((end - start + .1) * rate));
@@ -55,7 +55,9 @@ test('crossfades blend video and mixed-rate audio in exports, previews and parti
         };
         results.push({ mode, colors, frames, duration: await video.computeDuration(), packets: (await video.computePacketStats()).packetCount, rate,
           audioDuration: await audio.computeDuration(), maxGap,
-          incomingBeforeCut: mode === 'partial' ? 0 : amplitude(880, .94, .97), outgoingAfterCut: mode === 'partial' ? 0 : amplitude(440, 1.03, 1.06) });
+          incomingBeforeCut: mode === 'partial' ? 0 : amplitude(880, .94, .97), outgoingAfterCut: mode === 'partial' ? 0 : amplitude(440, 1.03, 1.06),
+          earlyIncoming: mode === 'partial' ? 0 : amplitude(880, .64, .67),
+          returningSource: mode === 'partial' ? 0 : amplitude(440, 3.04, 3.07) });
       } finally { input.dispose(); }
     } } finally { URL.revokeObjectURL(sourceUrl); URL.revokeObjectURL(generatedUrl); }
     return results;
@@ -67,14 +69,27 @@ test('crossfades blend video and mixed-rate audio in exports, previews and parti
     expect(result.rate).toBe(48000); expect(result.maxGap).toBeLessThan(.002);
     expect(Math.abs(result.audioDuration - result.duration)).toBeLessThan(.05);
     const color = (frame: number) => result.colors[result.frames.indexOf(frame)];
+    if (!partial) {
+      if (result.mode === 'long') { expect(color(16)[1]).toBeGreaterThan(40); expect(result.earlyIncoming).toBeGreaterThan(.025); }
+      else { expect(color(16)[1]).toBeLessThan(20); expect(result.earlyIncoming).toBeLessThan(.02); }
+      expect(result.outgoingAfterCut).toBeLessThan(.02); // No source audio inside the generated body.
+      expect(result.returningSource).toBeGreaterThan(.01);
+    }
+    for (const frame of partial ? [24, 25] : [24, 25, 26, 48, 69, 70, 71]) {
+      expect(color(frame)[0]).toBeLessThan(20); expect(color(frame)[1]).toBeGreaterThan(200);
+    }
     if (result.mode === 'disabled') {
       expect(color(23)[0]).toBeGreaterThan(200); expect(color(24)[1]).toBeGreaterThan(200);
       expect(color(23)[1]).toBeLessThan(20); expect(color(24)[0]).toBeLessThan(20);
       expect(result.incomingBeforeCut).toBeLessThan(.02); expect(result.outgoingAfterCut).toBeLessThan(.02);
     } else {
-      for (const frame of partial ? [23, 24, 25] : [22, 23, 24, 25, 70, 71, 72, 73]) { expect(color(frame)[0]).toBeGreaterThan(15); expect(color(frame)[1]).toBeGreaterThan(15); }
+      for (const frame of partial ? [23] : [21, 22, 23, 72, 73, 74, 75]) {
+        const minimum = result.mode === 'long' ? 5 : 15;
+        expect(color(frame)[0], `${result.mode} red at ${frame}`).toBeGreaterThan(minimum);
+        expect(color(frame)[1], `${result.mode} green at ${frame}`).toBeGreaterThan(minimum);
+      }
       expect(color(23)[0]).toBeGreaterThan(color(24)[0]); expect(color(23)[1]).toBeLessThan(color(24)[1]);
-      if (!partial) { expect(result.incomingBeforeCut).toBeGreaterThan(.025); expect(result.outgoingAfterCut).toBeGreaterThan(.025); }
+      if (!partial) expect(result.incomingBeforeCut).toBeGreaterThan(.025);
     }
   }
   const full = results[0], partial = results[3];

@@ -1,7 +1,7 @@
-import { playableResult, type Interstitial } from '../../shared/interstitials';
+import { playableResult, type Interstitial, type InterstitialResult } from '../../shared/interstitials';
 import type { MediaInfo, MediaSource } from './media';
 import { assets } from '../features/project/assets';
-import { TIMELINE_FPS } from '../../shared/constants';
+import { INTERSTITIAL_CROSSFADE_FRAMES, TIMELINE_FPS } from '../../shared/constants';
 
 export type TimelineSegment = {
   id: string; kind: 'source' | 'interstitial'; label: string; source: MediaSource;
@@ -9,6 +9,8 @@ export type TimelineSegment = {
   /** Repeat one boundary frame, with silent audio, for a generation reference. */
   still?: boolean;
   muted?: boolean;
+  /** Saved render bounds: only footage outside this body is reference overlap. */
+  generated?: InterstitialResult;
 };
 
 /** Immutable 24 fps edit list. Original assets are sampled without modifying their files. */
@@ -19,9 +21,11 @@ export class TimelineComposition {
   readonly hasInsertions: boolean;
   readonly sourceDuration: number;
   readonly crossfade: boolean;
+  readonly crossfadeFrames: number;
   readonly matchFraming: boolean;
-  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean; matchFraming?: boolean } = {}) {
+  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean } = {}) {
     this.crossfade = options.crossfade ?? true;
+    this.crossfadeFrames = options.crossfadeFrames ?? INTERSTITIAL_CROSSFADE_FRAMES;
     this.matchFraming = options.matchFraming ?? false;
     this.fps = TIMELINE_FPS;
     let cursor = 0, sourceFrame = 0;
@@ -39,7 +43,7 @@ export class TimelineComposition {
       addSource(Math.max(sourceFrame, Math.min(total, Math.round(item.time * this.fps))));
       const result = playableResult(item)!;
       const frames = Math.max(1, Math.round(result.duration * this.fps));
-      this.segments.push({ id: item.id, kind: 'interstitial', label: item.label,
+      this.segments.push({ id: item.id, kind: 'interstitial', label: item.label, generated: result,
         source: { id: item.id, name: item.label, assetId: result.assetId, url: result.assetId ? assets.url(result.assetId) || result.url : result.url }, sourceStart: result.start, startFrame: cursor, endFrame: cursor + frames });
       cursor += frames;
     }

@@ -1,8 +1,6 @@
 import type { MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
 import { canPlaySourceVideo, prepareSourceVideo } from '../../media/prepareVideo';
-import { GeneratedPlaybackMedia } from '../../media/GeneratedPlaybackMedia';
-import { savedFramingPreference } from '../player/preferences';
 import type { InterstitialController } from '../interstitials/InterstitialController';
 import { assets } from './assets';
 import { clearActiveProject, deleteSavedProject, forgetRecentFile, listRecentFiles, listSavedProjects, readActiveProject, readAsset, readProject, rememberRecentFile, storageError, writeProject, type RecentFile } from './database';
@@ -130,7 +128,7 @@ export class ProjectController {
       });
       pendingAssets = [...pendingAssets, original];
     }
-    this.update({ message: 'Checking native video playback', progress: null });
+    this.update({ message: 'Checking video playback', progress: null });
     let restoredOriginal = false;
     if (project.source.originalAssetId && project.source.originalAssetId !== original.id) {
       const retained = pendingAssets.find(asset => asset.id === project.source.originalAssetId) ?? await readAsset(project.source.originalAssetId);
@@ -157,25 +155,15 @@ export class ProjectController {
       .filter((id): id is string => !!id && id !== project.source.assetId && id !== project.source.originalAssetId);
     if (!generated.length) return;
     const get = async (id: string) => pendingAssets.find(asset => asset.id === id) ?? await readAsset(id);
-    const source = await get(project.source.assetId!);
-    if (!source) throw new Error('The source video is missing.');
-    const info = await this.validateVideo(source.blob, signal);
-    const media = new GeneratedPlaybackMedia(info, savedFramingPreference());
-    const abort = () => media.dispose(); signal.addEventListener('abort', abort, { once: true });
-    try {
-      for (const [index, id] of generated.entries()) {
-        signal.throwIfAborted();
-        const asset = await get(id); if (!asset) throw new Error('An interstitial video is missing.');
-        const url = URL.createObjectURL(asset.blob);
-        this.update({ message: `Checking interstitial ${index + 1} of ${generated.length}`, progress: index / generated.length });
-        try {
-          await media.resolve({ id, assetId: id, name: asset.name, url, file: new File([asset.blob], asset.name, { type: asset.blob.type }) }, progress => {
-            if (!signal.aborted) this.update({ message: `Matching interstitial ${index + 1} of ${generated.length} to source`, progress: (index + progress) / generated.length });
-          });
-        } finally { URL.revokeObjectURL(url); }
-      }
+    // The canvas samples each asset's timestamps and scales it to the source
+    // dimensions. Import validates decoding without encoding another copy.
+    for (const [index, id] of generated.entries()) {
       signal.throwIfAborted();
-    } finally { signal.removeEventListener('abort', abort); media.dispose(); }
+      const asset = await get(id); if (!asset) throw new Error('An interstitial video is missing.');
+      this.update({ message: `Checking interstitial ${index + 1} of ${generated.length}`, progress: index / generated.length });
+      if (!await canPlaySourceVideo(asset.blob, signal)) throw new Error(`This browser cannot decode ${asset.name}.`);
+    }
+    signal.throwIfAborted();
   }
   private create(source: MediaSource): Project {
     return { id: source.id, name: source.name.replace(/\.[^.]+$/, ''), source: { name: source.name, url: source.url },

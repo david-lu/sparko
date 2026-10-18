@@ -138,20 +138,28 @@ test('call-response generation references bridge 32 kHz audio into source audio 
   }
 });
 
-test('native playback crosses mixed audio formats and seeks without a rendered preview', async ({ page }) => {
+test('canvas playback schedules audible mixed-rate audio, silence and seeks on its shared clock', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await prepareAudio(page);
   await page.evaluate(async () => {
-    const { NativeTimelinePlayback } = await import('/src/features/player/NativeTimelinePlayback.ts' as string);
-    const video = document.createElement('video'); video.muted = true; document.body.append(video);
+    const { CanvasTimelinePlayback } = await import('/src/features/player/CanvasTimelinePlayback.ts' as string);
+    const video = document.createElement('video'); video.muted = false; document.body.append(video);
     const composition = { ...(window as any).audioFixture.composition, duration: 10, crossfade: false,
       at(time: number) { return this.segments.find((segment: { endFrame: number }) => Math.min(time, 9.999) * 24 < segment.endFrame); } };
     const state = { video, stream: null as any, error: null as string | null, time: 0, start: (time: number) => { state.stream.seek(time); state.stream.play(); } };
-    state.stream = new NativeTimelinePlayback(composition, video, (time: number, _playing: boolean, _buffering: boolean, error?: string) => { state.time = time; state.error = error ?? null; });
+    state.stream = new CanvasTimelinePlayback(composition, video, (time: number, _playing: boolean, _buffering: boolean, error?: string) => { state.time = time; state.error = error ?? null; });
+    const audio = state.stream.decks.audio, analyser = audio.context.createAnalyser(); analyser.fftSize = 2048;
+    const createGain = audio.context.createGain.bind(audio.context);
+    audio.context.createGain = () => { const gain = createGain(); gain.connect(analyser); return gain; };
+    (state as any).rms = () => { const samples = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(samples); return Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length); };
     (window as any).audioPlayback = state;
     (window as any).audioPlayback.start(0);
   });
+  await expect.poll(() => page.evaluate(() => (window as any).audioPlayback.rms())).toBeGreaterThan(.05);
   await expect.poll(() => page.evaluate(() => (window as any).audioPlayback.time), { timeout: 20_000 }).toBeGreaterThan(2);
+  expect(await page.evaluate(() => (window as any).audioPlayback.rms())).toBeGreaterThan(.05);
+  await page.evaluate(() => (window as any).audioPlayback.stream.pause());
+  await expect.poll(() => page.evaluate(() => (window as any).audioPlayback.rms())).toBeLessThan(.001);
   await page.evaluate(() => (window as any).audioPlayback.start(6.75));
   await expect.poll(() => page.evaluate(() => (window as any).audioPlayback.time), { timeout: 20_000 }).toBeGreaterThan(9.9);
   expect(await page.evaluate(() => (window as any).audioPlayback.error)).toBeNull();

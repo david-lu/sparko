@@ -1,12 +1,11 @@
 import type { TimelineComposition, TimelineSegment } from '../../media/TimelineComposition';
 import { compositionTransitions, segmentTime, transitionWeight } from '../../media/CompositionTransitions';
-import { NativeMediaDecks, type NativeClip, type NativeLayer, type PlaybackSettings } from './NativeMediaDecks';
+import { CanvasMediaDecks, type PlaybackClip, type PlaybackLayer, type PlaybackSettings } from './CanvasMediaDecks';
 
-/** A timeline clock over native clips. No source frames are encoded for preview. */
-export class NativeTimelinePlayback {
-  private decks: NativeMediaDecks;
+/** A timeline clock over decoded frames and audio. No frames are encoded for preview. */
+export class CanvasTimelinePlayback {
+  private decks: CanvasMediaDecks;
   private animation = 0;
-  private lastTick = performance.now();
   private ready = false;
   private disposed = false;
   private playing = false;
@@ -17,11 +16,11 @@ export class NativeTimelinePlayback {
   constructor(private composition: TimelineComposition, video: HTMLVideoElement,
     private changed: (time: number, playing: boolean, buffering: boolean, error?: string) => void) {
     this.settings = { volume: video.volume, muted: video.muted, speed: video.playbackRate };
-    this.decks = new NativeMediaDecks(video, composition.info, composition.matchFraming);
-    this.transitions = composition.crossfade ? compositionTransitions(composition.segments) : [];
-    const tick = (now: number) => {
+    this.decks = new CanvasMediaDecks(video, composition.info, composition.matchFraming);
+    this.transitions = composition.crossfade ? compositionTransitions(composition.segments, composition.crossfadeFrames, composition.fps) : [];
+    const tick = () => {
       if (this.disposed) return;
-      const elapsed = Math.min(.1, (now - this.lastTick) / 1000); this.lastTick = now;
+      const elapsed = this.decks.elapsed();
       if (this.playing && this.ready) {
         this.time = Math.min(composition.duration, this.time + elapsed * this.settings.speed);
         if (this.time >= composition.duration) { if (this.loop) this.time = 0; else this.playing = false; }
@@ -31,7 +30,10 @@ export class NativeTimelinePlayback {
     this.animation = requestAnimationFrame(tick);
   }
   get video() { return this.decks.video; }
-  private clip(segment: TimelineSegment, frame: number): NativeClip {
+  get canvas() { return this.decks.canvas; }
+  get bufferedAhead() { return this.decks.bufferedAhead; }
+  requestPictureInPicture() { return this.decks.requestPictureInPicture(); }
+  private clip(segment: TimelineSegment, frame: number): PlaybackClip {
     const original = this.composition.source;
     const sourceFootage = segment.kind === 'source' || segment.source.url === original?.url
       || !!original?.assetId && segment.source.assetId === original.assetId;
@@ -42,25 +44,26 @@ export class NativeTimelinePlayback {
     const { composition } = this, frame = this.time * composition.fps;
     const transition = this.transitions.find(edge => frame >= edge.startFrame && frame < edge.endFrame);
     const current = composition.at(this.time); if (!current) return;
-    let layers: NativeLayer[];
+    let layers: PlaybackLayer[];
     if (transition) {
       const weight = transitionWeight(transition, frame);
-      layers = [{ ...this.clip(transition.before, frame), opacity: 1, gain: 1 - weight },
-        { ...this.clip(transition.after, frame), opacity: weight, gain: weight }];
+      const rate = composition.fps / (transition.endFrame - transition.startFrame);
+      layers = [{ ...this.clip(transition.before, frame), opacity: 1, gain: 1 - weight, gainRate: -rate },
+        { ...this.clip(transition.after, frame), opacity: weight, gain: weight, gainRate: rate }];
     } else layers = [{ ...this.clip(current, frame), opacity: 1, gain: 1 }];
     try {
       this.ready = this.decks.render(layers, this.playing, this.settings);
       const last = transition?.after ?? current, next = composition.segments[composition.segments.indexOf(last) + 1];
-      if (next) this.decks.prepare(this.clip(next, next.startFrame - (composition.crossfade ? 2 : 0)));
+      if (next) this.decks.prepare(this.clip(next, this.transitions.find(edge => edge.after === next)?.startFrame ?? next.startFrame));
       this.changed(this.time, this.playing, !this.ready);
     } catch (error) {
       this.playing = false; this.ready = false; this.decks.pause();
       this.changed(this.time, false, false, error instanceof Error ? error.message : 'Unable to play this clip.');
     }
   }
-  play() { if (this.time >= this.composition.duration) this.seek(0); this.playing = true; this.lastTick = performance.now(); this.render(); }
+  play() { if (this.time >= this.composition.duration) this.seek(0); this.playing = true; this.decks.elapsed(); this.render(); }
   pause() { this.playing = false; this.decks.pause(); this.render(); }
-  seek(time: number) { this.time = Math.max(0, Math.min(this.composition.duration, time)); this.ready = false; this.lastTick = performance.now(); this.render(); }
+  seek(time: number) { this.decks.pause(); this.time = Math.max(0, Math.min(this.composition.duration, time)); this.ready = false; this.render(); }
   setSettings(settings: PlaybackSettings, loop: boolean) { this.settings = settings; this.loop = loop; this.render(); }
   setSubtitles(track: TextTrack | null, cues: VTTCue[], enabled: boolean) { this.decks.setSubtitles(track, cues, enabled); this.render(); }
   dispose() { this.disposed = true; cancelAnimationFrame(this.animation); this.decks.dispose(); }

@@ -1,16 +1,45 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FlowPlayback } from '../../src/features/call-response/FlowPlayback';
-import { createTestFlow } from '../../src/features/call-response/model';
+import { createTestFlow, createTimelineExample, getScene, sceneFrames } from '../../src/features/call-response/model';
+import { composeFlows } from '../../src/features/call-response/compose';
+import type { PlaybackLayer } from '../../src/features/player/CanvasMediaDecks';
+import { flowTransition } from '../../src/features/call-response/transitions';
 
 afterEach(() => vi.unstubAllGlobals());
+const render = vi.hoisted(() => vi.fn((_layers: PlaybackLayer[], _playing: boolean) => true));
+vi.mock('../../src/features/project/assets', () => ({ assets: { url: (id: string) => `blob:${id}` } }));
 
-vi.mock('../../src/features/player/NativeMediaDecks', () => ({ NativeMediaDecks: class {
+vi.mock('../../src/features/player/CanvasMediaDecks', () => ({ CanvasMediaDecks: class {
+  private last = performance.now();
   constructor(public video: HTMLVideoElement) {}
-  render(layers: { time: number }[], playing: boolean) { this.video.currentTime = layers[0].time; if (playing) void this.video.play(); else this.video.pause(); return true; }
-  prepare() {} setSubtitles() {} pause() { this.video.pause(); } dispose() {}
+  elapsed() { const current = performance.now(), elapsed = (current - this.last) / 1000; this.last = current; return elapsed; }
+  setMatchFraming() {}
+  render(layers: PlaybackLayer[], playing: boolean) { return render(layers, playing); }
+  prepare() {} prepareMedia() {} setSubtitles() {} pause() {} dispose() {}
 } }));
 
-describe('native flow playback', () => {
+let now = 0, tick: FrameRequestCallback;
+beforeEach(() => {
+  render.mockReset().mockReturnValue(true); now = 0;
+  vi.stubGlobal('performance', { now: () => now });
+  vi.stubGlobal('requestAnimationFrame', vi.fn(callback => { tick = callback; return 1; }));
+  vi.stubGlobal('cancelAnimationFrame', vi.fn());
+});
+const advance = () => { now += 50; tick(now); };
+const layers = () => render.mock.calls.at(-1)![0] as PlaybackLayer[];
+const flowWithReferences = () => {
+  const flow = createTestFlow();
+  for (const scene of flow.scenes.filter(scene => scene.clip.kind !== 'video')) {
+    const duration = sceneFrames(scene) / flow.fps, start = scene.clip.kind === 'idle' ? 0 : 2;
+    scene.generated = { url: `blob:${scene.id}`, start, duration, totalDuration: start + duration + (scene.clip.kind === 'response' ? 1 : 0) };
+    scene.clip.inFrame = start * flow.fps; scene.clip.outFrame = (start + duration) * flow.fps;
+  }
+  return flow;
+};
+const makePlayer = (flow = flowWithReferences()) => new FlowPlayback(flow, { volume: 1, muted: false, playbackRate: 1, currentTime: 0, play: vi.fn(), pause: vi.fn() } as unknown as HTMLVideoElement,
+  { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, vi.fn());
+
+describe('canvas flow playback', () => {
   it('keeps scene time and seeking independent of MediaSource support', async () => {
     vi.stubGlobal('MediaSource', undefined);
     vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
@@ -25,11 +54,99 @@ describe('native flow playback', () => {
     const video = new Video(), changed = vi.fn();
     const player = new FlowPlayback(createTestFlow(), video as unknown as HTMLVideoElement,
       { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, changed);
-    player.play(); expect(video.play).toHaveBeenCalled();
+    player.play(); expect(player.session.playing).toBe(true);
     player.seekScene('intro', 12); await Promise.resolve();
-    expect(video.currentTime).toBe(.5); expect(player.sourceTime).toBe(.5);
+    expect(layers()[0].time).toBe(.5); expect(player.sourceTime).toBe(.5);
     expect(player.session).toMatchObject({ sceneId: 'intro', frame: 12, playing: false });
     expect(changed.mock.calls.at(-1)?.[1]).toBe(false);
+    player.dispose();
+  });
+  it.each([['intro', 70, 'intro', 'call'], ['continue', 2, 'correct', 'continue']] as const)(
+    'blends only reference footage during %s without changing scene duration', (id, frame, before, after) => {
+      const player = makePlayer(); player.seekScene(id, frame);
+      expect(layers().map(layer => layer.key.split(':')[0])).toEqual([before, after]);
+      expect(layers().map(layer => layer.opacity)).toEqual([1, .5]);
+      expect(layers().map(layer => layer.gain)).toEqual([.5, .5]);
+      expect(player.session).toMatchObject({ sceneId: id, frame, playing: false });
+      player.dispose();
+    });
+  it('finishes the entry fade before the first generated frame and retains the prepared deck', () => {
+    const player = makePlayer(); player.seekScene('intro', 71, true);
+    const key = layers()[1].key;
+    advance();
+    expect(player.session.sceneId).toBe('call');
+    expect(layers().map(layer => layer.key)).toEqual([key]);
+    expect(layers()[0].gain).toBe(1);
+    const session = { ...player.session };
+    player.setCrossfade(false);
+    expect(layers()).toHaveLength(1); expect(layers()[0].gain).toBe(1);
+    player.setCrossfade(true);
+    expect(layers()).toHaveLength(1); expect(player.session).toEqual(session);
+    player.dispose();
+  });
+  it('keeps the full Idle cycle and chosen response body untouched when there is no shared reference interval', () => {
+    const player = makePlayer(); player.seekScene('wait', 47);
+    player.branch('wait', 'incorrect'); player.pause();
+    expect(layers()).toHaveLength(1); expect(layers()[0].key).toMatch(/^wait:/);
+    player.play(); advance();
+    expect(player.session).toMatchObject({ sceneId: 'incorrect', outcome: 'incorrect' });
+    expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['incorrect']);
+    expect(layers()[0].gain).toBe(1);
+    player.dispose();
+  });
+  it('changes fade length in place for both automatic cuts and responses, retaining it when toggled', () => {
+    const player = makePlayer(); player.seekScene('intro', 66);
+    expect(layers()).toHaveLength(1);
+    const session = { ...player.session };
+    player.setCrossfade(true, 12);
+    expect(layers().map(layer => layer.gain)).toEqual([.5, .5]);
+    expect(player.session).toEqual(session);
+    player.setCrossfade(false); player.setCrossfade(true);
+    expect(layers().map(layer => layer.gain)).toEqual([.5, .5]);
+    player.seekScene('continue', 3);
+    expect(layers().map(layer => layer.gain)).toEqual([.75, .25]);
+    player.seekScene('wait', 47); player.branch('wait', 'incorrect'); player.pause();
+    expect(layers()).toHaveLength(1);
+    player.dispose();
+  });
+  it('limits long fades to references and never fades any generated body frame', () => {
+    const flow = flowWithReferences();
+    const incoming = flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!, 48)!;
+    const outgoing = flowTransition(flow, flow.edges.find(edge => edge.id === 'correct-continue')!, 48)!;
+    expect(incoming).toBeUndefined();
+    expect(outgoing).toMatchObject({ startFrame: 0, frames: 24 });
+    const player = makePlayer(flow); player.setCrossfade(true, 48);
+    for (const scene of flow.scenes.filter(scene => scene.generated)) for (let frame = 0; frame < sceneFrames(scene); frame++) {
+      player.seekScene(scene.id, frame);
+      expect(layers()).toHaveLength(1);
+      expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1 });
+    }
+    player.dispose();
+  });
+  it('does not fade Idle repeats or advance a fade while either deck buffers', () => {
+    const player = makePlayer(); player.seekScene('wait', 47, true); advance();
+    expect(player.session).toMatchObject({ sceneId: 'wait', loopIteration: 2 });
+    expect(layers()).toHaveLength(1);
+    player.seekScene('intro', 68, true); render.mockReturnValue(false); player.play();
+    const frame = player.session.frame; advance(); advance();
+    expect(player.session.frame).toBe(frame); expect(layers()).toHaveLength(2);
+    render.mockReturnValue(true); advance(); advance();
+    expect(player.session.frame).toBeGreaterThan(frame);
+    player.dispose();
+  });
+  it('restores saved bounds for a partial project and skips a missing return reference', () => {
+    const { flow, interstitials } = createTimelineExample('mock:original', 8);
+    const items = interstitials.map(item => item.id === getScene(flow, 'call').interstitialId ? item : { ...item, phase: 'draft' as const, result: undefined });
+    const call = items.find(item => item.id === getScene(flow, 'call').interstitialId)!;
+    call.result = { ...call.result!, start: 2, duration: 4, totalDuration: 6 };
+    call.start_range = 4; call.end_range = 4;
+    const partial = composeFlows([flow], items, 'mock:original', 8)!;
+    const player = makePlayer(partial);
+    player.seekScene('call', sceneFrames(getScene(partial, 'call')) - 1);
+    expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['call']);
+    expect(getScene(partial, 'call').generated).toEqual(call.result);
+    expect(flowTransition(partial, partial.edges.find(edge => edge.from === 'call')!, 48)).toBeUndefined();
+    expect(partial.scenes.map(scene => scene.id)).toEqual(['intro', 'call', 'continue']);
     player.dispose();
   });
 });

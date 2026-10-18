@@ -104,7 +104,7 @@ export default function Player(props: Props) {
     catch { onError('Fullscreen is not available in this browser.'); }
   };
   const togglePip = async () => {
-    try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await controller.video?.requestPictureInPicture(); }
+    try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await controller.requestPictureInPicture(); }
     catch { onError('Picture-in-picture is not available for this video.'); }
   };
   const toggleCaptions = () => {

@@ -1,29 +1,29 @@
 import { assets } from '../project/assets';
+import { INTERSTITIAL_CROSSFADE_FRAMES } from '../../../shared/constants';
 import type { MediaInfo, MediaSource } from '../../media/media';
-import { NativeMediaDecks, type NativeClip, type PlaybackSettings } from '../player/NativeMediaDecks';
-import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, previewScene, sceneFrames, startSession,
+import { CanvasMediaDecks, type PlaybackClip, type PlaybackLayer, type PlaybackSettings } from '../player/CanvasMediaDecks';
+import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, nextEdge, previewScene, sceneFrames, startSession,
   type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
+import { flowTransition } from './transitions';
 
-/** Native scene playback, with generated clips prepared once to the source's cadence and dimensions. */
-export class NativeFlowPlayback {
+/** Scene playback through the shared Mediabunny/GPU renderer and audio clock. */
+export class CanvasFlowPlayback {
   session: PlaybackSession;
-  private decks: NativeMediaDecks;
+  private decks: CanvasMediaDecks;
   private animation = 0;
   private buffering = true;
   private disposed = false;
-  private lastTick = performance.now();
   private remainder = 0;
   private settings: PlaybackSettings;
   private subtitles: { track: TextTrack | null; cues: VTTCue[]; enabled: boolean } = { track: null, cues: [], enabled: true };
   constructor(readonly flow: CallResponseFlow, private primary: HTMLVideoElement, private source: MediaSource,
-    private changed: (session: PlaybackSession, buffering: boolean, error?: string) => void, private info: MediaInfo, private matchFraming = false) {
+    private changed: (session: PlaybackSession, buffering: boolean, error?: string) => void, private info: MediaInfo, private matchFraming = false, private crossfade = true, private crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES) {
     this.session = startSession(flow);
     this.settings = { volume: primary.volume, muted: primary.muted, speed: primary.playbackRate };
-    this.decks = new NativeMediaDecks(primary, info, matchFraming);
-    this.prepareMedia();
-    const tick = (now: number) => {
+    this.decks = new CanvasMediaDecks(primary, info, matchFraming);
+    const tick = () => {
       if (this.disposed) return;
-      const elapsed = Math.min(.1, (now - this.lastTick) / 1000); this.lastTick = now;
+      const elapsed = this.decks.elapsed();
       if (this.session.playing && !this.buffering) {
         this.remainder += elapsed * flow.fps * this.settings.speed;
         const frames = Math.floor(this.remainder); this.remainder -= frames;
@@ -34,27 +34,53 @@ export class NativeFlowPlayback {
     this.animation = requestAnimationFrame(tick);
   }
   get video() { return this.decks.video; }
-  private prepareMedia() {
-    for (const scene of this.flow.scenes) {
-      try { this.decks.prepareMedia(this.clip({ ...this.session, sceneId: scene.id, frame: 0 })); }
-      catch { /* Missing alternatives report their error when selected. */ }
-    }
-  }
-  private clip(session: PlaybackSession): NativeClip {
+  get canvas() { return this.decks.canvas; }
+  get bufferedAhead() { return this.decks.bufferedAhead; }
+  requestPictureInPicture() { return this.decks.requestPictureInPicture(); }
+  private clip(session: PlaybackSession, frame = session.frame + this.remainder): PlaybackClip {
     const scene = getScene(this.flow, session.sceneId), sourceFootage = scene.clip.assetId === this.source.assetId;
     const url = sourceFootage ? this.source.url : assets.url(scene.clip.assetId);
     if (!url) throw new Error('This scene’s media is not available.');
     return { key: `${scene.id}:${session.visit % 2}`, sourceFootage,
       source: sourceFootage ? this.source : { id: scene.clip.assetId, assetId: scene.clip.assetId, name: scene.label, url },
-      time: (scene.clip.inFrame + (scene.draft ? 0 : session.frame + this.remainder)) / this.flow.fps, still: scene.draft };
+      time: scene.draft ? scene.clip.inFrame / this.flow.fps : scene.generated
+        ? frame >= sceneFrames(scene) ? scene.generated.start + scene.generated.duration + (frame - sceneFrames(scene)) / this.flow.fps
+          : scene.generated.start + frame / this.flow.fps
+        : (scene.clip.inFrame + frame) / this.flow.fps, still: scene.draft };
+  }
+  private layers(): PlaybackLayer[] {
+    const current = this.session, frame = current.frame + this.remainder;
+    const single = [{ ...this.clip(current), opacity: 1, gain: 1 }];
+    if (!this.crossfade) return single;
+    const previous = current.lastEdgeId ? this.flow.edges.find(edge => edge.id === current.lastEdgeId) : undefined;
+    const response = this.flow.interaction.answers.find(answer => answer.id === current.outcome)?.sceneId;
+    const incoming = current.lastEdgeId ? previous : this.flow.edges.find(edge => edge.to === current.sceneId && edge.from !== edge.to && (!response || edge.from === response))
+      ?? this.flow.edges.find(edge => edge.to === current.sceneId && edge.from !== edge.to);
+    const outgoing = nextEdge(this.flow, current);
+    for (const [edge, entering] of [[incoming, true], [outgoing, false]] as const) {
+      const transition = edge && flowTransition(this.flow, edge, this.crossfadeFrames);
+      if (!transition) continue;
+      const offset = entering ? frame : frame - sceneFrames(transition.before);
+      const weight = (offset - transition.startFrame) / transition.frames;
+      if (weight < 0 || weight >= 1) continue;
+      const before = { ...current, sceneId: transition.before.id, visit: entering ? Math.max(0, current.visit - 1) : current.visit };
+      const after = { ...current, sceneId: transition.after.id, visit: entering ? current.visit : current.visit + 1 };
+      const beforeFrame = sceneFrames(transition.before) + offset;
+      const rate = this.flow.fps / transition.frames;
+      return [{ ...this.clip(before, beforeFrame), opacity: 1, gain: 1 - weight, gainRate: -rate },
+        { ...this.clip(after, offset), opacity: weight, gain: weight, gainRate: rate }];
+    }
+    return single;
   }
   private render() {
     try {
-      const clip = this.clip(this.session);
-      this.buffering = !this.decks.render([{ ...clip, opacity: 1, gain: 1 }], this.session.playing, this.settings);
+      this.buffering = !this.decks.render(this.layers(), this.session.playing, this.settings);
       if (!this.session.finished) {
         const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame);
-        if (!next.finished) this.decks.prepare(this.clip({ ...next, frame: 0 }));
+        if (!next.finished) {
+          const edge = nextEdge(this.flow, this.session), transition = this.crossfade && edge && flowTransition(this.flow, edge, this.crossfadeFrames);
+          this.decks.prepare(this.clip(next, transition ? transition.startFrame : 0));
+        }
       }
       this.changed(this.session, this.buffering);
     } catch (error) {
@@ -63,26 +89,23 @@ export class NativeFlowPlayback {
     }
   }
   setSettings(settings: PlaybackSettings) { this.settings = settings; this.render(); }
+  setCrossfade(value: boolean, frames = this.crossfadeFrames) { this.crossfade = value; this.crossfadeFrames = frames; this.render(); }
   setSubtitles(track: TextTrack | null, cues: VTTCue[], enabled = true) {
     this.subtitles = { track, cues, enabled }; this.decks.setSubtitles(track, cues, enabled); this.render();
   }
   setMatchFraming(value: boolean) {
     if (value === this.matchFraming) return;
-    this.matchFraming = value; this.decks.dispose();
-    this.decks = new NativeMediaDecks(this.primary, this.info, value);
-    this.prepareMedia();
-    this.decks.setSubtitles(this.subtitles.track, this.subtitles.cues, this.subtitles.enabled);
-    this.buffering = true; this.render();
+    this.matchFraming = value; this.decks.setMatchFraming(value); this.render();
   }
   play() {
     if (this.session.finished) this.session = startSession(this.flow, true);
     else this.session = { ...this.session, playing: true };
-    this.lastTick = performance.now(); this.render();
+    this.decks.elapsed(); this.render();
   }
   pause() { this.session = { ...this.session, playing: false }; this.decks.pause(); this.render(); }
   seekScene(id: SceneId, frame = 0, playing = false) {
     this.session = { ...previewScene(this.flow, id), frame: Math.max(0, Math.min(sceneFrames(getScene(this.flow, id)) - 1, Math.round(frame))), playing };
-    this.remainder = 0; this.buffering = true; this.lastTick = performance.now(); this.render();
+    this.remainder = 0; this.buffering = true; this.decks.pause(); this.render();
   }
   seek(time: number) {
     const layout = flowLayout(this.flow), frame = Math.max(0, time * this.flow.fps);

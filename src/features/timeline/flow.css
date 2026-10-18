@@ -26,6 +26,7 @@
 .flow-output-port svg{pointer-events:none}
 .flow-repeat-port{right:7px;transform:translateY(-50%)}
 .flow-playhead{top:-7px;bottom:-3px;z-index:11}
+.timeline-crossfade.flow-crossfade{bottom:auto;z-index:12;pointer-events:none}
 .connect-target{cursor:crosshair}
 .connect-target:hover .flow-clip-body::after{border:2px solid var(--accent)}
 .flow-connect-hint{position:absolute;bottom:0;left:5px;font-size:10px;color:var(--accent);background:var(--panel);padding:3px;z-index:7}

@@ -1,2 +1,8 @@
 .playback-options .menu-items{min-width:240px}
 .playback-options [role="menuitemcheckbox"]>svg{flex-shrink:0}
+.crossfade-length{display:flex;flex-direction:column;gap:6px;padding:5px 10px 10px 34px;font-size:12px}
+.crossfade-length>span{display:flex;align-items:center;justify-content:space-between}
+.crossfade-length output{font-variant-numeric:tabular-nums;color:var(--muted)}
+.crossfade-length input{width:100%;margin:0}
+.crossfade-length small{font-size:10px;color:var(--muted)}
+.crossfade-length[aria-disabled="true"]{opacity:.5}

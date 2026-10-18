@@ -1,10 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { FlowEdge, PlaybackSession } from '../../src/features/call-response/model';
 
-async function setup(page: Page, { retry = false, mismatch = false, native = false } = {}) {
+async function setup(page: Page, { retry = false, mismatch = false, native = false, references = false } = {}) {
   await page.route('**/__flow-buffering', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><div style="position:relative;width:640px;height:480px"><video muted playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain"></video></div>' }));
   await page.goto('/__flow-buffering');
-  return page.evaluate(async ({ retry, mismatch, native }) => {
+  return page.evaluate(async ({ retry, mismatch, native, references }) => {
     const { AudioBufferSource, BufferTarget, CanvasSource, Mp4OutputFormat, Output } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const { FlowPlayback } = await import('/src/features/call-response/FlowPlayback.ts' as string);
     const { createTestFlow, addAnswer } = await import('/src/features/call-response/model.ts' as string);
@@ -24,8 +24,11 @@ async function setup(page: Page, { retry = false, mismatch = false, native = fal
     const original = await make('#ee0000', 2, 48000, 96, 25);
     const colors: Record<string, string> = { intro: '#ee0000', call: '#eeee00', wait: '#444444', correct: '#00ee00', incorrect: '#0000ee', continue: '#ee0000', [third.sceneId]: '#ee00ee' };
     for (const scene of flow.scenes) {
-      const source = ['intro', 'continue'].includes(scene.id) ? original : await make(colors[scene.id], 1, scene.id === 'correct' ? 32000 : 44100, mismatch ? 100 : 96);
-      scene.clip = { ...scene.clip, assetId: source.id, inFrame: scene.id === 'continue' ? 24 : 0, outFrame: scene.id === 'continue' ? 48 : 24 };
+      const generated = !['intro', 'continue'].includes(scene.id);
+      const source = !generated ? original : await make(colors[scene.id], references ? 2 : 1, scene.id === 'correct' ? 32000 : 44100, mismatch ? 100 : 96);
+      const inFrame = scene.id === 'continue' ? 24 : generated && references ? 12 : 0;
+      scene.clip = { ...scene.clip, assetId: source.id, inFrame, outFrame: inFrame + 24 };
+      if (generated) scene.generated = { url: assets.url(source.id), start: inFrame / 24, duration: 1, totalDuration: references ? 2 : 1 };
       scene.draft = false; scene.plannedFrames = undefined;
     }
     if (retry) flow.edges.find((edge: FlowEdge) => edge.id === 'incorrect-continue')!.to = 'wait';
@@ -40,18 +43,83 @@ async function setup(page: Page, { retry = false, mismatch = false, native = fal
     }, { width: 160, height: 96, duration: 2, fps: 25, codec: 'avc', hasAudio: true });
     (window as any).flowBufferTest = state;
     return { thirdId: third.id, thirdScene: third.sceneId };
-  }, { retry, mismatch, native });
+  }, { retry, mismatch, native, references });
 }
-const read = (page: Page) => page.evaluate(() => { const s = (window as any).flowBufferTest; return { ...s.playback.session, encoded: s.encoded, activeTime: s.playback.video.currentTime, sourceTime: s.playback.sourceTime, buffering: s.buffering, error: s.error, loads: s.loadstarts, seeks: s.seeks, waiting: s.waiting, scenes: s.scenes }; });
+const read = (page: Page) => page.evaluate(() => { const s = (window as any).flowBufferTest; return { ...s.playback.session, encoded: s.encoded, activeTime: s.playback.playback.decks.layers.at(-1)?.time, sourceTime: s.playback.sourceTime, buffering: s.buffering, error: s.error, loads: s.loadstarts, seeks: s.seeks, waiting: s.waiting, scenes: s.scenes }; });
 const fast = { timeout: 15_000, intervals: [50, 100, 150] };
 
-const activePixel = (page: Page, x = 0, y = 48) => page.evaluate(({ x, y }) => {
-  const video = (window as any).flowBufferTest.playback.video as HTMLVideoElement;
-  const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight), ctx = canvas.getContext('2d')!;
-  ctx.drawImage(video, 0, 0); return [...ctx.getImageData(x, y, 1, 1).data];
-}, { x, y });
+const activePixel = async (page: Page, x = 0, y = 48) => {
+  const screenshot = await page.locator('canvas.playback-canvas').screenshot();
+  return page.evaluate(async ({ base64, x, y }) => {
+    const img = new Image(); img.src = `data:image/png;base64,${base64}`; await img.decode();
+    const canvas = new OffscreenCanvas(img.width, img.height), ctx = canvas.getContext('2d')!; ctx.drawImage(img, 0, 0);
+    const scale = Math.min(img.width / 160, img.height / 96);
+    return [...ctx.getImageData((img.width - 160 * scale) / 2 + x * scale, (img.height - 96 * scale) / 2 + y * scale, 1, 1).data];
+  }, { base64: screenshot.toString('base64'), x, y });
+};
 
-test('framing changes preserve the native playhead, speed and pending response', async ({ page }) => {
+test('Call Response crossfades blend GPU video and audio gains and toggle without moving the playhead', async ({ page }) => {
+  const third = await setup(page, { native: true, references: true });
+  // Finish preparation of every alternative before checking that fade edits reuse it.
+  for (const id of ['call', 'wait', 'correct', 'incorrect', third.thirdScene]) {
+    await page.evaluate(id => (window as any).flowBufferTest.playback.seekScene(id, 12), id);
+    await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  }
+  const blend = async () => {
+    const layers = await page.evaluate(() => {
+      const decks = (window as any).flowBufferTest.playback.playback.decks;
+      return (decks.layers as { key: string; opacity: number; gain: number }[]).map(layer => ({ clip: layer.key, opacity: layer.opacity, volume: layer.gain, muted: true }));
+    });
+    return { layers, pixel: await activePixel(page, 80) };
+  };
+  for (const [scene, frame, before, after] of [['intro', 22, 'intro', 'call'], ['continue', 2, 'correct', 'continue']] as const) {
+    await page.evaluate(({ scene, frame }) => (window as any).flowBufferTest.playback.seekScene(scene, frame), { scene, frame });
+    await expect.poll(async () => (await read(page)).buffering).toBe(false);
+    const rendered = await blend();
+    expect(rendered.layers.map(layer => layer.clip!.split(':')[0])).toEqual([before, after]);
+    expect(rendered.layers.map(layer => layer.opacity)).toEqual([1, .5]);
+    expect(rendered.layers.map(layer => layer.volume)).toEqual([.5, .5]);
+    expect(rendered.layers.every(layer => layer.muted)).toBe(true);
+    if (scene === 'intro') { expect(rendered.pixel[0]).toBeGreaterThan(200); expect(rendered.pixel[1]).toBeGreaterThan(80); expect(rendered.pixel[1]).toBeLessThan(160); }
+    if (scene === 'continue') { expect(rendered.pixel[0]).toBeGreaterThan(80); expect(rendered.pixel[1]).toBeGreaterThan(80); expect(rendered.pixel[2]).toBeLessThan(20); }
+  }
+  await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('intro', 22));
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  const original = await read(page);
+  await page.evaluate(() => (window as any).flowBufferTest.playback.setCrossfade(false));
+  await expect.poll(async () => (await blend()).layers.length).toBe(1);
+  expect((await blend()).pixel[1]).toBeLessThan(20);
+  await page.evaluate(() => (window as any).flowBufferTest.playback.setCrossfade(true));
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  expect((await blend()).layers).toHaveLength(2);
+  expect(await read(page)).toMatchObject({ sceneId: original.sceneId, frame: original.frame, visit: original.visit, playing: false, encoded: original.encoded, error: '' });
+  await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('intro', 18));
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  expect((await blend()).layers).toHaveLength(1);
+  await page.evaluate(() => (window as any).flowBufferTest.playback.setCrossfade(true, 12));
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  expect((await blend()).layers.map(layer => layer.opacity)).toEqual([1, .5]);
+  expect((await blend()).layers.map(layer => layer.volume)).toEqual([.5, .5]);
+  expect(await read(page)).toMatchObject({ sceneId: 'intro', frame: 18, playing: false, encoded: original.encoded });
+  await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('continue', 3));
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  expect((await blend()).layers.map(layer => layer.opacity)).toEqual([1, .25]);
+  expect((await blend()).layers.map(layer => layer.volume)).toEqual([.75, .25]);
+  for (const scene of ['call', 'wait', 'correct', 'incorrect']) for (const frame of [0, 1, 22, 23]) {
+    await page.evaluate(({ scene, frame }) => (window as any).flowBufferTest.playback.seekScene(scene, frame), { scene, frame });
+    await expect.poll(async () => (await read(page)).buffering).toBe(false);
+    const rendered = await blend();
+    expect(rendered.layers).toHaveLength(1);
+    expect(rendered.layers[0]).toMatchObject({ opacity: 1, volume: 1 });
+  }
+  await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 23); p.branch('wait', 'incorrect'); p.pause(); });
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  expect((await blend()).layers).toHaveLength(1);
+  expect((await blend()).layers[0].clip).toMatch(/^wait:/);
+  await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
+});
+
+test('framing changes preserve the canvas playhead, speed and pending response', async ({ page }) => {
   await setup(page, { mismatch: true });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('wait', 12));
@@ -67,7 +135,7 @@ test('framing changes preserve the native playhead, speed and pending response',
       visit: before.visit, attempts: before.attempts, loopIteration: before.loopIteration, error: '' });
     if (enabled) await expect.poll(async () => (await activePixel(page))[1]).toBeGreaterThan(40);
     else await expect.poll(async () => (await activePixel(page))[1]).toBeLessThan(15);
-    expect(await page.evaluate(() => { const v = (window as any).flowBufferTest.playback.video; return [v.videoWidth, v.videoHeight, v.playbackRate]; })).toEqual([160, 96, 1.25]);
+    expect(await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; return [p.canvas.width, p.canvas.height, p.playback.settings.speed]; })).toEqual([160, 96, 1.25]);
   }
   await page.evaluate(() => (window as any).flowBufferTest.playback.play());
   await expect.poll(async () => (await read(page)).sceneId, fast).toBe('correct');
@@ -75,10 +143,10 @@ test('framing changes preserve the native playhead, speed and pending response',
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
 
-test('native playback also works without MediaSource and returns to the original source URL', async ({ page }) => {
+test('canvas playback works without MediaSource and returns to the source frames', async ({ page }) => {
   await setup(page, { native: true });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
-  const original = await page.evaluate(() => (window as any).flowBufferTest.playback.video.currentSrc);
+  await expect(page.locator('canvas')).toHaveAttribute('data-renderer', 'webgpu');
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('correct', 12));
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await read(page)).activeTime).toBe(.5);
@@ -86,13 +154,13 @@ test('native playback also works without MediaSource and returns to the original
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('continue', 12));
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await read(page)).activeTime).toBe(1.5);
-  expect(await page.evaluate(() => (window as any).flowBufferTest.playback.video.currentSrc)).toBe(original);
+  expect((await activePixel(page, 80))[0]).toBeGreaterThan(200);
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
 
 test('idle loops and branches reuse generated media without encoding the source', async ({ page }) => {
   const third = await setup(page);
-  await expect.poll(async () => (await read(page)).encoded, { timeout: 30_000 }).toBeGreaterThanOrEqual(125);
+  expect((await read(page)).encoded).toBe(0);
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   await page.evaluate(() => (window as any).flowBufferTest.playback.play());
   await expect.poll(async () => (await read(page)).loopIteration, fast).toBeGreaterThanOrEqual(3);
@@ -103,13 +171,13 @@ test('idle loops and branches reuse generated media without encoding the source'
   expect(color[0]).toBeGreaterThan(180); expect(color[2]).toBeGreaterThan(180); expect(color[1]).toBeLessThan(40);
   await expect.poll(async () => (await read(page)).finished).toBe(true);
   const result = await read(page); expect(result.error).toBe('');
-  // Five one-second inserts; the encoder may pad the last frame beside an audio packet.
-  expect(result.encoded).toBeLessThanOrEqual(130);
+  // Preview decodes the original assets directly, including mixed audio sample rates.
+  expect(result.encoded).toBe(0);
   expect(result.scenes).toEqual(['intro', 'call', 'wait', third.thirdScene, 'continue']);
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
 
-test('retrying a response, rapid seeking and source subtitles stay tied to the native scene clock', async ({ page }) => {
+test('retrying a response, rapid seeking and source subtitles stay tied to the shared audio clock', async ({ page }) => {
   await setup(page, { retry: true });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   await page.evaluate(() => {
@@ -126,13 +194,13 @@ test('retrying a response, rapid seeking and source subtitles stay tied to the n
   await page.evaluate(() => (window as any).flowBufferTest.playback.branch('wait', 'correct'));
   await expect.poll(async () => (await read(page)).sceneId, fast).toBe('correct');
   await expect.poll(async () => (await read(page)).finished).toBe(true);
-  expect(await page.evaluate(() => {
-    const track = (window as any).flowBufferTest.playback.video.textTracks[0];
-    return { mode: track.mode, cues: Array.from(track.cues as TextTrackCueList).map(cue => [cue.startTime, cue.endTime]) };
-  })).toEqual({ mode: 'showing', cues: [[.25, .75], [1.25, 1.75]] });
+  await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('continue', 12));
+  await expect.poll(async () => (await read(page)).buffering).toBe(false);
+  await expect(page.locator('.playback-captions')).toContainText('Source continuation');
   await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('correct', 10); p.seekScene('incorrect', 8); p.seekScene('wait', 12); });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect(await read(page)).toMatchObject({ sceneId: 'wait', frame: 12, sourceTime: .5, activeTime: .5, playing: false, error: '' });
   expect(await page.evaluate(() => (window as any).flowBufferTest.playback.video.textTracks[0].mode)).toBe('hidden');
+  await expect(page.locator('.playback-captions')).toBeEmpty();
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
