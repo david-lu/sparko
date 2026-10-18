@@ -8,7 +8,7 @@ export const minimumDuration = (method: GenerationMethod = 'comfy') => method ==
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
 export type ClipReference = { sceneId: string; assetId: string; inFrame: number; outFrame: number };
 export type GenerationReference = { before: ClipReference; after?: ClipReference; mode?: 'extend' | 'loop' | 'bridge' };
-export type InterstitialResult = { url: string; assetId?: string; start: number; duration: number; totalDuration: number; reference?: GenerationReference };
+export type InterstitialResult = { url: string; assetId?: string; /** Original output with reference sections, kept separately from the repeatable loop. */ fullAssetId?: string; start: number; duration: number; totalDuration: number; reference?: GenerationReference };
 /** A single interstitial whose child clips share an interaction and branching timeline. */
 export type CallResponseInterstitial = {
   id: string;

@@ -11,7 +11,7 @@ const number = z.number().finite().nonnegative();
 const text = z.string().max(50_000);
 const clipReferenceSchema = z.object({ sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
 const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge']).optional(), before: clipReferenceSchema, after: clipReferenceSchema.optional() });
-const resultSchema = z.object({ url: text, assetId: z.uuid(), start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
+const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(), start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
   method: z.enum([...generationMethods, 'fal']).optional().transform(value => value === 'fal' || value === undefined ? 'comfy' as const : value),
@@ -126,8 +126,8 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
       interstitials: project.interstitials.map(item => ({ ...item,
         requestReference: remapReference(item.requestReference),
         phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase,
-        result: item.result ? { ...item.result, reference: remapReference(item.result.reference), assetId: remap.get(item.result.assetId)!, url: `asset:${remap.get(item.result.assetId)}` } : undefined,
-        previousResult: item.previousResult ? { ...item.previousResult, reference: remapReference(item.previousResult.reference), assetId: remap.get(item.previousResult.assetId)!, url: `asset:${remap.get(item.previousResult.assetId)}` } : undefined,
+        result: item.result ? { ...item.result, reference: remapReference(item.result.reference), assetId: remap.get(item.result.assetId)!, ...(item.result.fullAssetId ? { fullAssetId: remap.get(item.result.fullAssetId)! } : {}), url: `asset:${remap.get(item.result.assetId)}` } : undefined,
+        previousResult: item.previousResult ? { ...item.previousResult, reference: remapReference(item.previousResult.reference), assetId: remap.get(item.previousResult.assetId)!, ...(item.previousResult.fullAssetId ? { fullAssetId: remap.get(item.previousResult.fullAssetId)! } : {}), url: `asset:${remap.get(item.previousResult.assetId)}` } : undefined,
       })),
     }, assets };
   } finally { await reader.close(); }

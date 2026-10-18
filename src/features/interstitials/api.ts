@@ -1,7 +1,7 @@
-import { COMFY, INTERSTITIAL } from '../../../shared/constants';
+import { INTERSTITIAL } from '../../../shared/constants';
 import type { GenerationJob } from '../../../shared/contracts';
 import { generationPrompt, type Interstitial } from '../../../shared/interstitials';
-import { comfyReferenceRange } from '../../../shared/comfy';
+import { comfyDimensions, comfyReferenceRange } from '../../../shared/comfy';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import { request, sendForm } from '../../shared/api';
@@ -13,7 +13,9 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   const range = comfyReferenceRange(item, info.duration);
   if (!generationPrompt(item)) throw new Error('Describe the interstitial before generating.');
   onProgress('preparing', 0);
-  const clip = await engine.exportMp4(range, { maxDimension: COMFY.maxDimension, frameRate: INTERSTITIAL.referenceFps, signal, onProgress: value => onProgress('preparing', value) });
+  const dimensions = comfyDimensions(info.width, info.height);
+  const clip = await engine.exportMp4(range, { maxDimension: Math.max(dimensions.width, dimensions.height), frameRate: INTERSTITIAL.referenceFps,
+    quality: 'high', signal, onProgress: value => onProgress('preparing', value) });
   if (clip.size > INTERSTITIAL.maxReferenceBytes) throw new Error('The reference clip exceeds 50 MB. Shorten the reference ranges.');
   signal.throwIfAborted();
   const body = new FormData(); body.set('video', clip, 'comfy-reference.mp4');

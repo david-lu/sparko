@@ -61,8 +61,9 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const recovering = retryLoading || retryChecking;
   const canRecover = !!selected.result?.assetId || !!status?.providers.comfy;
   const action = retryLoading ? 'Retry loading' : retryChecking ? 'Check result' : selected.phase === 'error' || selected.phase === 'cancelled' ? 'Retry' : currentResult ? 'Regenerate' : 'Generate';
-  const fullVideoUrl = currentResult?.assetId ? assets.url(currentResult.assetId) : undefined;
-  const downloadName = `${selected.label.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'interstitial'}-full.mp4`;
+  const fullVideoUrl = currentResult?.fullAssetId ? assets.url(currentResult.fullAssetId) : currentResult?.assetId ? assets.url(currentResult.assetId) : undefined;
+  const trimmedLoop = (kind === 'idle' || method === 'comfy-loop') && !currentResult?.fullAssetId;
+  const downloadName = `${selected.label.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'interstitial'}-${trimmedLoop ? 'loop' : 'full'}.mp4`;
   let validationError = '';
   let comfyPlan: ReturnType<typeof comfyReferenceRange>['plan'] | undefined;
   try {
@@ -123,6 +124,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         : selected.phase === 'rendering' ? { label: 'Generating interstitial', value: renderingProgress(selected), title: 'Estimated render progress: preparation 5%, sampler 90%, decoding and saving 5%.' }
         : selected.phase === 'loading' ? { label: selected.progressDetails?.stage || 'Loading generated video', value: selected.progress } : undefined} />
     {fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
-      active={active} muted={silent || method === 'comfy-loop'} onPlay={onPreviewPlay} />}
+      heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
+      active={active} muted={silent || kind === 'idle' || method === 'comfy-loop'} onPlay={onPreviewPlay} />}
   </div>;
 }

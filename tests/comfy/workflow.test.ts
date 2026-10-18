@@ -36,8 +36,9 @@ describe('H3 two-sided temporal bridge', () => {
     for (const time of [0, 1, 19, 20]) expect(() => comfyReferenceRange({ time, start_range: 2, end_range: 2, duration: 6 }, 20)).toThrow('1.625');
     expect(() => comfyBridgePlan(4, 4, 13)).toThrow('362 frames');
     expect(() => comfyBridgePlan(NaN, 2, 6)).toThrow();
-    expect(comfyDimensions(2544, 1456)).toEqual({ width: 960, height: 544 });
-    expect(comfyDimensions(720, 1280)).toEqual({ width: 544, height: 960 });
+    expect(comfyDimensions(2544, 1456)).toEqual({ width: 1344, height: 768 });
+    expect(comfyDimensions(720, 1280)).toEqual({ width: 736, height: 1280 });
+    expect(comfyDimensions(2000, 2000)).toEqual({ width: 768, height: 768 });
   });
   it('conditions on both motion windows and masks only the missing middle', () => {
     const graph = bridgeWorkflow('uploaded-asset', { before: 1.625, after: 1.625, duration: 6, width: 960, height: 544, prompt: 'Continue moving', hasAudio: true }, 123);

@@ -1,5 +1,5 @@
 import { BufferTarget, Mp4OutputFormat, Output } from 'mediabunny';
-import { TIMELINE_FPS } from '../../../shared/constants';
+import { COMFY, TIMELINE_FPS } from '../../../shared/constants';
 import type { InterstitialResult } from '../../../shared/interstitials';
 import { renderComposition } from '../../media/CompositionRenderer';
 import { MediaEngine } from '../../media/MediaEngine';
@@ -21,7 +21,7 @@ export async function finishLoop(blob: Blob, result: InterstitialResult, signal:
       { ...anchor, id: 'loop-start', startFrame: 0, endFrame: 1 },
       { id: 'loop', kind: 'source', label: 'Idle', source, sourceStart: result.start + 1 / fps, startFrame: 1, endFrame: frames - 1, muted: true },
       { ...anchor, id: 'loop-end', startFrame: frames - 1, endFrame: frames },
-    ] }, output, { start: 0, end: frames / fps, signal });
+    ] }, output, { start: 0, end: frames / fps, signal, maxDimension: COMFY.maxDimension });
     return { blob: new Blob([target.buffer!], { type: 'video/mp4' }), result: { ...result, start: 0, duration: frames / fps, totalDuration: frames / fps } };
   } finally { signal.removeEventListener('abort', abort); engine.dispose(); URL.revokeObjectURL(url); }
 }

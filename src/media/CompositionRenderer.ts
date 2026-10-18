@@ -14,7 +14,7 @@ type Options = { start: number; end: number; signal: AbortSignal; preview?: bool
 export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean }, output: Output, options: Options) {
   await ensureAac();
   options.signal.throwIfAborted();
-  const scale = Math.min(1, (options.preview ? 720 : 1080) / composition.info.height,
+  const scale = Math.min(1, (options.preview ? 720 : options.maxDimension ? Infinity : 1080) / composition.info.height,
     (options.maxDimension ?? Infinity) / Math.max(composition.info.width, composition.info.height));
   const canvas = new OffscreenCanvas(Math.max(2, Math.round(composition.info.width * scale / 2) * 2), Math.max(2, Math.round(composition.info.height * scale / 2) * 2));
   const context = canvas.getContext('2d', { alpha: false });

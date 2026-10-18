@@ -1,6 +1,6 @@
 import {
   ALL_FORMATS, BlobSource, BufferTarget, CanvasSink, Conversion, Input,
-  Mp4OutputFormat, Output, UrlSource, WavOutputFormat, canEncodeAudio, type OutputFormat,
+  Mp4OutputFormat, Output, Quality, UrlSource, WavOutputFormat, canEncodeAudio, type OutputFormat, type QualityLevel,
 } from 'mediabunny';
 import { validateSlice, type Slice } from '../../shared/contracts';
 
@@ -125,7 +125,7 @@ async function runConversion(input: Input, output: Output<OutputFormat, BufferTa
 }
 
 /** Export an arbitrary range to H.264/AAC MP4. Deliberately has no download or editing UI. */
-export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { maxHeight?: number; maxDimension?: number; frameRate?: number } = {}): Promise<Blob> {
+export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { maxHeight?: number; maxDimension?: number; frameRate?: number; quality?: QualityLevel } = {}): Promise<Blob> {
   options.signal?.throwIfAborted();
   await ensureAac();
   const input = openInput(source);
@@ -142,7 +142,7 @@ export async function exportMp4(source: MediaSource, slice: Slice, options: Task
     const conversion = await Conversion.init({
       input, output, tracks: 'primary', trim: slice,
       // Re-encode to honor arbitrary boundaries instead of expanding to nearby keyframes.
-      video: { codec: 'avc', forceTranscode: true, frameRate: options.frameRate, ...scaleDimension },
+      video: { codec: 'avc', forceTranscode: true, frameRate: options.frameRate, ...(options.quality ? { quality: new Quality(options.quality) } : {}), ...scaleDimension },
       audio: { codec: 'aac', forceTranscode: true },
     });
     return await runConversion(input, output, conversion, options);

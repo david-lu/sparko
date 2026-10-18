@@ -19,5 +19,5 @@ export const activeFlows = (project?: Project | null) => projectFlows(project).f
 export const withFlows = (project: Project, callResponses: CallResponseFlow[]): Project => ({ ...project, callResponses, callResponse: callResponses[0] });
 export const assetIds = (project: Project) => [...new Set([project.source.assetId, project.source.originalAssetId, project.subtitle?.assetId,
   ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId)),
-  ...project.interstitials.flatMap(item => [item.result?.assetId, item.previousResult?.assetId,
+  ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId,
     ...[item.result?.reference, item.previousResult?.reference, item.requestReference].flatMap(input => [input?.before.assetId, input?.after?.assetId])])].filter((id): id is string => !!id))];

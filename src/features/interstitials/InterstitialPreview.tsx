@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import ClipLoading from '../../shared/ClipLoading';
 
-export default function InterstitialPreview({ url, label, downloadName, active, muted = false, onPlay }: {
-  url: string; label: string; downloadName: string; active: boolean; muted?: boolean; onPlay: () => void;
+export default function InterstitialPreview({ url, label, downloadName, heading = 'Generated video', active, muted = false, onPlay }: {
+  url: string; label: string; downloadName: string; heading?: string; active: boolean; muted?: boolean; onPlay: () => void;
 }) {
   const player = useRef<HTMLVideoElement>(null);
   const [media, setMedia] = useState<{ url: string; phase: 'loading' | 'ready' | 'error' }>({ url, phase: 'loading' });
@@ -21,8 +21,8 @@ export default function InterstitialPreview({ url, label, downloadName, active, 
   useEffect(() => { if (!active) player.current?.pause(); }, [active]);
 
   return <div className="interstitial-preview">
-    <div className="interstitial-preview-heading"><span>Generated video</span>
-      <a className="text-button" href={url} download={downloadName} aria-label="Download full video" title="Download full video"><Download size={13} /> Download</a>
+    <div className="interstitial-preview-heading"><span>{heading}</span>
+      <a className="text-button" href={url} download={downloadName} aria-label={heading === 'Loop video' ? 'Download loop video' : 'Download full video'} title={heading === 'Loop video' ? 'Download loop video' : 'Download full video'}><Download size={13} /> Download</a>
     </div>
     <div className="clip-preview-stage" aria-busy={phase === 'loading'}>
       <video key={url} ref={player} src={url} controls playsInline muted={muted} preload="auto" aria-label={`Generated video for ${label}`} onPlay={onPlay}

@@ -98,7 +98,7 @@ export class ProjectController {
     const source: MediaSource = { id: project.id, name: project.source.name, url, assetId: asset.id, file: new File([asset.blob], project.source.name, { type: asset.blob.type }) };
     const subtitle = project.subtitle ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
     // Restore retained renders before publishing the timeline, including failed/cancelled retries.
-    await Promise.all([...new Set([...project.interstitials.flatMap(item => [item.previousResult?.assetId, item.result?.assetId]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
+    await Promise.all([...new Set([...project.interstitials.flatMap(item => [item.previousResult?.assetId, item.previousResult?.fullAssetId, item.result?.assetId, item.result?.fullAssetId]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
       .filter((id): id is string => !!id))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
@@ -150,7 +150,7 @@ export class ProjectController {
       originalAssetId: restoredOriginal ? undefined : project.source.originalAssetId ?? (working !== original ? original.id : undefined) }, updatedAt: Date.now() }, pendingAssets };
   }
   private async prepareGenerated(project: Project, pendingAssets: Asset[], signal: AbortSignal) {
-    const generated = [...new Set([...project.interstitials.flatMap(item => [item.result?.assetId, item.previousResult?.assetId]),
+    const generated = [...new Set([...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId]),
       ...projectFlows(project).flatMap(flow => flow.scenes.filter(scene => !scene.draft).map(scene => scene.clip.assetId))])]
       .filter((id): id is string => !!id && id !== project.source.assetId && id !== project.source.originalAssetId);
     if (!generated.length) return;

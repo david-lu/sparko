@@ -10,6 +10,7 @@ import { addAnswer, changeClipKind, createTimelineExample, responseInterstitialI
 import { generationSource } from '../../src/features/call-response/generation';
 import { watchComfyJob } from '../../src/features/interstitials/progress-stream';
 import { phaseLabel } from '../../src/features/interstitials/status';
+import { finishLoop } from '../../src/features/call-response/finishLoop';
 
 vi.mock('../../src/features/interstitials/api', () => ({ generateInterstitial: vi.fn(), getInterstitialJob: vi.fn(), cancelInterstitialJob: vi.fn() }));
 vi.mock('../../src/features/interstitials/progress-stream', () => ({ watchComfyJob: vi.fn() }));
@@ -42,6 +43,25 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
+  it('retains the full idle generation while using the finished loop for playback', async () => {
+    const id = add(), raw = new Blob(['reference, generated middle, reference'], { type: 'video/mp4' });
+    const loop = new Blob(['repeatable middle'], { type: 'video/mp4' });
+    const loopId = crypto.randomUUID(), fullId = crypto.randomUUID();
+    const result = { url: completed.videoUrl, start: 2, duration: 5, totalDuration: 9,
+      reference: { mode: 'loop' as const, before: { sceneId: 'call', assetId: crypto.randomUUID(), inFrame: 0, outFrame: 48 } } };
+    const item = controller.getSnapshot().items[0];
+    controller.load('source', [{ ...item, phase: 'error', result }]);
+    vi.spyOn(assets, 'fetch').mockResolvedValue({ id: crypto.randomUUID(), name: 'video.mp4', blob: raw });
+    const save = vi.spyOn(assets, 'save').mockResolvedValueOnce({ id: loopId, name: 'video.mp4', blob: loop })
+      .mockResolvedValueOnce({ id: fullId, name: `${id}-full.mp4`, blob: raw });
+    vi.mocked(finishLoop).mockResolvedValueOnce({ blob: loop, result: { ...result, start: 0, totalDuration: 5 } });
+    const open = vi.spyOn(assets, 'open');
+    await controller.resume(id);
+    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', result: { assetId: loopId, fullAssetId: fullId, start: 0, duration: 5 } });
+    expect(save.mock.calls.map(([blob]) => blob)).toEqual([loop, raw]);
+    expect(open.mock.calls.map(([assetId]) => assetId)).toEqual([fullId, loopId]);
+    expect(loadInterstitials('source')[0].result).toMatchObject({ assetId: loopId, fullAssetId: fullId });
+  });
   it('preserves stale provenance across multiple groups, converted video clips and reloads', async () => {
     const first = createTimelineExample(crypto.randomUUID(), 8), second = createTimelineExample(crypto.randomUUID(), 8);
     second.interstitials = second.interstitials.map(item => ({ ...item, id: `second:${item.id}` }));

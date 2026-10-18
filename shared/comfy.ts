@@ -32,6 +32,6 @@ export function comfyReferenceRange(item: Pick<Interstitial, 'time' | 'start_ran
 
 export function comfyDimensions(width: number, height: number) {
   if (![width, height].every(value => Number.isFinite(value) && value > 0)) throw new Error('The source video dimensions are invalid.');
-  const scale = Math.min(1, COMFY.maxDimension / Math.max(width, height));
+  const scale = Math.min(1, COMFY.maxDimension / Math.max(width, height), COMFY.maxShortEdge / Math.min(width, height));
   return { width: Math.max(32, Math.round(width * scale / 32) * 32), height: Math.max(32, Math.round(height * scale / 32) * 32) };
 }

@@ -19,13 +19,13 @@ export const COMFY_MODELS = {
   audioVae: 'minimax_h3_audio_vae_fp32.safetensors',
 } as const;
 export const COMFY = {
-  baseUrl: 'https://cloud.comfy.org', maxDimension: 960, minContextFrames: 39,
+  baseUrl: 'https://cloud.comfy.org', maxDimension: 1344, maxShortEdge: 768, minContextFrames: 39,
   maxFrames: 362, frameGroup: 17, firstFrames: 5, steps: 20,
   sampler: 'res_multistep', shiftVideo: 12, shiftAudio: 3,
 } as const;
 // Cap newly converted working videos; the untouched original remains in the project.
 // Set maxHeight to 0 to keep the original resolution during preparation.
-export const VIDEO_PREPARATION = { maxHeight: 1080 } as const;
+export const VIDEO_PREPARATION = { maxHeight: 1344 } as const;
 export const MAX_VOICE_SECONDS = 60;
 // Keeps microphone requests below Vercel's function body limit, without public Blob uploads.
 export const MAX_VOICE_BYTES = 2 * 1024 * 1024;

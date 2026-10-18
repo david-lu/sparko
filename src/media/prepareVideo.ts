@@ -1,4 +1,4 @@
-import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, EncodedPacketSink, Input, Mp4InputFormat, Mp4OutputFormat, Output, type InputVideoTrack } from 'mediabunny';
+import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, EncodedPacketSink, Input, Mp4InputFormat, Mp4OutputFormat, Output, Quality, type InputVideoTrack } from 'mediabunny';
 import { TIMELINE_FPS, VIDEO_PREPARATION } from '../../shared/constants';
 import { ensureAac } from './media';
 
@@ -57,7 +57,7 @@ export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: 
     signal.throwIfAborted();
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
     conversion = await Conversion.init({ input, output, tracks: 'primary', trim: { start: 0 },
-      video: { codec: 'avc', frameRate: TIMELINE_FPS, forceTranscode: true, keyFrameInterval: 1,
+      video: { codec: 'avc', frameRate: TIMELINE_FPS, forceTranscode: true, keyFrameInterval: 1, quality: new Quality('high'),
         ...(VIDEO_PREPARATION.maxHeight > 0 && await video.getDisplayHeight() > VIDEO_PREPARATION.maxHeight ? { height: VIDEO_PREPARATION.maxHeight } : {}) },
       audio: { codec: 'aac' },
     });

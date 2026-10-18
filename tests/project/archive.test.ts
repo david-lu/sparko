@@ -30,6 +30,20 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it.each([false, true])('keeps the full idle preview when the loop is retained as a previous result: %s', async previous => {
+    const full = { id: crypto.randomUUID(), name: 'idle-full.mp4', blob: new Blob(['reference, idle, reference'], { type: 'video/mp4' }) };
+    const snapshot = structuredClone(project);
+    const item = snapshot.interstitials[1];
+    item.result = { ...item.result!, fullAssetId: full.id };
+    if (previous) { item.previousResult = item.result; item.result = undefined; item.phase = 'error'; }
+    const restored = await unpackProject(await packProject(snapshot, [...media, full], signal(), progress), signal(), progress);
+    const result = previous ? restored.project.interstitials[1].previousResult! : restored.project.interstitials[1].result!;
+    expect(result.fullAssetId).toBeTruthy();
+    expect(result.fullAssetId).not.toBe(full.id);
+    expect(result.fullAssetId).not.toBe(result.assetId);
+    expect(await restored.assets.find(asset => asset.id === result.fullAssetId)!.blob.text()).toBe(await full.blob.text());
+    await expect(packProject(snapshot, media, signal(), progress)).rejects.toThrow(/missing/);
+  });
   it('preserves Comfy selection, submitted provider, and exact output boundaries', async () => {
     const snapshot = structuredClone(project);
     const item = snapshot.interstitials[0];
