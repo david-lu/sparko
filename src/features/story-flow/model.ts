@@ -67,19 +67,58 @@ export function reachableNodes(graph: StoryGraph) {
   while (pending.length) { const id = pending.pop()!; if (visited.has(id)) continue; visited.add(id); pending.push(...graph.edges.filter(e => e.from === id).map(e => e.to)); }
   return visited;
 }
-export function autoLayout(graph: StoryGraph, items: Interstitial[]): StoryGraph {
-  const positioned = new Map<string, StoryNode>(), visited=new Set<string>();let y=90;
-  const roots=[graph.entryId,...graph.nodes.filter(n=>!graph.edges.some(e=>e.to===n.id&&e.from!==n.id)).map(n=>n.id),...graph.nodes.map(n=>n.id)];
-  for(const root of roots){
-    if(visited.has(root))continue;
-    const levels=new Map<string,number>(),queue:[string,number][]=[[root,0]];
-    while(queue.length){const [id,depth]=queue.shift()!;if(visited.has(id))continue;visited.add(id);levels.set(id,depth);graph.edges.filter(e=>e.from===id&&e.to!==id).forEach(e=>queue.push([e.to,depth+1]));}
-    const columns=Array.from({length:Math.max(0,...levels.values())+1},(_,depth)=>graph.nodes.filter(n=>levels.get(n.id)===depth));
-    const rows=Math.max(1,...columns.map(c=>c.length));let x=40;
-    columns.forEach(column=>{column.forEach((node,index)=>positioned.set(node.id,{...node,x:x+nodeMediaLayout(node,items).before*PIXELS_PER_SECOND,y:y+((rows-column.length)/2+index)*145}));x+=Math.max(0,...column.map(n=>nodeMediaLayout(n,items).total*PIXELS_PER_SECOND))+104;});
-    y+=rows*145+50;
+export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHeight=360): StoryGraph {
+  if(!graph.nodes.length)return graph;
+  const grouped=graph.groups?.some(g=>g.nodeIds.length),rowStep=grouped?170:145,gap=grouped?160:104;
+  // Fit all scales row positions, but clips stay 76px tall. Limit rows to the
+  // available height and put additional clips in columns instead of crushing them.
+  const rowLimit=Math.max(1,1+Math.floor((viewportHeight-CLIP_HEIGHT-(grouped?100:64))/rowStep));
+  const byId=new Map(graph.nodes.map(n=>[n.id,n])),media=new Map(graph.nodes.map(n=>[n.id,nodeMediaLayout(n,items)]));
+  const neighbors=new Map(graph.nodes.map(n=>[n.id,new Set<string>()])),outgoing=new Map(graph.nodes.map(n=>[n.id,[] as string[]]));
+  const incoming=new Set<string>();
+  const join=(a:string,b:string)=>{if(a!==b&&byId.has(a)&&byId.has(b)){neighbors.get(a)!.add(b);neighbors.get(b)!.add(a);}};
+  for(const edge of graph.edges){
+    if(edge.from===edge.to||!byId.has(edge.from)||!byId.has(edge.to))continue;
+    join(edge.from,edge.to);outgoing.get(edge.from)!.push(edge.to);incoming.add(edge.to);
   }
-  return { ...graph, nodes: graph.nodes.map(n => positioned.get(n.id)!), edges: graph.edges.map(e=>e.points?.length?{...e,points:undefined}:e) };
+  // A template's disconnected members still belong to the same layout block.
+  for(const group of graph.groups??[]){const members=group.nodeIds.filter(id=>byId.has(id));for(const id of members.slice(1))join(members[0],id);}
+  const order=[...new Set([graph.entryId,...byId.keys()])].filter(id=>byId.has(id)),seen=new Set<string>();
+  const positioned=new Map<string,StoryNode>();let columnX=40,columnWidth=0,usedRows=0;
+  for(const root of order){
+    if(seen.has(root))continue;
+    // Use both directions so two inputs sharing a downstream clip stay together.
+    const component=new Set<string>(),pending=[root];
+    for(let i=0;i<pending.length;i++){
+      const id=pending[i];if(component.has(id))continue;
+      component.add(id);seen.add(id);pending.push(...neighbors.get(id)!);
+    }
+    const ids=order.filter(id=>component.has(id)),levels=new Map<string,number>();
+    const queue:[string,number][]=ids.filter(id=>!incoming.has(id)||id===graph.entryId).map(id=>[id,0]);
+    const visit=()=>{for(let i=0;i<queue.length;i++){
+      const [id,depth]=queue[i];if(levels.has(id))continue;
+      levels.set(id,depth);for(const next of outgoing.get(id)!)queue.push([next,depth+1]);
+    }queue.length=0;};
+    visit();
+    // Cycles and disconnected cycles inside a group have no incoming-free root.
+    for(const id of ids)if(!levels.has(id)){queue.push([id,0]);visit();}
+    const columns=Array.from({length:Math.max(...levels.values())+1},(_,depth)=>ids.filter(id=>levels.get(id)===depth));
+    const rows=Math.min(rowLimit,Math.max(...columns.map(c=>c.length)));
+    const local=new Map<string,{x:number;y:number}>();let width=0;
+    for(const column of columns){
+      // Wide branches also wrap into extra columns, keeping their clip height.
+      for(let start=0;start<column.length;start+=rowLimit){
+        const batch=column.slice(start,start+rowLimit);
+        for(const [index,id] of batch.entries())local.set(id,{x:width+media.get(id)!.before*PIXELS_PER_SECOND,y:((rows-batch.length)/2+index)*rowStep});
+        width+=Math.max(...batch.map(id=>media.get(id)!.total*PIXELS_PER_SECOND))+gap;
+      }
+    }
+    width-=gap;
+    if(usedRows+rows>rowLimit){columnX+=columnWidth+gap;columnWidth=0;usedRows=0;}
+    for(const id of ids){const p=local.get(id)!;positioned.set(id,{...byId.get(id)!,x:columnX+p.x,y:90+usedRows*rowStep+p.y});}
+    columnWidth=Math.max(columnWidth,width);usedRows+=rows;
+  }
+  return {...graph,nodes:graph.nodes.map(n=>positioned.get(n.id)!),edges:graph.edges.map(e=>e.points?.length?{...e,points:undefined}:e)};
 }
 export function createNode(kind: Exclude<NodeKind, 'source'>, referenceId?: string): { node: StoryNode; item: Interstitial } {
   const id = freshId(), itemId = freshId();

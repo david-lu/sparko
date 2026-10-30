@@ -65,16 +65,16 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const position=(id:string)=>nodes.find(n=>n.id===id)!;
   const updateCamera=(value:Camera|((current:Camera)=>Camera))=>{const next=typeof value==='function'?value(cameraRef.current):value;cameraRef.current=next;setCamera(next);};
   const localPoint=(client:Point)=>{const bounds=scroll.current!.getBoundingClientRect();return {x:client.x-bounds.left,y:client.y-bounds.top};};
-  const fit=(targets:StoryNode[]=nodes,maxZoom=2)=>{
+  const fit=(targets:StoryNode[]=nodes,maxZoom=2,edges=graph.edges)=>{
     if(!targets.length||!scroll.current)return;
-    const ids=new Set(targets.map(n=>n.id)),points=graph.edges.filter(e=>ids.has(e.from)&&ids.has(e.to)).flatMap(e=>e.points??[]);
+    const ids=new Set(targets.map(n=>n.id)),points=edges.filter(e=>ids.has(e.from)&&ids.has(e.to)).flatMap(e=>e.points??[]);
     const bounds={left:Math.min(...targets.map(clipLeft),...points.map(p=>p.x)),right:Math.max(...targets.map(clipRight),...points.map(p=>p.x)),
       top:Math.min(...targets.map(n=>n.y),...points.map(p=>p.y)),bottom:Math.max(...targets.map(n=>n.y),...points.map(p=>p.y))};
     const outputSpace=targets.some(n=>behaviors(n).conditional)?110:0;
     updateCamera(fitCamera(bounds,scroll.current.clientWidth-outputSpace,scroll.current.clientHeight,maxZoom,graph.groups?.some(g=>g.nodeIds.every(id=>ids.has(id)))));
   };
   const fitSelected=()=>fit(nodes.filter(n=>editor.selected.includes(n.id)),8);
-  const cleanup=()=>{const next=autoLayout(graph,editor.items);editor.change(next);fit(next.nodes);editor.setNotice('Layout cleaned up. Connections and clip timing are unchanged.');};
+  const cleanup=()=>{const next=autoLayout(graph,editor.items,scroll.current?.clientHeight);editor.change(next);fit(next.nodes,2,next.edges);editor.setNotice('Layout cleaned up. Connections and clip timing are unchanged.');};
   const focus=(id=editor.selectedId)=>{if(!id&&editor.selectedGroup){fit(nodes.filter(n=>editor.selectedGroup!.nodeIds.includes(n.id)));return;}const n=nodes.find(n=>n.id===id),view=scroll.current;if(!n||!view)return;
     updateCamera(current=>({...current,x:view.clientWidth/2-((clipLeft(n)+clipRight(n))/2)*current.zoom,y:(view.clientHeight-CLIP_HEIGHT)/2-n.y*current.rowScale}));};
   const reveal=(id:string)=>{const n=nodes.find(n=>n.id===id),view=scroll.current;if(!n||!view)return;const p=toScreen({x:clipLeft(n),y:n.y},cameraRef.current);
