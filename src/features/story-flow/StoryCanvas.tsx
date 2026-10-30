@@ -11,6 +11,7 @@ import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
 import ResizeHandle from '../../shared/ResizeHandle';
 import { useWorkspaceLocked } from '../../shared/panels/WorkspaceLock';
 import { useShortcuts } from '../../shared/shortcuts';
+import DropdownMenu, { useExclusiveMenu } from '../../shared/DropdownMenu';
 import { phaseLabel } from '../interstitials/status';
 import { autoLayout, CLIP_HEIGHT, connect, createNode, freshId, nodeDuration, nodeMediaLayout, PIXELS_PER_SECOND, reachableNodes, groupColors, type StoryNode, type StoryEdge } from './model';
 import type { StoryEditor } from './useStoryEditor';
@@ -102,7 +103,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       const target=event.target as HTMLElement;
       if(target.closest('.story-edges [role="button"]'))return;
       const action=shortcuts.action(event);
-      if(event.code!=='Space'||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||action&&action!=='play'||target.closest('input,textarea,select,video[controls],[role="menu"],dialog,[role="dialog"]')||target.isContentEditable||!scroll.current?.contains(target)&&!hovering.current||target.closest('button,summary,[role="button"]')&&!hovering.current)return;
+      if(event.code!=='Space'||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||action&&action!=='play'||target.closest('input,textarea,select,video[controls],[role="menu"],[data-popup-menu][open],dialog,[role="dialog"]')||target.isContentEditable||!scroll.current?.contains(target)&&!hovering.current||target.closest('button,summary,[role="button"]')&&!hovering.current)return;
       event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){space.current={held:true,used:false};setSpaceHeld(true);}
     };
     const up=(event:KeyboardEvent)=>{if(event.code!=='Space'||!space.current.held)return;event.preventDefault();if(!space.current.used&&shortcuts.action(event)==='play')editor.player.togglePlayback();space.current={held:false,used:false};setSpaceHeld(false);};
@@ -110,11 +111,8 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     window.addEventListener('keydown',down,true);window.addEventListener('keyup',up,true);window.addEventListener('blur',blur);
     return()=>{window.removeEventListener('keydown',down,true);window.removeEventListener('keyup',up,true);window.removeEventListener('blur',blur);};
   },[editor.player,collapsed,shortcuts.bindings]);
-  useEffect(()=>{
-    if(!context)return;menu.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
-    const close=(event:PointerEvent)=>{if(!menu.current?.contains(event.target as Node))setContext(null);};
-    window.addEventListener('pointerdown',close,true);return()=>window.removeEventListener('pointerdown',close,true);
-  },[context]);
+  useExclusiveMenu(menu,!!context,()=>setContext(null),()=>scroll.current?.focus({preventScroll:true}));
+  useEffect(()=>{if(context)menu.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();},[context]);
   useEffect(()=>{
     if(collapsed||!follow||!session||!scroll.current||gestureCancel.current)return;
     const node=graph.nodes.find(n=>n.id===session.sceneId),view=scroll.current;if(!node)return;
@@ -136,7 +134,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   useEffect(()=>{
     if(collapsed)return;
     const key=(event:KeyboardEvent)=>{
-      const target=event.target as HTMLElement;if(event.defaultPrevented||event.isComposing||target.isContentEditable||target.closest('input,textarea,select,dialog,[role="dialog"],video[controls],[role="menu"],.sidePanelSectionHeader'))return;
+      const target=event.target as HTMLElement;if(event.defaultPrevented||event.isComposing||target.isContentEditable||target.closest('input,textarea,select,dialog,[role="dialog"],video[controls],[role="menu"],[data-popup-menu][open],.sidePanelSectionHeader'))return;
       if(event.key==='Escape'){editor.setConnecting(null);setTemplateName(null);setCutTool(false);setCutPreview(null);setContext(null);if(addMenu.current)addMenu.current.open=false;if(templateMenu.current)templateMenu.current.open=false;return;}
       const action=shortcuts.action(event);
       if(!action)return;
@@ -303,8 +301,8 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   return <div ref={root} className={`story-canvas ${collapsed?'collapsed':''} ${wire||editor.connecting?'connecting':''} ${cutTool?'cut-tool':''} ${panTool||spaceHeld?'pan-tool':''} ${panning?'panning':''} ${dropTarget?'library-drag':''} ${libraryDrag?'dragging-library':''}`} style={{height:collapsed?'auto':height}}>
     {!collapsed&&<ResizeHandle orientation="horizontal" label="Resize story canvas" value={height} min={220} max={maxHeight} onChange={onHeight}/>}
     <div className="story-toolbar"><button className="story-collapse" disabled={workspaceLocked} aria-label={collapsed?'Expand timeline':'Collapse timeline'} aria-expanded={!collapsed} aria-controls={canvasId} title={workspaceLocked?'Unlock workspace in Window to collapse the timeline':collapsed?'Expand timeline':'Collapse timeline'} onClick={toggleCollapsed} onKeyDown={e=>{if(e.key===' ')e.stopPropagation();}}><ChevronDown size={14}/><span className="eyebrow">TIMELINE</span></button><span className="story-collapsed-summary">{nodes.length} {nodes.length===1?'clip':'clips'}</span>
-      <details ref={addMenu} className="story-menu"><summary className="button small"><Plus size={13}/>Interstitial</summary><div className="story-menu-popover"><p className="story-drag-help">Drag to a spot on the timeline</p><button draggable onDragStart={e=>startLibraryDrag(e,{kind:'simple'})} title="Drag to timeline. Enter adds at the selection." onClick={e=>menuAdd(e,()=>editor.add('simple',editor.selectedEdge??undefined))}><strong><GripVertical size={12}/>New interstitial</strong><small>Set loop and conditional behaviors in the Inspector</small></button></div></details>
-      <details ref={templateMenu} className="story-menu"><summary className="button small"><LayoutTemplate size={13}/>Templates</summary><div className="story-menu-popover"><p className="story-drag-help">Drag to a spot on the timeline</p>{builtInTemplates.map(t=><button key={t.id} draggable onDragStart={e=>startLibraryDrag(e,{templateId:t.id})} title="Drag to timeline. Enter adds at the selection." onClick={e=>menuAdd(e,()=>editor.insertTemplate(t.id,editor.selectedEdge??undefined))}><strong><GripVertical size={12}/>{t.name}</strong><small>{t.description}</small></button>)}{graph.templates.map(t=><div className="story-template-row" key={t.id}><button draggable onDragStart={e=>startLibraryDrag(e,{templateId:t.id})} title="Drag to timeline. Enter adds at the selection." onClick={e=>menuAdd(e,()=>editor.insertTemplate(t,editor.selectedEdge??undefined))}>{t.name}</button><button aria-label={`Delete template ${t.name}`} onClick={()=>editor.change({...graph,templates:graph.templates.filter(x=>x.id!==t.id)})}><Trash2 size={13}/></button></div>)}<button disabled={!editor.selected.length} onClick={()=>{setTemplateName(editor.selectedGroup?.name??'My template');templateMenu.current!.open=false;}}>Save selected clips as template</button></div></details>
+      <DropdownMenu ref={addMenu} className="story-menu"><summary className="button small"><Plus size={13}/>Interstitial</summary><div className="story-menu-popover"><p className="story-drag-help">Drag to a spot on the timeline</p><button draggable onDragStart={e=>startLibraryDrag(e,{kind:'simple'})} title="Drag to timeline. Enter adds at the selection." onClick={e=>menuAdd(e,()=>editor.add('simple',editor.selectedEdge??undefined))}><strong><GripVertical size={12}/>New interstitial</strong><small>Set loop and conditional behaviors in the Inspector</small></button></div></DropdownMenu>
+      <DropdownMenu ref={templateMenu} className="story-menu"><summary className="button small"><LayoutTemplate size={13}/>Templates</summary><div className="story-menu-popover"><p className="story-drag-help">Drag to a spot on the timeline</p>{builtInTemplates.map(t=><button key={t.id} draggable onDragStart={e=>startLibraryDrag(e,{templateId:t.id})} title="Drag to timeline. Enter adds at the selection." onClick={e=>menuAdd(e,()=>editor.insertTemplate(t.id,editor.selectedEdge??undefined))}><strong><GripVertical size={12}/>{t.name}</strong><small>{t.description}</small></button>)}{graph.templates.map(t=><div className="story-template-row" key={t.id}><button draggable onDragStart={e=>startLibraryDrag(e,{templateId:t.id})} title="Drag to timeline. Enter adds at the selection." onClick={e=>menuAdd(e,()=>editor.insertTemplate(t,editor.selectedEdge??undefined))}>{t.name}</button><button aria-label={`Delete template ${t.name}`} onClick={()=>editor.change({...graph,templates:graph.templates.filter(x=>x.id!==t.id)})}><Trash2 size={13}/></button></div>)}<button disabled={!editor.selected.length} onClick={()=>{setTemplateName(editor.selectedGroup?.name??'My template');templateMenu.current!.open=false;}}>Save selected clips as template</button></div></DropdownMenu>
       <button className="button small" title={shortcuts.title('layout')} aria-keyshortcuts={shortcuts.aria('layout')} onClick={cleanup}>Auto layout</button>
       <div className="story-toolbar-spacer"/><button className="icon-button small" title={shortcuts.title('duplicate')} aria-label="Duplicate selected clips" disabled={!editor.selected.length} onClick={editor.duplicate}><Copy size={14}/></button>
       <button className={`icon-button small ${cutTool?'active':''}`} title={shortcuts.title('cut')+'. Click a clip to split it.'} aria-label="Cut tool" aria-pressed={cutTool} onClick={()=>{setCutTool(v=>!v);setPanTool(false);}}><Scissors size={14}/></button>

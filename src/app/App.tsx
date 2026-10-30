@@ -31,6 +31,7 @@ import { WorkspaceLockContext } from '../shared/panels/WorkspaceLock';
 import WindowMenu from './WindowMenu';
 import ShortcutSettings from './ShortcutSettings';
 import { useShortcuts } from '../shared/shortcuts';
+import DropdownMenu from '../shared/DropdownMenu';
 
 // Fast Refresh preserves useState, including instances with obsolete controller methods.
 // Reload saved project state when a controller changes during local development.
@@ -302,12 +303,12 @@ export default function App() {
       onOpenSampleProject={() => { if (status?.defaultProject) void projects.openSampleProject(status.defaultProject.url); }}
       onDismissError={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }} /> : <>
     <header className="menubar" aria-label="Application menu">
-      <details className="file-menu" ref={fileMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }} onKeyDown={event => { if (event.key === 'Escape') event.currentTarget.open = false; }}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
+      <DropdownMenu className="file-menu" ref={fileMenu}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
         <button role="menuitem" disabled={projectState.busy} onClick={closeCurrent}><FolderOpen size={14} />Close project</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { void saveCurrent(); }}><Save size={14} />Save project</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void saveAsFile(); }}><Save size={14} />Save as new file</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
-      </div></details>
+      </div></DropdownMenu>
       <PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
       <WindowMenu workspace={workspace} panelsAvailable={!!storyGraph} timelineVisible={!timelineCollapsed} onTimeline={()=>{if(!workspace.locked)setTimelineCollapsed(value=>!value);}} onReset={resetWorkspace}/>
       <div className="history-controls" role="group" aria-label="Edit history">

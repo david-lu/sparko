@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { PanelDivider } from "./PanelDivider";
 import { useWorkspaceLocked } from './WorkspaceLock';
+import { useExclusiveMenu } from '../DropdownMenu';
 import { PanelBody } from "./PanelBody";
 
 export type CollapsiblePanelItem = {
@@ -437,33 +438,10 @@ export function CollapsiblePanelStack({
     reorderStateRef.current=null;setActiveReorderId(null);setLocalInsertionBeforeId(undefined);setHorizontalDropSide(null);setResizePreview(null);setContextMenu(null);onItemCancelAdjacentLanePreviewRef.current?.();
   },[locked]);
 
-  useEffect(() => {
-    if (!contextMenu) return;
-    contextMenuRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
-
-    const handlePointerDown = (event: PointerEvent | MouseEvent) => {
-      const target = event.target;
-      if (target instanceof Node && contextMenuRef.current?.contains(target)) {
-        return;
-      }
-      setContextMenu(null);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setContextMenu(null);
-      }
-    };
-
-    window.addEventListener("pointerdown", handlePointerDown, true);
-    window.addEventListener("contextmenu", handlePointerDown, true);
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown, true);
-      window.removeEventListener("contextmenu", handlePointerDown, true);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [contextMenu]);
+  useExclusiveMenu(contextMenuRef,!!contextMenu,()=>setContextMenu(null),()=>{
+    if(contextMenu)sectionRefs.current[contextMenu.panelId]?.querySelector<HTMLElement>('.sidePanelSectionToggle')?.focus({preventScroll:true});
+  });
+  useEffect(()=>{if(contextMenu)contextMenuRef.current?.querySelector<HTMLButtonElement>('button')?.focus();},[contextMenu]);
 
   const togglePanel = (panelId: string) => {
     if(locked)return;

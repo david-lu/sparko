@@ -3,6 +3,7 @@ import { CollapsiblePanelStack, type CollapsiblePanelItem } from './CollapsibleP
 import { PanelSplit } from './PanelSplit';
 import type { WorkspaceLayoutController } from './workspaceLayout';
 import './panels.css';
+import DropdownMenu from '../DropdownMenu';
 
 /** Same stack/adjacent-column docking used by the animation editor. */
 export default function WorkspacePanels({ library, inspector, narrow, onColumns, onReset, inspectorRevision = 0,workspace }: {
@@ -56,10 +57,10 @@ export default function WorkspacePanels({ library, inspector, narrow, onColumns,
     </div>;
   };
   return <div className="workspace-panels">
-    <div className="panel-workspace-bar"><span>Workspace</span><details ref={menu} className="panel-workspace-menu"><summary>Panels</summary><div>
+    <div className="panel-workspace-bar"><span>Workspace</span><DropdownMenu ref={menu} className="panel-workspace-menu"><summary>Panels</summary><div>
       {items.map(item => <button key={item.id} disabled={locked} aria-pressed={layout.panels.find(p => p.id === item.id)?.visible} onClick={() => { update(item.id, { visible: !layout.panels.find(p => p.id === item.id)?.visible }); }}>{item.title}</button>)}
       <button disabled={locked} onClick={() => { setPreview(null); onReset(); if (menu.current) menu.current.open = false; }}>Reset workspace</button>
-    </div></details></div>
+    </div></DropdownMenu></div>
     {!visible.length ? <div className="panels-empty">Open a panel from the Panels menu.</div> : lanes.length === 2 ?
       <PanelSplit className="sidePanelColumns" direction="row" label="Library and Inspector columns" sizes={layout.columns} minSizes={[200, 200]} onSizesChange={columns => setLayout(old => ({ ...old, columns }))}>
         {renderLane(0)}{renderLane(1)}

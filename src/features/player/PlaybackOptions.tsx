@@ -2,6 +2,7 @@ import { Check } from 'lucide-react';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { maxCrossfadeFrames } from './preferences';
 import './options.css';
+import DropdownMenu from '../../shared/DropdownMenu';
 
 export { crossfadePreference, savedCrossfadePreference, crossfadeLengthPreference, savedCrossfadeFrames, framingPreference, savedFramingPreference } from './preferences';
 
@@ -11,9 +12,7 @@ export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrame
   perClip?: boolean;
 }) {
   const length = `${(crossfadeFrames / TIMELINE_FPS).toFixed(2)} s`;
-  return <details className="file-menu playback-options" onBlur={event => {
-    if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false;
-  }} onKeyDown={event => {
+  return <DropdownMenu className="file-menu playback-options" onKeyDown={event => {
     if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); }
     // Keep Space usable for the checkbox without triggering the player's global shortcut.
     if (event.key === ' ' && (event.target as HTMLElement).getAttribute('role') === 'menuitemcheckbox') event.stopPropagation();
@@ -34,5 +33,5 @@ export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrame
       title="Match generated clips to the parent frame with a small center crop (up to 5%). Larger aspect differences keep the full image.">
       <Check size={14} style={{ visibility: matchFraming ? 'visible' : 'hidden' }} />Match generated framing
     </button>
-  </div></details>;
+  </div></DropdownMenu>;
 }

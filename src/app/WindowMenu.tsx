@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
+import DropdownMenu from '../shared/DropdownMenu';
 import { Check, Lock, RotateCcw } from 'lucide-react';
 import type { WorkspaceLayoutController } from '../shared/panels/workspaceLayout';
 
@@ -7,12 +8,8 @@ export default function WindowMenu({workspace,timelineVisible,onTimeline,onReset
 }) {
   const menu=useRef<HTMLDetailsElement>(null);
   const close=()=>{if(menu.current)menu.current.open=false;};
-  useEffect(()=>{
-    const outside=(event:PointerEvent)=>{if(!menu.current?.contains(event.target as Node))close();};
-    window.addEventListener('pointerdown',outside);return()=>window.removeEventListener('pointerdown',outside);
-  },[]);
   const disabled=workspace.locked||!panelsAvailable;
-  return <details ref={menu} className="file-menu window-menu" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node))close();}} onKeyDown={event=>{
+  return <DropdownMenu ref={menu} className="file-menu window-menu" onKeyDown={event=>{
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();menu.current?.querySelector('summary')?.focus();return;}
     if(event.key===' '){event.stopPropagation();return;}
     if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
@@ -32,5 +29,5 @@ export default function WindowMenu({workspace,timelineVisible,onTimeline,onReset
       <button role="menuitemcheckbox" aria-checked={workspace.locked} title="Keep panel positions, sizes and visibility fixed" onClick={()=>workspace.setLocked(!workspace.locked)}><Check size={14} aria-hidden="true" style={{visibility:workspace.locked?'visible':'hidden'}}/>Lock workspace</button>
       <button role="menuitem" disabled={workspace.locked} onClick={()=>{onReset();close();menu.current?.querySelector('summary')?.focus();}}><RotateCcw size={14} aria-hidden="true"/>Reset workspace</button>
     </div>
-  </details>;
+  </DropdownMenu>;
 }
