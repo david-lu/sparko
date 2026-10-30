@@ -1,4 +1,4 @@
-import {test,expect,type Page} from './fixtures';
+import { fitAll,test,expect,type Page} from './fixtures';
 import type {Locator} from '@playwright/test';
 
 const open=async(page:Page)=>{await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
@@ -36,7 +36,7 @@ test('toolbar dragging previews the exact zoomed position, preserves the view, a
 
 test('wire drops attach at the pointer and template drops preserve existing positions and routing',async({page})=>{
   await open(page);const film=page.locator('.story-filmstrip').first();await film.focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();const initial=await saved(page),view=await camera(page);
+  await fitAll(page);const initial=await saved(page),view=await camera(page);
   const wire=page.locator('.story-crossfade').first(),rect=(await wire.boundingBox())!,x=rect.x+rect.width/2,y=rect.y+rect.height/2;
   await begin(page,page.getByRole('button',{name:'Add interstitial',exact:true}),x,y);await expect(page.locator('.story-status')).toContainText('insert into this connection');
   await at(page.locator('.story-drop-preview'),x,y);await page.mouse.up();const loop=page.locator('.story-clip.type-simple');await expect(loop).toHaveCount(1);await at(loop,x,y);

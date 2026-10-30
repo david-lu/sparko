@@ -6,6 +6,7 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { PanelDivider } from "./PanelDivider";
+import { useWorkspaceLocked } from './WorkspaceLock';
 import { PanelBody } from "./PanelBody";
 
 export type CollapsiblePanelItem = {
@@ -184,6 +185,7 @@ export function CollapsiblePanelStack({
     resolver: ((clientY: number) => string | null) | null,
   ) => void;
 }) {
+  const locked=useWorkspaceLocked(),lockedRef=useRef(locked);lockedRef.current=locked;
   const stackRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -302,6 +304,7 @@ export function CollapsiblePanelStack({
 
   useEffect(() => {
     const onPointerMove = (event: PointerEvent) => {
+      if(lockedRef.current)return;
       const reorderState = reorderStateRef.current;
       if (reorderState?.pointerId === event.pointerId) {
         event.preventDefault();
@@ -355,6 +358,7 @@ export function CollapsiblePanelStack({
     };
 
     const clearPointerState = (event: PointerEvent) => {
+      if(lockedRef.current)return;
       if (reorderStateRef.current?.pointerId === event.pointerId) {
         const reorderState = reorderStateRef.current;
         const horizontalDelta = event.clientX - reorderState.startX;
@@ -428,6 +432,10 @@ export function CollapsiblePanelStack({
       window.removeEventListener("pointercancel", clearPointerState);
     };
   }, []);
+  useEffect(()=>{
+    if(!locked)return;
+    reorderStateRef.current=null;setActiveReorderId(null);setLocalInsertionBeforeId(undefined);setHorizontalDropSide(null);setResizePreview(null);setContextMenu(null);onItemCancelAdjacentLanePreviewRef.current?.();
+  },[locked]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -458,6 +466,7 @@ export function CollapsiblePanelStack({
   }, [contextMenu]);
 
   const togglePanel = (panelId: string) => {
+    if(locked)return;
     const currentCollapsedById = collapsedByIdRef.current;
     if (!currentCollapsedById[panelId]) sectionRefs.current[panelId]?.querySelectorAll('video').forEach(video => video.pause());
     const collapsedById = {
@@ -481,6 +490,7 @@ export function CollapsiblePanelStack({
   };
 
   const dismissPanel = (panelId: string) => {
+    if(locked)return;
     onItemDismissRef.current?.(panelId);
     setContextMenu(null);
   };
@@ -491,6 +501,7 @@ export function CollapsiblePanelStack({
   ) => {
     event.preventDefault();
     event.stopPropagation();
+    if(locked)return;
     setContextMenu({
       panelId,
       x: event.clientX,
@@ -516,7 +527,7 @@ export function CollapsiblePanelStack({
     event: React.PointerEvent<HTMLDivElement>,
     panelId: string,
   ) => {
-    if (event.button !== 0) return;
+    if (locked||event.button !== 0) return;
     const stack = stackRef.current;
     if (!stack) return;
     event.preventDefault();
@@ -597,6 +608,8 @@ export function CollapsiblePanelStack({
                   <button
                     type="button"
                     className="sidePanelSectionCollapseToggle"
+                    disabled={locked}
+                    title={locked?'Unlock workspace in Window to collapse panels':undefined}
                     onClick={() => togglePanel(item.id)}
                     onContextMenu={(event) =>
                       openPanelContextMenu(event, item.id)
@@ -617,9 +630,10 @@ export function CollapsiblePanelStack({
                     onContextMenu={(event) =>
                       openPanelContextMenu(event, item.id)
                     }
-                    role="button" tabIndex={0} aria-label={`Move ${item.title} panel`}
-                    title="Drag to reorder or snap into another column. Alt + arrow keys moves panels."
+                    role="button" tabIndex={locked?-1:0} aria-disabled={locked||undefined} aria-label={`Move ${item.title} panel`}
+                    title={locked?'Unlock workspace in Window to move panels':'Drag to reorder or snap into another column. Alt + arrow keys moves panels.'}
                     onKeyDown={event => {
+                      if(locked)return;
                       if (!event.altKey || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
                       event.preventDefault(); event.stopPropagation();
                       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {

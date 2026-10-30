@@ -26,6 +26,11 @@ import StoryCanvas from '../features/story-flow/StoryCanvas';
 import StoryInspector from '../features/story-flow/StoryInspector';
 import StoryLibrary from '../features/story-flow/StoryLibrary';
 import WorkspacePanels from '../shared/panels/WorkspacePanels';
+import { useWorkspaceLayout } from '../shared/panels/workspaceLayout';
+import { WorkspaceLockContext } from '../shared/panels/WorkspaceLock';
+import WindowMenu from './WindowMenu';
+import ShortcutSettings from './ShortcutSettings';
+import { useShortcuts } from '../shared/shortcuts';
 
 // Fast Refresh preserves useState, including instances with obsolete controller methods.
 // Reload saved project state when a controller changes during local development.
@@ -65,6 +70,7 @@ export default function App() {
   const [startReady, setStartReady] = useState(false);
   const [error, setError] = useState('');
   const [shortcuts, setShortcuts] = useState(false);
+  const keys=useShortcuts();
   const [closePrompt, setClosePrompt] = useState(false);
   const [crossfade, setCrossfade] = useState(savedCrossfadePreference);
   useEffect(() => { try { localStorage.setItem(crossfadePreference, String(crossfade)); } catch { /* Apply without persistence. */ } }, [crossfade]);
@@ -77,9 +83,14 @@ export default function App() {
   const [login, setLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const workspace=useWorkspaceLayout();
+  const workspaceLocked=useRef(workspace.locked);workspaceLocked.current=workspace.locked;
   const [sideWidth, setSideWidth] = useState(() => savedSize('sparko:side-width', 330));
-  const onPanelColumns = useCallback((count: number) => { if (count === 2) setSideWidth(width => Math.max(width, 580)); }, []);
+  const onPanelColumns = useCallback((count: number) => { if (!workspaceLocked.current&&count === 2) setSideWidth(width => Math.max(width, 580)); }, []);
   const [timelineHeight, setTimelineHeight] = useState(() => savedSize('sparko:story-height', 360));
+  const [timelineCollapsed,setTimelineCollapsed]=useState(()=>{try{return localStorage.getItem('sparko:story-collapsed')==='true';}catch{return false;}});
+  useEffect(()=>{try{localStorage.setItem('sparko:story-collapsed',String(timelineCollapsed));}catch{/* Keep the workspace usable without storage. */}},[timelineCollapsed]);
+  const resetWorkspace=()=>{if(workspace.locked)return;workspace.reset();setSideWidth(330);setTimelineHeight(360);setTimelineCollapsed(false);};
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const maxSideWidth = Math.max(220, Math.min(700, viewport.width - 340));
   const maxTimelineHeight = Math.max(300, Math.floor(viewport.height * (viewport.width <= 660 ? 0.5 : 0.7)));
@@ -107,20 +118,21 @@ export default function App() {
   }, [controller, projectState.historyRevision]);
   useEffect(() => {
     const historyKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey || !(event.ctrlKey || event.metaKey)) return;
-      const key = event.key.toLowerCase();
-      if (key !== 'z' && key !== 'y') return;
+      if (event.defaultPrevented || event.isComposing) return;
+      const action=keys.action(event);
+      if(action!=='undo'&&action!=='redo')return;
       const target = event.target as HTMLElement;
       const textInput = target.closest('textarea, input:not([type="range"]):not([type="checkbox"]):not([type="button"]):not([type="submit"]):not([type="reset"])');
-      if ((target.isContentEditable || textInput) && !target.closest('[data-project-edit]')) return;
+      if(target.closest('dialog,[role="dialog"],[role="menu"],video[controls]'))return;
+      if ((target.isContentEditable || textInput) && !(target.closest('[data-project-edit]')&&(event.ctrlKey||event.metaKey))) return;
       event.preventDefault();
       if (event.repeat || projects.getSnapshot().busy) return;
       controller.pause();
-      if (key === 'y' || event.shiftKey) void projects.redo(); else void projects.undo();
+      if (action==='redo') void projects.redo(); else void projects.undo();
     };
     window.addEventListener('keydown', historyKey);
     return () => window.removeEventListener('keydown', historyKey);
-  }, [controller, projects]);
+  }, [controller, projects, keys.bindings]);
   useEffect(() => () => { interstitials.dispose(); projects.dispose(); }, [interstitials, projects]);
   useEffect(() => { let active = true; void getStatus().then(data => {
     if (!active) return;
@@ -297,38 +309,39 @@ export default function App() {
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>
       <PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
+      <WindowMenu workspace={workspace} panelsAvailable={!!storyGraph} timelineVisible={!timelineCollapsed} onTimeline={()=>{if(!workspace.locked)setTimelineCollapsed(value=>!value);}} onReset={resetWorkspace}/>
       <div className="history-controls" role="group" aria-label="Edit history">
-        <button className="icon-button small" aria-label="Undo" aria-keyshortcuts="Control+Z Meta+Z" title={`${projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo'} (Ctrl/Cmd+Z)`}
+        <button className="icon-button small" aria-label="Undo" aria-keyshortcuts={keys.aria('undo')} title={keys.title('undo',projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo')}
           disabled={projectState.busy || !projectState.undoLabel} onClick={() => { controller.pause(); void projects.undo(); }}><Undo2 size={14} /></button>
-        <button className="icon-button small" aria-label="Redo" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y" title={`${projectState.redoLabel ? `Redo: ${projectState.redoLabel}` : 'Redo'} (Ctrl/Cmd+Shift+Z)`}
+        <button className="icon-button small" aria-label="Redo" aria-keyshortcuts={keys.aria('redo')} title={keys.title('redo',projectState.redoLabel ? `Redo: ${projectState.redoLabel}` : 'Redo')}
           disabled={projectState.busy || !projectState.redoLabel} onClick={() => { controller.pause(); void projects.redo(); }}><Redo2 size={14} /></button>
       </div>
-      <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button>
+      <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-haspopup="dialog" aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button>
       <span className="menu-document">{projectState.fileName || (savedFlow || projectState.project?.name!==source.name.replace(/\.[^.]+$/,'') ? projectState.project?.name : source.name)}</span><span className="menu-app-name">SPARKO</span>
     </header>
     <main className="workspace">
       {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }}><X size={16} /></button></div>}
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
-      <div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
+      <WorkspaceLockContext.Provider value={workspace.locked}><div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
         <Player source={source} empty={!projectState.source||storyGraph?.nodes.length===0} info={info} thumbnails={thumbnails} thumbnailsFailed={thumbnailsFailed} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
           callResponse={flowTimeline}
-          storyCanvas={storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight}/>:undefined}
+          storyCanvas={storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight} collapsed={timelineCollapsed} onCollapsed={setTimelineCollapsed}/>:undefined}
           subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
           controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
           onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
           timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} />
-        {shortcuts && <div className="shortcuts"><span><kbd>Ctrl/Cmd Z</kbd> Undo</span><span><kbd>Ctrl/Cmd Shift Z</kbd> / <kbd>Ctrl Y</kbd> Redo</span><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>N</kbd> New clip</span><span><kbd>C</kbd> Cut tool</span><span><kbd>V</kbd> Select tool</span><span><kbd>H</kbd> Hand tool</span><span><kbd>Space</kbd> + drag to pan</span><span><kbd>Shift F</kbd> Fit selected</span><span>Drag background to select; click to deselect</span><span><kbd>S</kbd> Split at playhead</span><span><kbd>Ctrl/Cmd D</kbd> Duplicate</span><span><kbd>Ctrl/Cmd G</kbd> Group clips</span><span><kbd>Ctrl/Cmd Shift G</kbd> Ungroup</span><span>Right-click for clip actions</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
       </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Library and Inspector">
-        {storyGraph?<WorkspacePanels inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={()=>{setSideWidth(330);setTimelineHeight(360);}}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
+        {storyGraph?<WorkspacePanels workspace={workspace} inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={resetWorkspace}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
         <InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
           callResponse={panelTimeline} groups={groupTimelines}
           renderClipControls={clipControls}
           connectedIds={groupTimelines.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []))}
           engine={engine} info={info} status={status} active onAddRegular={addInterstitial} onAddCallResponse={addCallResponse} onSelect={selectInterstitial} onRemove={removeInterstitial} onPreviewPlay={() => controller.pause()} /></>}
-      </aside></div>
+      </aside></div></WorkspaceLockContext.Provider>
     </main></>}
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" onChange={event => { const file = event.target.files?.[0]; if (file) openFile(file); event.target.value = ''; }} />
     <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" onChange={event => { const file = event.target.files?.[0]; if (file) void projects.importProject(file); event.target.value = ''; }} />
+    {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
     {closePrompt && <div className="modal-backdrop"><div className="project-card" role="dialog" aria-modal="true" aria-labelledby="close-project-title">
       <h2 id="close-project-title">Save changes before closing?</h2>
       <p className="hint">Changes to {projectState.project?.name || 'this project'} have not been saved to a project file.</p>

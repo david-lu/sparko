@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { GripHorizontal, GripVertical } from "lucide-react";
+import { useWorkspaceLocked } from './WorkspaceLock';
 
 export const PANEL_DIVIDER_SIZE = 8;
 
@@ -36,6 +37,7 @@ type Props = {
 
 /** A single focusable resize target shared by every panel boundary. */
 export function PanelDivider(props: Props) {
+  const locked=useWorkspaceLocked();
   const { orientation, label, controls, value, minBefore, minAfter } = props;
   const latest = useRef(props);
   latest.current = props;
@@ -98,22 +100,24 @@ export function PanelDivider(props: Props) {
     if (commit) latest.current.onCommit(session.value);
     else latest.current.onCancel();
   };
+  useEffect(()=>{if(locked)finish(false);},[locked]);
 
   return (
     <div
       ref={element}
       className={`panelDivider ${dragging ? "is-resizing" : ""}`}
       role="separator"
-      tabIndex={0}
+      tabIndex={locked?-1:0}
+      aria-disabled={locked||undefined}
       aria-label={label}
       aria-controls={controls}
       aria-orientation={orientation}
       aria-valuenow={Math.round(value)}
       aria-valuemin={Math.floor(bounds.min)}
       aria-valuemax={Math.ceil(bounds.max)}
-      title={`${label}: drag or use arrow keys to resize; double-click to balance`}
+      title={locked?'Unlock workspace in Window to resize panels':`${label}: drag or use arrow keys to resize; double-click to balance`}
       onPointerDown={(event) => {
-        if (event.button !== 0 || drag.current) return;
+        if (locked || event.button !== 0 || drag.current) return;
         const size = measure();
         const sum = size.before + size.after;
         if (sum <= 0) return;
@@ -133,7 +137,7 @@ export function PanelDivider(props: Props) {
       }}
       onPointerMove={(event) => {
         const session = drag.current;
-        if (!session || session.pointerId !== event.pointerId) return;
+        if (locked || !session || session.pointerId !== event.pointerId) return;
         const coordinate =
           orientation === "vertical" ? event.clientX : event.clientY;
         session.value = Math.max(
@@ -154,9 +158,10 @@ export function PanelDivider(props: Props) {
       }}
       onLostPointerCapture={() => finish(false)}
       onDoubleClick={() =>
-        latest.current.onCommit(Math.max(bounds.min, Math.min(bounds.max, 50)))
+        !locked&&latest.current.onCommit(Math.max(bounds.min, Math.min(bounds.max, 50)))
       }
       onKeyDown={(event) => {
+        if(locked)return;
         if (event.key === "Escape" && drag.current) {
           event.preventDefault();
           event.stopPropagation();

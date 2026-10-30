@@ -70,8 +70,8 @@ export function reachableNodes(graph: StoryGraph) {
 export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHeight=360): StoryGraph {
   if(!graph.nodes.length)return graph;
   const grouped=graph.groups?.some(g=>g.nodeIds.length),rowStep=grouped?170:145,gap=grouped?160:104;
-  // Fit all scales row positions, but clips stay 76px tall. Limit rows to the
-  // available height and put additional clips in columns instead of crushing them.
+  // Disconnected clips can wrap into columns. Connected branches keep their
+  // vertical rows even when the viewport is short.
   const rowLimit=Math.max(1,1+Math.floor((viewportHeight-CLIP_HEIGHT-(grouped?100:64))/rowStep));
   const byId=new Map(graph.nodes.map(n=>[n.id,n])),media=new Map(graph.nodes.map(n=>[n.id,nodeMediaLayout(n,items)]));
   const neighbors=new Map(graph.nodes.map(n=>[n.id,new Set<string>()])),outgoing=new Map(graph.nodes.map(n=>[n.id,[] as string[]]));
@@ -103,18 +103,19 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
     // Cycles and disconnected cycles inside a group have no incoming-free root.
     for(const id of ids)if(!levels.has(id)){queue.push([id,0]);visit();}
     const columns=Array.from({length:Math.max(...levels.values())+1},(_,depth)=>ids.filter(id=>levels.get(id)===depth));
-    const rows=Math.min(rowLimit,Math.max(...columns.map(c=>c.length)));
+    const batchSize=(column:string[])=>column.some(id=>incoming.has(id)||outgoing.get(id)!.length)?column.length:rowLimit;
+    const rows=Math.max(...columns.map(c=>Math.min(batchSize(c),c.length)));
     const local=new Map<string,{x:number;y:number}>();let width=0;
     for(const column of columns){
-      // Wide branches also wrap into extra columns, keeping their clip height.
-      for(let start=0;start<column.length;start+=rowLimit){
-        const batch=column.slice(start,start+rowLimit);
+      const limit=batchSize(column);
+      for(let start=0;start<column.length;start+=limit){
+        const batch=column.slice(start,start+limit);
         for(const [index,id] of batch.entries())local.set(id,{x:width+media.get(id)!.before*PIXELS_PER_SECOND,y:((rows-batch.length)/2+index)*rowStep});
         width+=Math.max(...batch.map(id=>media.get(id)!.total*PIXELS_PER_SECOND))+gap;
       }
     }
     width-=gap;
-    if(usedRows+rows>rowLimit){columnX+=columnWidth+gap;columnWidth=0;usedRows=0;}
+    if(usedRows&&usedRows+rows>rowLimit){columnX+=columnWidth+gap;columnWidth=0;usedRows=0;}
     for(const id of ids){const p=local.get(id)!;positioned.set(id,{...byId.get(id)!,x:columnX+p.x,y:90+usedRows*rowStep+p.y});}
     columnWidth=Math.max(columnWidth,width);usedRows+=rows;
   }

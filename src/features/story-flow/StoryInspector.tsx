@@ -16,6 +16,7 @@ import GeneratedVideoInfo from './GeneratedVideoInfo';
 import GroupInspector from './GroupInspector';
 import { connectedReferences, storyGenerationItem } from './referenceInputs';
 import './inspector.css';
+import { useShortcuts } from '../../shared/shortcuts';
 
 function ClipName({ value, onSave }: { value: string; onSave: (name: string) => void }) {
   const [name, setName] = useState(value);
@@ -28,6 +29,7 @@ function ClipName({ value, onSave }: { value: string; onSave: (name: string) => 
 }
 
 export default function StoryInspector({ editor, engine, info, status }: { editor: StoryEditor; engine: MediaEngine | null; info: MediaInfo | null; status: AppStatus | null }) {
+  const shortcuts=useShortcuts();
   const { graph, items } = editor;
   if (!graph) return null;
   const node = graph.nodes.find(n => n.id === editor.selectedId), connection = graph.edges.find(e => e.id === editor.selectedEdge);
@@ -44,9 +46,9 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <label className="sr-only" htmlFor="story-clip-name">Clip name</label>
       <ClipName key={node.id} value={item?.label ?? node.name} onSave={name => editor.rename(node.id, name)} />
       <div className="inspector-clip-tools" role="group" aria-label="Clip actions">
-        <button className="icon-button small" aria-label="Duplicate clip" title="Duplicate (Ctrl/Cmd+D)" onClick={editor.duplicate}><Copy size={13} /></button>
-        <button className="icon-button small" aria-label="Split at playhead" title="Split at playhead (S)" onClick={() => editor.split()}><Scissors size={13} /></button>
-        <button className="icon-button small" aria-label="Delete selected clips" title="Delete selected clips" onClick={editor.remove}><Trash2 size={13} /></button>
+        <button className="icon-button small" aria-label="Duplicate clip" title={shortcuts.title('duplicate')} onClick={editor.duplicate}><Copy size={13} /></button>
+        <button className="icon-button small" aria-label="Split at playhead" title={shortcuts.title('split')} onClick={() => editor.split()}><Scissors size={13} /></button>
+        <button className="icon-button small" aria-label="Delete selected clips" title={shortcuts.title('delete')} onClick={editor.remove}><Trash2 size={13} /></button>
       </div>
     </div>
     <div className="inspector-clip-meta">

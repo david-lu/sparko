@@ -1,4 +1,4 @@
-import {test,expect,type Page} from './fixtures';
+import { fitAll,test,expect,type Page} from './fixtures';
 import {readFile} from 'node:fs/promises';
 const open=async(page:Page)=>{await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1,{timeout:60000});};
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
@@ -10,7 +10,7 @@ test('source clips split, insert, scrub, connect and retain independent fades th
   await page.keyboard.press('s');await expect(page.locator('.story-clip')).toHaveCount(2);
   await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.getByRole('button',{name:/Edit crossfade from/}));await expect(page.locator('.story-clip')).toHaveCount(3);
   await expect(page.getByLabel('Crossfade duration',{exact:true})).toHaveCount(0);await expect(page.locator('.story-fade,.story-fade-handle')).toHaveCount(0);
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await fitAll(page);
   await page.locator('.story-crossfade').first().click();await page.getByLabel('Crossfade duration',{exact:true}).fill('0.25');
   await page.locator('.story-crossfade').last().click();await page.getByLabel('Crossfade duration',{exact:true}).fill('0.75');
   let project=await saved(page);expect(project.storyFlow.edges.map((e:any)=>e.crossfade)).toEqual([.25,.75]);
@@ -18,13 +18,13 @@ test('source clips split, insert, scrub, connect and retain independent fades th
   await page.getByRole('button',{name:'Duplicate selected clips',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(4);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(3);
   await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(4);
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await fitAll(page);
   const scale=await page.locator('.story-clip').evaluateAll(nodes=>nodes.map(n=>({width:n.getBoundingClientRect().width,duration:Number(n.getAttribute('data-duration'))})));const ratios=scale.map(n=>n.width/n.duration);expect(Math.max(...ratios)-Math.min(...ratios)).toBeLessThan(.1);
   await page.screenshot({path:'test-results/story-flow-desktop.png',fullPage:true});expect(errors).toEqual([]);
 });
 
 test('templates insert ordinary clips, routing stays editable, and selections can become templates',async({page})=>{
-  await open(page);await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await page.getByRole('button',{name:'Fit all',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(5);
+  await open(page);await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await fitAll(page);await expect(page.locator('.story-clip')).toHaveCount(5);
   expect(await page.locator('.timeline-interstitial-group').count()).toBe(0);
   const conditional=page.locator('.story-clip.type-conditional');await conditional.locator('.story-clip-title').click();
   await expect(page.getByRole('checkbox',{name:'Conditional',exact:true})).toBeChecked();await page.getByLabel('Condition 1 label',{exact:true}).fill('Absolutely');
@@ -32,13 +32,13 @@ test('templates insert ordinary clips, routing stays editable, and selections ca
   let project=await saved(page);expect(project.storyFlow.edges.some((e:any)=>e.label==='Absolutely')).toBe(true);
   await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.getByRole('button',{name:'Save selected clips as template'}).click();await page.getByLabel('Template name',{exact:true}).fill('Custom choice');await page.getByRole('button',{name:'Save template',exact:true}).click();
   project=await saved(page);expect(project.storyFlow.templates[0].name).toBe('Custom choice');
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();await page.screenshot({path:'test-results/story-flow-template.png',fullPage:true});
+  await fitAll(page);await page.screenshot({path:'test-results/story-flow-template.png',fullPage:true});
 });
 
 test('narrow layout and loading keep graph and inspector controls in place',async({page})=>{
   await page.setViewportSize({width:390,height:844});await open(page);
   await page.locator('.story-menu summary').filter({hasText:'Interstitial'}).click();await page.getByRole('button',{name:/New interstitial/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:220,y:90}});
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await fitAll(page);
   const before=await page.locator('.story-toolbar').boundingBox();
   const counts=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:window.innerWidth}));expect(counts.width).toBeLessThanOrEqual(counts.viewport);
   await page.screenshot({path:'test-results/story-flow-mobile.png',fullPage:true});
@@ -56,7 +56,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await open(page);await page.setViewportSize({width:390,height:844});
   const source=page.getByRole('slider',{name:/Scrub/}).first();await source.focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
   await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.getByRole('button',{name:/Edit crossfade from/}));await page.getByLabel('Interstitial prompt',{exact:true}).fill('Continue the scene');
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await fitAll(page);
   await page.locator('.story-crossfade').first().click();await page.getByLabel('Crossfade duration',{exact:true}).fill('0.25');
   await page.locator('.story-crossfade').last().click();await page.getByLabel('Crossfade duration',{exact:true}).fill('0.5');
   await page.locator('.story-clip.type-simple .story-clip-title').click();
@@ -76,7 +76,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   expect(await libraryControls()).toEqual(libraryBefore);
   const generated=page.locator('.story-clip.type-simple');await expect(generated).toHaveAttribute('data-duration','2');
   await expect(placeholder).toHaveCount(0);await expect(generated.locator('.video-filmstrip img').first()).toBeVisible();expect((await generated.boundingBox())!.height).toBe(draftHeight);
-  await expect(generated).toHaveAttribute('data-media-duration','4');await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await expect(generated).toHaveAttribute('data-media-duration','4');await fitAll(page);
   const sections=await generated.evaluate(el=>{const r=el.querySelector('.story-reference-section')!,g=el.querySelector('.story-generated-section')!;return {reference:r.getBoundingClientRect().width,generated:g.getBoundingClientRect().width,referenceColor:getComputedStyle(r).backgroundColor,generatedColor:getComputedStyle(g).backgroundColor,height:el.getBoundingClientRect().height};});
   expect(sections.reference/sections.generated).toBeCloseTo(.5,1);expect(sections.referenceColor).not.toBe(sections.generatedColor);expect(sections.height).toBe(76);
   await generated.locator('.story-filmstrip').focus();await page.keyboard.press('Home');expect(await generated.locator('.story-playhead').evaluate(el=>(el as HTMLElement).style.left)).toBe('25%');
@@ -84,7 +84,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   const warning=page.locator('.story-edge.reference-mismatch');await expect(warning).toHaveCount(1);await warning.locator('.story-crossfade').click();
   expect(await warning.locator('.story-edge-line').evaluate(el=>getComputedStyle(el).stroke)).toBe('rgb(241, 124, 118)');
   await expect(page.getByLabel('Reference matching')).toContainText('Reference mismatch');await expect(page.getByLabel('Reference matching')).toContainText('Playback still works');
-  await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:'Fit all',exact:true}).click();await page.screenshot({path:'test-results/reference-mismatch.png',fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});await fitAll(page);await page.screenshot({path:'test-results/reference-mismatch.png',fullPage:true});
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-edge.reference-mismatch')).toHaveCount(0);
   await generated.locator('.story-clip-title').click();await page.locator('.inspector-output>summary').click();await page.getByRole('region',{name:'Video breakdown'}).scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/generated-reference-sections.png',fullPage:true});
   await page.locator('summary').filter({hasText:/^File$/}).click();const downloadEvent=page.waitForEvent('download');await page.getByRole('menuitem',{name:'Export project',exact:true}).click();const download=await downloadEvent;
@@ -99,12 +99,12 @@ test('connected generation uses clip references, keeps controls stable, and reop
 });
 
 test('output ports attach clips and conditional choices advance real playback',async({page})=>{
-  await open(page);await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await page.getByRole('button',{name:'Fit all',exact:true}).click();
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await open(page);await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await fitAll(page);
+  await fitAll(page);
   const p=await saved(page),source=p.storyFlow.nodes.find((n:any)=>n.kind==='source'),question=p.storyFlow.nodes.find((n:any)=>n.name==='Ask a question');
   await page.locator(`[data-node-id="${source.id}"] .story-port.output`).dragTo(page.locator(`[data-node-id="${question.id}"] .story-port.input`));
   await expect.poll(async()=>(await saved(page)).storyFlow.edges.some((e:any)=>e.from===source.id&&e.to===question.id)).toBe(true);
-  await page.getByRole('button',{name:'Auto layout',exact:true}).click();await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();await fitAll(page);
   const conditional=page.locator('.story-clip.type-conditional');await conditional.locator('.story-clip-title').click();await page.getByRole('button',{name:'Choose Yes',exact:true}).click();
   const yes=p.storyFlow.nodes.find((n:any)=>n.name==='Celebrate');await expect(page.locator(`[data-node-id="${yes.id}"] .story-playhead`)).toBeVisible({timeout:15000});
   await page.keyboard.press('Space');
@@ -112,15 +112,15 @@ test('output ports attach clips and conditional choices advance real playback',a
 });
 
 test('arrows drag onto clip bodies, can be redirected, and cancel without changing routes',async({page})=>{
-  await open(page);await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await open(page);await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await fitAll(page);
   await page.getByRole('separator',{name:'Resize story canvas'}).focus();await page.keyboard.press('End');
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await fitAll(page);
   const project=await saved(page),source=project.storyFlow.nodes.find((n:any)=>n.kind==='source'),question=project.storyFlow.nodes.find((n:any)=>n.name==='Ask a question'),wait=project.storyFlow.nodes.find((n:any)=>n.kind==='conditional');
   const output=page.locator(`[data-node-id="${source.id}"] .story-port.output`),destination=page.locator(`[data-node-id="${question.id}"] .story-filmstrip`);
   const start=await output.boundingBox(),end=await destination.boundingBox();
   await page.mouse.move(start!.x+start!.width/2,start!.y+start!.height/2);await page.mouse.down();await page.mouse.move(end!.x+end!.width/2,end!.y+end!.height/2,{steps:8});await expect(page.locator('.story-wire')).toBeVisible();await page.mouse.up();
   await expect.poll(async()=>(await saved(page)).storyFlow.edges.find((e:any)=>e.from===source.id)?.to).toBe(question.id);await expect(page.locator('.story-wire')).toHaveCount(0);
-  await page.getByRole('button',{name:'Auto layout',exact:true}).click();await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();await fitAll(page);
   const connection=page.getByRole('button',{name:`Connection ${source.name} to ${question.name}: Next`,exact:true});
   const point=await connection.evaluate(el=>{const path=el as SVGPathElement,p=path.getPointAtLength(path.getTotalLength()*.25),matrix=path.getScreenCTM()!;return {x:p.x*matrix.a+p.y*matrix.c+matrix.e,y:p.x*matrix.b+p.y*matrix.d+matrix.f};});
   const target=await page.locator(`[data-node-id="${wait.id}"] .story-filmstrip`).boundingBox();
@@ -144,7 +144,7 @@ test('the existing sample project migrates to independent filmstrip clips',async
   await expect(page.locator('.story-clip').first()).toBeVisible({timeout:120000});await expect.poll(async()=>(await saved(page))?.storyFlow?.nodes.length??0).toBeGreaterThan(5);const project=await saved(page);
   expect(project.storyFlow.nodes.length).toBeGreaterThan(5);expect(project.storyFlow.nodes.some((n:any)=>n.interstitialId)).toBe(true);expect(project.storyFlow.edges.length).toBeGreaterThan(0);
   expect(await page.locator('.timeline-pin,.timeline-interstitial-group').count()).toBe(0);
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();await page.locator('.story-clip').first().locator('.story-filmstrip').focus();await page.keyboard.press('ArrowRight');await expect(page.locator('.story-playhead')).toBeVisible();
+  await fitAll(page);await page.locator('.story-clip').first().locator('.story-filmstrip').focus();await page.keyboard.press('ArrowRight');await expect(page.locator('.story-playhead')).toBeVisible();
   await page.screenshot({path:'test-results/story-flow-sample.png',fullPage:true});expect(errors).toEqual([]);
 });
 
@@ -153,7 +153,7 @@ test('cut tool, context menu and S split source and interstitial clips without c
   await page.getByRole('button',{name:'Cut tool',exact:true}).click();await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','true');
   const film=page.locator('.story-filmstrip').first(),box=await film.boundingBox();await page.mouse.click(box!.x+box!.width/2,box!.y+box!.height/2);await expect(page.locator('.story-clip')).toHaveCount(2);
   await page.keyboard.press('v');await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','false');
-  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:240,y:30}});await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:240,y:30}});await fitAll(page);
   const generated=page.locator('.story-clip.type-simple .story-filmstrip');await generated.scrollIntoViewIfNeeded();await generated.click({button:'right',position:{x:60,y:20}});await expect(page.getByRole('menu',{name:'Clip actions'})).toBeVisible();await page.getByRole('menuitem',{name:/Split here/}).click();
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);const project=await saved(page),parts=project.storyFlow.nodes.filter((n:any)=>n.interstitialId);expect(parts[0].trim.outFrame).toBe(parts[1].trim.inFrame);expect(parts[0].trim.inFrame).toBe(0);expect(parts[1].trim.outFrame).toBe(144);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
@@ -169,7 +169,7 @@ test('the side panel drops interstitials and templates onto the canvas and inser
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(2);
   const source=page.locator('.story-clip.type-source');await source.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(source);await expect(page.locator('.story-clip')).toHaveCount(3);
   project=await saved(page);const sourceId=project.storyFlow.nodes.find((n:any)=>n.kind==='source').id,next=project.storyFlow.edges.find((e:any)=>e.from===sourceId);expect(next).toBeTruthy();
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();const insert=page.getByRole('button',{name:/Edit crossfade from/}).first();await insert.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(insert);
+  await fitAll(page);const insert=page.getByRole('button',{name:/Edit crossfade from/}).first();await insert.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(insert);
   await expect(page.locator('.story-clip')).toHaveCount(4);project=await saved(page);const inserted=project.storyFlow.nodes.at(-1);expect(project.storyFlow.edges.find((e:any)=>e.from===sourceId).to).toBe(inserted.id);expect(project.storyFlow.edges.find((e:any)=>e.from===inserted.id&&e.event==='next').to).toBe(next.to);
   await page.screenshot({path:'test-results/story-flow-library.png',fullPage:true});
 });

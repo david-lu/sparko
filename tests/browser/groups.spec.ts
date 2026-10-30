@@ -1,9 +1,9 @@
-import { test, expect, type Page } from './fixtures';
+import { fitAll, test, expect, type Page } from './fixtures';
 import { readFile } from 'node:fs/promises';
 
 const saved = (page: Page) => page.evaluate(async () => { const { readActiveProject } = await import('/src/features/project/database.ts' as string); return readActiveProject(); });
 const open = async (page: Page) => { await page.goto('/'); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4'); await expect(page.locator('.story-clip')).toHaveCount(1, { timeout: 60000 }); };
-const fit = (page: Page) => page.getByRole('button', { name: 'Fit all', exact: true }).click();
+const fit = (page: Page) => fitAll(page);
 
 test('templates stay grouped, move their clips and bends together, and support rename, duplicate, ungroup and archives', async ({ page, browser }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message)); await open(page);

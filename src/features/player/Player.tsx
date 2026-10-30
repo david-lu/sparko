@@ -1,4 +1,5 @@
 import './styles.css';
+import { useShortcuts } from '../../shared/shortcuts';
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Captions, Maximize, Minimize, PanelBottomClose, PanelBottomOpen, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
@@ -26,6 +27,7 @@ type Props = {
 };
 
 export default function Player(props: Props) {
+  const shortcuts=useShortcuts();
   const { source, info, thumbnails, interstitials, controller, onAddInterstitial, onSeek, onError, selection } = props;
   const { playing, buffering, volume, muted, speed, loop, buffered, time, duration } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const container = useRef<HTMLDivElement>(null);
@@ -117,41 +119,29 @@ export default function Player(props: Props) {
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || target.isContentEditable || target.closest('video[controls]')
+      if (event.defaultPrevented || event.isComposing || target.isContentEditable || target.closest('video[controls],dialog,[role="dialog"],[role="menu"]')
         || target.closest('textarea, select, input:not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"])')) return;
-      if ((event.key === 'Delete' || event.key === 'Backspace') && props.selectedId) {
+      const action=shortcuts.action(event);
+      if (action==='delete' && props.selectedId) {
         event.preventDefault();
         if (!event.repeat) props.onRemoveInterstitial(props.selectedId);
         return;
       }
       const video = controller.video;
       if (!video || !duration) return;
-      if (event.code === 'Space' || event.key === ' ') {
+      if (action==='play'&&!target.closest('button,a,summary,[role="button"]')) {
         event.preventDefault();
         if (!event.repeat) playPause();
         return;
       }
       if (target.closest('input, button, a, summary, [role="separator"]')) return;
-      const key = event.key.toLowerCase();
-      if ([' ', 'k', 'j', 'l', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'm', 'f', 'p', ',', '.', 'home', 'end', 'c'].includes(key) || /^[0-9]$/.test(key)) event.preventDefault();
-      switch (key) {
-        case ' ': case 'k': playPause(); break;
-        case 'j': onSeek(time - 10); break;
-        case 'l': onSeek(time + 10); break;
-        case 'arrowleft': onSeek(time - 5); break;
-        case 'arrowright': onSeek(time + 5); break;
-        case 'arrowup': changeVolume(volume + 0.05); break;
-        case 'arrowdown': changeVolume(volume - 0.05); break;
-        case 'm': toggleMute(); break;
-        case 'f': void toggleFullscreen(); break;
-        case 'p': onAddInterstitial(); break;
-        case 'c': toggleCaptions(); break;
-        case ',': controller.stepFrame(-1); break;
-        case '.': controller.stepFrame(1); break;
-        case 'home': onSeek(0); break;
-        case 'end': onSeek(duration); break;
-        default: if (/^[0-9]$/.test(key)) onSeek(duration * Number(key) / 10);
-      }
+      const actions:Partial<Record<NonNullable<typeof action>,()=>void>>={
+        play:playPause,back10:()=>onSeek(time-10),forward10:()=>onSeek(time+10),back5:()=>onSeek(time-5),forward5:()=>onSeek(time+5),
+        volumeUp:()=>changeVolume(volume+.05),volumeDown:()=>changeVolume(volume-.05),mute:toggleMute,fullscreen:()=>void toggleFullscreen(),
+        add:()=>{if(!props.storyCanvas)onAddInterstitial();},captions:toggleCaptions,previousFrame:()=>controller.stepFrame(-1),nextFrame:()=>controller.stepFrame(1),start:()=>onSeek(0),end:()=>onSeek(duration),
+      };
+      if(action?.startsWith('jump')){event.preventDefault();onSeek(duration*Number(action.slice(4))/10);}
+      else if(action&&actions[action]){event.preventDefault();if(!event.repeat||['back10','forward10','back5','forward5','volumeUp','volumeDown','previousFrame','nextFrame'].includes(action))actions[action]();}
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
@@ -168,23 +158,23 @@ export default function Player(props: Props) {
       {flow && <PlayerChoices key={flow.flow.interstitial.id} value={flow} />}
     <div className="transport" ref={transport} onDoubleClick={event => event.stopPropagation()}>
       <div className="transport-group">
-        <button className="icon-button play-button" aria-label={playing ? 'Pause' : 'Play'} title="Play / pause (Space)" disabled={!duration} onClick={playPause}>{playing ? <Pause /> : <Play fill="currentColor" />}</button>
-        <button className="icon-button" aria-label="Back 10 seconds" title="Back 10 seconds (J)" disabled={!duration} onClick={() => onSeek(time - 10)}><RotateCcw size={18} /><span className="sr-only">10</span></button>
-        <button className="icon-button" aria-label="Forward 10 seconds" title="Forward 10 seconds (L)" disabled={!duration} onClick={() => onSeek(time + 10)}><RotateCw size={18} /></button>
+        <button className="icon-button play-button" aria-label={playing ? 'Pause' : 'Play'} title={shortcuts.title('play')} disabled={!duration} onClick={playPause}>{playing ? <Pause /> : <Play fill="currentColor" />}</button>
+        <button className="icon-button" aria-label="Back 10 seconds" title={shortcuts.title('back10')} disabled={!duration} onClick={() => onSeek(time - 10)}><RotateCcw size={18} /><span className="sr-only">10</span></button>
+        <button className="icon-button" aria-label="Forward 10 seconds" title={shortcuts.title('forward10')} disabled={!duration} onClick={() => onSeek(time + 10)}><RotateCw size={18} /></button>
         <span className="time-display"><strong>{formatTime(time)}</strong><span>/</span>{props.callResponse ? 'variable' : formatTime(duration)}</span>
       </div>
       <div className="transport-group transport-options">
-        <button className="icon-button" aria-label={muted || !volume ? 'Unmute' : 'Mute'} title="Mute (M)" onClick={toggleMute}>{muted || !volume ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
+        <button className="icon-button" aria-label={muted || !volume ? 'Unmute' : 'Mute'} title={shortcuts.title('mute')} onClick={toggleMute}>{muted || !volume ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
         <input className="volume-slider" aria-label="Volume" type="range" min="0" max="1" step="0.01" value={muted ? 0 : volume} onChange={event => changeVolume(Number(event.target.value))} />
         <select className="speed-select" aria-label="Playback speed" value={speed} onChange={event => controller.setSpeed(Number(event.target.value))}>
           {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(rate => <option key={rate} value={rate}>{rate}×</option>)}
         </select>
         <button className={`icon-button ${loop ? 'active' : ''}`} aria-label="Loop video" aria-pressed={loop} title={props.callResponse ? 'Idle clip types control repeating playback' : 'Loop video'} disabled={!!props.callResponse} onClick={() => controller.setLoop(!loop)}><Repeat2 size={18} /></button>
-        <button className={`icon-button ${subtitle && captions ? 'active' : ''}`} aria-label={subtitle ? 'Toggle captions' : 'Load captions'} aria-pressed={!!subtitle && captions} title={subtitle ? 'Toggle subtitles (C)' : 'Load WebVTT subtitles'} onClick={toggleCaptions}><Captions size={19} /></button>
+        <button className={`icon-button ${subtitle && captions ? 'active' : ''}`} aria-label={subtitle ? 'Toggle captions' : 'Load captions'} aria-pressed={!!subtitle && captions} title={shortcuts.title('captions',subtitle?'Toggle captions':'Load WebVTT subtitles')} onClick={toggleCaptions}><Captions size={19} /></button>
         {document.pictureInPictureEnabled && <button className="icon-button pip-button" aria-label="Picture in picture" title="Picture in picture" disabled={!duration} onClick={() => void togglePip()}><PictureInPicture2 size={18} /></button>}
         {fullscreen && <button className={`icon-button fullscreen-timeline-toggle ${fullscreenTimeline ? 'active' : ''}`} aria-label={fullscreenTimeline ? 'Hide timeline' : 'Show timeline'} aria-expanded={fullscreenTimeline} title={fullscreenTimeline ? 'Hide timeline' : 'Show timeline'} onClick={() => setFullscreenTimeline(visible => !visible)}
           onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>{fullscreenTimeline ? <PanelBottomClose size={19} /> : <PanelBottomOpen size={19} />}</button>}
-        <button className="icon-button" aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title="Fullscreen (F)" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={19} /> : <Maximize size={19} />}</button>
+        <button className="icon-button" aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title={shortcuts.title('fullscreen')} aria-keyshortcuts={shortcuts.aria('fullscreen')} onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={19} /> : <Maximize size={19} />}</button>
       </div>
     </div>
     </div>

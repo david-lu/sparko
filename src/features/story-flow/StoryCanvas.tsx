@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Hand, Focus, GitBranch, GripVertical, ImageOff, LayoutTemplate, Maximize, Minus, Plus, Repeat2, Scissors, Trash2, Upload } from 'lucide-react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, Copy, Hand, GitBranch, GripVertical, ImageOff, LayoutTemplate, Maximize, Minus, Plus, Repeat2, Scissors, Trash2, Upload } from 'lucide-react';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { isGenerating } from '../../../shared/interstitials';
 import { formatTime } from '../../../shared/contracts';
@@ -9,6 +9,8 @@ import { assets } from '../project/assets';
 import VideoFilmstrip from '../timeline/VideoFilmstrip';
 import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
 import ResizeHandle from '../../shared/ResizeHandle';
+import { useWorkspaceLocked } from '../../shared/panels/WorkspaceLock';
+import { useShortcuts } from '../../shared/shortcuts';
 import { phaseLabel } from '../interstitials/status';
 import { autoLayout, CLIP_HEIGHT, connect, createNode, freshId, nodeDuration, nodeMediaLayout, PIXELS_PER_SECOND, reachableNodes, groupColors, type StoryNode, type StoryEdge } from './model';
 import type { StoryEditor } from './useStoryEditor';
@@ -23,7 +25,9 @@ import { behaviors, behaviorLabel, outputPorts, outputOffset, type OutputPort } 
 import './styles.css';
 import './groups.css';
 
-export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeight}:{editor:StoryEditor;flow:CallResponseFlow;session:PlaybackSession|null;height:number;maxHeight:number;onHeight:(height:number)=>void}) {
+export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeight,collapsed,onCollapsed}:{editor:StoryEditor;flow:CallResponseFlow;session:PlaybackSession|null;height:number;maxHeight:number;onHeight:(height:number)=>void;collapsed:boolean;onCollapsed:(collapsed:boolean)=>void}) {
+  const canvasId=useId(),workspaceLocked=useWorkspaceLocked();
+  const shortcuts=useShortcuts();
   const videoInput=useRef<HTMLInputElement>(null),[fileDrag,setFileDrag]=useState(false);
   const graph=editor.graph!,scroll=useRef<HTMLDivElement>(null),root=useRef<HTMLDivElement>(null),addMenu=useRef<HTMLDetailsElement>(null),templateMenu=useRef<HTMLDetailsElement>(null);
   const [camera,setCamera]=useState<Camera>({x:0,y:0,zoom:1,rowScale:1}),cameraRef=useRef(camera),[size,setSize]=useState({width:800,height:280}),[drag,setDrag]=useState<Record<string,Point>|null>(null);
@@ -65,56 +69,61 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const position=(id:string)=>nodes.find(n=>n.id===id)!;
   const updateCamera=(value:Camera|((current:Camera)=>Camera))=>{const next=typeof value==='function'?value(cameraRef.current):value;cameraRef.current=next;setCamera(next);};
   const localPoint=(client:Point)=>{const bounds=scroll.current!.getBoundingClientRect();return {x:client.x-bounds.left,y:client.y-bounds.top};};
-  const fit=(targets:StoryNode[]=nodes,maxZoom=2,edges=graph.edges)=>{
-    if(!targets.length||!scroll.current)return;
+  const fit=(targets:StoryNode[]=nodes,maxZoom=2,edges=graph.edges,readableRows=true)=>{
+    if(!targets.length||!scroll.current?.clientWidth||!scroll.current.clientHeight)return;
     const ids=new Set(targets.map(n=>n.id)),points=edges.filter(e=>ids.has(e.from)&&ids.has(e.to)).flatMap(e=>e.points??[]);
     const bounds={left:Math.min(...targets.map(clipLeft),...points.map(p=>p.x)),right:Math.max(...targets.map(clipRight),...points.map(p=>p.x)),
       top:Math.min(...targets.map(n=>n.y),...points.map(p=>p.y)),bottom:Math.max(...targets.map(n=>n.y),...points.map(p=>p.y))};
     const outputSpace=targets.some(n=>behaviors(n).conditional)?110:0;
-    updateCamera(fitCamera(bounds,scroll.current.clientWidth-outputSpace,scroll.current.clientHeight,maxZoom,graph.groups?.some(g=>g.nodeIds.every(id=>ids.has(id)))));
+    updateCamera(fitCamera(bounds,scroll.current.clientWidth-outputSpace,scroll.current.clientHeight,maxZoom,graph.groups?.some(g=>g.nodeIds.every(id=>ids.has(id))),readableRows?targets.map(n=>({left:clipLeft(n),right:clipRight(n),top:n.y})):[]));
   };
-  const fitSelected=()=>fit(nodes.filter(n=>editor.selected.includes(n.id)),8);
-  const cleanup=()=>{const next=autoLayout(graph,editor.items,scroll.current?.clientHeight);editor.change(next);fit(next.nodes,2,next.edges);editor.setNotice('Layout cleaned up. Connections and clip timing are unchanged.');};
-  const focus=(id=editor.selectedId)=>{if(!id&&editor.selectedGroup){fit(nodes.filter(n=>editor.selectedGroup!.nodeIds.includes(n.id)));return;}const n=nodes.find(n=>n.id===id),view=scroll.current;if(!n||!view)return;
+  const fitSelected=()=>{const selected=nodes.filter(n=>editor.selected.includes(n.id));fit(selected.length?selected:nodes,selected.length?8:2);};
+  const cleanup=()=>{editor.change(autoLayout(graph,editor.items,scroll.current?.clientHeight));editor.setNotice('Layout cleaned up.');};
+  const focus=(id=editor.selectedId)=>{if(!id&&editor.selectedGroup){fit(nodes.filter(n=>editor.selectedGroup!.nodeIds.includes(n.id)));return;}const n=nodes.find(n=>n.id===id),view=scroll.current;if(!n||!view?.clientHeight)return;
     updateCamera(current=>({...current,x:view.clientWidth/2-((clipLeft(n)+clipRight(n))/2)*current.zoom,y:(view.clientHeight-CLIP_HEIGHT)/2-n.y*current.rowScale}));};
   const reveal=(id:string)=>{const n=nodes.find(n=>n.id===id),view=scroll.current;if(!n||!view)return;const p=toScreen({x:clipLeft(n),y:n.y},cameraRef.current);
     if(p.x+layouts[n.id].total*PIXELS_PER_SECOND*cameraRef.current.zoom<24||p.x>view.clientWidth-24||p.y+CLIP_HEIGHT<24||p.y>view.clientHeight-24)focus(id);};
+  // Opening a saved project starts with every group in view. Interactive fitting
+  // preserves readable rows; a large branch can then be panned.
+  const openingFit=()=>fit(nodes,2,graph.edges,false),latestFit=useRef(openingFit);latestFit.current=openingFit;
   useLayoutEffect(()=>{
     const view=scroll.current;if(!view)return;let opening=true,frame=0;
-    const resize=()=>{setSize({width:view.clientWidth,height:view.clientHeight});
+    const resize=()=>{if(!view.clientWidth||!view.clientHeight)return;setSize({width:view.clientWidth,height:view.clientHeight});
       // Let restored docked panels settle before the initial fit. Later resizes keep the user's view.
-      if(opening){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{opening=false;fit();});}};
-    const observer=new ResizeObserver(resize);observer.observe(view);resize();fit();
+      if(opening){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(!view.clientWidth||!view.clientHeight)return;opening=false;latestFit.current();});}};
+    const observer=new ResizeObserver(resize);observer.observe(view);resize();latestFit.current();
     return()=>{observer.disconnect();cancelAnimationFrame(frame);};
   },[]);
-  useEffect(()=>{if(lastFocusRevision.current===editor.focusRevision)return;lastFocusRevision.current=editor.focusRevision;focus();},[editor.focusRevision]);
+  useEffect(()=>{if(collapsed||lastFocusRevision.current===editor.focusRevision)return;lastFocusRevision.current=editor.focusRevision;focus();},[editor.focusRevision,collapsed]);
   useEffect(()=>()=>gestureCancel.current?.(),[]);
   useEffect(()=>{
+    if(collapsed)return;
     const down=(event:KeyboardEvent)=>{
       const target=event.target as HTMLElement;
       if(target.closest('.story-edges [role="button"]'))return;
-      if(event.code!=='Space'||target.closest('input,textarea,select,video[controls],[role="menu"]')||target.isContentEditable||!scroll.current?.contains(target)&&!hovering.current||target.closest('button,summary,[role="button"]')&&!hovering.current)return;
+      const action=shortcuts.action(event);
+      if(event.code!=='Space'||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||action&&action!=='play'||target.closest('input,textarea,select,video[controls],[role="menu"],dialog,[role="dialog"]')||target.isContentEditable||!scroll.current?.contains(target)&&!hovering.current||target.closest('button,summary,[role="button"]')&&!hovering.current)return;
       event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){space.current={held:true,used:false};setSpaceHeld(true);}
     };
-    const up=(event:KeyboardEvent)=>{if(event.code!=='Space'||!space.current.held)return;event.preventDefault();if(!space.current.used)editor.player.togglePlayback();space.current={held:false,used:false};setSpaceHeld(false);};
+    const up=(event:KeyboardEvent)=>{if(event.code!=='Space'||!space.current.held)return;event.preventDefault();if(!space.current.used&&shortcuts.action(event)==='play')editor.player.togglePlayback();space.current={held:false,used:false};setSpaceHeld(false);};
     const blur=()=>{space.current={held:false,used:false};setSpaceHeld(false);gestureCancel.current?.();};
     window.addEventListener('keydown',down,true);window.addEventListener('keyup',up,true);window.addEventListener('blur',blur);
     return()=>{window.removeEventListener('keydown',down,true);window.removeEventListener('keyup',up,true);window.removeEventListener('blur',blur);};
-  },[editor.player]);
+  },[editor.player,collapsed,shortcuts.bindings]);
   useEffect(()=>{
     if(!context)return;menu.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
     const close=(event:PointerEvent)=>{if(!menu.current?.contains(event.target as Node))setContext(null);};
     window.addEventListener('pointerdown',close,true);return()=>window.removeEventListener('pointerdown',close,true);
   },[context]);
   useEffect(()=>{
-    if(!follow||!session||!scroll.current||gestureCancel.current)return;
+    if(collapsed||!follow||!session||!scroll.current||gestureCancel.current)return;
     const node=graph.nodes.find(n=>n.id===session.sceneId),view=scroll.current;if(!node)return;
     const p=toScreen({x:node.x+session.frame/flow.fps*PIXELS_PER_SECOND,y:node.y},cameraRef.current),margin=Math.min(70,view.clientWidth/4);
     let next=cameraRef.current;
     if(p.x<margin||p.x>view.clientWidth-margin)next={...next,x:next.x+view.clientWidth/3-p.x};
     if(p.y<30||p.y+CLIP_HEIGHT>view.clientHeight-20)next={...next,y:(view.clientHeight-CLIP_HEIGHT)/2-node.y*next.rowScale};
     if(next!==cameraRef.current)updateCamera(next);
-  },[follow,session?.sceneId,session?.frame,graph]);
+  },[follow,session?.sceneId,session?.frame,graph,collapsed]);
   useEffect(()=>{
     const element=scroll.current;if(!element)return;
     const wheel=(event:WheelEvent)=>{
@@ -125,25 +134,21 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     element.addEventListener('wheel',wheel,{passive:false});return()=>element.removeEventListener('wheel',wheel);
   },[]);
   useEffect(()=>{
+    if(collapsed)return;
     const key=(event:KeyboardEvent)=>{
-      const target=event.target as HTMLElement;if(target.isContentEditable||target.closest('input,textarea,select,dialog,video[controls],[role="menu"],.sidePanelSectionHeader')||event.altKey)return;
-      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='d'){event.preventDefault();editor.duplicate();return;}
-      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='g'){event.preventDefault();if(event.shiftKey)editor.ungroup();else editor.groupSelection();return;}
-      if(event.ctrlKey||event.metaKey)return;
+      const target=event.target as HTMLElement;if(event.defaultPrevented||event.isComposing||target.isContentEditable||target.closest('input,textarea,select,dialog,[role="dialog"],video[controls],[role="menu"],.sidePanelSectionHeader'))return;
       if(event.key==='Escape'){editor.setConnecting(null);setTemplateName(null);setCutTool(false);setCutPreview(null);setContext(null);if(addMenu.current)addMenu.current.open=false;if(templateMenu.current)templateMenu.current.open=false;return;}
-      if((event.key==='Delete'||event.key==='Backspace')&&target.closest('[data-reroute-id]'))return;
-      if(event.key==='Delete'||event.key==='Backspace'){if(editor.selected.length||editor.selectedEdge){event.preventDefault();event.stopImmediatePropagation();editor.remove();}return;}
-      if(event.shiftKey&&event.key.toLowerCase()==='f'){event.preventDefault();fitSelected();return;}
-      if(event.key==='Home'&&target===scroll.current){event.preventDefault();fit();return;}
-      if(event.key.toLowerCase()==='h'){event.preventDefault();setPanTool(v=>!v);setCutTool(false);return;}
-      if(event.key.toLowerCase()==='v'){event.preventDefault();setCutTool(false);setPanTool(false);setCutPreview(null);return;}
-      if(event.defaultPrevented||target.closest('button,a,summary'))return;
-      if(event.key.toLowerCase()==='n'){event.preventDefault();editor.add('simple');}
-      if(event.key.toLowerCase()==='s'){event.preventDefault();editor.split();}
-      if(event.key.toLowerCase()==='c'){event.preventDefault();setCutTool(v=>!v);setPanTool(false);}
-      if(event.key.toLowerCase()==='a'){event.preventDefault();cleanup();}
+      const action=shortcuts.action(event);
+      if(!action)return;
+      // Keep native button activation and keyboard navigation available.
+      if(!event.ctrlKey&&!event.metaKey&&!event.altKey&&['Enter','Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.code)&&target.closest('button,a,summary,[role="button"],[role="separator"],[role="slider"]'))return;
+      const actions:Partial<Record<typeof action,()=>void>>={fit:fitSelected,layout:cleanup,duplicate:editor.duplicate,group:editor.groupSelection,ungroup:editor.ungroup,
+        pan:()=>{setPanTool(v=>!v);setCutTool(false);},select:()=>{setCutTool(false);setPanTool(false);setCutPreview(null);},
+        add:()=>editor.add('simple'),split:()=>editor.split(),cut:()=>{setCutTool(v=>!v);setPanTool(false);},
+        delete:()=>{const point=target.closest<HTMLElement>('[data-reroute-id]');if(point){const edge=point.closest('[data-edge-id]')?.getAttribute('data-edge-id');if(edge)removeReroute(edge,point.dataset.rerouteId!);}else if(editor.selected.length||editor.selectedEdge)editor.remove();}};
+      if(actions[action]){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)actions[action]();}
     };window.addEventListener('keydown',key,true);return()=>window.removeEventListener('keydown',key,true);
-  },[editor,graph]);
+  },[editor,graph,collapsed,shortcuts.bindings]);
   const menuAdd=(event:React.MouseEvent,action:()=>void)=>{
     if(event.detail===0){action();if(addMenu.current)addMenu.current.open=false;if(templateMenu.current)templateMenu.current.open=false;}
     else editor.setNotice('Drag an interstitial or template onto the timeline to place it. Drop onto a clip or wire to attach it.');
@@ -289,22 +294,28 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     if('templateId' in item){const template=graph.templates.find(t=>t.id===item.templateId)??builtInTemplates.find(t=>t.id===item.templateId)?.id;if(template)editor.insertTemplate(template,connectionId??undefined,point,fromId);}
   };
   const contextAction=(action:()=>void)=>{action();setContext(null);scroll.current?.focus();};
-  return <div ref={root} className={`story-canvas ${wire||editor.connecting?'connecting':''} ${cutTool?'cut-tool':''} ${panTool||spaceHeld?'pan-tool':''} ${panning?'panning':''} ${dropTarget?'library-drag':''} ${libraryDrag?'dragging-library':''}`} style={{height}}>
-    <ResizeHandle orientation="horizontal" label="Resize story canvas" value={height} min={220} max={maxHeight} onChange={onHeight}/>
-    <div className="story-toolbar"><span className="eyebrow"><GitBranch size={14}/> STORY FLOW</span>
+  const toggleCollapsed=()=>{
+    if(workspaceLocked)return;
+    if(!collapsed){gestureCancel.current?.();setContext(null);setTemplateName(null);setWire(null);setCutPreview(null);editor.setConnecting(null);hovering.current=false;space.current={held:false,used:false};setSpaceHeld(false);
+      if(addMenu.current)addMenu.current.open=false;if(templateMenu.current)templateMenu.current.open=false;}
+    onCollapsed(!collapsed);
+  };
+  return <div ref={root} className={`story-canvas ${collapsed?'collapsed':''} ${wire||editor.connecting?'connecting':''} ${cutTool?'cut-tool':''} ${panTool||spaceHeld?'pan-tool':''} ${panning?'panning':''} ${dropTarget?'library-drag':''} ${libraryDrag?'dragging-library':''}`} style={{height:collapsed?'auto':height}}>
+    {!collapsed&&<ResizeHandle orientation="horizontal" label="Resize story canvas" value={height} min={220} max={maxHeight} onChange={onHeight}/>}
+    <div className="story-toolbar"><button className="story-collapse" disabled={workspaceLocked} aria-label={collapsed?'Expand timeline':'Collapse timeline'} aria-expanded={!collapsed} aria-controls={canvasId} title={workspaceLocked?'Unlock workspace in Window to collapse the timeline':collapsed?'Expand timeline':'Collapse timeline'} onClick={toggleCollapsed} onKeyDown={e=>{if(e.key===' ')e.stopPropagation();}}><ChevronDown size={14}/><span className="eyebrow">TIMELINE</span></button><span className="story-collapsed-summary">{nodes.length} {nodes.length===1?'clip':'clips'}</span>
       <details ref={addMenu} className="story-menu"><summary className="button small"><Plus size={13}/>Interstitial</summary><div className="story-menu-popover"><p className="story-drag-help">Drag to a spot on the timeline</p><button draggable onDragStart={e=>startLibraryDrag(e,{kind:'simple'})} title="Drag to timeline. Enter adds at the selection." onClick={e=>menuAdd(e,()=>editor.add('simple',editor.selectedEdge??undefined))}><strong><GripVertical size={12}/>New interstitial</strong><small>Set loop and conditional behaviors in the Inspector</small></button></div></details>
       <details ref={templateMenu} className="story-menu"><summary className="button small"><LayoutTemplate size={13}/>Templates</summary><div className="story-menu-popover"><p className="story-drag-help">Drag to a spot on the timeline</p>{builtInTemplates.map(t=><button key={t.id} draggable onDragStart={e=>startLibraryDrag(e,{templateId:t.id})} title="Drag to timeline. Enter adds at the selection." onClick={e=>menuAdd(e,()=>editor.insertTemplate(t.id,editor.selectedEdge??undefined))}><strong><GripVertical size={12}/>{t.name}</strong><small>{t.description}</small></button>)}{graph.templates.map(t=><div className="story-template-row" key={t.id}><button draggable onDragStart={e=>startLibraryDrag(e,{templateId:t.id})} title="Drag to timeline. Enter adds at the selection." onClick={e=>menuAdd(e,()=>editor.insertTemplate(t,editor.selectedEdge??undefined))}>{t.name}</button><button aria-label={`Delete template ${t.name}`} onClick={()=>editor.change({...graph,templates:graph.templates.filter(x=>x.id!==t.id)})}><Trash2 size={13}/></button></div>)}<button disabled={!editor.selected.length} onClick={()=>{setTemplateName(editor.selectedGroup?.name??'My template');templateMenu.current!.open=false;}}>Save selected clips as template</button></div></details>
-      <button className="button small" onClick={cleanup}>Auto layout</button>
-      <div className="story-toolbar-spacer"/><button className="icon-button small" title="Duplicate selected clips (Ctrl/Cmd+D)" aria-label="Duplicate selected clips" disabled={!editor.selected.length} onClick={editor.duplicate}><Copy size={14}/></button>
-      <button className={`icon-button small ${cutTool?'active':''}`} title="Cut tool (C). Click a clip to split it. V returns to selection." aria-label="Cut tool" aria-pressed={cutTool} onClick={()=>{setCutTool(v=>!v);setPanTool(false);}}><Scissors size={14}/></button>
-      <button className={`icon-button small ${panTool?'active':''}`} aria-label="Pan tool" aria-pressed={panTool} title="Hand tool (H). Also pan with Space + drag or the middle mouse button." onClick={()=>{setPanTool(v=>!v);setCutTool(false);}}><Hand size={14}/></button>
+      <button className="button small" title={shortcuts.title('layout')} aria-keyshortcuts={shortcuts.aria('layout')} onClick={cleanup}>Auto layout</button>
+      <div className="story-toolbar-spacer"/><button className="icon-button small" title={shortcuts.title('duplicate')} aria-label="Duplicate selected clips" disabled={!editor.selected.length} onClick={editor.duplicate}><Copy size={14}/></button>
+      <button className={`icon-button small ${cutTool?'active':''}`} title={shortcuts.title('cut')+'. Click a clip to split it.'} aria-label="Cut tool" aria-pressed={cutTool} onClick={()=>{setCutTool(v=>!v);setPanTool(false);}}><Scissors size={14}/></button>
+      <button className={`icon-button small ${panTool?'active':''}`} aria-label="Pan tool" aria-pressed={panTool} title={shortcuts.title('pan')+'. Also pan with Space + drag or the middle mouse button.'} onClick={()=>{setPanTool(v=>!v);setCutTool(false);}}><Hand size={14}/></button>
       <button className="icon-button small" aria-label="Zoom out story" onClick={()=>updateCamera(zoomAt(cameraRef.current,zoom/1.4,{x:size.width/2,y:size.height/2}))}><Minus size={14}/></button>
       <span className="story-zoom">{Math.round(zoom*100)}%</span>
       <button className="icon-button small" aria-label="Zoom in story" onClick={()=>updateCamera(zoomAt(cameraRef.current,zoom*1.4,{x:size.width/2,y:size.height/2}))}><Plus size={14}/></button>
-      <button className="button small" aria-label="Fit all" title="Fit all clips on screen (Home on the canvas)" onClick={()=>fit()}>Fit all</button>
-      <button className="icon-button small" aria-label="Fit selected" aria-keyshortcuts="Shift+F" title="Fit selected clips (Shift+F)" onClick={fitSelected} disabled={!editor.selected.length}><Focus size={14}/></button><button className={`icon-button small ${follow?'active':''}`} aria-label="Follow playhead" aria-pressed={follow} onClick={()=>setFollow(v=>!v)}><Maximize size={14}/></button>
+      <button className="button small" aria-label="Fit" aria-keyshortcuts={shortcuts.aria('fit')} title={shortcuts.title('fit','Fit selected clips, or all clips with no selection')} onClick={fitSelected}>Fit</button>
+      <button className={`icon-button small ${follow?'active':''}`} aria-label="Follow playhead" aria-pressed={follow} onClick={()=>setFollow(v=>!v)}><Maximize size={14}/></button>
     </div>
-    <div className="story-scroll" ref={scroll} tabIndex={0} aria-label="Clip graph" onPointerEnter={()=>{hovering.current=true;}} onPointerLeave={()=>{hovering.current=false;}} style={{backgroundPosition:`${camera.x}px ${camera.y}px`,backgroundSize:`${gridX*4}px ${gridY*4}px, ${gridX}px ${gridY}px`}} onPointerDownCapture={beginAreaGesture} onFocusCapture={e=>{const id=(e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;if(id)reveal(id);}} onDrop={drop} onDragOver={e=>{if(!e.dataTransfer.types.includes(STORY_DRAG_TYPE)&&!e.dataTransfer.types.includes('Files'))return;e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='copy';setFileDrag(e.dataTransfer.types.includes('Files'));setDropPoint(localPoint({x:e.clientX,y:e.clientY}));const el=e.target as Element;setDropTarget(el.closest('[data-edge-id]')?.getAttribute('data-edge-id')??el.closest<HTMLElement>('[data-node-id]')?.dataset.nodeId??'canvas');}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node)){setFileDrag(false);setDropTarget(null);setDropPoint(null);}}} onContextMenu={e=>{
+    <div id={canvasId} className="story-scroll" hidden={collapsed} ref={scroll} tabIndex={0} aria-label="Clip graph" onPointerEnter={()=>{hovering.current=true;}} onPointerLeave={()=>{hovering.current=false;}} style={{backgroundPosition:`${camera.x}px ${camera.y}px`,backgroundSize:`${gridX*4}px ${gridY*4}px, ${gridX}px ${gridY}px`}} onPointerDownCapture={beginAreaGesture} onFocusCapture={e=>{const id=(e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;if(id)reveal(id);}} onDrop={drop} onDragOver={e=>{if(!e.dataTransfer.types.includes(STORY_DRAG_TYPE)&&!e.dataTransfer.types.includes('Files'))return;e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='copy';setFileDrag(e.dataTransfer.types.includes('Files'));setDropPoint(localPoint({x:e.clientX,y:e.clientY}));const el=e.target as Element;setDropTarget(el.closest('[data-edge-id]')?.getAttribute('data-edge-id')??el.closest<HTMLElement>('[data-node-id]')?.dataset.nodeId??'canvas');}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node)){setFileDrag(false);setDropTarget(null);setDropPoint(null);}}} onContextMenu={e=>{
       e.preventDefault();const clip=(e.target as Element).closest<HTMLElement>('[data-node-id]'),id=clip?.dataset.nodeId,scene=flow.scenes.find(s=>s.id===id),bounds=clip?.getBoundingClientRect();
       const frame=scene&&bounds?Math.max(0,Math.min(sceneFrames(scene)-1,frameAt(graph.nodes.find(n=>n.id===id)!,e.clientX,bounds))):0;
       const edgeId=(e.target as Element).closest('[data-edge-id]')?.getAttribute('data-edge-id')??undefined,pointId=(e.target as Element).closest('[data-reroute-id]')?.getAttribute('data-reroute-id')??undefined;
@@ -338,7 +349,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
               </g>}
               {points.map((point,index)=>{const p=toScreen(point,camera);return <circle key={point.id} data-reroute-id={point.id} className="story-reroute" cx={p.x} cy={p.y} r={5} tabIndex={0} role="button" aria-label={`Reroute point ${index+1} from ${from.name} to ${to.name}`}
                 onPointerDown={e=>dragReroute(e,connection,point)} onDoubleClick={e=>{e.stopPropagation();removeReroute(connection.id,point.id);}}
-                onKeyDown={e=>{if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();e.stopPropagation();removeReroute(connection.id,point.id);}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();e.stopPropagation();const step=e.shiftKey?10:1;editor.change({...graph,edges:graph.edges.map(c=>c.id===connection.id?{...c,points:c.points?.map(v=>v.id===point.id?{...v,x:v.x+(e.key==='ArrowLeft'?-step:e.key==='ArrowRight'?step:0),y:v.y+(e.key==='ArrowUp'?-step:e.key==='ArrowDown'?step:0)}:v)}:c)});}}}><title>Drag to shape the wire. Double-click or Delete removes this point.</title></circle>;})}
+                onKeyDown={e=>{if(shortcuts.action(e.nativeEvent)==='delete'){e.preventDefault();e.stopPropagation();removeReroute(connection.id,point.id);}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();e.stopPropagation();const step=e.shiftKey?10:1;editor.change({...graph,edges:graph.edges.map(c=>c.id===connection.id?{...c,points:c.points?.map(v=>v.id===point.id?{...v,x:v.x+(e.key==='ArrowLeft'?-step:e.key==='ArrowRight'?step:0),y:v.y+(e.key==='ArrowUp'?-step:e.key==='ArrowDown'?step:0)}:v)}:c)});}}}><title>{shortcuts.title('delete','Delete point')+'. Drag to shape the wire; double-click to remove.'}</title></circle>;})}
             </g>;})}
         </svg>
         {nodes.map(node=>{const scene=flow.scenes.find(s=>s.id===node.id)!,item=editor.items.find(i=>i.id===node.interstitialId),active=session?.sceneId===node.id,selected=editor.selected.includes(node.id);
@@ -375,20 +386,20 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       </div>
     </div>
     <input ref={videoInput} hidden multiple type="file" accept="video/*,.mkv,.mov,.webm,.mp4" aria-label="Import videos onto timeline" onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value='';void editor.importVideos(files);}}/>
-    <div className="story-status"><span role="status">{dropTarget?(fileDrag?'Release to import video clips here':libraryDrag&&'assetId' in libraryDrag?'Release to add a separate clip':dropTarget==='canvas'?'Release to place here':graph.edges.some(e=>e.id===dropTarget)?'Release to insert into this connection':'Release to attach to this clip'):libraryDrag?'Drag onto the timeline · Escape cancels':wire?'Drop onto a clip to connect · Escape cancels':editor.connecting?'Choose a destination input · Escape cancels':panTool?'Hand tool · Drag anywhere to pan · V returns to selection':cutTool?'Cut tool · Click a filmstrip to split · V returns to selection':editor.notice||'Drag to select · Space + drag to pan · Shift F to fit selection · Right-click for cleanup'}</span><span>{graph.nodes.length} clips · Blue: reference · Purple: generated</span></div>
+    <div className="story-status"><span role="status">{dropTarget?(fileDrag?'Release to import video clips here':libraryDrag&&'assetId' in libraryDrag?'Release to add a separate clip':dropTarget==='canvas'?'Release to place here':graph.edges.some(e=>e.id===dropTarget)?'Release to insert into this connection':'Release to attach to this clip'):libraryDrag?'Drag onto the timeline · Escape cancels':wire?'Drop onto a clip to connect · Escape cancels':editor.connecting?'Choose a destination input · Escape cancels':panTool?`Hand tool · Drag anywhere to pan · ${shortcuts.title('select')}`:cutTool?`Cut tool · Click a filmstrip to split · ${shortcuts.title('select')}`:editor.notice||`Drag to select · Space + drag to pan · ${shortcuts.title('fit')} · Right-click for cleanup`}</span><span>{graph.nodes.length} clips · Blue: reference · Purple: generated</span></div>
     {context&&<div ref={menu} className="story-context-menu" role="menu" aria-label={context.groupId?"Group actions":context.edgeId?"Connection actions":context.id?"Clip actions":"Timeline actions"} style={{left:context.x,top:context.y}} onKeyDown={e=>{
       if(e.key==='Escape'){e.preventDefault();setContext(null);scroll.current?.focus();}
       if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const buttons=Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')),index=buttons.indexOf(document.activeElement as HTMLButtonElement);buttons[e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}
       if(e.key==='Tab')setContext(null);
     }}>{context.groupId?<>
       <button role="menuitem" onClick={()=>contextAction(()=>focusGroupName(context.groupId!))}>Rename group</button>
-      <button role="menuitem" onClick={()=>contextAction(editor.duplicate)}><Copy size={14}/>Duplicate group <kbd>Ctrl D</kbd></button>
+      <button role="menuitem" onClick={()=>contextAction(editor.duplicate)}><Copy size={14}/>Duplicate group <kbd>{shortcuts.label('duplicate')}</kbd></button>
       <button role="menuitem" onClick={()=>{setContext(null);setTemplateName(editor.selectedGroup?.name??'My template');}}>Save group as template</button>
-      <button role="menuitem" onClick={()=>contextAction(()=>editor.ungroup(context.groupId!))}>Ungroup · keep clips <kbd>Ctrl Shift G</kbd></button>
-    </>:context.edgeId?<><button role="menuitem" onClick={()=>contextAction(()=>editor.selectConnection(context.edgeId!))}>Edit crossfade</button><button role="menuitem" onClick={()=>contextAction(()=>addReroute(context.edgeId!,context.point))}>Add reroute point</button>{context.pointId&&<button role="menuitem" onClick={()=>contextAction(()=>removeReroute(context.edgeId!,context.pointId!))}>Remove reroute point</button>}<button role="menuitem" onClick={()=>contextAction(()=>editor.change({...graph,edges:graph.edges.map(e=>e.id===context.edgeId?{...e,points:undefined}:e)}))}>Reset wire shape</button><button role="menuitem" onClick={()=>contextAction(editor.disconnect)}>Disconnect</button></>:context.id?<><button role="menuitem" disabled={context.frame===0} onClick={()=>contextAction(()=>editor.split(context.id,context.frame))}><Scissors size={14}/>Split here <kbd>S</kbd></button><button role="menuitem" onClick={()=>contextAction(editor.duplicate)}><Copy size={14}/>Duplicate <kbd>Ctrl D</kbd></button><button role="menuitem" onClick={()=>contextAction(()=>editor.change({...graph,entryId:context.id!}))}>Start story here</button><button role="menuitem" onClick={()=>{setContext(null);setTemplateName('My template');}}>Save as template</button><button role="menuitem" onClick={()=>contextAction(editor.remove)}><Trash2 size={14}/>Delete clip <kbd>Del</kbd></button></>:<><button role="menuitem" onClick={()=>contextAction(()=>editor.add('simple',undefined,context.point))}>Add interstitial</button></>}
-      {!context.edgeId&&!context.groupId&&<><div role="separator"/><button role="menuitem" disabled={!editor.selected.length} onClick={()=>contextAction(()=>editor.groupSelection())}>Group selected clips <kbd>Ctrl G</kbd></button>
-        <button role="menuitem" disabled={!graph.groups?.some(g=>g.nodeIds.some(id=>editor.selected.includes(id)))} onClick={()=>contextAction(()=>editor.ungroup())}>Ungroup selected clips <kbd>Ctrl Shift G</kbd></button></>}
-      <div role="separator"/><button role="menuitem" onClick={()=>contextAction(cleanup)}>Clean up layout <kbd>A</kbd></button><button role="menuitem" onClick={()=>contextAction(()=>fit())}>Fit all</button><button role="menuitem" disabled={!editor.selected.length} onClick={()=>contextAction(fitSelected)}>Fit selected <kbd>Shift F</kbd></button></div>}
+      <button role="menuitem" onClick={()=>contextAction(()=>editor.ungroup(context.groupId!))}>Ungroup · keep clips <kbd>{shortcuts.label('ungroup')}</kbd></button>
+    </>:context.edgeId?<><button role="menuitem" onClick={()=>contextAction(()=>editor.selectConnection(context.edgeId!))}>Edit crossfade</button><button role="menuitem" onClick={()=>contextAction(()=>addReroute(context.edgeId!,context.point))}>Add reroute point</button>{context.pointId&&<button role="menuitem" onClick={()=>contextAction(()=>removeReroute(context.edgeId!,context.pointId!))}>Remove reroute point</button>}<button role="menuitem" onClick={()=>contextAction(()=>editor.change({...graph,edges:graph.edges.map(e=>e.id===context.edgeId?{...e,points:undefined}:e)}))}>Reset wire shape</button><button role="menuitem" onClick={()=>contextAction(editor.disconnect)}>Disconnect</button></>:context.id?<><button role="menuitem" disabled={context.frame===0} onClick={()=>contextAction(()=>editor.split(context.id,context.frame))}><Scissors size={14}/>Split here <kbd>{shortcuts.label('split')}</kbd></button><button role="menuitem" onClick={()=>contextAction(editor.duplicate)}><Copy size={14}/>Duplicate <kbd>{shortcuts.label('duplicate')}</kbd></button><button role="menuitem" onClick={()=>contextAction(()=>editor.change({...graph,entryId:context.id!}))}>Start story here</button><button role="menuitem" onClick={()=>{setContext(null);setTemplateName('My template');}}>Save as template</button><button role="menuitem" onClick={()=>contextAction(editor.remove)}><Trash2 size={14}/>Delete clip <kbd>{shortcuts.label('delete')}</kbd></button></>:<><button role="menuitem" onClick={()=>contextAction(()=>editor.add('simple',undefined,context.point))}>Add interstitial</button></>}
+      {!context.edgeId&&!context.groupId&&<><div role="separator"/><button role="menuitem" disabled={!editor.selected.length} onClick={()=>contextAction(()=>editor.groupSelection())}>Group selected clips <kbd>{shortcuts.label('group')}</kbd></button>
+        <button role="menuitem" disabled={!graph.groups?.some(g=>g.nodeIds.some(id=>editor.selected.includes(id)))} onClick={()=>contextAction(()=>editor.ungroup())}>Ungroup selected clips <kbd>{shortcuts.label('ungroup')}</kbd></button></>}
+      <div role="separator"/><button role="menuitem" onClick={()=>contextAction(cleanup)}>Clean up layout <kbd>{shortcuts.label('layout')}</kbd></button><button role="menuitem" onClick={()=>contextAction(fitSelected)}>Fit <kbd>{shortcuts.label('fit')}</kbd></button></div>}
     {templateName!==null&&<div className="modal-backdrop"><form className="project-card" role="dialog" aria-modal="true" aria-labelledby="template-title" onKeyDown={e=>{
       if(e.key==='Escape'){e.preventDefault();setTemplateName(null);templateMenu.current?.querySelector('summary')?.focus();}
       if(e.key==='Tab'){const controls=Array.from(e.currentTarget.querySelectorAll<HTMLElement>('input,button'));if(e.shiftKey&&document.activeElement===controls[0]){e.preventDefault();controls.at(-1)?.focus();}else if(!e.shiftKey&&document.activeElement===controls.at(-1)){e.preventDefault();controls[0]?.focus();}}

@@ -1,11 +1,11 @@
-import {test,expect,type Page} from './fixtures';
+import { fitAll,test,expect,type Page} from './fixtures';
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
 test('independent behaviors expose named condition sockets with separate draggable wires',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
   await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
   await page.locator('.story-filmstrip').last().focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await fitAll(page);
   const project=await saved(page),[a,b,c]=project.storyFlow.nodes,clip=page.locator(`[data-node-id="${a.id}"]`);
   await clip.locator('.story-clip-title').click();await page.getByRole('checkbox',{name:'Loop',exact:true}).check();await page.getByRole('checkbox',{name:'Conditional',exact:true}).check();
   await expect(page.getByRole('checkbox',{name:'Loop',exact:true})).toBeChecked();await expect(page.getByRole('checkbox',{name:'Conditional',exact:true})).toBeChecked();
@@ -31,7 +31,7 @@ test('independent behaviors expose named condition sockets with separate draggab
   await page.getByRole('checkbox',{name:'Loop',exact:true}).check();await page.getByRole('checkbox',{name:'Conditional',exact:true}).uncheck();await expect(page.getByRole('checkbox',{name:'Loop',exact:true})).toBeChecked();
   await page.getByRole('checkbox',{name:'Conditional',exact:true}).check();await expect(clip.locator('[data-condition-id]')).toHaveCount(2);
   await page.screenshot({path:'test-results/conditional-outputs-desktop.png',fullPage:true});
-  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Fit all',exact:true}).click();
+  await page.setViewportSize({width:390,height:844});await fitAll(page);
   expect((await clip.boundingBox())!.height).toBe(76);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(await clip.locator('[data-condition-id]>span').evaluateAll(labels=>labels.every(el=>el.scrollWidth<=el.clientWidth))).toBe(true);
   await page.screenshot({path:'test-results/conditional-outputs-mobile.png',fullPage:true});expect(errors).toEqual([]);

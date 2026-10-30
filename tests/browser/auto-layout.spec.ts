@@ -1,10 +1,30 @@
-import { test, expect, type Page } from './fixtures';
+import { fitAll, test, expect, type Page } from './fixtures';
 
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
 const inspect=(page:Page)=>page.locator('.story-scroll').evaluate(el=>{
   const view=el.getBoundingClientRect(),boxes=[...el.querySelectorAll('.story-clip')].map(n=>n.getBoundingClientRect());
   return {heights:boxes.map(b=>b.height),inside:boxes.every(b=>b.left>=view.left&&b.right<=view.right&&b.top>=view.top&&b.bottom<=view.bottom),
     overlaps:boxes.flatMap((a,i)=>boxes.slice(i+1).filter(b=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top)).length};
+});
+
+for(const width of [1440,390])test(`conditional outputs stack vertically after cleanup on a short ${width}px timeline`,async({page})=>{
+  await page.setViewportSize({width,height:1000});await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();
+  await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
+  await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();
+  await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:80,y:40}});
+  await expect(page.locator('.story-clip')).toHaveCount(5);await page.getByRole('separator',{name:'Resize story canvas'}).press('Home');
+  const before=(await saved(page)).storyFlow;
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();
+  const check=async()=>{
+    const graph=(await saved(page)).storyFlow,yes=graph.nodes.find((n:any)=>n.name==='Celebrate'),no=graph.nodes.find((n:any)=>n.name==='Encourage');
+    expect(yes.x).toBe(no.x);expect(yes.y).toBeLessThan(no.y);expect(graph.edges).toEqual(before.edges);
+    const a=(await page.locator(`[data-node-id="${yes.id}"]`).boundingBox())!,b=(await page.locator(`[data-node-id="${no.id}"]`).boundingBox())!;
+    expect(a.x).toBeCloseTo(b.x,1);expect(b.y-a.y).toBeGreaterThanOrEqual(99);expect(a.height).toBe(76);expect(b.height).toBe(76);
+    await expect(page.locator('.conditional-output')).toHaveCount(2);expect((await inspect(page)).overlaps).toBe(0);
+  };
+  await check();await fitAll(page);await check();
+  await page.screenshot({path:`test-results/conditional-layout-${width}.png`,fullPage:true});
+  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect.poll(async()=>(await saved(page)).storyFlow.nodes).toEqual(before.nodes);
 });
 
 for(const width of [1440,390])for(const mixed of [false,true])test(`cleanup separates ${mixed?'mixed routes and groups':'disconnected clips'} at ${width}px and survives Fit all`,async({page})=>{
@@ -22,17 +42,18 @@ for(const width of [1440,390])for(const mixed of [false,true])test(`cleanup sepa
   await page.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'Overlapping clips.sparko',mimeType:'application/zip',buffer:Buffer.from(bytes)});
   await expect(page.locator('.story-clip')).toHaveCount(12);const original=(await saved(page)).storyFlow;
   expect((await inspect(page)).overlaps).toBeGreaterThan(0);
-  await page.getByRole('button',{name:'Auto layout',exact:true}).click();
+  const camera=()=>page.locator('.story-scroll').evaluate(el=>(el as HTMLElement).style.cssText);const originalCamera=await camera();
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();expect(await camera()).toBe(originalCamera);await fitAll(page);
   await expect.poll(async()=>(await inspect(page)).overlaps).toBe(0);expect((await inspect(page)).inside).toBe(true);
   expect((await inspect(page)).heights).toEqual(Array(12).fill(76));
   const cleaned=(await saved(page)).storyFlow;
   expect(cleaned.nodes.map(({x,y,...n}:any)=>n)).toEqual(original.nodes.map(({x,y,...n}:any)=>n));
   expect(cleaned.edges.map(({points,...e}:any)=>e)).toEqual(original.edges.map(({points,...e}:any)=>e));expect(cleaned.groups).toEqual(original.groups);
-  await page.getByRole('button',{name:'Fit all',exact:true}).click();expect((await inspect(page)).overlaps).toBe(0);expect((await inspect(page)).inside).toBe(true);
+  await fitAll(page);expect((await inspect(page)).overlaps).toBe(0);expect((await inspect(page)).inside).toBe(true);
   await page.screenshot({path:`test-results/auto-layout-${mixed?'mixed':'loose'}-${width}.png`,fullPage:true});
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect.poll(async()=>(await saved(page)).storyFlow.nodes).toEqual(original.nodes);
   // Context-menu cleanup uses the same layout and clears stale wire bend bounds.
-  await page.locator('.story-scroll').click({button:'right',position:{x:15,y:15}});await page.getByRole('menuitem',{name:/Clean up layout/}).click();
-  await expect.poll(async()=>(await inspect(page)).overlaps).toBe(0);expect((await inspect(page)).inside).toBe(true);
+  await page.locator('.story-scroll').click({button:'right',position:{x:15,y:15}});const beforeCleanup=await camera();await page.getByRole('menuitem',{name:/Clean up layout/}).click();expect(await camera()).toBe(beforeCleanup);
+  await fitAll(page);await expect.poll(async()=>(await inspect(page)).overlaps).toBe(0);expect((await inspect(page)).inside).toBe(true);
   expect((await saved(page)).storyFlow.nodes).toEqual(cleaned.nodes);expect(errors).toEqual([]);
 });

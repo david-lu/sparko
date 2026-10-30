@@ -1,0 +1,16 @@
+.shortcut-settings{width:min(720px,calc(100vw - 28px));height:min(760px,calc(100dvh - 40px));max-height:calc(100dvh - 40px);padding:18px;margin:auto;border:1px solid var(--line-strong);border-radius:var(--radius-md);background:var(--panel);color:var(--text);box-shadow:0 20px 80px #0009;overflow:hidden}
+.shortcut-settings[open]{display:flex;flex-direction:column;gap:10px}
+.shortcut-settings::backdrop{background:#14120fbf}
+.shortcut-settings header,.shortcut-settings footer{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.shortcut-settings header h2{flex:1}
+.shortcut-settings>input{width:100%;padding:9px 10px;background:var(--input);border:1px solid var(--line);border-radius:4px}
+.shortcut-help,.shortcut-settings footer span{font-size:11px;color:var(--muted);line-height:1.5}
+.shortcut-feedback{height:42px;flex-shrink:0;font-size:12px;line-height:1.5;color:var(--accent);overflow:auto}
+.shortcut-list{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.shortcut-list h3{padding:12px 0 6px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.7px}
+.shortcut-row{display:grid;grid-template-columns:minmax(130px,1fr) minmax(270px,1.2fr);align-items:center;gap:12px;padding:6px 0;border-bottom:1px solid #ffffff09}
+.shortcut-bindings{display:flex;gap:6px;min-width:0}.shortcut-slot{display:flex;align-items:center;flex:1;min-width:0;gap:2px}
+.shortcut-binding{min-width:0;flex:1;min-height:29px;background:var(--input);border:1px solid var(--line);border-radius:4px;padding:5px;color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shortcut-binding.recording{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.shortcut-settings footer span{flex:1}.shortcut-settings footer button{flex-shrink:0}.shortcut-empty{padding:20px;color:var(--muted)}
+@media(max-width:520px){.shortcut-settings{padding:12px}.shortcut-row{grid-template-columns:minmax(0,1fr) 155px;gap:8px}.shortcut-bindings{flex-direction:column;gap:4px}.shortcut-settings footer{flex-wrap:wrap}.shortcut-settings footer span{flex-basis:100%}.shortcut-feedback{height:54px}}

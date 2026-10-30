@@ -13,10 +13,16 @@ export function zoomAt(camera: Camera, zoom: number, anchor: Point): Camera {
   const next=Math.max(.005,Math.min(8,zoom));
   return { ...camera,zoom:next, x:anchor.x-(anchor.x-camera.x)/camera.zoom*next };
 }
-export function fitCamera(bounds: {left:number;right:number;top:number;bottom:number}, width:number,height:number,maxZoom=2,groups=false): Camera {
+export function fitCamera(bounds: {left:number;right:number;top:number;bottom:number}, width:number,height:number,maxZoom=2,groups=false,clips:{left:number;right:number;top:number}[]=[]): Camera {
   const zoom=Math.max(.005,Math.min(maxZoom,Math.max(1,width-96)/Math.max(1,bounds.right-bounds.left)));
-  // Compress row spacing when needed, while every clip remains CLIP_HEIGHT tall.
-  const rowScale=Math.min(1,Math.max(1,height-CLIP_HEIGHT-(groups?100:64))/Math.max(1,bounds.bottom-bounds.top));
+  // Compress empty space, but keep overlapping columns readable at fixed clip
+  // height. Large vertical branches remain pannable instead of overlapping.
+  let minimumRowScale=0;
+  for(let i=0;i<clips.length;i++)for(let j=i+1;j<clips.length;j++){
+    const a=clips[i],b=clips[j],distance=Math.abs(a.top-b.top);
+    if(distance&&a.left<b.right&&b.left<a.right)minimumRowScale=Math.max(minimumRowScale,Math.min(1,(CLIP_HEIGHT+24)/distance));
+  }
+  const rowScale=Math.max(minimumRowScale,Math.min(1,Math.max(1,height-CLIP_HEIGHT-(groups?100:64))/Math.max(1,bounds.bottom-bounds.top)));
   return { zoom,rowScale,x:width/2-(bounds.left+bounds.right)/2*zoom,y:(height-CLIP_HEIGHT)/2-(bounds.top+bounds.bottom)/2*rowScale };
 }
 
