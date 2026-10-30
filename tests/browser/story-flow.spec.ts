@@ -63,13 +63,17 @@ test('connected generation uses clip references, keeps controls stable, and reop
   const controls=()=>page.evaluate(()=>{const root=document.querySelector('.interstitial-editor')!.getBoundingClientRect();return ['textarea','.interstitial-time-fields','button[type=submit]','.task-status'].map(s=>{const r=document.querySelector('.interstitial-editor '+s)!.getBoundingClientRect();return {y:r.top-root.top,height:r.height};});});
   const libraryControls=()=>page.locator('.asset-library').evaluate(el=>{const root=el.getBoundingClientRect();return ['.library-toolbar','.library-filter','.library-preview'].map(selector=>{const rect=el.querySelector(selector)!.getBoundingClientRect();return {y:rect.top-root.top,height:rect.height};});});
   const libraryBefore=await libraryControls();
+  const placeholder=page.locator('.story-clip.type-simple .story-unavailable-thumbnail');await expect(placeholder).toHaveAttribute('aria-label','Video unavailable: not generated yet');
+  await expect(page.locator('.story-clip.type-simple .video-filmstrip')).toHaveCount(0);const draftHeight=(await page.locator('.story-clip.type-simple').boundingBox())!.height;
   const before=await controls();await page.getByRole('button',{name:'Generate',exact:true}).click();await expect.poll(()=>submitted,{timeout:60000}).toBe(1);
   await expect(page.locator('.story-clip .timeline-generation-spinner')).toHaveCount(1);expect(await controls()).toEqual(before);
+  await expect(placeholder).toHaveCount(1);expect((await page.locator('.story-clip.type-simple').boundingBox())!.height).toBe(draftHeight);
   expect(await libraryControls()).toEqual(libraryBefore);
   complete=true;await expect.poll(async()=>(await saved(page)).interstitials[0].phase,{timeout:60000}).toBe('ready');expect(await controls()).toEqual(before);
   await expect(page.getByRole('region',{name:'Video breakdown'})).toContainText('Generated section');
   expect(await libraryControls()).toEqual(libraryBefore);
   const generated=page.locator('.story-clip.type-simple');await expect(generated).toHaveAttribute('data-duration','2');
+  await expect(placeholder).toHaveCount(0);await expect(generated.locator('.video-filmstrip img').first()).toBeVisible();expect((await generated.boundingBox())!.height).toBe(draftHeight);
   await expect(generated).toHaveAttribute('data-media-duration','4');await page.getByRole('button',{name:'Fit all',exact:true}).click();
   const sections=await generated.evaluate(el=>{const r=el.querySelector('.story-reference-section')!,g=el.querySelector('.story-generated-section')!;return {reference:r.getBoundingClientRect().width,generated:g.getBoundingClientRect().width,referenceColor:getComputedStyle(r).backgroundColor,generatedColor:getComputedStyle(g).backgroundColor,height:el.getBoundingClientRect().height};});
   expect(sections.reference/sections.generated).toBeCloseTo(.5,1);expect(sections.referenceColor).not.toBe(sections.generatedColor);expect(sections.height).toBe(76);
