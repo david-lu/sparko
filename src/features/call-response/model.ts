@@ -1,5 +1,6 @@
 import { playableResult, type CallResponseInterstitial, type Interstitial, type InterstitialResult } from '../../../shared/interstitials';
 import type { AnswerColor } from './colors';
+import type { StoryNode } from '../story-flow/model';
 export type { AnswerColor } from './colors';
 export { answerColor, answerColorStyle } from './colors';
 /** Clip types and connections shared by the project, timeline and video player. */
@@ -14,6 +15,7 @@ export type IdleClip = ClipMedia & { kind: 'idle'; repeat: 'until-answer'; exitA
 export type ResponseClip = ClipMedia & { kind: 'response'; outcome: Outcome };
 export type TimelineClip = VideoClip | CallClip | IdleClip | ResponseClip;
 export type TimelineScene = {
+  storyNode?: StoryNode;
   id: SceneId;
   label: string;
   role: 'source' | 'call' | 'wait' | 'response';
@@ -40,6 +42,8 @@ export type FlowEdge = {
   transitionFrames: number;
 };
 export type CallResponseFlow = {
+  storyGraph?: boolean;
+  storyInteractions?: Record<string, CallResponseFlow['interaction']>;
   version: 2;
   interstitial: CallResponseInterstitial;
   fps: number;
@@ -79,7 +83,7 @@ export const clipTypeLabel = (clip: TimelineClip, flow: CallResponseFlow) => cli
 export const interstitialScenes = (flow: CallResponseFlow) => flow.scenes.filter(scene => flow.interstitial.clipIds.includes(scene.clip.id));
 /** The response column stays in place even when a child is converted to another clip type. */
 export const branchScenes = (flow: CallResponseFlow): TimelineScene[] => flow.groups ? flow.groups.flatMap(branchScenes) : flow.scenes.filter(scene => !['intro', 'call', 'wait', 'continue'].includes(scene.localId ?? scene.id));
-export const interactionFor = (flow: CallResponseFlow, sceneId: string) => flow.groups?.find(group => group.scenes.some(scene => scene.id === sceneId))?.interaction ?? flow.interaction;
+export const interactionFor = (flow: CallResponseFlow, sceneId: string) => flow.storyInteractions?.[sceneId] ?? flow.groups?.find(group => group.scenes.some(scene => scene.id === sceneId))?.interaction ?? flow.interaction;
 export const playbackPath = (flow: CallResponseFlow, session: PlaybackSession) => flow.seekPath?.map(id => {
   const group = flow.groups?.find(group => group.interaction.answers[0]?.sceneId === id);
   return group?.interaction.answers.find(answer => answer.id === session.outcome || answer.sceneId === session.sceneId)?.sceneId ?? id;
@@ -256,6 +260,12 @@ export function answerSession(flow: CallResponseFlow, session: PlaybackSession, 
 }
 
 export function nextEdge(flow: CallResponseFlow, session: PlaybackSession) {
+  if (flow.storyGraph) {
+    const node = getScene(flow, session.sceneId).storyNode!;
+    const when = node.kind === 'conditional' ? session.outcome ?? 'pending'
+      : node.kind === 'looped' ? session.outcome ?? (node.loopCount > 0 && session.loopIteration >= node.loopCount ? 'ended' : 'pending') : 'ended';
+    return flow.edges.find(edge => edge.from === session.sceneId && edge.when === when);
+  }
   const idle = getScene(flow, session.sceneId).clip.kind === 'idle';
   const when = idle ? session.outcome ?? 'pending' : 'ended';
   return flow.edges.find(edge => edge.from === session.sceneId && edge.when === when)

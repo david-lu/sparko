@@ -5,6 +5,7 @@ import { CanvasMediaDecks, type PlaybackClip, type PlaybackLayer, type PlaybackS
 import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, nextEdge, previewScene, sceneFrames, startSession,
   type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
 import { flowTransition } from './transitions';
+import { sceneMediaRange } from '../story-flow/mediaRange';
 import idleMusicUrl from '../../../assets/working-something-out-loop.wav?url';
 
 /** Scene playback through the shared Mediabunny/GPU renderer and audio clock. */
@@ -41,7 +42,7 @@ export class CanvasFlowPlayback {
   requestPictureInPicture() { return this.decks.requestPictureInPicture(); }
   private clip(session: PlaybackSession, frame = session.frame + this.remainder): PlaybackClip {
     const scene = getScene(this.flow, session.sceneId);
-    const fullIdle = scene.clip.kind === 'idle' && scene.generated?.fullAssetId && scene.generated.fullRange;
+    const fullIdle = (this.flow.storyGraph || scene.clip.kind === 'idle') && scene.generated?.fullAssetId && scene.generated.fullRange;
     const context = fullIdle && (frame < 0 || frame >= sceneFrames(scene));
     // Play the saved original range, including its first frame. Older finished
     // loops replaced that frame with a Call still and flash on every repeat.
@@ -49,6 +50,14 @@ export class CanvasFlowPlayback {
     const sourceFootage = assetId === this.source.assetId;
     const url = sourceFootage ? this.source.url : assets.url(assetId);
     if (!url) throw new Error('This scene’s media is not available.');
+    if(this.flow.storyGraph){
+      const range=sceneMediaRange(scene,this.flow.fps),bodyStart=range.start;
+      const mediaDuration=range.total??(sourceFootage?this.info.duration:scene.clip.outFrame/this.flow.fps);
+      const raw=scene.draft?bodyStart:bodyStart+frame/this.flow.fps;
+      const time=Math.max(0,Math.min(Math.max(0,mediaDuration-1/this.flow.fps),raw));
+      return {key:`${scene.id}:${session.visit%2}:body`,sourceFootage,source:sourceFootage?this.source:{id:assetId,assetId,name:scene.label,url},
+        time,still:scene.draft||time!==raw,muted:scene.draft||time!==raw||scene.loopAudio===false};
+    }
     return { key: `${scene.id}:${session.visit % 2}:${context ? 'reference' : 'body'}`, sourceFootage,
       muted: scene.clip.kind === 'idle' && !(scene.loopAudio && fullIdle),
       source: sourceFootage ? this.source : { id: assetId, assetId, name: scene.label, url },
@@ -64,7 +73,7 @@ export class CanvasFlowPlayback {
     const current = this.session, frame = current.frame + this.remainder;
     const currentClip = this.clip(current);
     const single = [{ ...currentClip, opacity: 1, gain: currentClip.muted ? 0 : 1,
-      musicGain: getScene(this.flow, current.sceneId).clip.kind === 'idle' ? 1 : 0 }];
+      musicGain: !this.flow.storyGraph && getScene(this.flow, current.sceneId).clip.kind === 'idle' ? 1 : 0 }];
     if (!this.crossfade) return single;
     const previous = current.lastEdgeId ? this.flow.edges.find(edge => edge.id === current.lastEdgeId) : undefined;
     const response = this.flow.interaction.answers.find(answer => answer.id === current.outcome)?.sceneId;
@@ -84,18 +93,18 @@ export class CanvasFlowPlayback {
       const before = { ...current, sceneId: transition.before.id, visit: entering ? Math.max(0, current.visit - 1) : current.visit };
       const after = { ...current, sceneId: transition.after.id, visit: entering ? current.visit : current.visit + 1 };
       // Match the tail of Idle's body to the saved prefix of this Response.
-      const beforeFrame = transition.before.clip.kind === 'idle' && offset >= 0 && !transition.before.generated?.fullRange
+      const beforeFrame = !this.flow.storyGraph && transition.before.clip.kind === 'idle' && offset >= 0 && !transition.before.generated?.fullRange
         ? sceneFrames(transition.before) - 1 : sceneFrames(transition.before) + offset;
-      const afterFrame = transition.after.clip.kind === 'idle' && offset < 0 && !transition.after.generated?.fullRange ? 0
+      const afterFrame = this.flow.storyGraph ? offset : transition.after.clip.kind === 'idle' && offset < 0 && !transition.after.generated?.fullRange ? 0
         : transition.before.clip.kind === 'idle' && offset < 0
           ? Math.max(offset, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6)) : offset;
       const rate = this.flow.fps / fadeFrames;
       const beforeClip = this.clip(before, beforeFrame), afterClip = this.clip(after, afterFrame);
-      const mutedBeforeCut = afterClip.muted || transition.before.clip.kind === 'idle' && offset < 0;
+      const mutedBeforeCut = afterClip.muted || transition.before.clip.kind === 'idle' && offset < 0 && (!this.flow.storyGraph || beforeClip.muted);
       return [{ ...beforeClip, opacity: 1, gain: beforeClip.muted ? 0 : 1 - weight, gainRate: beforeClip.muted ? 0 : -rate,
-        musicGain: transition.before.clip.kind === 'idle' ? 1 - weight : 0 },
+        musicGain: !this.flow.storyGraph && transition.before.clip.kind === 'idle' ? 1 - weight : 0 },
         { ...afterClip, muted: mutedBeforeCut, opacity: weight, gain: mutedBeforeCut ? 0 : weight,
-          gainRate: mutedBeforeCut ? 0 : rate, musicGain: transition.after.clip.kind === 'idle' ? weight : 0 }];
+          gainRate: mutedBeforeCut ? 0 : rate, musicGain: !this.flow.storyGraph && transition.after.clip.kind === 'idle' ? weight : 0 }];
     }
     return single;
   }
@@ -121,7 +130,10 @@ export class CanvasFlowPlayback {
     }
   }
   setSettings(settings: PlaybackSettings) { this.settings = settings; this.render(); }
-  setFlow(flow: CallResponseFlow) { this.flow = flow; this.render(); }
+  setFlow(flow: CallResponseFlow) { this.flow = flow;
+    const scene=getScene(flow,this.session.sceneId);
+    this.session=scene?{...this.session,frame:Math.min(this.session.frame,sceneFrames(scene)-1)}:startSession(flow);
+    this.render(); }
   setCrossfade(value: boolean, frames = this.crossfadeFrames) { this.crossfade = value; this.crossfadeFrames = frames; this.render(); }
   setSubtitles(track: TextTrack | null, cues: VTTCue[], enabled = true) {
     this.subtitles = { track, cues, enabled }; this.decks.setSubtitles(track, cues, enabled); this.render();

@@ -4,6 +4,10 @@ import { createTestFlow, createTimelineExample, getScene, sceneFrames } from '..
 import { composeFlows } from '../../src/features/call-response/compose';
 import type { PlaybackLayer } from '../../src/features/player/CanvasMediaDecks';
 import { flowTransition } from '../../src/features/call-response/transitions';
+import { createNode, edge, migrateGraph, runtimeFlow, splitClip, type StoryGraph } from '../../src/features/story-flow/model';
+import { readFile } from 'node:fs/promises';
+import { ZipReader, Uint8ArrayReader, TextWriter } from '@zip.js/zip.js';
+import { projectFlows, type Project } from '../../src/features/project/types';
 
 afterEach(() => vi.unstubAllGlobals());
 const render = vi.hoisted(() => vi.fn((_layers: PlaybackLayer[], _playing: boolean, _settings?: unknown, _musicGain?: number) => true));
@@ -41,6 +45,55 @@ const makePlayer = (flow = flowWithReferences()) => new FlowPlayback(flow, { vol
   { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, vi.fn(), undefined, false, true, 4);
 
 describe('canvas flow playback', () => {
+  it('matches every fade window and video timestamp in the original saved Sparko example',async()=>{
+    const zip=new ZipReader(new Uint8ArrayReader(await readFile('examples/sample.sparko')));
+    const manifest=(await zip.getEntries()).find(e=>e.filename==='project.json')!;
+    if(manifest.directory)throw new Error('Sample project manifest must be a file.');
+    const project=JSON.parse(await manifest.getData!(new TextWriter())).project as Project;await zip.close();
+    const flows=projectFlows(project),duration=Math.max(...flows.flatMap(f=>f.scenes.filter(s=>s.clip.kind==='video').map(s=>s.clip.outFrame)))/24;
+    const legacy=composeFlows(flows,project.interstitials,project.source.assetId!,duration)!;
+    const graph=runtimeFlow(migrateGraph(project,duration),project.interstitials,project.source.assetId!,duration);
+    let checked=0;
+    for(const link of legacy.edges){
+      const old=flowTransition(legacy,link,14),nextLink=graph.edges.find(e=>e.id===link.id)!,next=flowTransition(graph,nextLink);
+      expect(next&&{start:next.startFrame,frames:next.frames},link.id).toEqual(old&&{start:old.startFrame,frames:old.frames});
+      if(!old)continue;checked++;
+      const snapshot=(flow:typeof legacy,edge:typeof link)=>{
+        const player=makePlayer(flow);player.setCrossfade(true,14);
+        if(old.startFrame<0){player.seekScene(edge.from,sceneFrames(getScene(flow,edge.from))-7);player.session.outcome=edge.when;player.session.outcomeQueuedFrame=0;}
+        else {player.seekScene(edge.to,7);player.session.lastEdgeId=edge.id;}
+        player.pause();const result=layers().map(l=>({asset:l.source.assetId,time:l.time,opacity:l.opacity}));player.dispose();return result;
+      };
+      const expected=snapshot(legacy,link),actual=snapshot(graph,nextLink);expect(actual,link.id).toHaveLength(2);
+      actual.forEach((layer,i)=>{expect(layer.asset,link.id).toBe(expected[i].asset);expect(layer.time,link.id).toBeCloseTo(expected[i].time,8);expect(layer.opacity,link.id).toBeCloseTo(expected[i].opacity,8);});
+    }
+    expect(checked).toBe(12);
+  });
+  it('caps graph fades to saved references and rejects rewired or trimmed generated boundaries',()=>{
+    const a=createNode('simple'),b=createNode('simple'),items=[a,b].map(p=>({...p.item,phase:'ready' as const,result:{assetId:`mock:${p.node.id}`,url:'blob:generated',start:2,duration:6,totalDuration:10}}));
+    items[1].result={...items[1].result,start:.125};
+    const graph:StoryGraph={version:1,entryId:a.node.id,nodes:[a.node,b.node],edges:[{...edge(a.node.id,b.node.id),crossfade:1}],templates:[]};
+    let flow=runtimeFlow(graph,items,'mock:original',20);expect(flowTransition(flow,flow.edges[0])).toMatchObject({startFrame:-3,frames:3});
+    flow.scenes[1].generated!.reference={before:{sceneId:a.node.id,assetId:'wrong:asset',inFrame:48,outFrame:192}};
+    expect(flowTransition(flow,flow.edges[0])).toBeUndefined();
+    const player=makePlayer(flow);player.seekScene(a.node.id,143,true);advance();expect(player.session.sceneId).toBe(b.node.id);expect(layers()).toHaveLength(1);player.dispose();
+    delete flow.scenes[1].generated!.reference;b.node.trim={inFrame:24,outFrame:144};flow=runtimeFlow(graph,items,'mock:original',20);
+    expect(flowTransition(flow,flow.edges[0])).toBeUndefined();
+  });
+  it('uses each imported source duration instead of clamping playback to the primary video',()=>{
+    const graph:StoryGraph={version:1,entryId:'extra',nodes:[{id:'extra',name:'Extra video',kind:'source',source:{assetId:'mock:extra',duration:12,inFrame:0,outFrame:288},x:0,y:0,crossfadeStart:0,crossfadeEnd:0,loopCount:0}],edges:[],templates:[]};
+    const player=makePlayer(runtimeFlow(graph,[],'mock:original',2));player.seekScene('extra',240);expect(layers()[0].time).toBe(10);expect(layers()[0].sourceFootage).toBe(false);expect(layers()[0].still).toBe(false);player.dispose();
+  });
+  it('aligns graph entry fades with the reference prefix and seeks split generated media precisely',()=>{
+    const a=createNode('simple'),b=createNode('simple');
+    const items=[a,b].map(p=>({...p.item,phase:'ready' as const,result:{assetId:`mock:${p.node.id}`,url:'blob:generated',start:2,duration:6,totalDuration:10}}));
+    const graph:StoryGraph={version:1,entryId:a.node.id,nodes:[a.node,b.node],edges:[{...edge(a.node.id,b.node.id),crossfade:.75}],templates:[]};
+    const player=makePlayer(runtimeFlow(graph,items,'mock:original',20));player.seekScene(a.node.id,141);
+    expect(layers()).toHaveLength(2);expect(layers()[1].opacity).toBeCloseTo(15/18);expect(layers()[1].time).toBeCloseTo(2-3/24);
+    player.seekScene(b.node.id,0);expect(layers()).toHaveLength(1);expect(layers()[0].opacity).toBe(1);expect(layers()[0].time).toBe(2);
+    const split=splitClip(graph,items,a.node.id,48);player.setFlow(runtimeFlow(split.graph,[...items,...split.items],'mock:original',20));player.seekScene(split.rightId!,0);
+    expect(layers()).toHaveLength(1);expect(layers()[0].time).toBe(4);player.dispose();
+  });
   it('keeps scene time and seeking independent of MediaSource support', async () => {
     vi.stubGlobal('MediaSource', undefined);
     vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));

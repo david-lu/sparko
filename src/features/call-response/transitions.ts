@@ -1,6 +1,36 @@
 import { INTERSTITIAL_CROSSFADE_FRAMES } from '../../../shared/constants';
 import { referenceCrossfade } from '../../media/ReferenceCrossfade';
 import { getScene, sceneFrames, type CallResponseFlow, type FlowEdge } from './model';
+import { sceneMediaRange } from '../story-flow/mediaRange';
+import { connectionReference } from '../story-flow/references';
+
+function storyTransition(flow: CallResponseFlow, edge: FlowEdge) {
+  const before = getScene(flow, edge.from), after = getScene(flow, edge.to), fps = flow.fps;
+  const requested = Math.max(0, Math.round(edge.transitionFrames));
+  if (!requested || !before || !after || before.id === after.id || before.draft || after.draft) return;
+  if (connectionReference(flow,edge).state==='mismatch') return;
+  const left = sceneMediaRange(before, fps), right = sceneMediaRange(after, fps);
+  if (after.generated) {
+    const result = after.generated, reference = result.reference?.before;
+    // The prefix meets the original body start, never an arbitrary trim point.
+    if (after.clip.inFrame !== Math.round(result.start * fps)) return;
+    if (reference && !((reference.assetId === before.clip.assetId && reference.outFrame === before.clip.outFrame)
+      || (reference.assetId === left.assetId && reference.outFrame === Math.round(left.end * fps)))) return;
+    const frames = Math.min(requested, sceneFrames(before), Math.floor(right.start * fps + 1e-6));
+    return frames > 0 ? { before, after, startFrame: -frames, frames } : undefined;
+  }
+  if (before.generated) {
+    const result = before.generated, reference = result.reference;
+    if (before.clip.outFrame !== Math.round((result.start + result.duration) * fps)) return;
+    if (reference && (!reference.after || reference.mode === 'loop' || reference.mode === 'extend'
+      || reference.after.assetId !== after.clip.assetId || reference.after.inFrame !== after.clip.inFrame)) return;
+    const frames = Math.min(requested, sceneFrames(after), Math.floor(((left.total ?? left.end) - left.end) * fps + 1e-6));
+    return frames > 0 ? { before, after, startFrame: 0, frames } : undefined;
+  }
+  // Ordinary footage has no generated reference interval: dissolve around the cut.
+  const frames = Math.min(requested, sceneFrames(before), sceneFrames(after));
+  return frames > 0 ? { before, after, startFrame: -Math.floor(frames / 2), frames } : undefined;
+}
 
 function referenceTransition(flow: CallResponseFlow, edge: FlowEdge, frames: number) {
   const before = getScene(flow, edge.from), after = getScene(flow, edge.to);
@@ -38,6 +68,7 @@ function idleTransition(flow: CallResponseFlow, edge: FlowEdge, requestedFrames:
 }
 
 function candidateTransition(flow: CallResponseFlow, edge: FlowEdge, frames: number) {
+  if (flow.storyGraph) return storyTransition(flow, edge);
   return idleTransition(flow, edge, frames) ?? referenceTransition(flow, edge, frames);
 }
 
@@ -45,6 +76,15 @@ function candidateTransition(flow: CallResponseFlow, edge: FlowEdge, frames: num
 export function flowTransition(flow: CallResponseFlow, edge: FlowEdge, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES) {
   const transition = candidateTransition(flow, edge, crossfadeFrames);
   if (!transition) return;
+  if(flow.storyGraph){
+    let pre=Math.max(0,-transition.startFrame),post=Math.max(0,transition.startFrame+transition.frames);
+    const others=flow.edges.filter(e=>e.id!==edge.id).map(e=>storyTransition(flow,e)).filter(t=>!!t);
+    const earlier=Math.max(0,...others.filter(t=>t.after.id===transition.before.id).map(t=>Math.max(0,t.startFrame+t.frames)));
+    const later=Math.max(0,...others.filter(t=>t.before.id===transition.after.id).map(t=>Math.max(0,-t.startFrame)));
+    if(pre+earlier>sceneFrames(transition.before))pre=Math.min(pre,Math.ceil(sceneFrames(transition.before)/2));
+    if(post+later>sceneFrames(transition.after))post=Math.min(post,Math.floor(sceneFrames(transition.after)/2));
+    return pre+post?{...transition,startFrame:pre?-pre:0,frames:pre+post}:undefined;
+  }
   const entering = transition.startFrame < 0, source = entering ? transition.before : transition.after;
   const competing = Math.max(0, ...flow.edges.filter(other => other.id !== edge.id).map(other => {
     const candidate = candidateTransition(flow, other, crossfadeFrames);

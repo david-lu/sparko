@@ -13,7 +13,7 @@ type Presentation = {
 
 export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   const scene = value.session ? getScene(value.flow, value.session.sceneId) : null;
-  const idleId = scene?.clip.kind === 'idle' ? scene.id : null;
+  const idleId = scene?.clip.kind === 'idle' && !(scene.storyNode?.kind==='looped'&&scene.storyNode.loopCount>0) ? scene.id : null;
   const question = idleId ? interactionFor(value.flow, idleId).question : '';
   const questionId = useId();
   const controls = useRef<HTMLDivElement>(null);

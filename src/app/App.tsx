@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { Download, FolderOpen, Redo2, Save, Undo2, X } from 'lucide-react';
 import CallResponseControls from '../features/call-response/CallResponseControls';
 import { addAnswer, branchScenes, interstitialScenes, resolveFlow, type SceneId } from '../features/call-response/model';
@@ -20,6 +20,12 @@ import { activeFlows, projectFlows } from '../features/project/types';
 import { composeFlows } from '../features/call-response/compose';
 import { playableResult } from '../../shared/interstitials';
 import ProjectStart from './ProjectStart';
+import { runtimeFlow } from '../features/story-flow/model';
+import { useStoryEditor } from '../features/story-flow/useStoryEditor';
+import StoryCanvas from '../features/story-flow/StoryCanvas';
+import StoryInspector from '../features/story-flow/StoryInspector';
+import StoryLibrary from '../features/story-flow/StoryLibrary';
+import WorkspacePanels from '../shared/panels/WorkspacePanels';
 
 // Fast Refresh preserves useState, including instances with obsolete controller methods.
 // Reload saved project state when a controller changes during local development.
@@ -51,6 +57,8 @@ export default function App() {
   const interstitialState = useSyncExternalStore(interstitials.subscribe, interstitials.getSnapshot);
   const [projects] = useState(() => new ProjectController(interstitials));
   const projectState = useSyncExternalStore(projects.subscribe, projects.getSnapshot);
+  const storyGraph=projectState.project?.storyFlow;
+  const storyEditor=useStoryEditor(storyGraph,interstitialState.items,projects,interstitials,controller);
   const crossfadeFrames = projectState.project?.crossfadeFrames ?? INTERSTITIAL_CROSSFADE_FRAMES;
   const source = projectState.source || defaultSource;
   const [status, setStatus] = useState<AppStatus | null>(null);
@@ -69,27 +77,29 @@ export default function App() {
   const [login, setLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [sideWidth, setSideWidth] = useState(() => savedSize('sparko:side-width', 294));
-  const [timelineHeight, setTimelineHeight] = useState(() => savedSize('sparko:timeline-height', 134));
+  const [sideWidth, setSideWidth] = useState(() => savedSize('sparko:side-width', 330));
+  const onPanelColumns = useCallback((count: number) => { if (count === 2) setSideWidth(width => Math.max(width, 580)); }, []);
+  const [timelineHeight, setTimelineHeight] = useState(() => savedSize('sparko:story-height', 360));
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const maxSideWidth = Math.max(220, Math.min(700, viewport.width - 340));
-  const maxTimelineHeight = Math.max(savedFlow ? 290 : 134, Math.floor(viewport.height * (viewport.width <= 660 ? savedFlow ? 0.4 : 0.28 : 0.55)));
+  const maxTimelineHeight = Math.max(300, Math.floor(viewport.height * (viewport.width <= 660 ? 0.5 : 0.7)));
   const actualSideWidth = Math.max(220, Math.min(maxSideWidth, sideWidth));
-  const minimumTimelineHeight = savedFlow ? Math.min(maxTimelineHeight, Math.max(290, branchScenes(savedFlow).length * 76 + 138)) : 134;
+  const minimumTimelineHeight = 280;
   const actualTimelineHeight = Math.max(minimumTimelineHeight, Math.min(maxTimelineHeight, timelineHeight));
   useEffect(() => {
     const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize);
   }, []);
   useEffect(() => {
-    try { localStorage.setItem('sparko:side-width', String(sideWidth)); localStorage.setItem('sparko:timeline-height', String(timelineHeight)); } catch { /* The layout still works without persistence. */ }
+    try { localStorage.setItem('sparko:side-width', String(sideWidth)); localStorage.setItem('sparko:story-height', String(timelineHeight)); } catch { /* The layout still works without persistence. */ }
   }, [sideWidth, timelineHeight]);
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
   const fileMenu = useRef<HTMLDetailsElement>(null);
   const sourceVersion = useRef(0);
   const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, loopAudio: item.loopAudio, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
-  const flow = useMemo(() => info && source.assetId ? composeFlows(savedFlows, interstitialState.items, source.assetId, info.duration) : undefined, [savedFlows, readyKey, info, source.assetId]);
+  useEffect(()=>{if(info&&projectState.source)projects.initializeStoryFlow(info.duration);},[info,projectState.source,projects]);
+  const flow = useMemo(() => info && source.assetId ? storyGraph ? runtimeFlow(storyGraph,interstitialState.items,source.assetId,info.duration) : composeFlows(savedFlows, interstitialState.items, source.assetId, info.duration) : undefined, [storyGraph,savedFlows, readyKey, info, source.assetId]);
   const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, crossfadeFrames, matchFraming }) : null, [source, info, readyKey, crossfade, crossfadeFrames, matchFraming]);
   useEffect(() => { if (!projectState.source) return; if (flow && info) controller.setFlow(flow, info, matchFraming, crossfade, crossfadeFrames); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming, crossfade, crossfadeFrames, projectState.source]);
   useEffect(() => {
@@ -153,6 +163,7 @@ export default function App() {
     if (item) { controller.pause(); controller.seek(time ?? composition?.itemTime(item) ?? item.time); }
   };
   const addInterstitial = () => {
+    if(storyGraph){storyEditor.add('simple');return;}
     if (!info || !projectState.project || projectState.busy) return;
     const item = interstitials.add(controller.getSourceTime(), info.duration);
     controller.pause(); controller.seek(composition?.itemTime(item) ?? item.time);
@@ -170,6 +181,7 @@ export default function App() {
     interstitials.move(id, Math.max(0, Math.min(remaining.sourceDuration, Math.round(remaining.sourceTime(time) * remaining.fps) / remaining.fps)));
   };
   const removeInterstitial = (id: string) => {
+    if(storyGraph){const node=storyGraph.nodes.find(n=>n.interstitialId===id);if(node)void projects.removeStoryNodes([node.id]);return;}
     if (projectState.busy) return;
     if (projectFlows(projectState.project).some(group => group.interstitial.id === id)) {
       controller.pause();
@@ -250,7 +262,9 @@ export default function App() {
     };
   });
   const groupForScene = (id: string) => groupTimelines.find(group => group.flow.interstitial.id === flow?.scenes.find(scene => scene.id === id)?.groupId) ?? groupTimelines[0];
-  const flowTimeline: FlowTimeline | undefined = flow && groupTimelines.length ? { ...groupTimelines[0], flow, groups: groupTimelines, session: player.flow, crossfade, crossfadeFrames,
+  const flowTimeline: FlowTimeline | undefined = flow?.storyGraph ? {flow,session:player.flow,selectedSceneId:storyEditor.selectedId,selectedEdgeId:storyEditor.selectedEdge,selectedInterstitial:false,
+    onSelectInterstitial:()=>{},onRemoveInterstitial:()=>storyEditor.remove(),onRenameInterstitial:()=>{},onAddAnswer:()=>{},onRemoveAnswer:()=>{},
+    onSelectScene:(id,frame)=>storyEditor.select(id,frame),onSelectEdge:id=>storyEditor.setSelectedEdge(id),onBranch:(id,outcome)=>controller.branchFlow(id,outcome)} : flow && groupTimelines.length ? { ...groupTimelines[0], flow, groups: groupTimelines, session: player.flow, crossfade, crossfadeFrames,
     selectedSceneId: selectedRuntimeScene ?? null, selectedEdgeId: selectedFlowEdge,
     onSelectInterstitial: id => groupTimelines.find(group => group.flow.interstitial.id === (id ?? flow.interstitial.id))?.onSelectInterstitial(),
     onRemoveInterstitial: id => removeInterstitial(id ?? flow.interstitial.id),
@@ -270,7 +284,7 @@ export default function App() {
   const clipControls = (id: SceneId) => panelTimeline && <CallResponseControls flow={panelTimeline.flow}
     selectedSceneId={id} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)}
     onSelectEdge={panelTimeline.onSelectEdge} />;
-  return <div className="app-shell" onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) openFile(file); }}>
+  return <div className="app-shell" onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const files=Array.from(event.dataTransfer.files);if(!files.length)return;if(storyGraph&&files.every(file=>!/\.sparko$/i.test(file.name)))void storyEditor.importVideos(files);else openFile(files[0]); }}>
     {!projectState.source ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasSampleProject={!!status?.defaultProject}
       onOpenVideo={() => fileInput.current?.click()} onOpenProject={() => void openProjectFile()}
       onOpenSampleProject={() => { if (status?.defaultProject) void projects.openSampleProject(status.defaultProject.url); }}
@@ -282,7 +296,7 @@ export default function App() {
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void saveAsFile(); }}><Save size={14} />Save as new file</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></details>
-      <PlaybackOptions crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
+      <PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
       <div className="history-controls" role="group" aria-label="Edit history">
         <button className="icon-button small" aria-label="Undo" aria-keyshortcuts="Control+Z Meta+Z" title={`${projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo'} (Ctrl/Cmd+Z)`}
           disabled={projectState.busy || !projectState.undoLabel} onClick={() => { controller.pause(); void projects.undo(); }}><Undo2 size={14} /></button>
@@ -298,18 +312,19 @@ export default function App() {
       <div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
         {projectState.source ? <Player source={source} info={info} thumbnails={thumbnails} thumbnailsFailed={thumbnailsFailed} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
           callResponse={flowTimeline}
+          storyCanvas={storyGraph&&flow?<StoryCanvas key={source.id} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight}/>:undefined}
           subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
           controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
           onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
           timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} /> : <div className="project-opening" role="status">{projectState.busy ? 'Preparing video…' : 'Choose a project to start editing.'}</div>}
-        {shortcuts && <div className="shortcuts"><span><kbd>Ctrl/Cmd Z</kbd> Undo</span><span><kbd>Ctrl/Cmd Shift Z</kbd> / <kbd>Ctrl Y</kbd> Redo</span><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>P</kbd> New interstitial</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
-      </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Interstitials">
-        {panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
+        {shortcuts && <div className="shortcuts"><span><kbd>Ctrl/Cmd Z</kbd> Undo</span><span><kbd>Ctrl/Cmd Shift Z</kbd> / <kbd>Ctrl Y</kbd> Redo</span><span><kbd>Space</kbd> Play / pause</span><span><kbd>←</kbd><kbd>→</kbd> Seek 5s</span><span><kbd>J</kbd><kbd>L</kbd> Seek 10s</span><span><kbd>,</kbd><kbd>.</kbd> Step frame</span><span><kbd>N</kbd> New clip</span><span><kbd>C</kbd> Cut tool</span><span><kbd>V</kbd> Select tool</span><span><kbd>H</kbd> Hand tool</span><span><kbd>Space</kbd> + drag to pan</span><span><kbd>Shift F</kbd> Fit selected</span><span>Drag background to select; click to deselect</span><span><kbd>S</kbd> Split at playhead</span><span><kbd>Ctrl/Cmd D</kbd> Duplicate</span><span>Right-click for clip actions</span><span><kbd>M</kbd> Mute</span><span><kbd>F</kbd> Fullscreen</span><span><kbd>0–9</kbd> Jump to %</span></div>}
+      </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Library and Inspector">
+        {storyGraph?<WorkspacePanels inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={()=>{setSideWidth(330);setTimelineHeight(360);}}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
         <InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
           callResponse={panelTimeline} groups={groupTimelines}
           renderClipControls={clipControls}
           connectedIds={groupTimelines.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []))}
-          engine={engine} info={info} status={status} active onAddRegular={addInterstitial} onAddCallResponse={addCallResponse} onSelect={selectInterstitial} onRemove={removeInterstitial} onPreviewPlay={() => controller.pause()} />
+          engine={engine} info={info} status={status} active onAddRegular={addInterstitial} onAddCallResponse={addCallResponse} onSelect={selectInterstitial} onRemove={removeInterstitial} onPreviewPlay={() => controller.pause()} /></>}
       </aside></div>
     </main></>}
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" onChange={event => { const file = event.target.files?.[0]; if (file) openFile(file); event.target.value = ''; }} />

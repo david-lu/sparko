@@ -2,14 +2,24 @@ import { interstitialSettings, type Interstitial, type InterstitialSettings } fr
 import type { Project } from './types';
 
 export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId'> & InterstitialSettings;
-export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'subtitle' | 'crossfadeFrames'> & { interstitials: InterstitialEdit[] };
+export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'subtitle' | 'crossfadeFrames'> & { interstitials: InterstitialEdit[] };
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
   return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item) })),
-    callResponse: project.callResponse, callResponses: project.callResponses, subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
+    callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }
 function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' | 'key'> {
+  if (!same(before.storyFlow, after.storyFlow)) {
+    const a=before.storyFlow,b=after.storyFlow;
+    if(!a || !b) return {label:'Create story flow'};
+    if(b.nodes.length>a.nodes.length)return {label:'Add clips'};
+    if(b.nodes.length<a.nodes.length)return {label:'Remove clips'};
+    if(!same(a.templates,b.templates))return {label:'Edit templates'};
+    if(!same(a.edges,b.edges))return {label:'Edit connections'};
+    const changed=b.nodes.filter(n=>!same(n,a.nodes.find(p=>p.id===n.id)));
+    return {label:'Edit clip',key:changed.length===1?`node:${changed[0].id}`:undefined};
+  }
   if (before.crossfadeFrames !== after.crossfadeFrames) return { label: 'Change crossfade length', key: 'crossfadeFrames' };
   if (!same(before.callResponse, after.callResponse)) {
     if (!after.callResponse) return { label: 'Remove call-response interstitial' };
@@ -28,6 +38,7 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
     return { label: changedType ? 'Change clip type' : 'Edit call-response connections' };
   }
   if (!same(before.subtitle, after.subtitle)) return { label: 'Change subtitles' };
+  if (!same(before.library, after.library)) return { label: 'Update library' };
   if (!same(before.callResponses, after.callResponses)) return { label: 'Edit call-response interstitial' };
   const previous = new Map(before.interstitials.map(item => [item.id, item]));
   if (after.interstitials.some(item => !previous.has(item.id))) return { label: 'Add interstitial' };

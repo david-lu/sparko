@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Clapperboard, RotateCcw } from 'lucide-react';
 import { COMFY, INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
 import { comfyReferenceRange } from '../../../shared/comfy';
@@ -21,8 +21,9 @@ import MaskInjectionField from './MaskInjectionField';
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
   status: AppStatus | null; active: boolean; onPreviewPlay: () => void;
+  resultDetails?: ReactNode;
 };
-export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay }: InterstitialEditorProps) {
+export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails }: InterstitialEditorProps) {
   const promptId = useId();
   const dependency = controller.dependency(selected.id);
   const kind = controller.clipKind(selected.id);
@@ -79,11 +80,13 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   } catch (error) { validationError = (error as Error).message; }
   const canGenerate = !!engine && !!info && !!status?.providers.comfy && !validationError && !dependency?.blocked && !!selected.prompt.trim();
   return <div className="interstitial-editor" data-project-edit>
+    <div className="interstitial-reference-feedback">
     {dependency && <p className="hint clip-dependency">{method === 'comfy-extend' ? `Extends ${dependency.label} from its ending.`
       : method === 'comfy-loop' ? `Uses ${dependency.label}'s ending for both loop boundaries.`
-      : dependency.reference?.after ? `Bridges from ${dependency.label} back into the parent video after the pin.` : `Uses ${dependency.label} as its reference.`}</p>}
+      : dependency.reference?.after ? `Bridges from ${dependency.label} into the connected destination clip.` : `Uses ${dependency.label} as its reference.`}</p>}
     {dependency?.stale && <p className="clip-stale" role="status">Stale: upstream video changed. Regenerate this clip to match.</p>}
     {dependency?.blocked && <p className="hint">{dependency.blocked}</p>}
+    </div>
     <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced) return; if (recovering) void controller.resume(selected.id); else if (engine && info) void controller.generate(selected.id, engine, info); }}>
       <fieldset>
         <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>
@@ -104,7 +107,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
           {!selected.requestPrompt && (selected.requestId || currentResult) && <p>The submitted prompt was not saved for this older render.</p>}
           <p>Reference footage keeps its original video and audio; prompt instructions apply to the generated section.</p>
         </details>
-        {enhancementError && <p className="inline-error" role="alert">{enhancementError}</p>}
+        <div className="interstitial-enhancement-feedback">{enhancementError && <p className="inline-error" role="alert">{enhancementError}</p>}</div>
         <div className="interstitial-time-fields" key={selected.id}>
           <InterstitialTimeField name="start_range" label={method === 'comfy-extend' || method === 'comfy-loop' ? 'Reference tail' : 'Start range'} value={selected.start_range} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025} onChange={value => controller.edit(selected.id, { start_range: value })} />
           {method !== 'comfy-extend' && <InterstitialTimeField name="end_range" label={method === 'comfy-loop' ? 'Loop end reference' : 'End range'} value={selected.end_range} min={COMFY.minContextFrames / TIMELINE_FPS} max={INTERSTITIAL.maxRange} step={0.1} onChange={value => controller.edit(selected.id, { end_range: value })} />}
@@ -114,29 +117,32 @@ export default function InterstitialEditor({ selected, controller, engine, info,
           onChange={maskInjection => controller.edit(selected.id, { maskInjection })} />
         {kind === 'idle' && <label className="interstitial-option"><input type="checkbox" checked={!!selected.loopAudio}
           disabled={!!currentResult && !currentResult.fullAssetId}
-          onChange={event => controller.edit(selected.id, { loopAudio: event.target.checked })} /> Play generated Idle audio</label>}
-        {kind === 'idle' && currentResult && !currentResult.fullAssetId && <p className="hint">Regenerate Idle to make its audio available.</p>}
+          onChange={event => controller.edit(selected.id, { loopAudio: event.target.checked })} /> Play generated clip audio</label>}
+        {kind === 'idle' && currentResult && !currentResult.fullAssetId && <p className="hint">Regenerate the loop to make its audio available.</p>}
         {controller.hasLinkedDuration(selected.id) && <p className="hint">Shared duration for all response branches. Changes apply to their next generation.</p>}
         {comfyPlan && <p className="hint">{comfyPlan.insertion.duration.toFixed(3)}s generated · {(comfyPlan.prefixFrames / TIMELINE_FPS).toFixed(3)}s / {(comfyPlan.suffixFrames / TIMELINE_FPS).toFixed(3)}s context</p>}
       </fieldset>
+      <div className="interstitial-generation-feedback" aria-live="polite">
       {validationError && <p className="inline-error" role="alert">{validationError}</p>}
       {selected.error && <p className="inline-error" role="alert">{selected.error}</p>}
       {busy && changed && <p className="hint">This render uses the submitted settings. Your edits are saved for the next generation.</p>}
       {sequenced && !busy && <p className="hint">{sequence!.completedIds.includes(selected.id) ? 'Generated in this sequence. New edits apply to the next generation.' : 'Waiting in sequence. Your edits will be used when this clip starts.'}</p>}
       {selected.phase === 'cancelled' && <p className="hint">Cancelled</p>}
+      </div>
       <button type="submit" className="button primary full-width" disabled={busy || sequenced || enhancing || (recovering ? !canRecover : !canGenerate)}>
         <span className="status-icon">{busy ? <span className="spinner" /> : action === 'Generate' ? <Clapperboard size={14} /> : <RotateCcw size={14} />}</span> {busy ? 'Generating…' : action}
       </button>
-      {canCheck && <button type="button" className="button full-width" disabled={sequenced || enhancing || (retryChecking ? !canGenerate : !canRecover)} onClick={() => {
+      <div className="interstitial-recovery-slot">{canCheck && <button type="button" className="button full-width" disabled={sequenced || enhancing || (retryChecking ? !canGenerate : !canRecover)} onClick={() => {
         if (retryChecking && engine && info) void controller.generate(selected.id, engine, info);
         else if (!retryChecking) void controller.resume(selected.id);
-      }}>{retryChecking ? 'Regenerate' : 'Check result'}</button>}
+      }}>{retryChecking ? 'Regenerate' : 'Check result'}</button>}</div>
       {status && !status.providers.comfy && <p className="hint interstitial-action-hint">Comfy Cloud is not connected.</p>}
     </form>
     <TaskStatus active={busy} message={phaseLabel(selected)} cancelLabel="Cancel interstitial generation" onCancel={() => void controller.cancel(selected.id)}
       progress={selected.phase === 'preparing' ? { label: 'Preparing reference', value: selected.progress || 0 }
         : selected.phase === 'rendering' ? { label: 'Generating interstitial', value: renderingProgress(selected), title: 'Estimated render progress: preparation 5%, sampler 90%, decoding and saving 5%.' }
         : selected.phase === 'loading' ? { label: selected.progressDetails?.stage || 'Loading generated video', value: selected.progress } : undefined} />
+    {resultDetails}
     {fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
       heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
       active={active} muted={(kind === 'idle' || method === 'comfy-loop') && !selected.loopAudio} onPlay={onPreviewPlay} />}

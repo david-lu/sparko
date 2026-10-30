@@ -94,7 +94,7 @@ export class VideoPlayerController {
     // and clip media still determine when playback must be rebuilt.
     const mediaLayout = (value: CallResponseFlow) => JSON.stringify(value,
       (key, part) => ['interstitial', 'loopAudio', 'interaction', 'label', 'dialogue'].includes(key) ? undefined : part);
-    if (this.flowPlayback && (this.flowPlayback.flow === flow || mediaLayout(this.flowPlayback.flow) === mediaLayout(flow))) {
+    if (this.flowPlayback && (flow.storyGraph && this.flowPlayback.flow.storyGraph || this.flowPlayback.flow === flow || mediaLayout(this.flowPlayback.flow) === mediaLayout(flow))) {
       this.flowPlayback.setFlow(flow);
       this.flowPlayback.setMatchFraming(matchFraming); this.flowPlayback.setCrossfade(crossfade, crossfadeFrames); return;
     }
@@ -105,9 +105,10 @@ export class VideoPlayerController {
     this.applySettings();
     const layout = flowLayout(flow);
     this.flowPlayback = new FlowPlayback(flow, this.element, this.source, (session, buffering, error) => {
-      const time = (layout.starts[session.sceneId] + session.frame) / flow.fps;
+      const currentLayout=this.flowPlayback?.flow.storyGraph?flowLayout(this.flowPlayback.flow):layout;
+      const time = ((currentLayout.starts[session.sceneId]??0) + session.frame) / flow.fps;
       this.update({ flow: session, playing: session.playing, buffering, error: error ?? null,
-        buffered: [{ start: time, end: time + (this.flowPlayback?.bufferedAhead ?? 0) }], time, duration: layout.totalFrames / flow.fps });
+        buffered: [{ start: time, end: time + (this.flowPlayback?.bufferedAhead ?? 0) }], time, duration: currentLayout.totalFrames / flow.fps });
     }, info, matchFraming, crossfade, crossfadeFrames);
     this.applySettings(); this.setSubtitles(this.subtitles.track, this.subtitles.cues, this.subtitles.enabled);
   }

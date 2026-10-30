@@ -14,6 +14,8 @@ import { generationOrder, sequenceActive, sequenceStructure, type GenerationSequ
 import type { InterstitialEdit } from '../project/ProjectHistory';
 import { draftClip } from '../call-response/draft';
 import { finishLoop } from '../call-response/finishLoop';
+import type { StoryGraph } from '../story-flow/model';
+import { storyDependency } from '../story-flow/dependencies';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null; sequence: GenerationSequence | null };
 const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -24,6 +26,8 @@ const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
 
 /** Owns persisted drafts and independently cancellable generation jobs, outside React. */
 export class InterstitialController {
+  private story?: {graph:StoryGraph;assetId:string;duration:number};
+  setStoryGraph(graph:StoryGraph|undefined,assetId='',duration=0) { this.story=graph?{graph,assetId,duration}:undefined;if(graph)this.linkedDurationIds=[]; }
   private sourceId = '';
   private linkedDurationIds: string[] = [];
   private callResponse?: CallResponseFlow;
@@ -46,6 +50,7 @@ export class InterstitialController {
     this.update({ items: this.state.items.map(item => item.id === id ? { ...item, ...patch } : item).sort((a, b) => a.time - b.time) }, true);
   }
   load(sourceId: string, items?: Interstitial[], linkedDurationIds: string[] = [], callResponse?: CallResponseFlow | CallResponseFlow[]) {
+    this.story=undefined;
     this.dispose(); this.sourceId = sourceId;
     this.retained.clear();
     this.callResponses = Array.isArray(callResponse) ? callResponse : callResponse ? [callResponse] : [];
@@ -105,10 +110,12 @@ export class InterstitialController {
   }
   private flowFor(id: string) { return this.callResponses.find(flow => flow.scenes.some(scene => scene.interstitialId === id)); }
   dependency(id: string) {
+    if(this.story) return storyDependency(this.story.graph,this.state.items,this.story.assetId,this.story.duration,id);
     const flow = this.flowFor(id), scene = flow?.scenes.find(scene => scene.interstitialId === id);
     return scene && flow ? clipDependency(flow, this.state.items, scene.id) : undefined;
   }
   clipKind(id: string): PromptClipKind {
+    if(this.story) { const node=this.story.graph.nodes.find(n=>n.interstitialId===id); return node?.kind==='looped'||node?.kind==='conditional'?'idle':'interstitial'; }
     const kind = this.flowFor(id)?.scenes.find(scene => scene.interstitialId === id)?.clip.kind;
     return kind === 'call' || kind === 'idle' || kind === 'response' ? kind : 'interstitial';
   }
