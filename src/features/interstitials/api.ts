@@ -14,11 +14,13 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   if (!item.prompt.trim()) throw new Error('Describe the interstitial before generating.');
   onProgress('preparing', 0);
   const dimensions = comfyDimensions(info.width, info.height);
-  const clip = await engine.exportMp4(range, { maxDimension: Math.max(dimensions.width, dimensions.height), frameRate: INTERSTITIAL.referenceFps,
-    quality: 'high', signal, onProgress: value => onProgress('preparing', value) });
-  if (clip.size > INTERSTITIAL.maxReferenceBytes) throw new Error('The reference clip exceeds 50 MB. Shorten the reference ranges.');
+  const clip = range.plan.prefixFrames || range.plan.suffixFrames ? await engine.exportMp4(range, { maxDimension: Math.max(dimensions.width, dimensions.height), frameRate: INTERSTITIAL.referenceFps,
+    quality: 'high', signal, onProgress: value => onProgress('preparing', value) }) : undefined;
+  if (clip && clip.size > INTERSTITIAL.maxReferenceBytes) throw new Error('The reference clip exceeds 50 MB. Shorten the reference ranges.');
   signal.throwIfAborted();
-  const body = new FormData(); body.set('video', clip, 'comfy-reference.mp4');
+  const body = new FormData();
+  if (clip) body.set('video', clip, 'comfy-reference.mp4');
+  else { body.set('width', String(dimensions.width)); body.set('height', String(dimensions.height)); }
   body.set('before', String(range.insertAt)); body.set('after', String(range.after));
   body.set('duration', String(item.duration)); body.set('prompt', item.prompt);
   body.set('mode', range.mode);

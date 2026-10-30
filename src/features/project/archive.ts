@@ -11,13 +11,14 @@ const MAX_MANIFEST = 8 * 1024 ** 2;
 const number = z.number().finite().nonnegative();
 const text = z.string().max(50_000);
 const clipReferenceSchema = z.object({ sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
-const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge']).optional(), before: clipReferenceSchema, after: clipReferenceSchema.optional() });
-const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(),
+const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge', 'custom']).optional(), before: clipReferenceSchema.optional(), after: clipReferenceSchema.optional() });
+const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(), prompt:z.string().max(8000).optional(),
   fullRange: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
     .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid full video boundaries.').optional(),
   start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
+  useInputReference: z.boolean().optional(), useOutputReference: z.boolean().optional(),
   method: z.enum([...generationMethods, 'fal']).optional().transform(value => value === 'fal' || value === undefined ? 'comfy' as const : value),
   continuity: text.optional(), dialogue: text.optional(), loopAudio: z.boolean().optional(),
   interpolateMiddle: z.boolean().optional(),
@@ -43,7 +44,7 @@ const projectSchema = z.object({
     kind: z.enum(['video', 'generated', 'subtitle']), duration: number.positive().optional(), inFrame: number.int().optional(), outFrame: number.int().positive().optional(),
   }).refine(item => item.outFrame === undefined || item.outFrame > (item.inFrame ?? 0), 'Invalid library clip boundaries.')).max(2000)
     .refine(items => new Set(items.map(item => item.assetId)).size === items.length, 'Duplicate library assets.').optional(),
-  source: z.object({ name: z.string().min(1).max(1000), assetId: z.uuid(), originalAssetId: z.uuid().optional() }),
+  source: z.object({ name: z.string().min(1).max(1000), assetId: z.uuid().optional(), originalAssetId: z.uuid().optional() }),
   interstitials: z.array(z.preprocess(preserveLegacyJobProvider, z.object({
     id: z.string().min(1).max(200), label: z.string().max(1000), time: number, kind: z.enum(['regular', 'call-response']).optional(), groupId: text.optional(),
     ...settingsSchema.shape, generationSettings: settingsSchema.optional(),
@@ -61,7 +62,8 @@ const projectSchema = z.object({
     result: z.object({ caption: text, description: text, provider: z.enum(['openai', 'gemini']), model: text, start: number, end: number, basis: text }).nullable(),
   }),
 }).refine(project => (project.callResponses ?? (project.callResponse ? [project.callResponse] : [])).every(flow => flow.scenes.every(scene => !scene.interstitialId || project.interstitials.some(item => item.id === scene.interstitialId))), 'A scene references a missing interstitial.')
-  .refine(project=>!project.storyFlow||project.storyFlow.nodes.every(n=>!n.interstitialId||project.interstitials.some(i=>i.id===n.interstitialId)),'A story clip references a missing interstitial.');
+  .refine(project=>!project.storyFlow||project.storyFlow.nodes.every(n=>!n.interstitialId||project.interstitials.some(i=>i.id===n.interstitialId)),'A story clip references a missing interstitial.')
+  .refine(project=>!!project.source.assetId||!!project.storyFlow&&!project.callResponse&&!project.callResponses?.length,'A legacy project is missing its source video.');
 const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2), z.literal(3)]), project: projectSchema,
   assets: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(1000), mime: z.string().max(200), size: number.int().positive().max(MAX_BYTES) })).max(2000),
 });
@@ -119,7 +121,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const total = descriptions.reduce((sum, asset) => sum + asset.size, 0);
     if (total > MAX_BYTES) throw new Error('This project exceeds the 8 GB import limit.');
     const remap = new Map(descriptions.map(asset => [asset.id, crypto.randomUUID()]));
-    const remapReference = (input?: z.infer<typeof generationReferenceSchema>) => input ? { mode: input.mode, before: { ...input.before, assetId: remap.get(input.before.assetId)! },
+    const remapReference = (input?: z.infer<typeof generationReferenceSchema>) => input ? { mode: input.mode, before: input.before ? { ...input.before, assetId: remap.get(input.before.assetId)! } : undefined,
       after: input.after ? { ...input.after, assetId: remap.get(input.after.assetId)! } : undefined } : undefined;
     const assets: Asset[] = []; let read = 0;
     for (const asset of descriptions) {
@@ -135,10 +137,11 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     return { project: {
       ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(),
       library: project.library?.map(item => ({ ...item, assetId: remap.get(item.assetId)!, originalAssetId: item.originalAssetId ? remap.get(item.originalAssetId)! : undefined })),
-      storyFlow: project.storyFlow ? {...project.storyFlow,nodes:project.storyFlow.nodes.map(n=>({...n,source:n.source?{...n.source,assetId:remap.get(n.source.assetId)!,originalAssetId:n.source.originalAssetId?remap.get(n.source.originalAssetId)!:undefined}:undefined}))}:undefined,
+      storyFlow: project.storyFlow ? {...project.storyFlow,nodes:project.storyFlow.nodes.map(n=>({...n,source:n.source?{...n.source,assetId:remap.get(n.source.assetId)!,originalAssetId:n.source.originalAssetId?remap.get(n.source.originalAssetId)!:undefined}:undefined})),
+        templates:project.storyFlow.templates.map(t=>({...t,nodes:t.nodes.map(n=>({...n,source:n.source?{...n.source,assetId:remap.get(n.source.assetId)!,originalAssetId:n.source.originalAssetId?remap.get(n.source.originalAssetId)!:undefined}:undefined}))}))}:undefined,
       callResponse: project.callResponse ? { ...project.callResponse, scenes: project.callResponse.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) } : undefined,
       callResponses: project.callResponses?.map(flow => ({ ...flow, scenes: flow.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) })),
-      source: { ...project.source, assetId: remap.get(project.source.assetId)!, originalAssetId: project.source.originalAssetId ? remap.get(project.source.originalAssetId)! : undefined },
+      source: { ...project.source, assetId: project.source.assetId?remap.get(project.source.assetId)!:undefined, originalAssetId: project.source.originalAssetId ? remap.get(project.source.originalAssetId)! : undefined },
       subtitle: project.subtitle ? { ...project.subtitle, assetId: remap.get(project.subtitle.assetId)! } : null,
       interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined,
         generationSettings: item.generationSettings ? interstitialSettings(item.generationSettings) : undefined,

@@ -1,4 +1,3 @@
-import { X } from 'lucide-react';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import type { MediaInfo } from '../../media/media';
 import { flowTransition } from '../call-response/transitions';
@@ -34,12 +33,6 @@ export default function ConnectionInspector({ editor, connection, info }: {edito
       </>:<><strong>{self?'Seamless repeat':duration===0?'Cut':draft?'Ready after generation':'Cut · no matching reference'}</strong>
         <p className="hint">{self?'Repeats play without a crossfade.':duration===0?'Playback changes clips directly.':draft?'The saved reference footage will determine the overlap when generation finishes.':'The saved reference does not meet this cut. Regenerate using the connected clips, or keep a cut.'}</p></>}
     </section>
-    <section className="story-section"><h3>Routing</h3><label className="field">Destination<select value={connection.to} onChange={e=>editor.change({...graph,edges:graph.edges.map(c=>c.id===connection.id?{...c,to:e.target.value}:c)})}>
-      {graph.nodes.map(n=><option key={n.id} value={n.id}>{editor.items.find(i=>i.id===n.interstitialId)?.label??n.name}</option>)}</select></label>
-      <div className="connection-actions"><button className="button" onClick={()=>editor.add('simple',connection.id)}>Insert simple interstitial</button>
-      <button className="button" onClick={()=>editor.setConnecting({from:connection.from,edgeId:connection.id})}>Reconnect destination</button>
-      <button className="button" onClick={editor.disconnect}><X size={14}/>Disconnect</button></div>
-      <p className="hint">Drag between sockets to connect. Drag an input wire to reconnect; release on empty space to detach. Double-click a wire to add a movable reroute point. Escape cancels.</p>
-    </section>
+
   </div>;
 }

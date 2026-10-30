@@ -3,6 +3,22 @@ import { comfyBridgePlan, comfyDimensions, comfyReferenceRange } from '../../sha
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
 
 describe('H3 two-sided temporal bridge', () => {
+  it.each([[true, true], [true, false], [false, true], [false, false]])('omits disabled reference loaders and masks (input %s, output %s)', (before, after) => {
+    const input = { mode: 'custom' as const, before: before ? 1.625 : 0, after: after ? 1.625 : 0, duration: 6, width: 960, height: 544, prompt: 'A new scene', hasAudio: true };
+    const plan = comfyBridgePlan(input.before, input.after, 6, 'custom');
+    const graph = bridgeWorkflow(before || after ? 'asset' : undefined, input, 123);
+    expect(!!graph.before).toBe(before); expect(!!graph.place_before).toBe(before);
+    expect(!!graph.after).toBe(after); expect(!!graph.place_after).toBe(after);
+    expect(!!graph.freeze_audio).toBe(before || after);
+    expect(graph.middle_mask.inputs.ranges).toBe(`${plan.prefixFrames}:${plan.totalFrames - plan.suffixFrames}`);
+    if (after) expect(graph.after.inputs.skip_first_frames).toBe(plan.prefixFrames);
+    if (!before && after) expect(graph.audio_full.inputs.audio1).toEqual(['gap_audio', 0]);
+    if (!before && !after) expect(graph.freeze_video.inputs.samples).toEqual(['empty_streams', 0]);
+    // Every node link points at an existing node, including either one-sided path.
+    for (const node of Object.values(graph)) for (const value of Object.values(node.inputs)) {
+      if (Array.isArray(value) && typeof value[0] === 'string') expect(graph[value[0]]).toBeDefined();
+    }
+  });
   it.each(['bridge', 'loop'] as const)('applies the vignette only inside the generated %s section', mode => {
     const input = { mode, before: 1.625, after: 1.625, duration: 7, width: 960, height: 544, prompt: 'Exact prompt', hasAudio: true, maskInjection: 'vignette' as const };
     expect(() => bridgeWorkflow('asset', input, 123)).toThrow('uploaded gradient');

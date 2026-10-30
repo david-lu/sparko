@@ -7,6 +7,8 @@ import { assets } from '../../src/features/project/assets';
 import { hasUnsubmittedChanges, playableResult } from '../../shared/interstitials';
 import type { MediaEngine } from '../../src/media/MediaEngine';
 import type { GenerationJob } from '../../shared/contracts';
+import { finishLoop } from '../../src/features/call-response/finishLoop';
+import { createNode, edge, type StoryNode } from '../../src/features/story-flow/model';
 
 vi.mock('../../src/features/interstitials/api', () => ({ generateInterstitial: vi.fn(), getInterstitialJob: vi.fn(), cancelInterstitialJob: vi.fn() }));
 vi.mock('../../src/features/interstitials/progress-stream', () => ({ watchComfyJob: vi.fn() }));
@@ -48,6 +50,22 @@ beforeEach(async () => {
 afterEach(() => { controller.dispose(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('call-response generation sequence', () => {
+  it('uses independent switches and durations after migrating legacy clips to a story graph', async () => {
+    const source: StoryNode = { id: 'source', name: 'Source', kind: 'source', x: 0, y: 0, loopCount: 0, source: { assetId: example.flow.scenes[0].clip.assetId, inFrame: 0, outFrame: 240 } };
+    const node = { ...createNode('looped').node, interstitialId: ids[1] };
+    controller.setStoryGraph({ version: 1, entryId: source.id, nodes: [source, node], edges: [edge(source.id, node.id)], templates: [] }, source.source!.assetId, 20);
+    const previousDuration = item(3).duration;
+    controller.edit(ids[2], { duration: 9 });
+    expect(item(3).duration).toBe(previousDuration); expect(controller.hasLinkedDuration(ids[2])).toBe(false);
+    controller.edit(ids[1], { useInputReference: true, useOutputReference: false });
+    vi.mocked(finishLoop).mockClear();
+    await controller.generate(ids[1], media, info);
+    expect(item(1).phase).toBe('ready');
+    expect(item(1).result?.reference).toMatchObject({ mode: 'custom', before: { sceneId: source.id } });
+    expect(item(1).result?.reference?.after).toBeUndefined();
+    expect(generateInterstitial).toHaveBeenCalledWith(expect.objectContaining({ useInputReference: true, useOutputReference: false, method: 'comfy-extend' }), expect.anything(), expect.anything(), expect.anything(), expect.anything());
+    expect(finishLoop).not.toHaveBeenCalled();
+  });
   it('waits for each result to be saved and inspected, then uses it for the next reference', async () => {
     const saved = deferred<any>();
     vi.mocked(assets.save).mockReturnValueOnce(saved.promise);
@@ -59,10 +77,10 @@ describe('call-response generation sequence', () => {
     await run;
     expect(vi.mocked(generateInterstitial).mock.calls.map(call => call[0].id)).toEqual(ids);
     const references = vi.mocked(generationSource).mock.calls.map(call => call[1]);
-    expect(references[0].before.assetId).toBe(example.flow.scenes[0].clip.assetId);
-    expect(references[1].before.assetId).toBe('new-call');
-    expect(references[2].before.assetId).toBe(item(1).result!.fullAssetId);
-    expect(references[3].before.assetId).toBe(item(1).result!.fullAssetId);
+    expect(references[0].before!.assetId).toBe(example.flow.scenes[0].clip.assetId);
+    expect(references[1].before!.assetId).toBe('new-call');
+    expect(references[2].before!.assetId).toBe(item(1).result!.fullAssetId);
+    expect(references[3].before!.assetId).toBe(item(1).result!.fullAssetId);
     expect(references[2].after?.assetId).toBe(example.flow.scenes.at(-1)!.clip.assetId);
     expect(controller.getSnapshot().sequence).toMatchObject({ phase: 'ready', completedIds: ids });
     for (const id of ids) expect(controller.dependency(id)?.stale).toBe(false);
@@ -204,6 +222,6 @@ describe('call-response generation sequence', () => {
     expect(controller.canRecover(ids[1])).toBe(false);
     await controller.generate(ids[1], media, info);
     expect(generateInterstitial).toHaveBeenCalledTimes(4);
-    expect(item(1).result?.reference?.before.assetId).toBe(item(0).result?.assetId);
+    expect(item(1).result?.reference?.before!.assetId).toBe(item(0).result?.assetId);
   });
 });

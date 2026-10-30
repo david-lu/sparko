@@ -1,3 +1,5 @@
+import { storyGenerationItem } from '../story-flow/referenceInputs';
+import { behaviors } from '../story-flow/behaviors';
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
 import { clipMaskInjection, frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, normalizeGenerationMethod, playableResult, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import type { AppStatus, InsertionRange, PromptClipKind } from '../../../shared/contracts';
@@ -27,6 +29,7 @@ const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
 /** Owns persisted drafts and independently cancellable generation jobs, outside React. */
 export class InterstitialController {
   private story?: {graph:StoryGraph;assetId:string;duration:number};
+  generationItem(item: Interstitial) { return this.story ? storyGenerationItem(item) : item; }
   setStoryGraph(graph:StoryGraph|undefined,assetId='',duration=0) { this.story=graph?{graph,assetId,duration}:undefined;if(graph)this.linkedDurationIds=[]; }
   private sourceId = '';
   private linkedDurationIds: string[] = [];
@@ -80,7 +83,7 @@ export class InterstitialController {
   }
   select(id: string | null) { this.update({ selectedId: id }); }
   clearError() { this.update({ error: null }); }
-  hasLinkedDuration(id: string) { const flow = this.flowFor(id); if (flow?.interstitial.linkResponseDurations === false) return false; const ids = flow ? responseInterstitialIds(flow) : this.linkedDurationIds; return ids.length > 1 && ids.includes(id); }
+  hasLinkedDuration(id: string) { if (this.story) return false; const flow = this.flowFor(id); if (flow?.interstitial.linkResponseDurations === false) return false; const ids = flow ? responseInterstitialIds(flow) : this.linkedDurationIds; return ids.length > 1 && ids.includes(id); }
   setCallResponse(flow?: CallResponseFlow) {
     if (sequenceStructure(flow) !== sequenceStructure(this.callResponses.find(group => group.interstitial.id === flow?.interstitial.id)) && sequenceActive(this.state.sequence)
       && (!flow || generationOrder(flow).some(id => this.state.sequence!.ids.includes(id)))) {
@@ -115,7 +118,7 @@ export class InterstitialController {
     return scene && flow ? clipDependency(flow, this.state.items, scene.id) : undefined;
   }
   clipKind(id: string): PromptClipKind {
-    if(this.story) { const node=this.story.graph.nodes.find(n=>n.interstitialId===id); return node?.kind==='looped'||node?.kind==='conditional'?'idle':'interstitial'; }
+    if(this.story) { const node=this.story.graph.nodes.find(n=>n.interstitialId===id); return node&&behaviors(node).loop?'idle':'interstitial'; }
     const kind = this.flowFor(id)?.scenes.find(scene => scene.interstitialId === id)?.clip.kind;
     return kind === 'call' || kind === 'idle' || kind === 'response' ? kind : 'interstitial';
   }
@@ -150,7 +153,7 @@ export class InterstitialController {
     } else this.patch(id, values);
   }
   canRecover(id: string) {
-    const item = this.state.items.find(item => item.id === id);
+    const saved = this.state.items.find(item => item.id === id), item = saved && this.generationItem(saved);
     if (!item || hasUnsubmittedChanges(item)) return false;
     const reference = this.dependency(id)?.reference, submitted = item.result?.reference ?? item.requestReference;
     return !reference || !!submitted && sameReference(reference, submitted);
@@ -217,7 +220,8 @@ export class InterstitialController {
     return this.generateClip(id, engine, info);
   }
   private async generateClip(id: string, engine: MediaEngine, info: MediaInfo) {
-    const item = this.state.items.find(item => item.id === id);
+    const saved = this.state.items.find(item => item.id === id);
+    const item = saved && this.generationItem(saved);
     if (!item || isGenerating(item) || this.tasks.has(id) || this.cancelling.has(id)) return;
     // An unchanged scene that only failed to download can reuse its existing render.
     if (item.result && item.phase !== 'ready' && this.canRecover(id)) return this.resumeClip(id);
@@ -226,14 +230,14 @@ export class InterstitialController {
     const operation = new AbortController(); this.tasks.set(id, operation);
     const method = normalizeGenerationMethod(item.method);
     this.patch(id, { phase: 'preparing', error: undefined, progress: 0, progressDetails: undefined, queuePosition: undefined,
-      previousResult: playableResult(item), result: undefined, requestId: item.phase === 'ready' ? undefined : item.requestId,
+      previousResult: playableResult(item)?{...playableResult(item)!,prompt:playableResult(item)!.prompt??(item.phase==='ready'?item.requestPrompt:undefined)}:undefined, result: undefined, requestId: item.phase === 'ready' ? undefined : item.requestId,
       requestMethod: item.requestMethod, generationSettings: interstitialSettings(item), requestReference: dependency?.reference });
     try {
       // A failed status request may still belong to an active job. Retire it before resubmitting.
       if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId);
       operation.signal.throwIfAborted();
       this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, result: undefined });
-      const source = dependency?.reference ? await generationSource(item, dependency.reference, operation.signal) : { item, engine, info };
+      const source = dependency?.reference && (dependency.reference.before || dependency.reference.after) ? await generationSource(item, dependency.reference, operation.signal) : { item, engine, info };
       operation.signal.throwIfAborted();
       const submittedPrompt = source.item.prompt;
       const job = await generateInterstitial(source.item, source.engine, source.info, operation.signal, (phase, progress) => {
@@ -283,7 +287,8 @@ export class InterstitialController {
       if (job.status === 'COMPLETED') {
         const insertion = job.insertion || submittedInsertion;
         if (!job.videoUrl || !insertion) throw new Error('The result is missing its generated scene boundaries. Retry checking the result.');
-        const result = { url: job.videoUrl, ...insertion, reference: this.state.items.find(item => item.id === id)?.requestReference };
+        const submitted=this.state.items.find(item=>item.id===id);
+        const result = { url: job.videoUrl, ...insertion, reference: submitted?.requestReference, prompt: submitted?.requestPrompt };
         stream.abort();
         this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined, progressDetails: undefined });
         await this.loadResult(id, result, signal); return;
@@ -309,7 +314,7 @@ export class InterstitialController {
       let blob = fetched.blob;
       let fullBlob: Blob | undefined;
       let fullRange: Pick<typeof result, 'start' | 'duration' | 'totalDuration'> | undefined;
-      const idle = this.flowFor(id)?.scenes.some(scene => scene.interstitialId === id && scene.clip.kind === 'idle');
+      const idle = !this.story && this.flowFor(id)?.scenes.some(scene => scene.interstitialId === id && scene.clip.kind === 'idle');
       if (result.reference?.mode === 'loop' || idle && result.reference?.before) {
         this.patch(id, { progress: undefined, progressDetails: { stage: 'Matching loop boundaries' } });
         fullBlob = blob;

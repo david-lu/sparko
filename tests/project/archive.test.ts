@@ -30,6 +30,12 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('saves and restores an empty project without a source asset',async()=>{
+    const empty:Project={...project,source:{name:'Untitled project'},name:'Untitled project',interstitials:[],subtitle:null,library:[],storyFlow:{version:1,entryId:'',nodes:[],edges:[],templates:[]}};
+    const restored=await unpackProject(await packProject(empty,[],signal(),progress),signal(),progress);
+    expect(restored.assets).toEqual([]);expect(restored.project.source.assetId).toBeUndefined();expect(restored.project.storyFlow).toEqual(empty.storyFlow);
+    await expect(packProject({...empty,storyFlow:undefined},[],signal(),progress)).rejects.toThrow(/missing its source video/);
+  });
   it('stores the crossfade duration with the project', async () => {
     const snapshot = { ...project, crossfadeFrames: 14 };
     const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);

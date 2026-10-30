@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSP
 import { answerColorStyle, getScene, interactionFor, type Outcome, type SceneId } from '../call-response/model';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import ChoiceFace from '../call-response/ChoiceFace';
+import { behaviors } from '../story-flow/behaviors';
 
 const EXIT_MS = 220;
 const HOLD_MS = 1000;
@@ -13,7 +14,7 @@ type Presentation = {
 
 export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   const scene = value.session ? getScene(value.flow, value.session.sceneId) : null;
-  const idleId = scene?.clip.kind === 'idle' && !(scene.storyNode?.kind==='looped'&&scene.storyNode.loopCount>0) ? scene.id : null;
+  const idleId = scene?.clip.kind === 'idle' && !(scene.storyNode&&!behaviors(scene.storyNode).conditional&&scene.storyNode.loopCount>0) ? scene.id : null;
   const question = idleId ? interactionFor(value.flow, idleId).question : '';
   const questionId = useId();
   const controls = useRef<HTMLDivElement>(null);

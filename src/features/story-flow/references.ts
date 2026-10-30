@@ -17,7 +17,7 @@ export function connectionReference(flow:CallResponseFlow,edge:FlowEdge):{state:
   if(before.draft||after.draft)return {state:'draft',message:'Reference matching is checked when both clips have playable video.'};
   const left=sceneMediaRange(before,fps),right=sceneMediaRange(after,fps);
   if(left.assetId===right.assetId&&Math.round(left.end*fps)===Math.round(right.start*fps))return {state:'match',message:'Adjacent portions of the same saved video. This cut is continuous.'};
-  if(after.generated){
+  if(after.generated && (after.generated.reference?.before || after.generated.reference?.mode !== 'custom')){
     const result=after.generated,input=result.reference?.before;
     if(!input)return {state:'unknown',message:'This older render has no saved reference identity to compare.'};
     if(after.clip.inFrame!==Math.round(result.start*fps))return {state:'mismatch',message:'The destination starts inside its generated section, so its saved opening reference no longer meets this cut. Playback still works.'};
@@ -31,5 +31,5 @@ export function connectionReference(flow:CallResponseFlow,edge:FlowEdge):{state:
       return {state:'mismatch',message:`The saved ending reference comes from ${referenceName(reference.after,flow)}${reference.mode==='loop'?' to close the loop':` at ${(reference.after.inFrame/fps).toFixed(3)} s`}. It does not match this destination cut. Playback still works.`};
     return {state:'match',message:`The saved ending reference matches ${after.label} at ${(reference.after.inFrame/fps).toFixed(3)} s.`};
   }
-  return {state:'unknown',message:'These are source clips; no generated reference is needed.'};
+  return {state:'unknown',message:after.generated?'Input reference was disabled for this render. Playback uses a cut.':'These are source clips; no generated reference is needed.'};
 }

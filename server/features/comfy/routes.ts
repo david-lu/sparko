@@ -16,13 +16,15 @@ import { comfyRequestError } from './errors.js';
 
 const frameRange = z.coerce.number().finite().min(COMFY.minContextFrames / TIMELINE_FPS).max(4)
   .refine(value => Math.abs(value * TIMELINE_FPS - Math.round(value * TIMELINE_FPS)) < 1e-6, 'Reference ranges must use whole 24 fps frames.');
-const schema = z.object({ before: frameRange, after: z.union([frameRange, z.coerce.number().refine(value => value === 0)]),
-  mode: z.enum(['bridge', 'extend', 'loop']).default('bridge'),
+const optionalRange = z.union([frameRange, z.coerce.number().refine(value => value === 0)]);
+const schema = z.object({ before: optionalRange, after: optionalRange,
+  mode: z.enum(['bridge', 'extend', 'loop', 'custom']).default('bridge'),
+  width: z.coerce.number().int().min(32).max(8192).optional(), height: z.coerce.number().int().min(32).max(8192).optional(),
   maskInjection: z.enum(maskInjections).optional(),
   interpolateMiddle: z.enum(['true', 'false']).optional(),
   duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().min(1).max(8000).refine(value => !!value.trim(), 'Add a prompt before generating.') })
   .transform(({ interpolateMiddle, ...value }) => ({ ...value, maskInjection: normalizeMaskInjection(value.maskInjection, interpolateMiddle === 'true') }))
-  .refine(value => value.maskInjection === 'standard' || value.mode !== 'extend', 'Interpolation requires both start and end references.');
+  .refine(value => value.maskInjection === 'standard' || value.before > 0 && value.after > 0, 'Interpolation requires both start and end references.');
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 
 export function addComfyRoutes(app: Express, providers: Providers, receive: UploadReceiver) {
@@ -36,6 +38,12 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); }
     catch (error) { throw new HttpError(400, (error as Error).message); }
     if (Math.round(settings.before * TIMELINE_FPS) !== plan.prefixFrames || Math.round(settings.after * TIMELINE_FPS) !== plan.suffixFrames) throw new HttpError(400, 'Prepare the Comfy reference on the H3 frame grid.');
+    if (!plan.prefixFrames && !plan.suffixFrames) {
+      if (!settings.width || !settings.height) throw new HttpError(400, 'Set the video dimensions for generation without references.');
+      const job = await provider().submit(undefined, { ...settings, ...comfyDimensions(settings.width, settings.height), hasAudio: false });
+      if (res.destroyed) { await provider().cancel(job.requestId).catch(() => undefined); return; }
+      res.status(202).json(job); return;
+    }
     if (!req.file || req.file.mimetype !== 'video/mp4' || req.file.size > INTERSTITIAL.maxReferenceBytes) throw new HttpError(400, 'Upload an MP4 reference smaller than 50 MB.');
     const file = await openAsBlob(req.file.path, { type: 'video/mp4' });
     const media = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });

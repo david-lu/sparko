@@ -10,7 +10,7 @@ function example() {
 describe('call-response generation dependencies', () => {
   it('uses Call for Idle and the same Idle for both branches, independent of retry edges', () => {
     const { flow, items } = example(), retry = reconnectEdge(flow, 'incorrect-continue', 'wait');
-    expect(clipDependency(retry, items, 'wait').reference?.before.sceneId).toBe('call');
+    expect(clipDependency(retry, items, 'wait').reference?.before!.sceneId).toBe('call');
     for (const id of ['correct', 'incorrect'] as const) {
       expect(clipDependency(retry, items, id)).toMatchObject({ stale: false, reference: { before: { sceneId: 'wait' }, after: { sceneId: 'continue' } } });
     }
@@ -29,7 +29,7 @@ describe('call-response generation dependencies', () => {
       before: { sceneId: 'wait', assetId: 'trimmed-idle', inFrame: 0, outFrame: 48 } } };
     expect(clipDependency(flow, items, 'correct').stale).toBe(false);
     items[2].result = { ...items[2].result!, reference: undefined };
-    expect(baselineReferences(flow, items)[2].result?.reference?.before.assetId).toBe('trimmed-idle');
+    expect(baselineReferences(flow, items)[2].result?.reference?.before!.assetId).toBe('trimmed-idle');
   });
   it('marks descendants stale after replacement, retains their media, and requires updates in order', () => {
     const { flow, items } = example();
@@ -95,7 +95,7 @@ describe('call-response generation dependencies', () => {
     const input = clipDependency(flow, items, 'wait').reference!;
     expect(input.after).toBeUndefined();
     expect(referenceTiming(items[1], input)).toEqual({ before: 48, after: 48, time: 2, duration: 4 });
-    const short = { ...input, before: { ...input.before, outFrame: input.before.inFrame + 12 } };
+    const short = { ...input, before: { ...input.before!, outFrame: input.before!.inFrame + 12 } };
     expect(referenceTiming(items[1], short).time).toBe(.5);
   });
 });

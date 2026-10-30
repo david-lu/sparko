@@ -59,7 +59,7 @@ export function baselineReferences(flow: CallResponseFlow, items: Interstitial[]
     if ((!item.result || item.result.reference) && (!item.previousResult || item.previousResult.reference)) return item;
     const scene = flow.scenes.find(scene => scene.interstitialId === item.id);
     const current = scene && clipDependency(flow, items, scene.id).reference;
-    const previous = current && resolveFlow(flow, items).scenes.find(scene => scene.id === current.before.sceneId);
+    const previous = current && resolveFlow(flow, items).scenes.find(scene => scene.id === current.before?.sceneId);
     // Results without saved provenance predate the full-Idle reference path.
     const input = current && previous?.clip.kind === 'idle' ? { ...current, before: reference(previous) } : current;
     return input ? { ...item,

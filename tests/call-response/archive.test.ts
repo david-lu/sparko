@@ -97,7 +97,7 @@ describe('call-response project persistence', () => {
     expect(result.project.callResponse?.scenes.every(scene => scene.clip.assetId === result.project.source.assetId)).toBe(true);
     expect(result.project.source.assetId).not.toBe(id);
     expect(result.project.interstitials.every(item => item.result?.assetId === result.project.source.assetId)).toBe(true);
-    expect(result.project.interstitials.every(item => item.result?.reference?.before.assetId === result.project.source.assetId)).toBe(true);
+    expect(result.project.interstitials.every(item => item.result?.reference?.before!.assetId === result.project.source.assetId)).toBe(true);
     expect(clipDependency(result.project.callResponse!, result.project.interstitials, 'correct').stale).toBe(false);
     project.callResponse!.scenes[0].clip.outFrame = 0;
     await expect(packProject(project, assets, signal, () => {})).rejects.toThrow();

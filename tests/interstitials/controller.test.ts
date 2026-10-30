@@ -400,7 +400,7 @@ describe('interstitial lifecycle', () => {
     vi.mocked(getInterstitialJob).mockResolvedValue(completed);
     await controller.generate(id, media, info);
     expect(phases).toEqual(expect.arrayContaining(['preparing', 'uploading', 'queued', 'loading', 'ready']));
-    expect(loadInterstitials('source')[0].result).toEqual({ url: completed.videoUrl, ...completed.insertion, assetId: 'stored-asset' });
+    expect(loadInterstitials('source')[0].result).toEqual({ url: completed.videoUrl, ...completed.insertion, assetId: 'stored-asset', prompt:'A scene' });
     expect(loadInterstitials('source')[0].duration).toBe(7.5);
     expect(vi.mocked(generateInterstitial).mock.calls[0][0].duration).toBe(7.5);
   });
@@ -470,6 +470,8 @@ describe('interstitial lifecycle', () => {
     await vi.waitFor(() => expect(controller.getSnapshot().items[0].phase).toBe('loading'));
     expect(playableResult(controller.getSnapshot().items[0])).toEqual(original.result);
     expect(loadInterstitials('source')[0].previousResult).toEqual(original.result);
+    expect(loadInterstitials('source')[0].previousResult?.prompt).toBe(original.requestPrompt);
+    expect(loadInterstitials('source')[0].result?.prompt).toBe(changes.prompt);
     expect(generateInterstitial).toHaveBeenCalledTimes(2);
     expect(vi.mocked(generateInterstitial).mock.calls[1][0]).toMatchObject(changes);
     expect(cancelInterstitialJob).not.toHaveBeenCalled();

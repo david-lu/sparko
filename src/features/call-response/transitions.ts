@@ -10,7 +10,7 @@ function storyTransition(flow: CallResponseFlow, edge: FlowEdge) {
   if (!requested || !before || !after || before.id === after.id || before.draft || after.draft) return;
   if (connectionReference(flow,edge).state==='mismatch') return;
   const left = sceneMediaRange(before, fps), right = sceneMediaRange(after, fps);
-  if (after.generated) {
+  if (after.generated && (after.generated.reference?.before || after.generated.reference?.mode !== 'custom')) {
     const result = after.generated, reference = result.reference?.before;
     // The prefix meets the original body start, never an arbitrary trim point.
     if (after.clip.inFrame !== Math.round(result.start * fps)) return;

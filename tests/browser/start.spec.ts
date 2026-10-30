@@ -1,18 +1,18 @@
 import { expect, test } from './fixtures';
 
-test('starts on the chooser and creates a project from a video without loading the sample', async ({ page }) => {
+test('starts with an empty project and keeps the player above its timeline', async ({ page }) => {
   let sampleRequests = 0;
   await page.route('**/media/sample.mp4', route => { sampleRequests++; return route.fallback(); });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Recent projects' })).toContainText('Bring a video and it will show up here next time.');
+  await expect(page.getByRole('region', { name: 'Recent projects' })).toContainText('Create a project, then add your clips.');
   await expect(page.getByRole('button', { name: /Sample video/ })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ })).toBeVisible();
   expect(sampleRequests).toBe(0);
-  const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: /Create project from video/ }).click();
-  await (await chooser).setFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+  await page.getByRole('button', { name: /^New project/ }).click();
+  await expect(page.locator('.menu-document')).toHaveText('Untitled project');
+  await expect(page.locator('.story-clip')).toHaveCount(0);await expect(page.getByText('Drop video files here',{exact:true})).toBeVisible();
+  expect((await page.locator('.video-stage').boundingBox())!.y).toBeLessThan((await page.locator('.story-canvas').boundingBox())!.y);
   expect(sampleRequests).toBe(0);
   await page.getByText('File', { exact: true }).click();
   await expect(page.getByRole('menu', { name: 'File' }).getByRole('menuitem')).toHaveText([
@@ -26,10 +26,8 @@ test('starts on the chooser and creates a project from a video without loading t
     const { readActiveProject } = await import('/src/features/project/database.ts' as string);
     return readActiveProject();
   })).toBeUndefined();
-  const reopen = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: /Create project from video/ }).click();
-  await (await reopen).setFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+  await page.getByRole('button', { name: /^New project/ }).click();
+  await expect(page.locator('.menu-document')).toHaveText('Untitled project');await expect(page.locator('.story-clip')).toHaveCount(0);
 });
 
 test('shows the sample project without a sample video action', async ({ page }) => {
@@ -56,8 +54,8 @@ test('opens the bundled sample project with its saved interstitials', async ({ p
 test('asks before closing a project with unsaved changes', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
-  await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
+  await expect(page.locator('.story-clip')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Add interstitial', exact:true }).dragTo(page.locator('.story-scroll'));
   await page.getByText('File', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Close project' }).click();
   const prompt = page.getByRole('dialog', { name: 'Save changes before closing?' });
@@ -73,8 +71,8 @@ test('asks before closing a project with unsaved changes', async ({ page }) => {
 test('saves an edited project to disk before closing', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
-  await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
+  await expect(page.locator('.story-clip')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Add interstitial', exact:true }).dragTo(page.locator('.story-scroll'));
   await page.evaluate(() => {
     Object.defineProperty(window, 'showSaveFilePicker', { configurable: true, value: async ({ suggestedName }: { suggestedName: string }) =>
       (await navigator.storage.getDirectory()).getFileHandle(suggestedName, { create: true }) });

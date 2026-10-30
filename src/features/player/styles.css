@@ -50,3 +50,4 @@
 @media(prefers-reduced-motion:reduce){.player-branch-controls[data-phase] button[aria-pressed],.player-branch-controls[data-phase] .player-branch-question{animation:none;transition:none}.player-branch-controls[data-phase="choosing"] button:hover,.player-branch-controls[data-phase="choosing"] button:active{--choice-depth:4px;translate:none;scale:none}}
 @media(max-width:380px){.player-card:fullscreen .transport{height:auto;flex-wrap:wrap;justify-content:center;gap:2px 8px}.player-card:fullscreen .player-branch-controls{bottom:78px;max-height:calc(100% - 86px)}}
 .draft-preview-label{position:absolute;top:12px;left:12px;padding:5px 9px;border:1px solid #ffffff30;border-radius:5px;background:#17191ddd;color:#eee;font-size:11px;pointer-events:none;z-index:4}
+.player-empty{position:relative;pointer-events:none;color:var(--muted);font-size:12px;text-align:center;padding:16px}

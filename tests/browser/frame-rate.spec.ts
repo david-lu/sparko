@@ -16,7 +16,7 @@ test('plays a 25 fps source natively without encoding and reuses it after reload
     };
   });
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /Create project from video/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
   await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 30_000 }).toBeGreaterThanOrEqual(2);

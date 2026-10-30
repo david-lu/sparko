@@ -2,8 +2,8 @@ import {test,expect,type Page} from './fixtures';
 
 const canvasState=(page:Page)=>page.locator('.story-scroll').evaluate(el=>{
   const view=el.getBoundingClientRect(),nodes=[...el.querySelectorAll<HTMLElement>('.story-clip')];
-  return {camera:(el as HTMLElement).style.backgroundPosition,zoom:document.querySelector('.story-zoom')!.textContent,
-    inside:nodes.every(n=>{const r=n.getBoundingClientRect();return r.left>=view.left&&r.right<=view.right&&r.top>=view.top&&r.bottom<=view.bottom;}),
+  return {camera:(el as HTMLElement).style.backgroundPosition,zoom:el.closest('.story-canvas')?.querySelector('.story-zoom')?.textContent,
+    inside:el.isConnected&&nodes.length===3&&nodes.every(n=>{const r=n.getBoundingClientRect();return r.left>=view.left&&r.right<=view.right&&r.top>=view.top&&r.bottom<=view.bottom;}),
     heights:nodes.map(n=>n.getBoundingClientRect().height)};
 });
 

@@ -5,10 +5,11 @@ import { createApp } from '../../server/app';
 import { errorHandler } from '../../server/shared/http';
 import type { Providers } from '../../server/providers';
 
+let mediaDuration = 3.25;
 vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: class {
   getPrimaryVideoTrack() { return Promise.resolve({ displayWidth: 1280, displayHeight: 720, computePacketStats: async () => ({ averagePacketRate: 24 }) }); }
   getPrimaryAudioTrack() { return Promise.resolve({}); }
-  computeDuration() { return Promise.resolve(3.25); }
+  computeDuration() { return Promise.resolve(mediaDuration); }
   dispose() {}
 } }));
 const comfy = { check: vi.fn(), submit: vi.fn(), status: vi.fn(), events: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn() };
@@ -17,7 +18,7 @@ const providers: Providers = { configured: { openai: false, gemini: false, comfy
 let app: Express;
 beforeAll(async () => { app = await createApp({ providers }); app.use(errorHandler); });
 beforeEach(() => {
-  vi.resetAllMocks(); providers.configured.comfy = true;
+  vi.resetAllMocks(); providers.configured.comfy = true; mediaDuration = 3.25;
   comfy.submit.mockResolvedValue({ requestId: 'comfy-job-123', status: 'IN_QUEUE', insertion: { start: 39 / 24, duration: 148 / 24, totalDuration: 226 / 24 } });
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -25,6 +26,15 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it.each([['0', '1.625'], ['1.625', '0']])('accepts one connected reference (%s / %s)', async (before, after) => {
+    mediaDuration = 1.625;
+    await submit(before, after, 'One reference', { mode: 'custom' }).expect(202);
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ before: Number(before), after: Number(after), mode: 'custom' });
+  });
+  it('submits without any reference upload when both switches are off', async () => {
+    await request(app).post('/api/comfy/interstitials').set('x-sparko-request', '1').field({ before: '0', after: '0', duration: '6', mode: 'custom', prompt: 'A new scene', width: '960', height: '544' }).expect(202);
+    expect(comfy.submit).toHaveBeenCalledWith(undefined, expect.objectContaining({ before: 0, after: 0, width: 960, height: 544, hasAudio: false }));
+  });
   it('validates the reference and dispatches to Comfy', async () => {
     await submit().expect(202);
     expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { mode: 'bridge', maskInjection: 'standard', before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 1280, height: 736, hasAudio: true });

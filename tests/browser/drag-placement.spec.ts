@@ -17,7 +17,7 @@ test('toolbar dragging previews the exact zoomed position, preserves the view, a
   const canvas=page.locator('.story-scroll'),source=page.locator('.story-clip.type-source');
   await page.getByRole('button',{name:'Zoom out story',exact:true}).click();await canvas.hover();await page.mouse.wheel(-380,-110);
   const initial=await saved(page),view=await camera(page),sourceRect=await source.boundingBox(),toolbar=await page.locator('.story-toolbar').boundingBox();
-  await page.locator('.story-menu summary').filter({hasText:'Interstitial'}).click();const simple=page.getByRole('button',{name:/Simple Play once/});
+  await page.locator('.story-menu summary').filter({hasText:'Interstitial'}).click();const simple=page.getByRole('button',{name:/New interstitial/});
   await simple.click();await expect(page.locator('.story-clip')).toHaveCount(1);await expect(page.locator('.story-status')).toContainText('Drag an interstitial');
   const bounds=(await canvas.boundingBox())!,x=bounds.x+100,y=bounds.y+45;
   await begin(page,simple,x,y);const ghost=page.locator('.story-drop-preview');await expect(ghost).toHaveCount(1);await at(ghost,x,y);
@@ -38,8 +38,8 @@ test('wire drops attach at the pointer and template drops preserve existing posi
   await open(page);const film=page.locator('.story-filmstrip').first();await film.focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
   await page.getByRole('button',{name:'Fit all',exact:true}).click();const initial=await saved(page),view=await camera(page);
   const wire=page.locator('.story-crossfade').first(),rect=(await wire.boundingBox())!,x=rect.x+rect.width/2,y=rect.y+rect.height/2;
-  await begin(page,page.getByRole('button',{name:'Add looped interstitial',exact:true}),x,y);await expect(page.locator('.story-status')).toContainText('insert into this connection');
-  await at(page.locator('.story-drop-preview'),x,y);await page.mouse.up();const loop=page.locator('.story-clip.type-looped');await expect(loop).toHaveCount(1);await at(loop,x,y);
+  await begin(page,page.getByRole('button',{name:'Add interstitial',exact:true}),x,y);await expect(page.locator('.story-status')).toContainText('insert into this connection');
+  await at(page.locator('.story-drop-preview'),x,y);await page.mouse.up();const loop=page.locator('.story-clip.type-simple');await expect(loop).toHaveCount(1);await at(loop,x,y);
   let project=await saved(page);expect(project.storyFlow.nodes.slice(0,2)).toEqual(initial.storyFlow.nodes);expect(await camera(page)).toEqual(view);
   const added=project.storyFlow.nodes.at(-1);expect(project.storyFlow.edges.map((e:any)=>[e.from,e.to])).toEqual([[initial.storyFlow.edges[0].from,added.id],[added.id,initial.storyFlow.edges[0].to]]);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(loop).toHaveCount(0);
@@ -54,7 +54,7 @@ test('wire drops attach at the pointer and template drops preserve existing posi
 test('narrow toolbar drops and saved templates use the same drag placement',async({page})=>{
   await page.setViewportSize({width:390,height:844});await open(page);const canvas=page.locator('.story-scroll'),toolbar=await page.locator('.story-toolbar').boundingBox();
   await page.locator('.story-menu summary').filter({hasText:'Interstitial'}).click();
-  const bounds=(await canvas.boundingBox())!;await begin(page,page.getByRole('button',{name:/Simple Play once/}),bounds.x+200,bounds.y+30);await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(2);
+  const bounds=(await canvas.boundingBox())!;await begin(page,page.getByRole('button',{name:/New interstitial/}),bounds.x+200,bounds.y+30);await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(2);
   await at(page.locator('.story-clip.type-simple'),bounds.x+200,bounds.y+30);
   expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);
   await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.getByRole('button',{name:'Save selected clips as template'}).click();await page.getByLabel('Template name',{exact:true}).fill('Saved scene');await page.getByRole('button',{name:'Save template',exact:true}).click();

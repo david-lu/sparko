@@ -1,4 +1,4 @@
-import { Film, GitBranch, GripVertical, LayoutTemplate, Repeat2, Upload, Captions, Plus, Search } from 'lucide-react';
+import { Film, GripVertical, LayoutTemplate, Upload, Captions, Plus, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { StoryEditor } from './useStoryEditor';
 import { builtInTemplates } from './templates';
@@ -16,7 +16,7 @@ export default function StoryLibrary({editor}:{editor:StoryEditor}){
   const library=editor.projects.getSnapshot().project?.library??[],selected=library.find(item=>item.assetId===selection)??library[0];
   const matches=(name:string)=>name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   const media=library.filter(item=>matches(item.name));
-  const kinds=(['simple','looped','conditional'] as const).filter(matches);
+  const kinds=(['simple'] as const).filter(()=>matches('Interstitial'));
   const templates=[...builtInTemplates,...(editor.graph?.templates??[])].filter(item=>matches(item.name));
   const showMedia=['all','media'].includes(filter),showTypes=['all','interstitials'].includes(filter),showTemplates=['all','templates'].includes(filter);
   const count=(showMedia?media.length:0)+(showTypes?kinds.length:0)+(showTemplates?templates.length:0);
@@ -49,7 +49,7 @@ export default function StoryLibrary({editor}:{editor:StoryEditor}){
           <span className="library-asset-name"><strong>{item.name}</strong><small>{item.kind==='generated'?'Generated':item.kind==='subtitle'?'Subtitles':'Video'}{seconds>0?` · ${seconds.toFixed(2)}s`:''} · {uses?`${uses} used`:'Unused'}</small></span><GripVertical size={12}/>
         </button>;
       })}</div></>}
-      {showTypes&&kinds.length>0&&<><h3>Interstitials <span>Drag to timeline</span></h3><div className="story-library-types">{kinds.map(kind=><button key={kind} draggable onDragStart={e=>startLibraryDrag(e,{kind})} aria-label={`Add ${kind} interstitial`} title={`Drag ${kind} to a spot on the timeline. Enter adds at the selection.`} onClick={e=>e.detail===0?editor.add(kind,editor.selectedEdge??undefined):addHint()}>{kind==='simple'?<Film size={16}/>:kind==='looped'?<Repeat2 size={16}/>:<GitBranch size={16}/>}<span>{kind[0].toUpperCase()+kind.slice(1)}</span></button>)}</div></>}
+      {showTypes&&kinds.length>0&&<><h3>Interstitials <span>Drag to timeline</span></h3><div className="story-library-types">{kinds.map(kind=><button key={kind} draggable onDragStart={e=>startLibraryDrag(e,{kind})} aria-label="Add interstitial" title="Drag an interstitial to the timeline. Set its behaviors in the Inspector." onClick={e=>e.detail===0?editor.add(kind,editor.selectedEdge??undefined):addHint()}><Film size={16}/><span>Interstitial</span></button>)}</div></>}
       {showTemplates&&templates.length>0&&<><h3>Templates <span>{templates.length}</span></h3><div className="story-library-templates">{templates.map(template=><button key={template.id} draggable onDragStart={e=>startLibraryDrag(e,{templateId:template.id})} aria-label={`Add template ${template.name}`} title="Drag to a spot on the timeline. Enter adds at the selection." onClick={e=>e.detail===0?editor.insertTemplate(editor.graph?.templates.find(t=>t.id===template.id)??template.id,editor.selectedEdge??undefined):addHint()}><LayoutTemplate size={14}/><span>{template.name}</span><GripVertical size={13}/></button>)}</div></>}
       {!count&&<p className="hint">No matching assets or templates.</p>}
     </div>

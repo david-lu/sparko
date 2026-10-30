@@ -55,7 +55,8 @@ describe('canvas flow playback', () => {
     const graph=runtimeFlow(migrateGraph(project,duration),project.interstitials,project.source.assetId!,duration);
     let checked=0;
     for(const link of legacy.edges){
-      const old=flowTransition(legacy,link,14),nextLink=graph.edges.find(e=>e.id===link.id)!,next=flowTransition(graph,nextLink);
+      const old=flowTransition(legacy,link,14),nextLink=graph.edges.find(e=>e.id===link.id)??graph.edges.find(e=>link.from===link.to&&e.from===link.from&&e.when==='repeat')!;
+      expect(nextLink,link.id).toBeDefined();const next=flowTransition(graph,nextLink);
       expect(next&&{start:next.startFrame,frames:next.frames},link.id).toEqual(old&&{start:old.startFrame,frames:old.frames});
       if(!old)continue;checked++;
       const snapshot=(flow:typeof legacy,edge:typeof link)=>{
@@ -285,7 +286,7 @@ describe('canvas flow playback', () => {
     expect(layers()[0]).toMatchObject({ key: 'wait:0:body', source: { id: 'mock:idle-full' } });
     expect(layers()[0].time).toBeCloseTo(2 + 45 / 24);
     expect(layers()[1]).toMatchObject({ source: { id: 'mock:correct' }, time: 0 });
-    response.generated.reference!.before.assetId = 'mock:other-idle';
+    response.generated.reference!.before!.assetId = 'mock:other-idle';
     expect(flowTransition(flow, edge, 12)).toBeUndefined();
     player.dispose();
   });

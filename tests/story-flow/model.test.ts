@@ -29,7 +29,7 @@ describe('story clip graph',()=>{
     const divided=splitClip(result.graph,items,node.id,24),right=divided.graph.nodes.find(n=>n.id===divided.rightId)!;
     expect(divided.items[0].result?.assetId).toBe(items.find(i=>i.id===node.interstitialId)!.result.assetId);
     expect(divided.graph.nodes.find(n=>n.id===node.id)).toMatchObject({kind:'simple',trim:{inFrame:0,outFrame:24},crossfadeEnd:0});expect(right).toMatchObject({kind:'conditional',trim:{inFrame:24,outFrame:96},crossfadeStart:0});
-    expect(divided.graph.edges.filter(e=>e.from===right.id&&e.event==='answer')).toHaveLength(2);expect(divided.graph.edges.find(e=>e.from===right.id&&e.event==='fallback')?.to).toBe(right.id);
+    expect(divided.graph.edges.filter(e=>e.from===right.id&&e.event==='answer')).toHaveLength(2);expect(divided.graph.edges.some(e=>e.event==='fallback')).toBe(false);
     const flow=runtimeFlow(divided.graph,[...items,...divided.items],asset,20),leftScene=flow.scenes.find(s=>s.id===node.id)!,rightScene=flow.scenes.find(s=>s.id===right.id)!;
     expect(leftScene.clip.outFrame).toBe(rightScene.clip.inFrame);expect(rightScene.clip.outFrame-leftScene.clip.inFrame).toBe(96);expect(nodeDuration(right,[...items,...divided.items])).toBe(3);
     expect(storyGraphSchema.safeParse(divided.graph).success).toBe(true);
@@ -64,7 +64,8 @@ describe('story clip graph',()=>{
   it('removes incident connections and clears dangling generation references',()=>{
     let graph=initial();graph=splitSource(graph,graph.entryId,120);const id=graph.entryId;
     graph.nodes[1].referenceId=id;const next=removeNodes(graph,[id]);expect(next.nodes).toHaveLength(1);expect(next.nodes[0].referenceId).toBeUndefined();expect(next.edges).toHaveLength(0);expect(next.entryId).toBe(next.nodes[0].id);
-    expect(removeNodes(next,[next.entryId])).toBe(next);
+    const empty=removeNodes(next,[next.entryId]);expect(empty.nodes).toHaveLength(0);expect(empty.entryId).toBe('');expect(storyGraphSchema.safeParse(empty).success).toBe(true);
+    expect(runtimeFlow(empty,[],asset,20).scenes).toHaveLength(0);
   });
   it('inserts templates with unique IDs and reconnects every terminal response',()=>{
     let graph=initial();graph=splitSource(graph,graph.entryId,120);const link=graph.edges[0];
@@ -94,18 +95,19 @@ describe('story clip graph',()=>{
     expect(storyGraphSchema.safeParse(result.graph).success).toBe(true);
   });
   it('captures selected interstitials as reusable settings without source assets or rendered media',()=>{
-    const result=instantiateTemplate(initial(),makePreset('question'),[]),ids=result.graph.nodes.map(n=>n.id);
+    const result=instantiateTemplate(initial(),makePreset('question'),[]),ids=result.graph.nodes.filter(n=>n.interstitialId).map(n=>n.id);
     const template=captureTemplate(result.graph,ids,result.items,'Quiz')!;
     expect(template.nodes).toHaveLength(4);expect(template.nodes.every(n=>!n.source)).toBe(true);
     const next=instantiateTemplate(initial(),template,[]);expect(next.items.every(i=>!i.result&&i.phase==='draft')).toBe(true);
   });
-  it('plays conditional routing at the clip boundary, repeats on fallback, and ends without a fallback',()=>{
+  it('plays conditional routing at the clip boundary, repeats when enabled, and follows the default otherwise',()=>{
     const result=instantiateTemplate(initial(),makePreset('question'),[]);result.graph.entryId=result.graph.nodes.find(n=>n.kind==='conditional')!.id;
     const flow=runtimeFlow(result.graph,result.items.map(ready),asset,20),start=startSession(flow,true),rule=result.graph.edges.find(e=>e.from===start.sceneId&&e.event==='answer')!;
     const chosen=answerSession(flow,start,' YES. ');expect(chosen.outcome).toBe(rule.id);
     expect(advanceSession(flow,chosen,95).sceneId).toBe(start.sceneId);expect(advanceSession(flow,chosen,96).sceneId).toBe(rule.to);
     expect(advanceSession(flow,start,96).loopIteration).toBe(2);
-    const noFallback={...flow,edges:flow.edges.filter(e=>e.when!=='pending')};expect(advanceSession(noFallback,start,96).finished).toBe(true);
+    result.graph.nodes.find(n=>n.id===start.sceneId)!.loop=false;
+    const once=runtimeFlow(result.graph,result.items.map(ready),asset,20);expect(advanceSession(once,start,96).sceneId).toBe(rule.to);
   });
   it('loops exactly N cycles, or waits for the manual Continue action',()=>{
     let graph=initial();const {node,item}=createNode('looped');node.loopCount=3;graph={...graph,entryId:node.id,nodes:[...graph.nodes,node],edges:[edge(node.id,graph.entryId)]};
@@ -123,12 +125,15 @@ describe('story clip graph',()=>{
     graph.edges[0].crossfade=0;flow=runtimeFlow(graph,[ready(a.item),ready(b.item),ready(c.item)],asset,20);
     expect(flowTransition(flow,flow.edges[0])).toBeUndefined();expect(flowTransition(flow,flow.edges[1])?.frames).toBe(6);
   });
-  it('detects invalid generation cycles instead of recursing forever',()=>{
+  it('ignores obsolete reference selections and resolves cycles through saved footage',()=>{
     const a=createNode('simple'),b=createNode('simple');a.node.referenceId=b.node.id;b.node.referenceId=a.node.id;
     const graph={...initial(),nodes:[a.node,b.node],entryId:a.node.id};
-    expect(storyDependency(graph,[ready(a.item),ready(b.item)],asset,20,a.item.id).blocked).toMatch(/cycle/);
+    expect(storyDependency(graph,[ready(a.item),ready(b.item)],asset,20,a.item.id).blocked).toMatch(/Connect an incoming clip/);
+    graph.edges=[edge(a.node.id,b.node.id),edge(b.node.id,a.node.id)];
+    expect(storyDependency(graph,[ready(a.item),ready(b.item)],asset,20,a.item.id).blocked).toBeUndefined();
+    expect(storyDependency(graph,[a.item,b.item],asset,20,a.item.id).blocked).toMatch(/Generate/);
   });
-  it('generation reads the selected upstream clip, and bridge generation needs its downstream clip',()=>{
+  it('generation reads the connected upstream clip, and bridge generation needs its downstream clip',()=>{
     const graph=initial(),a=createNode('simple',graph.entryId);graph.nodes.push(a.node);graph.edges.push(edge(graph.entryId,a.node.id));
     const dependency=storyDependency(graph,[a.item],asset,20,a.item.id);expect(dependency.blocked).toBeUndefined();expect(dependency.reference?.before).toMatchObject({assetId:asset,inFrame:0,outFrame:480});
     a.item.method='comfy';expect(storyDependency(graph,[a.item],asset,20,a.item.id).blocked).toMatch(/following clip/);

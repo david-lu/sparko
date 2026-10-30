@@ -1,6 +1,7 @@
 import { playableResult, type CallResponseInterstitial, type Interstitial, type InterstitialResult } from '../../../shared/interstitials';
 import type { AnswerColor } from './colors';
 import type { StoryNode } from '../story-flow/model';
+import { behaviors } from '../story-flow/behaviors';
 export type { AnswerColor } from './colors';
 export { answerColor, answerColorStyle } from './colors';
 /** Clip types and connections shared by the project, timeline and video player. */
@@ -262,9 +263,11 @@ export function answerSession(flow: CallResponseFlow, session: PlaybackSession, 
 export function nextEdge(flow: CallResponseFlow, session: PlaybackSession) {
   if (flow.storyGraph) {
     const node = getScene(flow, session.sceneId).storyNode!;
-    const when = node.kind === 'conditional' ? session.outcome ?? 'pending'
-      : node.kind === 'looped' ? session.outcome ?? (node.loopCount > 0 && session.loopIteration >= node.loopCount ? 'ended' : 'pending') : 'ended';
-    return flow.edges.find(edge => edge.from === session.sceneId && edge.when === when);
+    const behavior=behaviors(node),outgoing=flow.edges.filter(edge=>edge.from===session.sceneId);
+    const answer=(behavior.loop||behavior.conditional)&&interactionFor(flow,node.id)?.answers.some(a=>a.id===session.outcome)?outgoing.find(e=>e.when===session.outcome):undefined;
+    if(answer)return answer;
+    if(behavior.loop&&(!node.loopCount||session.loopIteration<node.loopCount))return outgoing.find(e=>e.when==='repeat');
+    return behavior.conditional?outgoing.find(e=>e.when===interactionFor(flow,node.id)?.fallbackAnswerId):outgoing.find(e=>e.when==='ended');
   }
   const idle = getScene(flow, session.sceneId).clip.kind === 'idle';
   const when = idle ? session.outcome ?? 'pending' : 'ended';

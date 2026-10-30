@@ -13,6 +13,7 @@ import PlayerChoices from './PlayerChoices';
 type Props = {
   source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[];
   thumbnailsFailed?: boolean;
+  empty?: boolean;
   selectedId: string | null; composition: TimelineComposition | null;
   controller: VideoPlayerController;
   onAddInterstitial: () => void; onSeek: (time: number) => void; onError: (error: string) => void;
@@ -158,11 +159,11 @@ export default function Player(props: Props) {
 
   return <div className={`player-card${fullscreenTimeline ? '' : ' fullscreen-timeline-hidden'}`} ref={container} data-controls-visible={fullscreenControls}>
     <div className="video-stage" onDoubleClick={() => void toggleFullscreen()}>
-      <video ref={controller.attach} preload="metadata" playsInline aria-label={source.name} onClick={playPause}>
+      <video key={source.assetId??source.id} ref={controller.attach} preload="metadata" playsInline aria-label={source.name} onClick={playPause}>
         {subtitle && <track key={subtitle.url} src={subtitle.url} kind="subtitles" label={subtitle.name} srcLang="en" default />}
       </video>
       {flow?.session && flow.flow.scenes.find(scene => scene.id === flow.session!.sceneId)?.draft && <span className="draft-preview-label">Draft · reference frame</span>}
-      {!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
+      {props.empty?<span className="player-empty">Add clips to preview your video</span>:!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
       {buffering && <div className="buffering" role="status"><span className="spinner" /><span className="sr-only">Buffering</span></div>}
       {flow && <PlayerChoices key={flow.flow.interstitial.id} value={flow} />}
     <div className="transport" ref={transport} onDoubleClick={event => event.stopPropagation()}>

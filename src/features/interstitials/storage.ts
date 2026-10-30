@@ -2,10 +2,10 @@ import { INTERSTITIAL } from '../../../shared/constants';
 import { clipMaskInjection, generationMethods, interstitialSettings, normalizeGenerationMethod, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
 
 function readReference(value: unknown): GenerationReference | undefined {
-  const validClip = (clip: ClipReference) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
+  const validClip = (clip: ClipReference | undefined) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
     && Number.isInteger(clip.inFrame) && Number.isInteger(clip.outFrame) && clip.inFrame >= 0 && clip.outFrame > clip.inFrame;
   const input = value as GenerationReference | undefined;
-  return input && validClip(input.before) && (!input.after || validClip(input.after)) ? input : undefined;
+  return input && (input.before ? validClip(input.before) : input.mode === 'custom') && (!input.after || validClip(input.after)) ? input : undefined;
 }
 
 function readSettings(value: unknown): InterstitialSettings | undefined {
@@ -21,6 +21,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
 function readResult(value: unknown): InterstitialResult | undefined {
   if (!value || typeof value !== 'object') return;
   const result = value as Partial<InterstitialResult>;
+  if(result.prompt!==undefined&&(typeof result.prompt!=='string'||result.prompt.length>8000))return;
   if (typeof result.url !== 'string' || !(result.url.startsWith('https://') || /^\/api\/comfy\/assets\/[A-Za-z0-9_-]{8,128}\/content$/.test(result.url) || typeof result.assetId === 'string' && result.url === `asset:${result.assetId}`)) return;
   if (result.fullAssetId !== undefined && (typeof result.fullAssetId !== 'string' || !result.fullAssetId)) return;
   if (result.fullRange && (![result.fullRange.start, result.fullRange.duration, result.fullRange.totalDuration].every(value => typeof value === 'number' && Number.isFinite(value))
@@ -43,6 +44,8 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
       const result = readResult(item.result);
       return [{ id: item.id, label: typeof item.label === 'string' ? item.label.replace(/^Pin (\d+)$/, 'Interstitial $1') : 'Interstitial', time: item.time, kind: item.kind === 'call-response' ? 'call-response' : item.kind === 'regular' ? 'regular' : undefined, groupId: typeof item.groupId === 'string' ? item.groupId : undefined,
         continuity: typeof item.continuity === 'string' ? item.continuity : undefined, dialogue: typeof item.dialogue === 'string' ? item.dialogue : undefined, loopAudio: typeof item.loopAudio === 'boolean' ? item.loopAudio : undefined,
+        useInputReference: typeof item.useInputReference === 'boolean' ? item.useInputReference : undefined,
+        useOutputReference: typeof item.useOutputReference === 'boolean' ? item.useOutputReference : undefined,
         maskInjection: clipMaskInjection(item),
         start_range: Number.isFinite(item.start_range) ? item.start_range : INTERSTITIAL.defaultRange,
         end_range: Number.isFinite(item.end_range) ? item.end_range : INTERSTITIAL.defaultRange,

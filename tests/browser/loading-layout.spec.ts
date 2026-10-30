@@ -117,7 +117,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.getByRole('menuitem', { name: 'Close project' }).click();
     await page.getByRole('dialog', { name: 'Save changes before closing?' }).getByRole('button', { name: 'Discard changes' }).click();
     await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Create project from video/ })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
     expect(await page.evaluate(() => (window as any).__chooserMessages)).toEqual([]);
   });
 

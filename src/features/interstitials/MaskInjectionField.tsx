@@ -60,7 +60,7 @@ export default function MaskInjectionField({ value, hasEndReference, onChange }:
           maxHeight: Math.max(80, (upwards ? above : below) - 18) });
       }}><span>{options[value].label}</span><ChevronDown size={14} /></button>
     <p className="hint" id={`${id}-hint`}>{hasEndReference ? 'Applies to the next generation. Reference sections stay frozen.'
-      : 'FILM modes require an end reference. Call extensions only have a start reference.'}</p>
+      : 'FILM modes require both input and output references.'}</p>
     {position && createPortal(<div ref={popup} id={`${id}-options`} className="mask-injection-popover" role="dialog" aria-label="Mask injection options"
       data-project-edit style={position} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>
       <div role="radiogroup" aria-label="Mask injection">

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
-export default function InterstitialTimeField({ name, label, value, min, max, step, onChange }: {
-  name: string; label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void;
+export default function InterstitialTimeField({ name, label, value, min, max, step, onChange, disabled = false }: {
+  name: string; label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void; disabled?: boolean;
 }) {
   const id = useId();
   const field = useRef<HTMLDivElement>(null);
@@ -23,12 +23,12 @@ export default function InterstitialTimeField({ name, label, value, min, max, st
     }}>
     <label className="interstitial-time-label" htmlFor={id}>{label}</label>
     <div className="interstitial-time-value">
-      <input ref={number} id={id} aria-label={name} aria-controls={open ? `${id}-slider` : undefined} type="number" min={min} max={max} step="any" required
+      <input ref={number} id={id} aria-label={name} title={label} disabled={disabled} aria-controls={open ? `${id}-slider` : undefined} type="number" min={min} max={max} step="any" required
         value={Number.isFinite(value) ? value : ''} onChange={event => onChange(event.target.valueAsNumber)}
         onFocus={() => setOpen(true)} onClick={() => setOpen(true)} />
       <span aria-hidden="true">s</span>
     </div>
-    {open && <div className="interstitial-time-popover" id={`${id}-slider`} role="group" aria-label={`${label} adjustment`}>
+    {open && !disabled && <div className="interstitial-time-popover" id={`${id}-slider`} role="group" aria-label={`${label} adjustment`}>
       <input aria-label={`${label} slider`} type="range" min={min} max={max} step="any"
         value={Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : min}
         onChange={event => onChange(Number(event.target.valueAsNumber.toFixed(3)))}

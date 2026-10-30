@@ -89,6 +89,11 @@ export class VideoPlayerController {
   }
   setFlow(flow: CallResponseFlow, info?: MediaInfo, matchFraming = false, crossfade = true, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES) {
     if (!this.element || !this.source) return;
+    if(!flow.scenes.length){
+      this.flowPlayback?.dispose();this.flowPlayback=null;this.sourceLoad?.abort();this.timeline?.dispose();this.timeline=null;
+      this.composition=null;this.pendingSeek=null;this.wantsPlayback=false;this.element.pause();this.element.removeAttribute('src');this.element.load();
+      this.update({time:0,duration:0,playing:false,buffering:false,error:null,buffered:[],flow:null});return;
+    }
     // Overlay text, answer matching, and editor labels can change without
     // replacing the media canvas or moving the playhead. Scene/edge structure
     // and clip media still determine when playback must be rebuilt.

@@ -20,7 +20,7 @@ const jobSchema = statusSchema.extend({ id, progress: progressSchema.nullable().
 export type ComfyReadiness = { ready: boolean; message?: string };
 export interface ComfyProvider {
   check(maskInjection?: MaskInjection): Promise<ComfyReadiness>;
-  submit(file: Blob, input: BridgeInput): Promise<GenerationJob>;
+  submit(file: Blob | undefined, input: BridgeInput): Promise<GenerationJob>;
   status(requestId: string): Promise<GenerationJob>;
   events(requestId: string, signal: AbortSignal): AsyncIterable<GenerationEvent>;
   cancel(requestId: string): Promise<void>;
@@ -84,20 +84,24 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       }
     },
     async submit(file, input) {
-      const maskInjection = input.mode === 'extend' ? 'standard' : normalizeMaskInjection(input.maskInjection, input.interpolateMiddle);
+      const maskInjection = !input.before || !input.after ? 'standard' : normalizeMaskInjection(input.maskInjection, input.interpolateMiddle);
       const readiness = await check(maskInjection);
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
       const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
       // Comfy reads multipart uploads sequentially: metadata must arrive before the file.
-      const body = new FormData(); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`); body.set('file', file, 'reference.mp4');
-      const uploaded = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body }));
+      let referenceAssetId: string | undefined;
+      if (plan.prefixFrames || plan.suffixFrames) {
+        if (!file) throw new HttpError(400, 'Upload the connected reference footage.');
+        const body = new FormData(); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`); body.set('file', file, 'reference.mp4');
+        referenceAssetId = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body })).id;
+      }
       let vignetteAssetId: string | undefined;
       if (maskInjection === 'vignette') {
         const maskBody = new FormData(); maskBody.set('content_type', 'image/png'); maskBody.set('file_path', `sparko-vignette-${randomUUID()}.png`);
         maskBody.set('file', new Blob([vignetteGradientPng(input.width, input.height)], { type: 'image/png' }), 'vignette.png');
         vignetteAssetId = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body: maskBody })).id;
       }
-      const workflow = bridgeWorkflow(uploaded.id, { ...input, maskInjection }, randomInt(0, 2 ** 48 - 1), vignetteAssetId);
+      const workflow = bridgeWorkflow(referenceAssetId, { ...input, maskInjection }, randomInt(0, 2 ** 48 - 1), vignetteAssetId);
       // Never automatically retry a paid submission after an ambiguous network error.
       const job = jobSchema.parse(await client.call('/api/v2/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() }, body: JSON.stringify({ workflow }) }));
       return { requestId: job.id, status: 'IN_QUEUE', insertion: plan.insertion };

@@ -10,17 +10,18 @@ export type BridgeInput = { before: number; after: number; duration: number; pro
  * Separately encoded endpoints stay frozen in either mode.
  * The original source footage is kept by Sparko's compositor, outside this render.
  */
-export function bridgeWorkflow(assetId: string, input: BridgeInput, seed: number, vignetteAssetId?: string): Workflow {
+export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, vignetteAssetId?: string): Workflow {
   const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
   const { prefixFrames, suffixFrames, middleFrames, totalFrames, insertion } = plan;
-  const maskInjection = suffixFrames ? normalizeMaskInjection(input.maskInjection, input.interpolateMiddle) : 'standard';
+  const maskInjection = prefixFrames && suffixFrames ? normalizeMaskInjection(input.maskInjection, input.interpolateMiddle) : 'standard';
+  if ((prefixFrames || suffixFrames) && !assetId) throw new Error('Reference footage is missing.');
   if (maskInjection === 'vignette' && !vignetteAssetId) throw new Error('Vignette generation requires the uploaded gradient mask.');
   const graph: Workflow = {};
   const add = (id: string, class_type: string, inputs: Record<string, unknown>) => { graph[id] = { class_type, inputs }; return [id, 0]; };
   const asset = { __type: 'core/ASSET', info: { id: assetId } };
   const loader = (skip: number, frames: number) => ({ video: asset, force_rate: TIMELINE_FPS, custom_width: input.width, custom_height: input.height,
     frame_load_cap: frames, skip_first_frames: skip, select_every_nth: 1, format: 'None' });
-  const before = add('before', 'VHS_LoadVideo', loader(0, prefixFrames));
+  const before = prefixFrames ? add('before', 'VHS_LoadVideo', loader(0, prefixFrames)) : undefined;
   const after = suffixFrames ? add('after', 'VHS_LoadVideo', loader(prefixFrames, suffixFrames)) : undefined;
   const model = add('model', 'UNETLoader', { unet_name: COMFY_MODELS.diffusion, weight_dtype: 'default' });
   const clip = add('text_encoder', 'CLIPLoader', { clip_name: COMFY_MODELS.textEncoder, type: 'minimax', device: 'default' });
@@ -30,7 +31,7 @@ export function bridgeWorkflow(assetId: string, input: BridgeInput, seed: number
   const positive = add('conditioning', 'MiniMaxH3ImageToVideo', { clip, vae, prompt: input.prompt, width: input.width, height: input.height, length: totalFrames });
   const empty = add('empty_streams', 'LTXVSeparateAVLatent', { av_latent: ['conditioning', 1] });
   let target = empty;
-  if (after && maskInjection !== 'standard') {
+  if (before && after && maskInjection !== 'standard') {
     const lastBefore = add('last_before', 'ImageFromBatch', { image: before, batch_index: prefixFrames - 1, length: 1 });
     const firstAfter = add('first_after', 'ImageFromBatch', { image: after, batch_index: 0, length: 1 });
     let motion = add('boundary_frames', 'ImageBatch', { image1: lastBefore, image2: firstAfter });
@@ -51,9 +52,9 @@ export function bridgeWorkflow(assetId: string, input: BridgeInput, seed: number
     // the wrong temporal VAE frame grouping. Keep both reference windows intact.
     target = add('encode_target', 'VAEEncode', { pixels: fullTarget, vae });
   }
-  const startLatent = add('encode_before', 'VAEEncode', { pixels: before, vae });
+  const startLatent = before ? add('encode_before', 'VAEEncode', { pixels: before, vae }) : undefined;
   const endLatent = after ? add('encode_after', 'VAEEncode', { pixels: after, vae }) : undefined;
-  const prefix = add('place_before', 'ReplaceVideoLatentFrames', { destination: target, source: startLatent, index: 0 });
+  const prefix = startLatent ? add('place_before', 'ReplaceVideoLatentFrames', { destination: target, source: startLatent, index: 0 }) : target;
   const endpoints = endLatent ? add('place_after', 'ReplaceVideoLatentFrames', { destination: prefix, source: endLatent, index: -(2 + (suffixFrames - 5) / 17 * 5) }) : prefix;
   // Spatially uniform masks need only one model token (32px), not a full-size video batch.
   let mask = add('middle_mask', 'MVEx_FrameRangeMask', { width: 32, height: 32, frames: totalFrames, ranges: `${prefixFrames}:${totalFrames - suffixFrames}` });
@@ -76,9 +77,9 @@ export function bridgeWorkflow(assetId: string, input: BridgeInput, seed: number
     spatial_method: 'max', temporal_method: 'max', grow_spatial: 0, grow_temporal: 0 });
   const frozenVideo = add('freeze_video', 'SetLatentNoiseMask', { samples: endpoints, mask: latentMask });
   let joint = add('joint', 'LTXVConcatAVLatent', { video_latent: frozenVideo, audio_latent: ['empty_streams', 1] });
-  if (input.hasAudio) {
+  if (input.hasAudio && (before || after)) {
     const silence = add('gap_audio', 'EmptyAudio', { duration: insertion.duration, sample_rate: 32000, channels: 2 });
-    const a = add('audio_prefix', 'AudioConcat', { audio1: ['before', 2], audio2: silence, direction: 'after' });
+    const a = before ? add('audio_prefix', 'AudioConcat', { audio1: ['before', 2], audio2: silence, direction: 'after' }) : silence;
     const audio = after ? add('audio_full', 'AudioConcat', { audio1: a, audio2: ['after', 2], direction: 'after' }) : a;
     const encoded = add('encode_audio', 'VAEEncodeAudio', { audio, vae: audioVae });
     const fitted = add('fit_audio', 'LTXVConcatAVLatent', { video_latent: joint, audio_latent: encoded });

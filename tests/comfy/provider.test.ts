@@ -10,6 +10,13 @@ const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body)
 const collect = async <T>(stream: AsyncIterable<T>) => { const items: T[] = []; for await (const item of stream) items.push(item); return items; };
 
 describe('Comfy Cloud v2 adapter', () => {
+  it('skips asset uploads when neither reference is enabled', async () => {
+    const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(catalog)).mockResolvedValueOnce(reply({ id: 'comfy-job-123', status: 'queued' }));
+    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport);
+    const job = await provider.submit(undefined, { ...input, mode: 'custom', before: 0, after: 0, hasAudio: false });
+    expect(job.insertion?.start).toBe(0);
+    expect(transport.mock.calls.map(([url]) => String(url))).toEqual(['https://cloud.comfy.org/api/object_info', 'https://cloud.comfy.org/api/v2/jobs']);
+  });
   it('reports invalid optional Comfy configuration without breaking other providers at startup', async () => {
     const transport = vi.fn<typeof fetch>();
     const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret', COMFY_BASE_URL: 'invalid-url' }, transport);

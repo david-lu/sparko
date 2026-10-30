@@ -13,10 +13,10 @@ export function zoomAt(camera: Camera, zoom: number, anchor: Point): Camera {
   const next=Math.max(.005,Math.min(8,zoom));
   return { ...camera,zoom:next, x:anchor.x-(anchor.x-camera.x)/camera.zoom*next };
 }
-export function fitCamera(bounds: {left:number;right:number;top:number;bottom:number}, width:number,height:number,maxZoom=2): Camera {
+export function fitCamera(bounds: {left:number;right:number;top:number;bottom:number}, width:number,height:number,maxZoom=2,groups=false): Camera {
   const zoom=Math.max(.005,Math.min(maxZoom,Math.max(1,width-96)/Math.max(1,bounds.right-bounds.left)));
   // Compress row spacing when needed, while every clip remains CLIP_HEIGHT tall.
-  const rowScale=Math.min(1,Math.max(1,height-CLIP_HEIGHT-64)/Math.max(1,bounds.bottom-bounds.top));
+  const rowScale=Math.min(1,Math.max(1,height-CLIP_HEIGHT-(groups?100:64))/Math.max(1,bounds.bottom-bounds.top));
   return { zoom,rowScale,x:width/2-(bounds.left+bounds.right)/2*zoom,y:(height-CLIP_HEIGHT)/2-(bounds.top+bounds.bottom)/2*rowScale };
 }
 
