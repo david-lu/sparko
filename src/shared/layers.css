@@ -1,0 +1,15 @@
+/* Application layers. Component-local z-index values belong inside an isolated
+   content surface (video stage, timeline viewport, or panel columns). Never put
+   a stacking context on a toolbar/menu ancestor: its popup must clear sibling
+   panels, resize handles, and status overlays. Modal dialogs and native
+   popovers use the browser's top layer, including during fullscreen playback. */
+:root {
+  --layer-content: 0;
+  --layer-divider: 10;
+  --layer-status: 20;
+  --layer-popover: 30;
+  --layer-menu: 40;
+}
+
+/* Closed triggers should not cover adjacent controls or resize handles. */
+[data-popup-menu][open] { z-index: var(--layer-menu); }

@@ -9,6 +9,7 @@ import { assets } from '../project/assets';
 import VideoFilmstrip from '../timeline/VideoFilmstrip';
 import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
 import ResizeHandle from '../../shared/ResizeHandle';
+import ModalBackdrop from '../../shared/ModalBackdrop';
 import { useWorkspaceLocked } from '../../shared/panels/WorkspaceLock';
 import { useShortcuts } from '../../shared/shortcuts';
 import DropdownMenu, { useExclusiveMenu } from '../../shared/DropdownMenu';
@@ -398,9 +399,6 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       {!context.edgeId&&!context.groupId&&<><div role="separator"/><button role="menuitem" disabled={!editor.selected.length} onClick={()=>contextAction(()=>editor.groupSelection())}>Group selected clips <kbd>{shortcuts.label('group')}</kbd></button>
         <button role="menuitem" disabled={!graph.groups?.some(g=>g.nodeIds.some(id=>editor.selected.includes(id)))} onClick={()=>contextAction(()=>editor.ungroup())}>Ungroup selected clips <kbd>{shortcuts.label('ungroup')}</kbd></button></>}
       <div role="separator"/><button role="menuitem" onClick={()=>contextAction(cleanup)}>Clean up layout <kbd>{shortcuts.label('layout')}</kbd></button><button role="menuitem" onClick={()=>contextAction(fitSelected)}>Fit <kbd>{shortcuts.label('fit')}</kbd></button></div>}
-    {templateName!==null&&<div className="modal-backdrop"><form className="project-card" role="dialog" aria-modal="true" aria-labelledby="template-title" onKeyDown={e=>{
-      if(e.key==='Escape'){e.preventDefault();setTemplateName(null);templateMenu.current?.querySelector('summary')?.focus();}
-      if(e.key==='Tab'){const controls=Array.from(e.currentTarget.querySelectorAll<HTMLElement>('input,button'));if(e.shiftKey&&document.activeElement===controls[0]){e.preventDefault();controls.at(-1)?.focus();}else if(!e.shiftKey&&document.activeElement===controls.at(-1)){e.preventDefault();controls[0]?.focus();}}
-    }} onSubmit={e=>{e.preventDefault();editor.saveTemplate(templateName);setTemplateName(null);templateMenu.current?.querySelector('summary')?.focus();}}><h2 id="template-title">Save selected clips as a template</h2><p className="hint">Saves the group’s layout, clips, settings and internal connections. Imported videos reuse their footage; interstitials start as drafts.</p><label className="field">Template name<input autoFocus required maxLength={200} value={templateName} onChange={e=>setTemplateName(e.target.value)}/></label><div className="close-project-actions"><button type="button" className="button" onClick={()=>{setTemplateName(null);templateMenu.current?.querySelector('summary')?.focus();}}>Cancel</button><button className="button primary" type="submit">Save template</button></div></form></div>}
+    {templateName!==null&&<ModalBackdrop labelledBy="template-title" onCancel={()=>setTemplateName(null)} restoreFocus={()=>templateMenu.current?.querySelector('summary')?.focus({preventScroll:true})}><form className="project-card" onSubmit={e=>{e.preventDefault();editor.saveTemplate(templateName);setTemplateName(null);}}><h2 id="template-title">Save selected clips as a template</h2><p className="hint">Saves the group’s layout, clips, settings and internal connections. Imported videos reuse their footage; interstitials start as drafts.</p><label className="field">Template name<input autoFocus required maxLength={200} value={templateName} onChange={e=>setTemplateName(e.target.value)}/></label><div className="close-project-actions"><button type="button" className="button" onClick={()=>setTemplateName(null)}>Cancel</button><button className="button primary" type="submit">Save template</button></div></form></ModalBackdrop>}
   </div>;
 }

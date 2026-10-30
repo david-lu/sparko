@@ -54,7 +54,7 @@
 .timeline-heading,.timeline-ruler,.timeline-footer{flex-shrink:0}
 .timeline-track{flex:1;min-height:24px}
 .timeline-pin:after{height:calc(var(--pin-line-height,29px))}
-.timeline-scroll{flex:1;min-height:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line-strong) var(--input)}
+.timeline-scroll{isolation:isolate;flex:1;min-height:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line-strong) var(--input)}
 .timeline-scroll::-webkit-scrollbar{height:8px}
 .timeline-scroll::-webkit-scrollbar-thumb{background:var(--line-strong)}
 .timeline-scroll::-webkit-scrollbar-track{background:var(--input)}

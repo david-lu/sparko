@@ -1,5 +1,5 @@
 .player-card{display:flex;flex-direction:column;flex:1;min-height:0;background:var(--panel);overflow:hidden}
-.video-stage{position:relative;flex:1;min-height:0;background:#0f0e0c;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.video-stage{position:relative;isolation:isolate;z-index:var(--layer-content);flex:1;min-height:0;background:#0f0e0c;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .video-stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;cursor:pointer}
 .playback-captions{position:absolute;left:8%;right:8%;bottom:52px;z-index:2;text-align:center;pointer-events:none;font-size:clamp(14px,2vw,26px);color:white;text-shadow:0 1px 2px black}
 .playback-captions span{display:table;margin:2px auto;background:#000b;padding:2px 6px;white-space:pre-line}

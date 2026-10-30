@@ -32,6 +32,7 @@ import WindowMenu from './WindowMenu';
 import ShortcutSettings from './ShortcutSettings';
 import { useShortcuts } from '../shared/shortcuts';
 import DropdownMenu from '../shared/DropdownMenu';
+import ModalBackdrop from '../shared/ModalBackdrop';
 
 // Fast Refresh preserves useState, including instances with obsolete controller methods.
 // Reload saved project state when a controller changes during local development.
@@ -343,7 +344,7 @@ export default function App() {
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" onChange={event => { const file = event.target.files?.[0]; if (file) openFile(file); event.target.value = ''; }} />
     <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" onChange={event => { const file = event.target.files?.[0]; if (file) void projects.importProject(file); event.target.value = ''; }} />
     {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
-    {closePrompt && <div className="modal-backdrop"><div className="project-card" role="dialog" aria-modal="true" aria-labelledby="close-project-title">
+    {closePrompt && <ModalBackdrop labelledBy="close-project-title" onCancel={()=>{if(!projectState.busy)setClosePrompt(false);}}><div className="project-card">
       <h2 id="close-project-title">Save changes before closing?</h2>
       <p className="hint">Changes to {projectState.project?.name || 'this project'} have not been saved to a project file.</p>
       {(projectState.error || error) && <p className="inline-error" role="alert">{projectState.error || error}</p>}
@@ -356,10 +357,10 @@ export default function App() {
           if (closed) setClosePrompt(false);
         }); }}>Save and close</button>
       </div>
-    </div></div>}
-    {login && <div className="modal-backdrop"><div className="login-card" role="dialog" aria-modal="true" aria-labelledby="login-title"><h2 id="login-title">Unlock video tools</h2><p className="hint">Enter this workspace’s password to use its AI providers.</p><form onSubmit={event => {
+    </div></ModalBackdrop>}
+    {login && <ModalBackdrop labelledBy="login-title"><div className="login-card"><h2 id="login-title">Unlock video tools</h2><p className="hint">Enter this workspace’s password to use its AI providers.</p><form onSubmit={event => {
       event.preventDefault(); sessionStorage.setItem('sparko:password', password); setLoginError('');
       void request('/api/session', { method: 'POST' }).then(() => { setLogin(false); setPassword(''); }).catch(err => { sessionStorage.removeItem('sparko:password'); setLoginError(err.message); });
-    }}><label className="field">Workspace password<input type="password" autoFocus autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label><button className="button primary full-width" type="submit">Unlock</button></form>{loginError && <p className="inline-error" role="alert">{loginError}</p>}</div></div>}
+    }}><label className="field">Workspace password<input type="password" autoFocus autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label><button className="button primary full-width" type="submit">Unlock</button></form>{loginError && <p className="inline-error" role="alert">{loginError}</p>}</div></ModalBackdrop>}
   </div>;
 }
