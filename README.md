@@ -2,6 +2,8 @@
 
 A compact, single-page video workspace with generated interstitials. React renders the UI; independent controllers own playback and generation jobs. Mediabunny handles source inspection, reference clipping, and frame-based composition.
 
+For the proposed subscription streaming service, see the [streaming architecture README](docs/streaming-architecture/README.md). It covers business account setup, AWS hosting, Mediabunny playback, Stripe subscriptions, scaling and cost assumptions, current limitations, and the implementation roadmap.
+
 ## Run locally
 
 Requires Node.js 24 and a current Chrome or Edge for WebCodecs export support.
