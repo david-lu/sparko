@@ -42,7 +42,7 @@ async function setup(page: Page, { retry = false, mismatch = false, native = fal
       state.buffering = buffering; if (error) state.error = error;
       if (state.scenes.at(-1) !== session.sceneId) state.scenes.push(session.sceneId);
       state.times.push(video.currentTime);
-    }, { width: 160, height: 96, duration: 2, fps: 25, codec: 'avc', hasAudio: true });
+    }, { width: 160, height: 96, duration: 2, fps: 25, codec: 'avc', hasAudio: true }, false, true, 4);
     (window as any).flowBufferTest = state;
     return { thirdId: third.id, thirdScene: third.sceneId };
   }, { retry, mismatch, native, references });

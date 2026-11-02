@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch server/index.ts",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --project tsconfig.build.json && vite build",
     "start": "tsx server/index.ts --production",
     "typecheck": "tsc --noEmit",
     "comfy:check": "tsx scripts/check-comfy.ts",

@@ -38,7 +38,14 @@ export default function MaskInjectionField({ value, hasEndReference, onChange }:
       if (event.key === 'Escape') { event.preventDefault(); setPosition(null); button.current?.focus({ preventScroll: true }); }
     };
     const resize = () => setPosition(null);
-    const scroll = (event: Event) => { if (!popup.current?.contains(event.target as Node)) setPosition(null); };
+    const anchor = button.current?.getBoundingClientRect();
+    const scroll = (event: Event) => {
+      if (popup.current?.contains(event.target as Node)) return;
+      const rect = button.current?.getBoundingClientRect();
+      // A pending scroll notification from focusing the trigger can arrive after
+      // opening. Dismiss only when scrolling actually moves its anchor.
+      if (!rect || rect.top !== anchor?.top || rect.left !== anchor?.left) setPosition(null);
+    };
     document.addEventListener('pointerdown', outside); document.addEventListener('focusin', outside); document.addEventListener('keydown', escape);
     window.addEventListener('resize', resize); window.addEventListener('scroll', scroll, true);
     return () => {

@@ -58,7 +58,7 @@ test('templates stay grouped, move their clips and bends together, and support r
   await page.screenshot({ path: 'test-results/template-groups-desktop.png', fullPage: true });
   const beforeArchive = (await saved(page)).storyFlow;
   await page.locator('summary').filter({ hasText: /^File$/ }).click(); const downloadEvent = page.waitForEvent('download'); await page.getByRole('menuitem', { name: 'Export project', exact: true }).click(); const download = await downloadEvent;
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3000', viewport: { width: 1440, height: 1000 } }), restored = await context.newPage();
+  const context = await browser.newContext({ baseURL: new URL(page.url()).origin, viewport: { width: 1440, height: 1000 } }), restored = await context.newPage();
   restored.on('pageerror', error => errors.push(error.message)); await restored.goto('/'); await restored.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'Groups.sparko', mimeType: 'application/zip', buffer: await readFile((await download.path())!) });
   await expect(restored.locator('.story-group')).toHaveCount(3, { timeout: 60000 }); expect((await saved(restored)).storyFlow.groups).toEqual(beforeArchive.groups);
   const frames = await restored.locator('.story-group').evaluateAll(nodes => { const canvas = document.querySelector('.story-scroll')!.getBoundingClientRect(); return nodes.map(n => { const r = n.getBoundingClientRect(); return r.top >= canvas.top && r.bottom <= canvas.bottom + 1 && r.left >= canvas.left && r.right <= canvas.right; }); });

@@ -12,7 +12,7 @@ export type MaskInjection = typeof maskInjections[number];
 export const normalizeMaskInjection = (value: unknown, legacyInterpolation?: unknown): MaskInjection =>
   maskInjections.includes(value as MaskInjection) ? value as MaskInjection : legacyInterpolation === true ? 'uniform' : 'standard';
 export const clipMaskInjection = (item: Pick<InterstitialSettings, 'method' | 'maskInjection' | 'interpolateMiddle' | 'useInputReference' | 'useOutputReference'>): MaskInjection =>
-  item.method === 'comfy-extend' || item.useInputReference === false || item.useOutputReference === false ? 'standard' : normalizeMaskInjection(item.maskInjection, item.interpolateMiddle);
+  (item.method === 'comfy-extend' && item.useOutputReference !== true) || item.useInputReference === false || item.useOutputReference === false ? 'standard' : normalizeMaskInjection(item.maskInjection, item.interpolateMiddle);
 export const minimumDuration = (method: GenerationMethod = 'comfy') => method === 'comfy-loop' ? INTERSTITIAL.minStartRange : INTERSTITIAL.minDuration;
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
 export type ClipReference = { sceneId: string; assetId: string; inFrame: number; outFrame: number };

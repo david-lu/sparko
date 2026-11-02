@@ -1,7 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, addBridge, type Page } from './fixtures';
 import { readFile } from 'node:fs/promises';
 
-const workspace = ['.workspace-grid', '.video-stage', '.timeline-section', '.sidebar'];
+const workspace = ['.workspace-grid', '.video-stage', '.story-canvas', '.sidebar'];
 const editor = ['.interstitial-editor', '.prompt-field-heading', '.enhance-prompt', 'textarea', '.interstitial-time-fields', '.interstitial-editor button[type=submit]', '.task-status'];
 async function bounds(page: Page, selectors: string[], scrollRoot?: string) {
   return page.evaluate(({ selectors, scrollRoot }) => selectors.map(selector => {
@@ -46,7 +46,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.goto('/');
     await expect(page.locator('.project-start-pending')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
-    await expect(page.getByText(/interactive interstitial creator/)).toBeVisible();
+    await expect(page.locator('.project-start-header p')).toBeVisible();
     const selectors = ['.project-start-header', '.project-start-actions', '.project-start-sections', '.project-start-section:first-child', '.project-start-section:last-child'];
     const pending = await bounds(page, selectors);
     await page.waitForTimeout(850);
@@ -103,9 +103,10 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
   test(`discarding an edit does not show a closing message on the chooser at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto('/');
+    await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
     await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-    await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
-    await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
+    await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Add interstitial', exact: true }).press('Enter');
     await page.evaluate(() => {
       (window as any).__chooserMessages = [];
       new MutationObserver(() => {
@@ -129,16 +130,16 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       models: { openai: 'test', gemini: 'test' }, defaultVideo: { name: 'sample.mp4', url: '/media/sample.mp4', size: video.length }, defaultProject: null,
     } }));
     await page.goto('/');
+    await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
     await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-    await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled({ timeout: 60_000 });
     await expect(page.locator('.buffering')).toHaveCount(0);
 
     // Opening a project leaves the workspace geometry stable.
     const baseWorkspace = await bounds(page, workspace);
     unchanged(await bounds(page, workspace), baseWorkspace);
 
-    await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('2');
-    await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
+    await addBridge(page);
     await page.getByLabel('Interstitial prompt').fill('Continue the dance');
     await page.locator('.sidebar').evaluate(element => { element.scrollTop = 0; });
     const idleEditor = await bounds(page, editor);
@@ -157,6 +158,8 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
 
     let complete = false, releaseDownload!: () => void;
     const downloading = new Promise<void>(resolve => { releaseDownload = resolve; });
+    await page.route('**/api/comfy/status*', route => route.fulfill({ json: { ready: true } }));
+    await page.route('**/api/comfy/jobs/layout-job/events', route => route.fulfill({ contentType: 'text/event-stream', body: 'event: refresh\ndata: {}\n\n' }));
     await page.route('**/api/comfy/interstitials', route => route.fulfill({ status: 202, json: { requestId: 'layout-job', status: 'IN_QUEUE' } }));
     await page.route('**/api/comfy/jobs/layout-job', route => route.fulfill({ json: complete
       ? { requestId: 'layout-job', status: 'COMPLETED', videoUrl: 'https://example.test/layout.mp4', insertion: { start: 1, duration: 2, totalDuration: 4 } }
@@ -167,7 +170,8 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     unchanged(await bounds(page, editor), idleEditor);
     await expect(page.getByRole('button', { name: 'Cancel interstitial generation' })).toBeEnabled();
     complete = true;
-    await expect(page.getByRole('progressbar', { name: 'Downloading generated video' })).toBeVisible();
+    await expect(page.locator('.task-status-message')).toContainText('Downloading generated video');
+    await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toBeVisible();
     unchanged(await bounds(page, editor), idleEditor);
     await page.screenshot({ path: `test-results/loading-states-${viewport.width}.png` });
     releaseDownload();

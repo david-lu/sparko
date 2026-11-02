@@ -33,8 +33,8 @@ for (const source of ['sample', 'file'] as const) {
     });
     if (source === 'sample') await page.getByRole('button', { name: /^Sample project/ }).click();
     else await page.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'test.sparko', mimeType: 'application/zip', buffer: archive });
-    await expect(page.locator('.menu-document')).toHaveText('reference.mp4');
-    await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
+    await expect(page.locator('.menu-document')).toHaveText('Deployment test');
+    await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
     await page.getByText('File', { exact: true }).click();
     const download = page.waitForEvent('download');
     await page.getByRole('menuitem', { name: 'Export project', exact: true }).click();

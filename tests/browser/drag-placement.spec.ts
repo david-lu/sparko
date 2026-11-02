@@ -57,6 +57,7 @@ test('wire drops attach at the pointer and template drops preserve existing posi
 for(const width of [1440,390])test(`template drops replace a highlighted transition and reconnect every branch at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:width===390?844:1000});await open(page);
   await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');await fitAll(page);
+  await page.getByRole('button',{name:'Add template Question & response',exact:true}).scrollIntoViewIfNeeded();
   const initial=await saved(page),connection=initial.storyFlow.edges[0],view=await camera(page);
   const canvas=page.locator('.story-scroll'),bounds=(await canvas.boundingBox())!,toolbar=await page.locator('.story-toolbar').boundingBox(),status=await page.locator('.story-status').boundingBox();
   const rect=(await page.locator('.story-crossfade').first().boundingBox())!,x=rect.x+rect.width/2,y=rect.y+rect.height+8;
@@ -74,7 +75,7 @@ for(const width of [1440,390])test(`template drops replace a highlighted transit
   const graph=(await saved(page)).storyFlow,added=graph.nodes.slice(2),entry=added.find((n:any)=>n.name==='Ask a question');
   expect(graph.nodes.slice(0,2)).toEqual(initial.storyFlow.nodes);expect(await camera(page)).toEqual(view);
   expect(graph.edges.some((e:any)=>e.id===connection.id||e.from===connection.from&&e.to===connection.to)).toBe(false);
-  expect(graph.edges.find((e:any)=>e.from===connection.from)).toMatchObject({to:entry.id,event:connection.event,label:connection.label,crossfade:connection.crossfade});
+  expect(graph.edges.find((e:any)=>e.from===connection.from)).toMatchObject({to:entry.id,event:connection.event,label:connection.label,crossfadeReferenceRatio:.75});
   expect(entry.referenceId).toBe(connection.from);
   const exits=graph.edges.filter((e:any)=>e.to===connection.to);
   expect(exits).toHaveLength(2);expect(exits.map((e:any)=>added.find((n:any)=>n.id===e.from).name).sort()).toEqual(['Celebrate','Encourage']);
@@ -96,17 +97,18 @@ test('cancelled transition replacements and media drops leave the original conne
 });
 
 test('narrow library drops and saved templates use the same drag placement',async({page})=>{
-  await page.setViewportSize({width:390,height:844});await open(page);const canvas=page.locator('.story-scroll'),toolbar=await page.locator('.story-toolbar').boundingBox();
+  await page.setViewportSize({width:390,height:844});await open(page);await page.getByRole('button',{name:'Collapse Library panel',exact:true}).click();await page.getByRole('button',{name:'Add interstitial',exact:true}).scrollIntoViewIfNeeded();const canvas=page.locator('.story-scroll'),toolbar=await page.locator('.story-toolbar').boundingBox();
   const bounds=(await canvas.boundingBox())!;await begin(page,page.getByRole('button',{name:'Add interstitial',exact:true}),bounds.x+200,bounds.y+30);await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(2);
   await at(page.locator('.story-clip.type-simple'),bounds.x+200,bounds.y+30);
   expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);
   await saveSelectionAsTemplate(page);await page.getByLabel('Template name',{exact:true}).fill('Saved scene');await page.getByRole('button',{name:'Save template',exact:true}).click();
   const savedTemplate=page.getByRole('button',{name:'Add template Saved scene',exact:true});
   await savedTemplate.click();await expect(page.locator('.story-clip')).toHaveCount(2);
-  await begin(page,savedTemplate,bounds.x+20,bounds.y+190);
-  await at(page.locator('.story-drop-preview'),bounds.x+20,bounds.y+190);const beforeDropToolbar=await page.locator('.story-toolbar').boundingBox();
+  await savedTemplate.scrollIntoViewIfNeeded();const templateBounds=(await canvas.boundingBox())!;
+  await begin(page,savedTemplate,templateBounds.x+20,templateBounds.y+80);
+  await at(page.locator('.story-drop-preview'),templateBounds.x+20,templateBounds.y+80);const beforeDropToolbar=await page.locator('.story-toolbar').boundingBox();
   await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(3);
-  await at(page.locator('.story-clip.type-simple').last(),bounds.x+20,bounds.y+190);
+  await at(page.locator('.story-clip.type-simple').last(),templateBounds.x+20,templateBounds.y+80);
   expect(await page.locator('.story-toolbar').boundingBox()).toEqual(beforeDropToolbar);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({path:'test-results/drag-placement-mobile.png',fullPage:true});
 });

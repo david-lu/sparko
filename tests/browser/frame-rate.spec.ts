@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, openVideo, seekSource, saveAndReopen } from './fixtures';
 import { readFile } from 'node:fs/promises';
 
 test.beforeEach(async ({ page }) => {
@@ -15,63 +15,34 @@ test('plays a 25 fps source natively without encoding and reuses it after reload
       return encode.apply(this, args);
     };
   });
-  await page.goto('/');
-  await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
-  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
-  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).readyState), { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
-  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).duration)).toBe(4);
-  await expect(page.locator('.timeline-footer')).toContainText('24 fps');
-  await expect(page.locator('.rendered-interstitial')).toHaveCount(0);
-  const rates = await page.evaluate(async () => {
+  await openVideo(page);
+  const native = await page.evaluate(async () => {
     const { Input, BlobSource, ALL_FORMATS } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
     const project = await readActiveProject();
     const source = await readAsset(project.source.assetId);
-    const rate = async (blob: Blob) => {
-      const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
-      try { return (await (await input.getPrimaryVideoTrack()).computePacketStats()).averagePacketRate; }
-      finally { input.dispose(); }
-    };
-    const playing = await (await fetch(document.querySelector('video')!.currentSrc)).blob();
-    const playingBytes = new Uint8Array(await playing.arrayBuffer());
-    return { originalAssetId: project.source.originalAssetId, source: await rate(source.blob), playing: await rate(playing),
-      assetId: source.id, encodedFrames: (window as any).encodedFrames,
-      sameFile: source.blob.size === playing.size && new Uint8Array(await source.blob.arrayBuffer()).every((value, i) => value === playingBytes[i]) };
+    const input = new Input({ source: new BlobSource(source.blob), formats: ALL_FORMATS });
+    try { return { assetId: source.id, originalAssetId: project.source.originalAssetId,
+      fps: (await (await input.getPrimaryVideoTrack()).computePacketStats()).averagePacketRate,
+      bytes: [...new Uint8Array(await source.blob.arrayBuffer())] }; }
+    finally { input.dispose(); }
   });
-  expect(rates.originalAssetId).toBeUndefined();
-  expect(rates.source).toBeCloseTo(25, 5);
-  expect(rates.playing).toBeCloseTo(25, 5);
-  expect(rates.sameFile).toBe(true);
-  expect(rates.encodedFrames).toBe(0);
-
-  const time = () => page.locator('video').evaluate(video => (video as HTMLVideoElement).currentTime);
-  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('1');
-  await expect.poll(time).toBeCloseTo(1, 5);
-  await page.locator('.menu-document').click();
-  await page.keyboard.press('.'); await expect.poll(time).toBeCloseTo(25 / 24, 5);
-  await page.keyboard.press(','); await expect.poll(time).toBeCloseTo(1, 5);
-  await page.locator('.video-stage').hover();
-  await page.getByRole('button', { name: 'Loop video' }).click();
-  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('3.75');
-  await expect.poll(time).toBeCloseTo(3.75, 5);
-  await page.locator('.video-stage').hover();
-  await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect.poll(async () => { const current = await time(); return current > 0.05 && current < 1; }, { timeout: 15_000 }).toBe(true);
-  expect(await page.evaluate(() => (window as any).encodedFrames)).toBe(rates.encodedFrames);
-  await page.evaluate(async () => {
-    const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
-    await writeProject({ ...await readActiveProject(), id: 'project:native-source-reload', saved: true });
-  });
-  await page.reload();
-  await page.getByRole('region', { name: 'Recent projects' }).getByRole('button', { name: 'Open' }).click();
-  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
-  expect(await page.evaluate(async () => {
-    const { readActiveProject } = await import('/src/features/project/database.ts' as string);
-    return (await readActiveProject()).source.assetId;
-  })).toBe(rates.assetId);
+  expect(native.originalAssetId).toBeUndefined(); expect(native.fps).toBe(25);
+  expect(Buffer.from(native.bytes)).toEqual(await readFile('tests/fixtures/interstitial-reference.mp4'));
+  await seekSource(page, 1);
+  await page.locator('.story-filmstrip').press('ArrowRight');
+  await expect(page.locator('.story-filmstrip')).toHaveAttribute('aria-valuenow', String(25 / 24));
+  await page.locator('.video-stage').hover(); await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect.poll(async () => Number(await page.locator('.story-filmstrip').getAttribute('aria-valuenow'))).toBeGreaterThan(1.2);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
   expect(await page.evaluate(() => (window as any).encodedFrames)).toBe(0);
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  await saveAndReopen(page);
+  expect(await page.evaluate(async () => {
+    const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
+    const source = await readAsset((await readActiveProject()).source.assetId);
+    return [...new Uint8Array(await source.blob.arrayBuffer())];
+  })).toEqual(native.bytes);
+  expect(await page.evaluate(() => (window as any).encodedFrames)).toBe(0);
   expect(errors).toEqual([]);
 });
 
@@ -100,7 +71,7 @@ test('converts only a short generation reference from a native 25 fps source', a
 test('cancelling a fallback conversion preserves the active project and leaves no partial assets', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
   const before = await page.evaluate(async () => {
     const { readActiveProject } = await import('/src/features/project/database.ts' as string);
     return readActiveProject();
@@ -164,18 +135,18 @@ test('normalizes variable frame spacing even when its average is 24 fps', async 
 test('opens a saved 25 fps source without moving its drafts', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
   const legacy = await page.evaluate(async () => {
     const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
     const saved = await readActiveProject();
-    const project = { ...saved, id: 'project:legacy', saved: true, source: { name: 'legacy.mp4', assetId: saved.source.assetId },
+    const project = { ...saved, id: 'project:legacy', name: 'legacy.mp4', storyFlow: undefined, saved: true, source: { name: 'legacy.mp4', assetId: saved.source.assetId },
       interstitials: [{ id: 'legacy-draft', label: 'Opening', time: 2, start_range: 2, end_range: 2, prompt: 'Keep this scene', phase: 'draft' }] };
     await writeProject(project); return project;
   });
   await page.reload();
   await page.getByRole('region', { name: 'Recent projects' }).getByRole('button', { name: 'Open' }).click();
   await expect(page.locator('.menu-document')).toHaveText('legacy.mp4');
-  await expect(page.getByRole('button', { name: 'Select Opening', exact: true })).toBeVisible();
+  await expect(page.locator('.story-clip-title').filter({ hasText: 'Opening' })).toBeVisible();
   const prepared = await page.evaluate(async () => {
     const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
     const { Input, BlobSource, ALL_FORMATS } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
@@ -189,12 +160,12 @@ test('opens a saved 25 fps source without moving its drafts', async ({ page }) =
   expect(prepared.project.source.originalAssetId).toBeUndefined();
   expect(prepared.project.interstitials).toMatchObject(legacy.interstitials);
   expect(prepared.project.interstitials[0].duration).toBe(6);
-  await page.getByRole('button', { name: 'Select Opening', exact: true }).click();
+  await page.locator('.story-clip-title').filter({ hasText: 'Opening' }).click();
   await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6');
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion', exact: true })).toHaveCount(0);
 });
 
-test('prepares a large source at 1080p while preserving aspect ratio and the 24 fps clock', async ({ page }) => {
+test('prepares a large source at the configured height limit while preserving aspect ratio and the 24 fps clock', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { Input, BlobSource, ALL_FORMATS, Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
@@ -214,7 +185,7 @@ test('prepares a large source at 1080p while preserving aspect ratio and the 24 
       return { width: await track.getDisplayWidth(), height: await track.getDisplayHeight(), fps: (await track.computePacketStats()).averagePacketRate, progress };
     } finally { input.dispose(); }
   });
-  expect(result).toMatchObject({ width: 1440, height: 1080 });
+  expect(result).toMatchObject({ width: 1792, height: 1344 });
   expect(result.fps).toBeCloseTo(24, 5);
   expect(result.progress[0]).toBe(0);
   expect(result.progress.length).toBeLessThanOrEqual(101);

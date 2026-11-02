@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, test, openVideo, addBridge, readProject } from './fixtures';
 
 test('Comfy generation, status recovery, and regeneration', async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, comfy: true } } }); });
@@ -21,9 +21,7 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
     : route.fulfill({ json: complete
       ? { requestId: 'comfy-test-job', status: 'COMPLETED', videoUrl: '/api/comfy/assets/comfy-test-asset/content' }
       : { requestId: 'comfy-test-job', status: 'IN_PROGRESS', progress: .98, progressDetails } }));
-  await page.goto('/');
-  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('examples/sample.mp4');
-  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
+  await openVideo(page);
   const bytes = await page.evaluate(async () => {
     const { Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const canvas = new OffscreenCanvas(160, 96), ctx = canvas.getContext('2d')!;
@@ -40,12 +38,12 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
     await downloading;
     return route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) });
   });
-  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('5');
-  await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
+  await addBridge(page);
+  await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).check();
   await expect(page.getByRole('combobox', { name: 'Video generation method' })).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion' })).toHaveCount(0);
-  await expect(page.getByText(/6.167s generated/)).toBeVisible();
   await page.getByLabel('Interstitial prompt').fill('Continue the motion');
+  await page.locator('.inspector-advanced summary').click();
   const mask = page.getByRole('button', { name: /^Mask injection:/ });
   await expect(mask).toContainText('Standard generation');
   await mask.click();
@@ -57,12 +55,12 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', '0.455', { timeout: 60_000 });
   expect(await optionPosition()).toBeCloseTo(optionTop, 0);
-  await expect(page.locator('.timeline-generation-spinner')).toHaveCount(1);
+  await expect(page.locator('.story-clip .timeline-generation-spinner')).toHaveCount(1);
   await expect(page.locator('.task-status')).toContainText('Generating video and audio · step 9/20 · 46% estimated overall');
   await expect(page.locator('.task-status')).not.toContainText('98%');
-  await expect(page.locator('.timeline-generation-spinner')).toHaveAttribute('aria-label', /step 9\/20.*46% estimated overall/);
+  await expect(page.locator('.story-clip [role=status]')).toHaveAttribute('aria-label', /step 9\/20.*46% estimated overall/);
   failStatus = true;
-  await expect(page.getByRole('alert')).toHaveText('The request failed. Please try again.');
+  await expect(page.locator('.task-status')).toContainText('The request failed. Please try again.');
   await expect(page.getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled();
   failStatus = false;
   await page.getByRole('button', { name: 'Check result', exact: true }).click();
@@ -71,20 +69,17 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
   await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', '0.455');
   complete = true;
   await expect(page.locator('.task-status')).toContainText('Downloading generated video');
-  await expect(page.getByRole('progressbar', { name: 'Downloading generated video' })).toHaveJSProperty('position', -1);
+  await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveJSProperty('position', -1);
   releaseDownload();
-  const saved = () => page.evaluate(async () => {
-    const { readActiveProject } = await import('/src/features/project/database.ts' as string);
-    const project = await readActiveProject();
-    return JSON.parse(localStorage.getItem(`sparko:interstitials:v1:${project.id}`)!)[0];
-  });
+  const saved = async () => (await readProject(page)).interstitials[0];
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);
   expect((await saved()).requestMethod).toBe('comfy');
   expect((await saved()).generationSettings.maskInjection).toBe('vignette');
   expect(await optionPosition()).toBeCloseTo(optionTop, 0);
-  await expect(page.getByLabel('Generated video for Untitled')).toBeVisible();
-  await expect(page.locator('.rendered-interstitial')).toHaveCount(1);
+  await expect(page.locator('.inspector-clip-meta')).toContainText('Generated');
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  await page.locator('.inspector-output > summary').click();
   const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click(); await download;
   await page.screenshot({ path: 'test-results/comfy-interstitial.png' });
   await mask.click();

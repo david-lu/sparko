@@ -2,7 +2,6 @@ import { expect, test } from './fixtures';
 import { readFile } from 'node:fs/promises';
 import { wavFixture } from '../fixtures/audio';
 
-test.skip(true, 'The Voice panel is temporarily removed from the interface.');
 
 declare global {
   interface Window {
@@ -35,9 +34,12 @@ test.beforeEach(async ({ page }) => {
     const response = await route.fetch(); const body = await response.json();
     await route.fulfill({ json: { ...body, providers: { openai: true, gemini: true, comfy: true } } });
   });
-  await page.goto('/');
-  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.duration)).toBeGreaterThan(0);
-  await page.getByRole('tab', { name: 'Voice' }).click();
+  await page.route('**/__voice-test', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()).replace('/src/main.tsx', '/tests/browser/voice-harness.tsx') });
+  });
+  await page.goto('/__voice-test');
+  await expect(page.getByRole('button', { name: 'Enable mic', exact: true })).toBeVisible();
 });
 
 test('waits for speech, rejects a tone, captures an utterance and sends it only on request', async ({ page }) => {
@@ -55,7 +57,6 @@ test('waits for speech, rejects a tone, captures an utterance and sends it only 
     uploads.push({ context, bytes: bytes.length, mime: file.type });
     await route.fulfill({ json: { transcript: 'The character opened the door.', response: 'Your answer has been received.', provider: request.url().split('/').pop(), model: 'test-model', context } });
   });
-  await page.getByRole('slider', { name: 'Video timeline' }).fill('12.5');
   await page.getByRole('button', { name: 'Enable mic' }).click();
   await expect(page.getByText('Listening for speech', { exact: true })).toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(800);
@@ -79,7 +80,7 @@ test('waits for speech, rejects a tone, captures an utterance and sends it only 
     await expect(page.getByLabel('Voice result')).toContainText('The character opened the door.');
   }
   expect(uploads).toHaveLength(2);
-  expect(uploads[0].context).toEqual({ sourceId: 'default:sample.mp4', videoTime: 12.5 });
+  expect(uploads[0].context).toEqual({ sourceId: 'voice-test', videoTime: 12.5 });
   expect(uploads[0].mime).toBe('audio/wav');
   expect(uploads[0].bytes).toBeGreaterThan(32000);
   expect(uploads[0].bytes).toBeLessThan(2 * 1024 * 1024);
@@ -93,9 +94,9 @@ test('waits for speech, rejects a tone, captures an utterance and sends it only 
 test('disables the mic when leaving the voice panel and handles permission denial', async ({ page }) => {
   await page.getByRole('button', { name: 'Enable mic' }).click();
   await expect(page.getByText('Listening for speech', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('tab', { name: /Interstitials/ }).click();
+  await page.getByRole('button', { name: 'Toggle voice panel' }).click();
   expect(await page.evaluate(() => window.voiceTest.tracks.every(track => track.readyState === 'ended'))).toBe(true);
-  await page.getByRole('tab', { name: 'Voice' }).click();
+  await page.getByRole('button', { name: 'Toggle voice panel' }).click();
   await expect(page.getByText('Mic off', { exact: true })).toBeVisible();
   await page.evaluate(() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Denied', 'NotAllowedError'); }; });
   await page.getByRole('button', { name: 'Enable mic' }).click();

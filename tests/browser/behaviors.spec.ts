@@ -35,6 +35,7 @@ test('independent behaviors expose named condition sockets with separate draggab
   expect((await clip.boundingBox())!.height).toBe(76);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(await clip.locator('[data-condition-id]>span').evaluateAll(labels=>labels.every(el=>el.scrollWidth<=el.clientWidth))).toBe(true);
   await page.screenshot({path:'test-results/conditional-outputs-mobile.png',fullPage:true});expect(errors).toEqual([]);
+  await clip.locator('.story-clip-title').click();
   await page.getByRole('button',{name:'Remove condition 2',exact:true}).click();await expect(clip.locator('.story-port.output')).toHaveCount(1);await expect(page.getByRole('radio',{name:'Use condition 1 as default',exact:true})).toBeChecked();
   const remaining=(await saved(page)).storyFlow;expect(remaining.nodes[0].defaultConditionId).toBe(remaining.nodes[0].conditions[0].id);
 });

@@ -1,0 +1,13 @@
+{
+  "name": "Sparko quality checks",
+  "requires": "none",
+  "targets": ["production"],
+  "blocks": "deployment-alias",
+  "source": {
+    "kind": "git-provider",
+    "provider": "github",
+    "externalCheckName": "Sparko quality checks"
+  },
+  "timeout": 3600,
+  "isRerequestable": false
+}

@@ -13,6 +13,7 @@ async function open(page: Page, width: number) {
 // decoration. Include them temporarily so these checks catch visual occlusion,
 // even when the menu underneath would still receive clicks.
 async function expectOnTop(popup: Locator) {
+  await expect(popup).toBeVisible();
   const obscured = await popup.evaluate(element => {
     const decorations = Array.from(document.querySelectorAll<HTMLElement>(
       '.story-playhead,.story-playhead *,.story-port,.story-marquee,.story-drop-preview,.story-file-drop,.clip-job-status,.playback-captions,.draft-preview-label',

@@ -67,6 +67,15 @@ describe('interstitial lifecycle', () => {
     controller.edit(item.id, { maskInjection: 'standard' });
     expect(hasUnsubmittedChanges(controller.getSnapshot().items.find(clip => clip.id === item.id)!)).toBe(false);
   });
+  it('retains a FILM mask after an extension clip enables both graph references', () => {
+    const id = add();
+    controller.edit(id, { method: 'comfy-extend', useInputReference: true, useOutputReference: true, maskInjection: 'vignette' });
+    controller.load('source');
+    expect(controller.getSnapshot().items.find(item => item.id === id)).toMatchObject({ maskInjection: 'vignette', useOutputReference: true });
+    controller.edit(id, { useOutputReference: false });
+    controller.load('source');
+    expect(controller.getSnapshot().items.find(item => item.id === id)?.maskInjection).toBe('standard');
+  });
   it('retains the full idle generation while using the finished loop for playback', async () => {
     const id = add(), raw = new Blob(['reference, generated middle, reference'], { type: 'video/mp4' });
     const loop = new Blob(['repeatable middle'], { type: 'video/mp4' });

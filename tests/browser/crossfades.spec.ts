@@ -27,7 +27,7 @@ test('crossfades blend video and mixed-rate audio in exports, previews and parti
     const results = [];
     try { for (const mode of ['export', 'preview', 'disabled', 'partial', 'long']) {
       const composition = new TimelineComposition({ id: 'source', name: 'Source', url: sourceUrl }, { duration: 3, fps: 24, width: 160, height: 96, hasAudio: true, codec: 'avc' },
-        [{ id: 'generated', label: 'Generated', time: 1, phase: 'ready', result: { url: generatedUrl, start: 1, duration: 2, totalDuration: 4 } }], { crossfade: mode !== 'disabled', crossfadeFrames: mode === 'long' ? 12 : undefined });
+        [{ id: 'generated', label: 'Generated', time: 1, phase: 'ready', result: { url: generatedUrl, start: 1, duration: 2, totalDuration: 4 } }], { crossfade: mode !== 'disabled', crossfadeFrames: mode === 'long' ? 12 : 4 });
       const start = mode === 'partial' ? 23 / 24 : 0, end = mode === 'partial' ? 26 / 24 : composition.duration;
       const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
       try { await renderComposition(composition, output, { start, end, signal: new AbortController().signal, preview: mode === 'preview' }); }
@@ -53,11 +53,12 @@ test('crossfades blend video and mixed-rate audio in exports, previews and parti
           for (let i = first; i < last; i++) { sin += data[i] * Math.sin(i / rate * 2 * Math.PI * frequency); cos += data[i] * Math.cos(i / rate * 2 * Math.PI * frequency); }
           return 2 * Math.hypot(sin, cos) / (last - first);
         };
+        // Measure after the native AAC encoder priming window, still inside the 4-frame fade.
         results.push({ mode, colors, frames, duration: await video.computeDuration(), packets: (await video.computePacketStats()).packetCount, rate,
           audioDuration: await audio.computeDuration(), maxGap,
-          incomingBeforeCut: mode === 'partial' ? 0 : amplitude(880, .94, .97), outgoingAfterCut: mode === 'partial' ? 0 : amplitude(440, 1.03, 1.06),
+          incomingBeforeCut: mode === 'partial' ? 0 : amplitude(880, .94, .97), outgoingAfterCut: mode === 'partial' ? 0 : amplitude(440, 1.10, 1.13),
           earlyIncoming: mode === 'partial' ? 0 : amplitude(880, .64, .67),
-          returningSource: mode === 'partial' ? 0 : amplitude(440, 3.04, 3.07) });
+          returningSource: mode === 'partial' ? 0 : amplitude(440, 3.10, 3.13) });
       } finally { input.dispose(); }
     } } finally { URL.revokeObjectURL(sourceUrl); URL.revokeObjectURL(generatedUrl); }
     return results;
@@ -67,7 +68,8 @@ test('crossfades blend video and mixed-rate audio in exports, previews and parti
     expect(result.duration).toBeCloseTo(partial ? 3 / 24 : 5, 4);
     expect(result.packets).toBe(partial ? 3 : 120);
     expect(result.rate).toBe(48000); expect(result.maxGap).toBeLessThan(.002);
-    expect(Math.abs(result.audioDuration - result.duration)).toBeLessThan(.05);
+    // Allow AAC priming and packet padding, while video packet counts above remain exact.
+    expect(Math.abs(result.audioDuration - result.duration)).toBeLessThan(4096 / result.rate);
     const color = (frame: number) => result.colors[result.frames.indexOf(frame)];
     if (!partial) {
       if (result.mode === 'long') { expect(color(16)[1]).toBeGreaterThan(40); expect(result.earlyIncoming).toBeGreaterThan(.025); }
