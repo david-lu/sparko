@@ -23,9 +23,14 @@ const temporary = path.join(root, temporaryName);
 process.umask(0o077);
 
 try {
-  await access(path.join(root, '.vercel', 'project.json')).catch(() => {
+  // Vercel can link either this directory or the repository's projects.
+  const links = await Promise.all(['project.json', 'repo.json'].map(async name => {
+    try { await access(path.join(root, '.vercel', name)); return true; }
+    catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  }));
+  if (!links.some(Boolean)) {
     throw new Error('First run npx vercel login and npx vercel link from the Sparko folder, selecting your existing project.');
-  });
+  }
   const previous = await readFile(destination).catch(error => {
     if (error.code === 'ENOENT') return null;
     throw error;
@@ -33,9 +38,13 @@ try {
   // Seed the temporary file so Vercel can preserve local-only values when merging.
   await writeFile(temporary, previous ?? '', { flag: 'wx', mode: 0o600 });
   console.log(`Fetching Vercel ${environment} variables into .env...`);
-  const result = spawnSync('npx', ['--yes', 'vercel', 'env', 'pull', temporaryName, `--environment=${environment}`, '--yes'], {
-    cwd: root, stdio: 'inherit', shell: process.platform === 'win32',
-  });
+  const args = ['env', 'pull', temporaryName, `--environment=${environment}`, '--yes'];
+  const options = { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' };
+  // Use the installed CLI on macOS/Linux; keep npx as the portable fallback.
+  let result = process.platform === 'win32'
+    ? spawnSync('npx', ['--yes', 'vercel', ...args], options)
+    : spawnSync('vercel', args, options);
+  if (result.error?.code === 'ENOENT') result = spawnSync('npx', ['--yes', 'vercel', ...args], options);
   if (result.error) throw result.error;
   if (result.status !== 0) {
     process.exitCode = result.status || 1;
