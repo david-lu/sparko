@@ -5,6 +5,25 @@ const saved = (page: Page) => page.evaluate(async () => { const { readActiveProj
 const open = async (page: Page) => { await page.goto('/'); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4'); await expect(page.locator('.story-clip')).toHaveCount(1, { timeout: 60000 }); };
 const fit = (page: Page) => fitAll(page);
 
+for(const width of [1440,390])test(`sample group frames fit their clips when opening and zooming at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:width===390?844:1000});await page.goto('/');
+  await page.getByRole('button',{name:/Sample project/}).click();await expect(page.locator('.story-group')).toHaveCount(2,{timeout:120000});
+  await expect.poll(async()=>(await saved(page))?.storyFlow?.groups?.length).toBe(2);
+  const checkFrames=async()=>{
+    const groups=(await saved(page)).storyFlow.groups;
+    for(const group of groups){
+      const frame=(await page.locator(`[data-group-id="${group.id}"]`).boundingBox())!;
+      const clips=await Promise.all(group.nodeIds.map((id:string)=>page.locator(`[data-node-id="${id}"]`).boundingBox()));
+      const left=Math.min(...clips.map(c=>c!.x)),right=Math.max(...clips.map(c=>c!.x+c!.width)),top=Math.min(...clips.map(c=>c!.y)),bottom=Math.max(...clips.map(c=>c!.y+c!.height));
+      expect(left-frame.x).toBeCloseTo(18,0);expect(frame.x+frame.width-right).toBeCloseTo(18,0);
+      expect(top-frame.y).toBeCloseTo(38,0);expect(frame.y+frame.height-bottom).toBeCloseTo(28,0);
+    }
+  };
+  await checkFrames();await page.screenshot({path:`test-results/group-sizing-${width}.png`,fullPage:true});
+  await page.getByRole('button',{name:'Zoom in story',exact:true}).click();await checkFrames();
+  await page.locator('.story-group-header').first().focus();await page.keyboard.press('Enter');await page.getByRole('button',{name:'Fit',exact:true}).click();await checkFrames();
+});
+
 test('templates stay grouped, move their clips and bends together, and support rename, duplicate, ungroup and archives', async ({ page, browser }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message)); await open(page);
   await page.getByRole('button', { name: 'Add template Question & response', exact: true }).dragTo(page.locator('.story-scroll'), { targetPosition: { x: 140, y: 70 } });
@@ -30,9 +49,9 @@ test('templates stay grouped, move their clips and bends together, and support r
   await page.getByRole('button', { name: 'Green group color', exact: true }).click(); await expect(page.getByRole('button', { name: 'Green group color', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await header.click(); await page.keyboard.press('Control+d'); await expect(page.locator('.story-group')).toHaveCount(2); await expect(page.locator('.story-clip')).toHaveCount(9);
   const copy = page.getByRole('button', { name: 'Select group Scene group copy', exact: true }); await copy.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: /Ungroup · keep clips/ }).click(); await expect(page.locator('.story-group')).toHaveCount(1); await expect(page.locator('.story-clip')).toHaveCount(9);
+  await page.getByRole('menuitem', { name: /Remove group/ }).click(); await expect(page.locator('.story-group')).toHaveCount(1); await expect(page.locator('.story-clip')).toHaveCount(9);
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(page.locator('.story-group')).toHaveCount(2);
-  await fit(page); await header.click(); await page.getByRole('button', { name: 'Save group as template', exact: true }).click();
+  await fit(page); await header.click({button:'right'}); await page.getByRole('menuitem', { name: 'Save group as template', exact: true }).click(); await page.getByRole('button',{name:'Save template',exact:true}).click();
   project = await saved(page); expect(project.storyFlow.templates[0]).toMatchObject({ name: 'Scene group', color: 'green' });
   await page.locator('.story-menu summary').filter({ hasText: 'Templates' }).click(); await page.locator('.story-template-row').getByRole('button', { name: 'Scene group', exact: true }).dragTo(page.locator('.story-scroll'), { force: true, targetPosition: { x: 140, y: 320 } });
   await expect(page.locator('.story-group')).toHaveCount(3); await expect(page.locator('.story-clip')).toHaveCount(13); await fit(page);
@@ -50,7 +69,7 @@ test('source clips can be grouped and saved as footage templates with keyboard s
   await page.setViewportSize({ width: 390, height: 844 }); await open(page);
   await page.locator('.story-clip-title').click(); await page.keyboard.press('Control+g');
   await expect(page.locator('.story-group')).toHaveCount(1); await page.getByLabel('Group name', { exact: true }).fill('Reusable video'); await page.getByLabel('Group name', { exact: true }).press('Enter');
-  await page.getByRole('button', { name: 'Save group as template', exact: true }).click();
+  await page.getByRole('button',{name:'Select group Reusable video',exact:true}).click({button:'right'}); await page.getByRole('menuitem', { name: 'Save group as template', exact: true }).click(); await page.getByRole('button',{name:'Save template',exact:true}).click();
   const template = (await saved(page)).storyFlow.templates[0]; expect(template.nodes[0].kind).toBe('source');
   await fit(page); await page.getByRole('button', { name: 'Select group Reusable video', exact: true }).click(); await page.keyboard.press('Control+Shift+g');
   await expect(page.locator('.story-group')).toHaveCount(0); await expect(page.locator('.story-clip')).toHaveCount(1);

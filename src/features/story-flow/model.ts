@@ -22,7 +22,8 @@ export type StoryNode = {
 };
 export type StoryEdge = { id: string; from: string; to: string; event: 'next' | 'answer' | 'fallback'; conditionId?: string; label: string; values: string[]; crossfade?: number; points?: {id:string;x:number;y:number}[] };
 export const groupColors = { blue: '#82a5bd', purple: '#a391c2', green: '#80a69a', amber: '#c4a779', rose: '#c58d99' } as const;
-export type StoryGroup = { id: string; name: string; nodeIds: string[]; color: keyof typeof groupColors };
+export type GroupBounds = { x: number; y: number; width: number; height: number };
+export type StoryGroup = { id: string; name: string; nodeIds: string[]; color: keyof typeof groupColors; bounds?: GroupBounds };
 export type StoryTemplate = { id: string; name: string; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; settings: Record<string, InterstitialSettings>; color?: StoryGroup['color'] };
 export type StoryGraph = { version: 1; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; templates: StoryTemplate[]; groups?: StoryGroup[] };
 export const PIXELS_PER_SECOND = 32;
@@ -119,7 +120,8 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
     for(const id of ids){const p=local.get(id)!;positioned.set(id,{...byId.get(id)!,x:columnX+p.x,y:90+usedRows*rowStep+p.y});}
     columnWidth=Math.max(columnWidth,width);usedRows+=rows;
   }
-  return {...graph,nodes:graph.nodes.map(n=>positioned.get(n.id)!),edges:graph.edges.map(e=>e.points?.length?{...e,points:undefined}:e)};
+  return {...graph,nodes:graph.nodes.map(n=>positioned.get(n.id)!),edges:graph.edges.map(e=>e.points?.length?{...e,points:undefined}:e),
+    groups:graph.groups?.some(g=>g.nodeIds.length&&g.bounds)?graph.groups.map(g=>g.nodeIds.length&&g.bounds?{...g,bounds:undefined}:g):graph.groups};
 }
 export function createNode(kind: Exclude<NodeKind, 'source'>, referenceId?: string): { node: StoryNode; item: Interstitial } {
   const id = freshId(), itemId = freshId();
@@ -128,14 +130,24 @@ export function createNode(kind: Exclude<NodeKind, 'source'>, referenceId?: stri
     item: { id: itemId, label: name, kind: 'regular', time: 0, phase: 'draft', method: kind === 'simple' ? 'comfy-extend' : 'comfy-loop',
       duration: kind === 'simple' ? 6 : 4, start_range: 2, end_range: 2, prompt: '', enable_prompt_expansion: false, loopAudio: true } };
 }
-/** Upgrade the visible legacy composition once; pins and group parents are not retained as graph entities. */
+/** Legacy interaction sections become ordinary editable frames around their generated clips. */
+function legacyGroups(project:Project,nodes:StoryNode[]):StoryGroup[] {
+  const flows=projectFlows(project),ids=[...new Set([...flows.map(f=>f.interstitial.id),...project.interstitials.flatMap(i=>i.groupId?[i.groupId]:[])])];
+  return ids.flatMap((id,index)=>{
+    const flow=flows.find(f=>f.interstitial.id===id),items=new Set([...project.interstitials.filter(i=>i.groupId===id).map(i=>i.id),...(flow?.scenes.flatMap(s=>s.interstitialId?[s.interstitialId]:[])??[])]);
+    const nodeIds=nodes.filter(n=>n.interstitialId&&items.has(n.interstitialId)).map(n=>n.id),label=flow?.interstitial.label??project.interstitials.find(i=>i.id===id)?.label;
+    return nodeIds.length?[{id:freshId(),name:label&&label!=='Untitled'?label.slice(0,200):`Question & response ${index+1}`,nodeIds,color:index%2?'purple' as const:'blue' as const}]:[];
+  });
+}
+/** Upgrade the visible legacy composition once, preserving media and editable interaction groups. */
 export function migrateGraph(project: Project, duration: number): StoryGraph {
   if (project.storyFlow) {
     const graph=project.storyFlow,legacyFade=(project.crossfadeFrames??14)/TIMELINE_FPS;
     // Early graph migration halved the example's saved fade; restore untouched legacy joins.
     const edges=graph.edges.map(e=>e.crossfade===undefined&&connectionFade(e,graph.nodes)===legacyFade/2&&
       graph.nodes.some(n=>(n.id===e.from||n.id===e.to)&&project.interstitials.some(i=>i.id===n.interstitialId&&i.groupId))?{...e,crossfade:legacyFade}:e);
-    return migrateFades({...graph,edges});
+    const groups=graph.groups??legacyGroups(project,graph.nodes);
+    return migrateFades({...graph,edges,...(groups.length||graph.groups?{groups}:{})});
   }
   const assetId = project.source.assetId!, flows = projectFlows(project);
   const composed = flows.length ? composeFlows(flows, project.interstitials, assetId, duration) : undefined;
@@ -151,6 +163,7 @@ export function migrateGraph(project: Project, duration: number): StoryGraph {
     graph.edges = composed.edges.map(e => ({ id: e.id, from: e.from, to: e.to,
       event: e.when === 'ended' ? 'next' : e.when === 'pending' ? 'fallback' : 'answer',
       label: e.label, values: interactionFor(composed, e.from)?.answers.find(a => a.id === e.when)?.values ?? [] }));
+    graph.groups=legacyGroups(project,graph.nodes);
   } else {
     const items = project.interstitials.filter(i => i.kind !== 'call-response' && !i.groupId).slice().sort((a,b) => a.time-b.time);
     let cursor = 0, previous: string | undefined;
@@ -227,7 +240,7 @@ export function connect(graph: StoryGraph, from: string, to: string, edgeId?: st
 export function removeNodes(graph: StoryGraph, ids: string[]): StoryGraph {
   const removed=new Set(ids), nodes=graph.nodes.filter(n=>!removed.has(n.id));
   return {...graph,entryId:removed.has(graph.entryId)?nodes[0]?.id??'':graph.entryId,nodes:nodes.map(n=>removed.has(n.referenceId??'')?{...n,referenceId:undefined}:n),edges:graph.edges.filter(e=>!removed.has(e.from)&&!removed.has(e.to)),
-    groups:graph.groups?.map(g=>({...g,nodeIds:g.nodeIds.filter(id=>!removed.has(id))})).filter(g=>g.nodeIds.length)};
+    groups:graph.groups?.map(g=>({...g,nodeIds:g.nodeIds.filter(id=>!removed.has(id))})).filter(g=>g.nodeIds.length||g.bounds)};
 }
 export function splitSource(graph: StoryGraph, id: string, frame: number): StoryGraph {
   const node=graph.nodes.find(n=>n.id===id); if(!node?.source || frame<=0 || frame>=node.source.outFrame-node.source.inFrame)return graph;

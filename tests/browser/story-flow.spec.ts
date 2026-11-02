@@ -139,10 +139,13 @@ test('clip names accept spaces, Escape cancels, and rename is one undoable edit'
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(input).toHaveValue('New scene');expect((await saved(page)).interstitials[0].label).toBe('New scene');
 });
 
-test('the existing sample project migrates to independent filmstrip clips',async({page})=>{
+test('the existing sample project opens with two editable interaction groups',async({page})=>{
   test.setTimeout(180000);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await page.getByRole('button',{name:/Sample project/}).click();
   await expect(page.locator('.story-clip').first()).toBeVisible({timeout:120000});await expect.poll(async()=>(await saved(page))?.storyFlow?.nodes.length??0).toBeGreaterThan(5);const project=await saved(page);
   expect(project.storyFlow.nodes.length).toBeGreaterThan(5);expect(project.storyFlow.nodes.some((n:any)=>n.interstitialId)).toBe(true);expect(project.storyFlow.edges.length).toBeGreaterThan(0);
+  await expect(page.locator('.story-group')).toHaveCount(2);
+  expect(project.storyFlow.groups.map((g:any)=>g.name)).toEqual(['Question & response 1','Question & response 2']);
+  for(const group of project.storyFlow.groups){expect(group.nodeIds).toHaveLength(4);expect(group.nodeIds.every((id:string)=>project.storyFlow.nodes.find((n:any)=>n.id===id)?.interstitialId)).toBe(true);}
   expect(await page.locator('.timeline-pin,.timeline-interstitial-group').count()).toBe(0);
   await fitAll(page);await page.locator('.story-clip').first().locator('.story-filmstrip').focus();await page.keyboard.press('ArrowRight');await expect(page.locator('.story-playhead')).toBeVisible();
   await page.screenshot({path:'test-results/story-flow-sample.png',fullPage:true});expect(errors).toEqual([]);
@@ -152,7 +155,7 @@ test('cut tool, context menu and S split source and interstitial clips without c
   await open(page);const stage=await page.locator('.video-stage').boundingBox(),timeline=await page.locator('.story-canvas').boundingBox();expect(stage!.y+stage!.height).toBeLessThanOrEqual(timeline!.y+1);
   await page.getByRole('button',{name:'Cut tool',exact:true}).click();await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','true');
   const film=page.locator('.story-filmstrip').first(),box=await film.boundingBox();await page.mouse.click(box!.x+box!.width/2,box!.y+box!.height/2);await expect(page.locator('.story-clip')).toHaveCount(2);
-  await page.keyboard.press('v');await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','false');
+  await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','false');
   await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:240,y:30}});await fitAll(page);
   const generated=page.locator('.story-clip.type-simple .story-filmstrip');await generated.scrollIntoViewIfNeeded();await generated.click({button:'right',position:{x:60,y:20}});await expect(page.getByRole('menu',{name:'Clip actions'})).toBeVisible();await page.getByRole('menuitem',{name:/Split here/}).click();
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);const project=await saved(page),parts=project.storyFlow.nodes.filter((n:any)=>n.interstitialId);expect(parts[0].trim.outFrame).toBe(parts[1].trim.inFrame);expect(parts[0].trim.inFrame).toBe(0);expect(parts[1].trim.outFrame).toBe(144);

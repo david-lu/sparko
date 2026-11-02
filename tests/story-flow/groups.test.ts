@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { copyGroups, groupClips, moveClips } from '../../src/features/story-flow/groups';
+import { copyGroups, groupClips, groupFrame, moveClips, moveGroup, setGroupMembers } from '../../src/features/story-flow/groups';
 import { createNode, edge, removeNodes, splitClip, type StoryGraph, type StoryNode } from '../../src/features/story-flow/model';
 import { captureTemplate, instantiateTemplate, makePreset } from '../../src/features/story-flow/templates';
 import { storyGraphSchema } from '../../src/features/story-flow/schema';
@@ -14,6 +14,46 @@ const setup = () => {
 };
 
 describe('clip groups and reusable templates', () => {
+  it('fits automatic frames to clip bodies at every zoom without reserving condition labels or distant wire bends',()=>{
+    const {graph,a,b,items}=setup();a.node.conditional=true;
+    graph.edges[1].points=[{id:'far-bend',x:5000,y:-4000}];
+    const grouped=groupClips(graph,[a.node.id,b.node.id],'Tight').graph,group=grouped.groups![0];
+    expect(groupFrame(grouped,group,items,{x:10,y:20,zoom:1,rowScale:1})).toEqual({left:-38,top:72,width:608,height:142});
+    expect(groupFrame(grouped,group,items,{x:10,y:20,zoom:.05,rowScale:.2})).toEqual({left:-9.5,top:0,width:64.6,height:142});
+  });
+  it('persists empty drawn frames through regrouping, clip deletion, layout and archives', async () => {
+    const {graph,source,items}=setup(),bounds={x:-620,y:-180,width:320,height:180};
+    const drawn=groupClips(graph,[],'Empty','blue',bounds),group=drawn.group!;
+    expect(group.nodeIds).toEqual([]);expect(storyGraphSchema.safeParse(drawn.graph).success).toBe(true);
+    const regrouped=groupClips(drawn.graph,[source.id],'Footage').graph;
+    expect(regrouped.groups![0]).toEqual(group);
+    const empty=removeNodes(regrouped,graph.nodes.map(n=>n.id));expect(empty.groups).toEqual([group]);
+    const project:Project={id:'empty-groups',name:'Empty groups',updatedAt:1,source:{name:'Video',assetId:source.source!.assetId},storyFlow:empty,interstitials:items,subtitle:null,analysis:emptyAnalysis()};
+    const signal=new AbortController().signal,files=[{id:source.source!.assetId,name:'clip.mp4',blob:new Blob(['fixture'],{type:'video/mp4'})}];
+    const restored=await unpackProject(await packProject(project,files,signal,()=>{}),signal,()=>{});
+    expect(restored.project.storyFlow!.groups).toEqual([group]);
+    for(const frame of [undefined,{...bounds,width:0},{...bounds,height:-1},{...bounds,x:Infinity}])expect(storyGraphSchema.safeParse({...empty,groups:[{...group,bounds:frame}]}).success).toBe(false);
+  });
+  it('moves explicit frames with members and duplicates their bounds without copying unrelated empty groups',()=>{
+    const {graph,a,b,items}=setup(),bounds={x:-80,y:-120,width:700,height:400};
+    const grouped=groupClips(graph,[a.node.id,b.node.id],'Drawn','blue',bounds),empty=groupClips(grouped.graph,[],'Empty','blue',bounds);
+    const moved=moveGroup(empty.graph,grouped.group!.id,40,-30);
+    expect(moved.groups![0].bounds).toEqual({...bounds,x:-40,y:-150});expect(moved.groups![1]).toEqual(empty.group);
+    expect(moved.nodes[1]).toMatchObject({x:a.node.x+40,y:a.node.y-30});expect(moved.edges[1].points![0]).toMatchObject({x:340,y:-110});
+    expect(moveGroup(empty.graph,empty.group!.id,40,-30).nodes).toEqual(graph.nodes);
+    const copies=copyGroups(empty.graph,new Map([[a.node.id,'one'],[b.node.id,'two']]),160);
+    expect(copies).toHaveLength(1);expect(copies[0].bounds).toEqual({...bounds,y:40});
+    const frame=groupFrame(moved,moved.groups![0],items,{x:10,y:20,zoom:.5,rowScale:.7})!;
+    expect(frame.left).toBeLessThanOrEqual(-10);expect(frame.top).toBeLessThanOrEqual(-85);expect(frame.width).toBeGreaterThanOrEqual(350);
+  });
+  it('adds and removes membership without changing clips or connections, retaining a frame after the last member leaves',()=>{
+    const {graph,a,b,items}=setup(),first=groupClips(graph,[a.node.id],'First'),second=groupClips(first.graph,[b.node.id],'Second');
+    const added=setGroupMembers(second.graph,first.group!.id,[a.node.id,b.node.id],items);
+    expect(added.groups).toHaveLength(1);expect(added.nodes).toBe(graph.nodes);expect(added.edges).toBe(graph.edges);
+    const removed=setGroupMembers(added,first.group!.id,[],items);
+    expect(removed.groups![0].nodeIds).toEqual([]);expect(removed.groups![0].bounds).toBeDefined();expect(storyGraphSchema.safeParse(removed).success).toBe(true);
+    expect(removed.nodes).toBe(graph.nodes);expect(removed.edges).toBe(graph.edges);
+  });
   it('creates a named group without changing clip timing, layout or connections', () => {
     const { graph, a, b } = setup(), result = groupClips(graph, [a.node.id, b.node.id], 'Dialogue', 'purple');
     expect(result.graph.nodes).toBe(graph.nodes); expect(result.graph.edges).toBe(graph.edges);

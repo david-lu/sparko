@@ -30,6 +30,8 @@ import { useWorkspaceLayout } from '../shared/panels/workspaceLayout';
 import { WorkspaceLockContext } from '../shared/panels/WorkspaceLock';
 import WindowMenu from './WindowMenu';
 import ShortcutSettings from './ShortcutSettings';
+import Preferences from './Preferences';
+import { pinchZoomPreference, savedPinchZoomSensitivity } from '../shared/preferences';
 import { useShortcuts } from '../shared/shortcuts';
 import DropdownMenu from '../shared/DropdownMenu';
 import ModalBackdrop from '../shared/ModalBackdrop';
@@ -72,6 +74,9 @@ export default function App() {
   const [startReady, setStartReady] = useState(false);
   const [error, setError] = useState('');
   const [shortcuts, setShortcuts] = useState(false);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [pinchZoomSensitivity, setPinchZoomSensitivity] = useState(savedPinchZoomSensitivity);
+  useEffect(() => { try { localStorage.setItem(pinchZoomPreference, String(pinchZoomSensitivity)); } catch { /* Apply without persistence. */ } }, [pinchZoomSensitivity]);
   const keys=useShortcuts();
   const [closePrompt, setClosePrompt] = useState(false);
   const [crossfade, setCrossfade] = useState(savedCrossfadePreference);
@@ -310,7 +315,7 @@ export default function App() {
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void saveAsFile(); }}><Save size={14} />Save as new file</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></DropdownMenu>
-      <PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} />
+      <PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} onPreferences={()=>setPreferencesOpen(true)} />
       <WindowMenu workspace={workspace} panelsAvailable={!!storyGraph} timelineVisible={!timelineCollapsed} onTimeline={()=>{if(!workspace.locked)setTimelineCollapsed(value=>!value);}} onReset={resetWorkspace}/>
       <div className="history-controls" role="group" aria-label="Edit history">
         <button className="icon-button small" aria-label="Undo" aria-keyshortcuts={keys.aria('undo')} title={keys.title('undo',projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo')}
@@ -327,7 +332,7 @@ export default function App() {
       <WorkspaceLockContext.Provider value={workspace.locked}><div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
         <Player source={source} empty={!projectState.source||storyGraph?.nodes.length===0} info={info} thumbnails={thumbnails} thumbnailsFailed={thumbnailsFailed} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
           callResponse={flowTimeline}
-          storyCanvas={storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight} collapsed={timelineCollapsed} onCollapsed={setTimelineCollapsed}/>:undefined}
+          storyCanvas={storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight} collapsed={timelineCollapsed} onCollapsed={setTimelineCollapsed} pinchZoomSensitivity={pinchZoomSensitivity}/>:undefined}
           subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
           controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
           onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
@@ -344,6 +349,7 @@ export default function App() {
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" onChange={event => { const file = event.target.files?.[0]; if (file) openFile(file); event.target.value = ''; }} />
     <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" onChange={event => { const file = event.target.files?.[0]; if (file) void projects.importProject(file); event.target.value = ''; }} />
     {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
+    {preferencesOpen && <Preferences pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} onClose={()=>setPreferencesOpen(false)}/>}
     {closePrompt && <ModalBackdrop labelledBy="close-project-title" onCancel={()=>{if(!projectState.busy)setClosePrompt(false);}}><div className="project-card">
       <h2 id="close-project-title">Save changes before closing?</h2>
       <p className="hint">Changes to {projectState.project?.name || 'this project'} have not been saved to a project file.</p>

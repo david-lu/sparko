@@ -41,10 +41,25 @@ describe('story clip graph',()=>{
     expect(graph.edges).toHaveLength(4);expect(graph.nodes.filter(n=>n.source).reduce((sum,n)=>sum+n.source!.outFrame-n.source!.inFrame,0)).toBe(480);
     expect(storyGraphSchema.safeParse(graph).success).toBe(true);
   });
-  it('migrates a call-response group to independent nodes with routing and no group ownership',()=>{
+  it('migrates a call-response section to editable grouped clips while preserving routing',()=>{
     const example=createTimelineExample(asset,20),p={...project(),callResponse:example.flow,interstitials:example.interstitials};
     const graph=migrateGraph(p,20);expect(graph.nodes).toHaveLength(6);expect(graph.nodes.filter(n=>n.kind==='conditional')).toHaveLength(1);
     expect(graph.edges.filter(e=>e.event==='answer')).toHaveLength(2);expect(storyGraphSchema.safeParse(graph).success).toBe(true);
+    expect(graph.groups).toHaveLength(1);expect(graph.groups![0].nodeIds).toEqual(graph.nodes.filter(n=>n.interstitialId).map(n=>n.id));
+  });
+  it('restores two legacy interaction groups once, without recreating removed or edited groups',()=>{
+    const examples=[0,1].map(index=>{
+      const example=createTimelineExample(asset,20),prefix=`question-${index}`,time=5+index*8;
+      return {flow:{...example.flow,interstitial:{...example.flow.interstitial,id:prefix,label:'Untitled',time},scenes:example.flow.scenes.map(s=>({...s,interstitialId:s.interstitialId?`${prefix}/${s.interstitialId}`:undefined}))},
+        items:example.interstitials.map(i=>({...i,id:`${prefix}/${i.id}`,groupId:prefix,time}))};
+    });
+    const p={...project(),callResponses:examples.map(e=>e.flow),interstitials:examples.flatMap(e=>e.items)},graph=migrateGraph(p,20);
+    expect(graph.groups?.map(g=>g.name)).toEqual(['Question & response 1','Question & response 2']);
+    expect(graph.groups?.map(g=>g.nodeIds.length)).toEqual([4,4]);expect(storyGraphSchema.safeParse(graph).success).toBe(true);
+    const restored=migrateGraph({...p,storyFlow:{...graph,groups:undefined}},20);
+    expect(restored.groups?.map(g=>g.nodeIds)).toEqual(graph.groups?.map(g=>g.nodeIds));expect(restored.nodes).toEqual(graph.nodes);expect(restored.edges).toEqual(graph.edges);
+    expect(migrateGraph({...p,storyFlow:{...graph,groups:[]}},20).groups).toEqual([]);
+    const edited=[{...graph.groups![0],name:'My section'}];expect(migrateGraph({...p,storyFlow:{...graph,groups:edited}},20).groups).toEqual(edited);
   });
   it('repairs the half-length legacy graph migration and leaves edited connection fades intact',()=>{
     const example=createTimelineExample(asset,20),p={...project(),crossfadeFrames:14,callResponse:example.flow,interstitials:example.interstitials};

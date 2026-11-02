@@ -1,4 +1,5 @@
-import { Check } from 'lucide-react';
+import { useRef } from 'react';
+import { Check, Settings2 } from 'lucide-react';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { maxCrossfadeFrames } from './preferences';
 import './options.css';
@@ -6,13 +7,15 @@ import DropdownMenu from '../../shared/DropdownMenu';
 
 export { crossfadePreference, savedCrossfadePreference, crossfadeLengthPreference, savedCrossfadeFrames, framingPreference, savedFramingPreference } from './preferences';
 
-export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrames, onCrossfadeFrames, matchFraming, onMatchFraming, perClip = false }: {
+export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrames, onCrossfadeFrames, matchFraming, onMatchFraming, onPreferences, perClip = false }: {
   crossfade: boolean; onCrossfade: (value: boolean) => void; matchFraming: boolean; onMatchFraming: (value: boolean) => void;
   crossfadeFrames: number; onCrossfadeFrames: (value: number) => void;
   perClip?: boolean;
+  onPreferences: () => void;
 }) {
+  const menu = useRef<HTMLDetailsElement>(null);
   const length = `${(crossfadeFrames / TIMELINE_FPS).toFixed(2)} s`;
-  return <DropdownMenu className="file-menu playback-options" onKeyDown={event => {
+  return <DropdownMenu ref={menu} className="file-menu playback-options" onKeyDown={event => {
     if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); }
     // Keep Space usable for the checkbox without triggering the player's global shortcut.
     if (event.key === ' ' && (event.target as HTMLElement).getAttribute('role') === 'menuitemcheckbox') event.stopPropagation();
@@ -33,5 +36,7 @@ export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrame
       title="Match generated clips to the parent frame with a small center crop (up to 5%). Larger aspect differences keep the full image.">
       <Check size={14} style={{ visibility: matchFraming ? 'visible' : 'hidden' }} />Match generated framing
     </button>
+    <div role="separator"/>
+    <button role="menuitem" aria-haspopup="dialog" onClick={()=>{if(menu.current)menu.current.open=false;onPreferences();}}><Settings2 size={14}/>Preferences…</button>
   </div></DropdownMenu>;
 }

@@ -1,5 +1,5 @@
 import { behaviorLabel } from './behaviors';
-import { Copy, LayoutTemplate, Ungroup } from 'lucide-react';
+import { Info, Minus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { groupColors, type StoryGroup } from './model';
 import type { StoryEditor } from './useStoryEditor';
@@ -17,13 +17,11 @@ export default function GroupInspector({ group, editor }: { group: StoryGroup; e
       {Object.entries(groupColors).map(([color, value]) => <button key={color} aria-label={`${color[0].toUpperCase() + color.slice(1)} group color`} aria-pressed={group.color === color}
         style={{ background: value }} onClick={() => editor.patchGroup(group.id, { color: color as StoryGroup['color'] })} />)}
     </div></div>
-    <div className="group-inspector-actions">
-      <button className="button small" onClick={() => editor.saveTemplate(group.name)}><LayoutTemplate size={13} />Save group as template</button>
-      <button className="button small" onClick={editor.duplicate}><Copy size={13} />Duplicate group</button>
-      <button className="button small" onClick={() => editor.ungroup(group.id)}><Ungroup size={13} />Ungroup</button>
-    </div>
     <details className="inspector-group" open><summary>Clips<span>{clips.length}</span></summary><div className="group-clip-list">
-      {clips.map(n => <button key={n.id} onClick={() => editor.select(n.id)}><span>{editor.items.find(i => i.id === n.interstitialId)?.label ?? n.name}</span><small>{behaviorLabel(n)}</small></button>)}
+      {clips.map(n => <div className="group-clip-row" key={n.id}><button onClick={() => editor.select(n.id)}><span>{editor.items.find(i => i.id === n.interstitialId)?.label ?? n.name}</span><small>{behaviorLabel(n)}</small></button>
+        <button className="icon-button" aria-label={`Remove ${n.name} from group`} title="Remove from group · keep clip and connections" onClick={()=>editor.removeFromGroup(group.id,[n.id])}><Minus size={13}/></button></div>)}
+      {!clips.length&&<p className="hint">Empty group. Select clips, then right-click this group to add them.</p>}
     </div></details>
+    <p className="group-actions-hint"><Info size={13}/>Right-click the group header for actions.</p>
   </div>;
 }

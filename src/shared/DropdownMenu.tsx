@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, type ComponentPropsWithoutRef, type RefObject } from 'react';
+import { flushSync } from 'react-dom';
 
 let dismissActiveMenu: (() => void) | undefined;
 
@@ -31,6 +32,14 @@ export function useExclusiveMenu<T extends HTMLElement>(element:RefObject<T|null
 const DropdownMenu=forwardRef<HTMLDetailsElement,ComponentPropsWithoutRef<'details'>>(function DropdownMenu({onToggle,...props},forwardedRef){
   const element=useRef<HTMLDetailsElement>(null),[open,setOpen]=useState(false);
   useImperativeHandle(forwardedRef,()=>element.current!,[]);
+  useLayoutEffect(()=>{
+    const menu=element.current!;
+    // The native toggle event is deferred. Observe the attribute so dismissal
+    // listeners are ready before a following focus change or key press.
+    const observer=new MutationObserver(()=>flushSync(()=>setOpen(menu.open)));
+    observer.observe(menu,{attributes:true,attributeFilter:['open']});
+    return()=>observer.disconnect();
+  },[]);
   useExclusiveMenu(element,open,()=>{if(element.current)element.current.open=false;},()=>element.current?.querySelector('summary')?.focus({preventScroll:true}));
   useLayoutEffect(()=>{
     if(!open)return;

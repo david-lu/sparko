@@ -21,7 +21,7 @@ h2{font-size:14px;font-weight:600;letter-spacing:-.2px}
 h3{font-weight:500}
 fieldset{padding:0;border:0;margin:0;min-width:0}
 fieldset:disabled{opacity:.55}
-.app-shell{width:100%;min-width:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+.app-shell{width:100%;min-width:0;height:100dvh;display:flex;flex-direction:column;overflow:clip}
 .project-start{flex:1;min-width:0;width:100%;max-width:100%;min-height:0;overflow-x:hidden;overflow-y:auto;padding:clamp(18px,3vh,32px) 24px 32px;background:radial-gradient(ellipse 70% 45% at 50% -10%,#6c4b2c40,transparent),radial-gradient(ellipse 45% 45% at 100% 100%,#493c2d28,transparent),var(--base)}
 .project-start-content{display:flex;flex-direction:column;width:100%;max-width:1080px;min-width:0;min-height:100%;margin:auto}
 .project-start-header{position:relative;isolation:isolate;min-width:0;padding:20px 26px;overflow:hidden;border:1px solid #8a6044;border-radius:18px;background:linear-gradient(115deg,#553b2e,#342b29 65%,#2b2525);box-shadow:0 12px 32px #0002}

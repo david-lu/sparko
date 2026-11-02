@@ -3,9 +3,9 @@ import { playableResult, type Interstitial } from '../../../shared/interstitials
 import type { ProjectController } from '../project/ProjectController';
 import type { InterstitialController } from '../interstitials/InterstitialController';
 import type { VideoPlayerController } from '../player/VideoPlayerController';
-import { autoLayout, connect, createNode, edge, freshId, nodeDuration, splitClip, type NodeKind, type StoryGraph, type StoryNode, type StoryTemplate, type StoryGroup } from './model';
+import { autoLayout, connect, createNode, edge, freshId, nodeDuration, splitClip, type GroupBounds, type NodeKind, type StoryGraph, type StoryNode, type StoryTemplate, type StoryGroup } from './model';
 import { captureTemplate, instantiateTemplate, makePreset } from './templates';
-import { groupClips, copyGroups } from './groups';
+import { groupClips, copyGroups, setGroupMembers } from './groups';
 import { conditionsFor, normalizeConditions, setBehavior } from './behaviors';
 import type { StoryCondition } from './model';
 import { TIMELINE_FPS } from '../../../shared/constants';
@@ -21,9 +21,12 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   useEffect(()=>{setSelection(ids=>ids.filter(id=>graph?.nodes.some(n=>n.id===id)));setSelectedGroupId(id=>graph?.groups?.some(g=>g.id===id)?id:null);setSelectedEdge(id=>graph?.edges.some(e=>e.id===id)?id:null);setConnecting(null);},[graph?.entryId,graph?.nodes.length,graph?.groups?.length,projects.getSnapshot().historyRevision]);
   const change=(next:StoryGraph,added:Interstitial[]=[])=>{player.pause();projects.updateStoryFlow(next,added);};
   const selectGroup=(id:string,next=graph)=>{const group=next?.groups?.find(g=>g.id===id);if(!group)return;setSelectedGroupId(id);setSelection(group.nodeIds);setSelectedEdge(null);jobs.select(null);setInspectorRevision(n=>n+1);};
-  const patchGroup=(id:string,patch:Partial<Pick<StoryGroup,'name'|'color'>>)=>{if(graph)change({...graph,groups:graph.groups?.map(g=>g.id===id?{...g,...patch,name:patch.name?.trim().slice(0,200)||g.name}:g)});};
-  const groupSelection=(name=`Group ${(graph?.groups?.length??0)+1}`)=>{if(!graph||!selected.length)return;const result=groupClips(graph,selected,name);if(!result.group)return;change(result.graph);selectGroup(result.group.id,result.graph);setNotice('Group created. Drag its header to move the clips together.');};
-  const ungroup=(id=selectedGroup?.id)=>{if(!graph)return;const groups=graph.groups?.filter(g=>id?g.id!==id:!g.nodeIds.some(n=>selected.includes(n)));change({...graph,groups});setSelectedGroupId(null);setNotice('Ungrouped. Clips and connections are preserved.');};
+  const patchGroup=(id:string,patch:Partial<Pick<StoryGroup,'name'|'color'|'bounds'>>)=>{if(graph)change({...graph,groups:graph.groups?.map(g=>g.id===id?{...g,...patch,name:patch.name?.trim().slice(0,200)||g.name}:g)});};
+  const createGroup=(ids:string[],bounds?:GroupBounds,name=`Group ${(graph?.groups?.length??0)+1}`)=>{if(!graph)return;const result=groupClips(graph,ids,name,'blue',bounds);if(!result.group)return;change(result.graph);selectGroup(result.group.id,result.graph);setNotice('Group created. Drag its header to move it. Right-click for group actions.');};
+  const groupSelection=(name?:string)=>createGroup(selected,undefined,name);
+  const changeGroupMembers=(id:string,ids:string[])=>{if(!graph)return;const next=setGroupMembers(graph,id,ids,items);change(next);selectGroup(id,next);setNotice('Group updated. Clips and connections are preserved.');};
+  const removeFromGroup=(id:string,ids:string[])=>{const group=graph?.groups?.find(g=>g.id===id);if(group)changeGroupMembers(id,group.nodeIds.filter(n=>!ids.includes(n)));};
+  const ungroup=(id=selectedGroup?.id)=>{if(!graph)return;const groups=graph.groups?.filter(g=>id?g.id!==id:!g.nodeIds.some(n=>selected.includes(n)));change({...graph,groups});setSelectedGroupId(null);setNotice('Group removed. Clips and connections are preserved. Undo restores the frame.');};
   const select=(id:string,frame=0,multiple=false)=>{
     setSelected(ids=>multiple?ids.includes(id)?ids.filter(value=>value!==id):[...ids,id]:[id]);setSelectedEdge(null);
     jobs.select(graph?.nodes.find(n=>n.id===id)?.interstitialId??null);
@@ -55,7 +58,9 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   const disconnect=()=>{if(graph&&selectedEdge){change({...graph,edges:graph.edges.filter(e=>e.id!==selectedEdge)});setSelectedEdge(null);setNotice('Connection removed. Clips are retained.');}};
   const remove=()=>{player.pause();if(selectedGroup){ungroup(selectedGroup.id);return;}if(selectedEdge){disconnect();return;}if(graph&&selected.length){void projects.removeStoryNodes(selected);setConnecting(null);}};
   const duplicate=()=>{
-    if(!graph||!selected.length)return;
+    if(!graph)return;
+    if(selectedGroup&&!selectedGroup.nodeIds.length&&selectedGroup.bounds){const group={...selectedGroup,id:freshId(),name:`${selectedGroup.name} copy`.slice(0,200),bounds:{...selectedGroup.bounds,y:selectedGroup.bounds.y+160}},next={...graph,groups:[...(graph.groups??[]),group]};change(next);selectGroup(group.id,next);setFocusRevision(n=>n+1);return;}
+    if(!selected.length)return;
     const chosen=graph.nodes.filter(n=>selected.includes(n.id)),remap=new Map(chosen.map(n=>[n.id,freshId()])),added:Interstitial[]=[];
     const internal=graph.edges.filter(e=>remap.has(e.from)&&remap.has(e.to)),rows=[...chosen.map(n=>n.y),...internal.flatMap(e=>(e.points??[]).map(p=>p.y))];
     const offsetY=selectedGroup?Math.max(...rows)-Math.min(...rows)+200:160;
@@ -63,13 +68,13 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
       if(original){const result=playableResult(original);added.push({...original,id:itemId!,label:`${original.label} copy`,phase:result?'ready':'draft',result,requestPrompt:result?.prompt??(original.phase==='ready'?original.requestPrompt:undefined),requestId:undefined,previousResult:undefined,error:undefined});}
       return {...n,id:remap.get(n.id)!,name:`${n.name} copy`,interstitialId:itemId,referenceId:remap.get(n.referenceId??'')??n.referenceId,y:n.y+offsetY};});
     const edges=internal.map(e=>({...e,conditionId:e.event==='answer'?e.conditionId??e.id:undefined,id:freshId(),from:remap.get(e.from)!,to:remap.get(e.to)!,points:e.points?.map(p=>({...p,id:freshId(),y:p.y+offsetY}))}));
-    const groups=copyGroups(graph,remap),next={...graph,nodes:[...graph.nodes,...nodes],edges:[...graph.edges,...edges],groups:[...(graph.groups??[]),...groups]};
+    const groups=copyGroups(graph,remap,offsetY),next={...graph,nodes:[...graph.nodes,...nodes],edges:[...graph.edges,...edges],groups:[...(graph.groups??[]),...groups]};
     change(next,added);if(selectedGroup&&groups.length===1)selectGroup(groups[0].id,next);else setSelected(nodes.map(n=>n.id));setFocusRevision(n=>n+1);setNotice('Duplicated clips are disconnected from the original path.');
   };
-  const split=(clipId?:string,atFrame?:number)=>{if(!graph)return;const id=clipId??selected[0],session=player.getSnapshot().flow;
+  const split=(clipId?:string,atFrame?:number)=>{if(!graph)return false;const id=clipId??selected[0],session=player.getSnapshot().flow;
     const frame=atFrame??(session?.sceneId===id?session.frame:0),result=splitClip(graph,items,id,frame);
-    if(result.graph===graph){setNotice('Place the playhead inside a clip to split it.');return;}
-    change(autoLayout(result.graph,[...items,...result.items]),result.items);setSelected([id]);setNotice('Clip split. Media is preserved; outgoing connections follow the second half.');};
+    if(result.graph===graph){setNotice('Place the playhead inside a clip to split it.');return false;}
+    change(autoLayout(result.graph,[...items,...result.items]),result.items);setSelected([id]);setNotice('Clip split. Media is preserved; outgoing connections follow the second half.');return true;};
   const insertTemplate=(template:string|StoryTemplate,connectionId?:string,placement?:{x:number;y:number},fromId?:string)=>{if(!graph)return;const t=typeof template==='string'?makePreset(template):template;
     const result=instantiateTemplate(graph,t,items,connectionId,placement);
     if(fromId&&!connectionId){result.graph=connect(result.graph,fromId,result.selectedId);if(!placement)result.graph=autoLayout(result.graph,[...items,...result.items]);}
@@ -92,7 +97,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
       x:position?.x??40,y:position?.y??Math.max(90,...graph.nodes.map(n=>n.y))+145,crossfadeStart:0,crossfadeEnd:0,loopCount:0};
     change({...graph,entryId:graph.entryId||node.id,nodes:[...graph.nodes,node]});setSelected([node.id]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice(`Added ${asset.name} as a separate clip.`);
   };
-  return {graph,items,selected,selectedGroup,selectGroup,patchGroup,groupSelection,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
+  return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
     selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player};
 }
 export type StoryEditor=ReturnType<typeof useStoryEditor>;

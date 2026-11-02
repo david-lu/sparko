@@ -1,5 +1,6 @@
 .playback-options .menu-items{min-width:240px}
 .playback-options [role="menuitemcheckbox"]>svg{flex-shrink:0}
+.playback-options [role=separator]{height:1px;margin:5px 4px;background:var(--line-strong)}
 .crossfade-length{display:flex;flex-direction:column;gap:6px;padding:5px 10px 10px 34px;font-size:12px}
 .crossfade-length>span{display:flex;align-items:center;justify-content:space-between}
 .crossfade-length output{font-variant-numeric:tabular-nums;color:var(--muted)}
