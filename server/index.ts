@@ -2,8 +2,12 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { createServer } from 'node:http';
-import { createApp } from './app.js';
-import { errorHandler } from './shared/http.js';
+
+// This entry point always serves loopback HTTP; Vercel uses api/index.ts.
+// Pulled .env files can contain VERCEL=1, which would reject local module requests.
+process.env.VERCEL = '';
+const { createApp } = await import('./app.js');
+const { errorHandler } = await import('./shared/http.js');
 
 const app = await createApp();
 const server = createServer(app);

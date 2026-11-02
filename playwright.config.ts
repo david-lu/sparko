@@ -7,7 +7,8 @@ export default defineConfig({
   webServer: {
     command: 'node node_modules/tsx/dist/cli.mjs server/index.ts', url: 'http://127.0.0.1:3100', reuseExistingServer: false, timeout: 30_000,
     // Tests own their server and mock providers; never inherit live account credentials.
-    env: { PORT: '3100', VERCEL: '', APP_PASSWORD: '', COMFY_CLOUD_API_KEY: '', COMFY_API_KEY: '', OPENAI_API_KEY: '',
+    // A pulled Vercel environment must not turn the local entry point into a hosted server.
+    env: { PORT: '3100', VERCEL: '1', APP_PASSWORD: '', COMFY_CLOUD_API_KEY: '', COMFY_API_KEY: '', OPENAI_API_KEY: '',
       GEMINI_KEY: '', GEMINI_API_KEY: '', FAL_KEY: '', BLOB_READ_WRITE_TOKEN: '', DEFAULT_VIDEO_URL: '', DEFAULT_PROJECT_URL: '' },
   },
 });
