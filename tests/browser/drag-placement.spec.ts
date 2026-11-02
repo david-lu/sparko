@@ -1,4 +1,4 @@
-import { fitAll,test,expect,type Page} from './fixtures';
+import { saveSelectionAsTemplate, fitAll,test,expect,type Page} from './fixtures';
 import type {Locator} from '@playwright/test';
 
 const open=async(page:Page)=>{await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
@@ -12,12 +12,12 @@ const begin=async(page:Page,source:Locator,x:number,y:number)=>{
 };
 const at=async(clip:Locator,x:number,y:number)=>{await expect.poll(async()=>{const r=(await clip.boundingBox())!;return Math.abs(r.x-x)+Math.abs(r.y-y);}).toBeLessThan(2);};
 
-test('toolbar dragging previews the exact zoomed position, preserves the view, and cancels cleanly',async({page})=>{
+test('library dragging previews the exact zoomed position, preserves the view, and cancels cleanly',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await open(page);
   const canvas=page.locator('.story-scroll'),source=page.locator('.story-clip.type-source');
   await page.getByRole('button',{name:'Zoom out story',exact:true}).click();await canvas.hover();await page.mouse.wheel(-380,-110);
   const initial=await saved(page),view=await camera(page),sourceRect=await source.boundingBox(),toolbar=await page.locator('.story-toolbar').boundingBox();
-  await page.locator('.story-menu summary').filter({hasText:'Interstitial'}).click();const simple=page.getByRole('button',{name:/New interstitial/});
+  const simple=page.getByRole('button',{name:'Add interstitial',exact:true});
   await simple.click();await expect(page.locator('.story-clip')).toHaveCount(1);await expect(page.locator('.story-status')).toContainText('Drag an interstitial');
   const bounds=(await canvas.boundingBox())!,x=bounds.x+100,y=bounds.y+45;
   await begin(page,simple,x,y);const ghost=page.locator('.story-drop-preview');await expect(ghost).toHaveCount(1);await at(ghost,x,y);
@@ -27,8 +27,7 @@ test('toolbar dragging previews the exact zoomed position, preserves the view, a
   expect(await source.boundingBox()).toEqual(sourceRect);expect(await camera(page)).toEqual(view);
   const project=await saved(page);expect(project.storyFlow.nodes[0]).toEqual(initial.storyFlow.nodes[0]);expect(project.storyFlow.nodes[1].x).toBeLessThan(0);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(clip).toHaveCount(0);
-  await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();
-  await begin(page,page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}),x,y);
+  await begin(page,page.getByRole('button',{name:'Add template Question & response',exact:true}),x,y);
   await expect(ghost).toHaveCount(4);await expect(page.locator('.story-group-preview')).toContainText('Question & response');await page.keyboard.press('Escape');await page.mouse.up();await expect(ghost).toHaveCount(0);await expect(page.locator('.story-group-preview')).toHaveCount(0);
   expect((await saved(page)).storyFlow).toEqual(initial.storyFlow);expect(await camera(page)).toEqual(view);
   expect(errors).toEqual([]);
@@ -61,8 +60,7 @@ for(const width of [1440,390])test(`template drops replace a highlighted transit
   const initial=await saved(page),connection=initial.storyFlow.edges[0],view=await camera(page);
   const canvas=page.locator('.story-scroll'),bounds=(await canvas.boundingBox())!,toolbar=await page.locator('.story-toolbar').boundingBox(),status=await page.locator('.story-status').boundingBox();
   const rect=(await page.locator('.story-crossfade').first().boundingBox())!,x=rect.x+rect.width/2,y=rect.y+rect.height+8;
-  await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();
-  await begin(page,page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}),x,y);
+  await begin(page,page.getByRole('button',{name:'Add template Question & response',exact:true}),x,y);
   await expect(page.locator('.story-edge.drop-target')).toHaveAttribute('data-edge-id',connection.id);
   await expect(page.locator('.story-transition-drop-label')).toBeVisible();
   expect((await saved(page)).storyFlow).toEqual(initial.storyFlow);
@@ -97,14 +95,13 @@ test('cancelled transition replacements and media drops leave the original conne
   await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(3);expect((await saved(page)).storyFlow.edges).toEqual(initial.storyFlow.edges);
 });
 
-test('narrow toolbar drops and saved templates use the same drag placement',async({page})=>{
+test('narrow library drops and saved templates use the same drag placement',async({page})=>{
   await page.setViewportSize({width:390,height:844});await open(page);const canvas=page.locator('.story-scroll'),toolbar=await page.locator('.story-toolbar').boundingBox();
-  await page.locator('.story-menu summary').filter({hasText:'Interstitial'}).click();
-  const bounds=(await canvas.boundingBox())!;await begin(page,page.getByRole('button',{name:/New interstitial/}),bounds.x+200,bounds.y+30);await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(2);
+  const bounds=(await canvas.boundingBox())!;await begin(page,page.getByRole('button',{name:'Add interstitial',exact:true}),bounds.x+200,bounds.y+30);await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(2);
   await at(page.locator('.story-clip.type-simple'),bounds.x+200,bounds.y+30);
   expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);
-  await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.getByRole('button',{name:'Save selected clips as template'}).click();await page.getByLabel('Template name',{exact:true}).fill('Saved scene');await page.getByRole('button',{name:'Save template',exact:true}).click();
-  await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();const savedTemplate=page.locator('.story-template-row').getByRole('button',{name:'Saved scene',exact:true});
+  await saveSelectionAsTemplate(page);await page.getByLabel('Template name',{exact:true}).fill('Saved scene');await page.getByRole('button',{name:'Save template',exact:true}).click();
+  const savedTemplate=page.getByRole('button',{name:'Add template Saved scene',exact:true});
   await savedTemplate.click();await expect(page.locator('.story-clip')).toHaveCount(2);
   await begin(page,savedTemplate,bounds.x+20,bounds.y+190);
   await at(page.locator('.story-drop-preview'),bounds.x+20,bounds.y+190);const beforeDropToolbar=await page.locator('.story-toolbar').boundingBox();

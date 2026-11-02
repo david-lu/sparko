@@ -73,13 +73,13 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
         {(['input', 'output'] as const).map(side => {
           const field = side === 'input' ? 'useInputReference' : 'useOutputReference', ids = refs[side];
           const range = side === 'input' ? 'start_range' : 'end_range';
-          return <div className="inspector-reference" role="group" aria-label={`${side === 'input' ? 'Input' : 'Output'} reference`} key={side}>
+          return <div className="inspector-reference" role="group" aria-label={`${side === 'input' ? 'Start' : 'End'} reference`} key={side}>
             <label title={`${side === 'input' ? 'Ending of the incoming' : 'Beginning of the outgoing'} connected clip. Reconnecting the wire updates this reference automatically.`}>
-              <input type="checkbox" aria-label={`Use ${side} reference`} checked={!!item[field]} onChange={e => editor.jobs.edit(item.id, { [field]: e.target.checked })} />
-              <span>{side === 'input' ? 'Input' : 'Output'} reference</span>
+              <input type="checkbox" aria-label={`Use ${side === 'input' ? 'start' : 'end'} reference`} checked={!!item[field]} onChange={e => editor.jobs.edit(item.id, { [field]: e.target.checked })} />
+              <span>{side === 'input' ? 'Start' : 'End'}</span>
             </label>
             <span className="inspector-reference-name" title={referenceLabel(ids)}>{referenceLabel(ids)}</span>
-            <InterstitialTimeField name={range} label={`${side === 'input' ? 'Input' : 'Output'} footage`} value={item[range]} disabled={!item[field]} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025}
+            <InterstitialTimeField name={range} label={`${side === 'input' ? 'Start' : 'End'} footage`} value={item[range]} disabled={!item[field]} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025}
               onChange={value => editor.jobs.edit(item.id, { [range]: value })} />
           </div>;
         })}

@@ -10,8 +10,7 @@ const inspect=(page:Page)=>page.locator('.story-scroll').evaluate(el=>{
 for(const width of [1440,390])test(`conditional outputs stack vertically after cleanup on a short ${width}px timeline`,async({page})=>{
   await page.setViewportSize({width,height:1000});await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();
   await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
-  await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();
-  await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:80,y:40}});
+  await page.getByRole('button',{name:'Add template Question & response',exact:true}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:80,y:40}});
   await expect(page.locator('.story-clip')).toHaveCount(5);await page.getByRole('separator',{name:'Resize story canvas'}).press('Home');
   const before=(await saved(page)).storyFlow;
   await page.getByRole('button',{name:'Auto layout',exact:true}).click();

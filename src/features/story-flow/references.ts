@@ -31,5 +31,5 @@ export function connectionReference(flow:CallResponseFlow,edge:FlowEdge):{state:
       return {state:'mismatch',message:`The saved ending reference comes from ${referenceName(reference.after,flow)}${reference.mode==='loop'?' to close the loop':` at ${(reference.after.inFrame/fps).toFixed(3)} s`}. It does not match this destination cut. Playback still works.`};
     return {state:'match',message:`The saved ending reference matches ${after.label} at ${(reference.after.inFrame/fps).toFixed(3)} s.`};
   }
-  return {state:'unknown',message:after.generated?'Input reference was disabled for this render. Playback uses a cut.':'These are source clips; no generated reference is needed.'};
+  return {state:'unknown',message:after.generated?'Start reference was disabled for this render. Playback uses a cut.':'These are source clips; no generated reference is needed.'};
 }

@@ -1,4 +1,4 @@
-import { fitAll,test,expect,type Page} from './fixtures';
+import { saveSelectionAsTemplate, fitAll,test,expect,type Page} from './fixtures';
 import {readFile} from 'node:fs/promises';
 const open=async(page:Page)=>{await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1,{timeout:60000});};
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
@@ -24,20 +24,20 @@ test('source clips split, insert, scrub, connect and retain independent fades th
 });
 
 test('templates insert ordinary clips, routing stays editable, and selections can become templates',async({page})=>{
-  await open(page);await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await fitAll(page);await expect(page.locator('.story-clip')).toHaveCount(5);
+  await open(page);await page.getByRole('button',{name:'Add template Question & response',exact:true}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await fitAll(page);await expect(page.locator('.story-clip')).toHaveCount(5);
   expect(await page.locator('.timeline-interstitial-group').count()).toBe(0);
   const conditional=page.locator('.story-clip.type-conditional');await conditional.locator('.story-clip-title').click();
   await expect(page.getByRole('checkbox',{name:'Conditional',exact:true})).toBeChecked();await page.getByLabel('Condition 1 label',{exact:true}).fill('Absolutely');
   await expect(page.getByLabel('Conditional fallback',{exact:true})).toHaveCount(0);
   let project=await saved(page);expect(project.storyFlow.edges.some((e:any)=>e.label==='Absolutely')).toBe(true);
-  await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.getByRole('button',{name:'Save selected clips as template'}).click();await page.getByLabel('Template name',{exact:true}).fill('Custom choice');await page.getByRole('button',{name:'Save template',exact:true}).click();
+  await saveSelectionAsTemplate(page);await page.getByLabel('Template name',{exact:true}).fill('Custom choice');await page.getByRole('button',{name:'Save template',exact:true}).click();
   project=await saved(page);expect(project.storyFlow.templates[0].name).toBe('Custom choice');
   await fitAll(page);await page.screenshot({path:'test-results/story-flow-template.png',fullPage:true});
 });
 
 test('narrow layout and loading keep graph and inspector controls in place',async({page})=>{
   await page.setViewportSize({width:390,height:844});await open(page);
-  await page.locator('.story-menu summary').filter({hasText:'Interstitial'}).click();await page.getByRole('button',{name:/New interstitial/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:220,y:90}});
+  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:220,y:90}});
   await fitAll(page);
   const before=await page.locator('.story-toolbar').boundingBox();
   const counts=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:window.innerWidth}));expect(counts.width).toBeLessThanOrEqual(counts.viewport);
@@ -99,7 +99,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
 });
 
 test('output ports attach clips and conditional choices advance real playback',async({page})=>{
-  await open(page);await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await fitAll(page);
+  await open(page);await page.getByRole('button',{name:'Add template Question & response',exact:true}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await fitAll(page);
   await fitAll(page);
   const p=await saved(page),source=p.storyFlow.nodes.find((n:any)=>n.kind==='source'),question=p.storyFlow.nodes.find((n:any)=>n.name==='Ask a question');
   await page.locator(`[data-node-id="${source.id}"] .story-port.output`).dragTo(page.locator(`[data-node-id="${question.id}"] .story-port.input`));
@@ -112,7 +112,7 @@ test('output ports attach clips and conditional choices advance real playback',a
 });
 
 test('arrows drag onto clip bodies, can be redirected, and cancel without changing routes',async({page})=>{
-  await open(page);await page.locator('.story-menu summary').filter({hasText:'Templates'}).click();await page.locator('.story-menu-popover').getByRole('button',{name:/Question & response/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await fitAll(page);
+  await open(page);await page.getByRole('button',{name:'Add template Question & response',exact:true}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:250,y:80}});await fitAll(page);
   await page.getByRole('separator',{name:'Resize story canvas'}).focus();await page.keyboard.press('End');
   await fitAll(page);
   const project=await saved(page),source=project.storyFlow.nodes.find((n:any)=>n.kind==='source'),question=project.storyFlow.nodes.find((n:any)=>n.name==='Ask a question'),wait=project.storyFlow.nodes.find((n:any)=>n.kind==='conditional');
@@ -132,7 +132,7 @@ test('arrows drag onto clip bodies, can be redirected, and cancel without changi
 });
 
 test('clip names accept spaces, Escape cancels, and rename is one undoable edit',async({page})=>{
-  await open(page);await page.locator('.story-menu summary').filter({hasText:'Interstitial'}).click();await page.getByRole('button',{name:/New interstitial/}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:220,y:90}});
+  await open(page);await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:220,y:90}});
   const input=page.locator('#story-clip-name');await input.fill('');await input.pressSequentially('A quiet new scene');await input.press('Enter');
   await expect(page.locator('.story-clip.type-simple .story-clip-title')).toContainText('A quiet new scene');expect((await saved(page)).interstitials[0].label).toBe('A quiet new scene');
   await input.fill('Discard this name');await input.press('Escape');await expect(input).toHaveValue('A quiet new scene');

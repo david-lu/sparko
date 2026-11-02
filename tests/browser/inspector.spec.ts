@@ -17,7 +17,7 @@ test('compact inspector uses connected references, supports all switch combinati
   await page.getByRole('slider', { name: /Scrub/ }).focus(); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('s');
   await page.getByRole('button', { name: 'Add interstitial', exact: true }).dragTo(page.getByRole('button', { name: /Edit crossfade from/ }));
   const inspector = page.locator('.clip-inspector');
-  await expect(inspector.getByRole('combobox')).toHaveCount(0); // Routing stays collapsed; references have switches, not pickers.
+  await expect(inspector.locator('.inspector-references').getByRole('combobox')).toHaveCount(0); // Routing stays collapsed; references have switches, not pickers.
   await expect(page.getByRole('checkbox', { name: 'Loop', exact: true })).not.toBeChecked(); await expect(page.getByRole('checkbox', { name: 'Conditional', exact: true })).not.toBeChecked();
   await page.getByLabel('Interstitial prompt', { exact: true }).fill('Continue the camera move.');
   const bounds = () => inspector.evaluate(root => {
@@ -27,14 +27,14 @@ test('compact inspector uses connected references, supports all switch combinati
     });
   });
   const button = await inspector.locator('button[type=submit]').boundingBox(), panel = await inspector.boundingBox();
-  expect(button!.y + button!.height - panel!.y).toBeLessThan(380); // Two independent behavior subsection headers.
+  expect(button!.y + button!.height - panel!.y).toBeLessThan(460); // Behavior headers, resolution, and guidance controls remain compact.
   await page.screenshot({ path: 'test-results/inspector-compact-desktop.png', fullPage: true });
   const settings = [[true, false], [true, true], [false, true], [false, false]];
   for (const [index, [input, output]] of settings.entries()) {
     if (index === 2) await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole('checkbox', { name: 'Use input reference' }).setChecked(input);
-    await page.getByRole('checkbox', { name: 'Use output reference' }).setChecked(output);
-    const inputRow = page.getByRole('group', { name: 'Input reference', exact: true }), outputRow = page.getByRole('group', { name: 'Output reference', exact: true });
+    await page.getByRole('checkbox', { name: 'Use start reference' }).setChecked(input);
+    await page.getByRole('checkbox', { name: 'Use end reference' }).setChecked(output);
+    const inputRow = page.getByRole('group', { name: 'Start reference', exact: true }), outputRow = page.getByRole('group', { name: 'End reference', exact: true });
     expect(await inputRow.getByRole('spinbutton', { name: 'start_range' }).isEnabled()).toBe(input);
     expect(await outputRow.getByRole('spinbutton', { name: 'end_range' }).isEnabled()).toBe(output);
     const before = await bounds();

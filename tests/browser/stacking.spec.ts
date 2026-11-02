@@ -1,4 +1,4 @@
-import { test, expect, type Page } from './fixtures';
+import { openTemplateMenu, saveSelectionAsTemplate, test, expect, type Page } from './fixtures';
 import type { Locator } from '@playwright/test';
 
 async function open(page: Page, width: number) {
@@ -48,22 +48,23 @@ async function expectOnTop(popup: Locator) {
 }
 
 async function overlapPlayhead(page: Page, name: string) {
-  const menu = page.locator('.story-menu').filter({ has: page.locator('summary', { hasText: name }) });
-  await menu.locator('summary').click();
-  const popup = (await menu.locator('.story-menu-popover').boundingBox())!;
-  await page.keyboard.press('Escape');
   const canvas = page.locator('.story-scroll'), view = (await canvas.boundingBox())!;
+  const anchor={x:view.x+12,y:view.y+12};
+  const show=async()=>{await page.mouse.click(anchor.x,anchor.y,{button:'right'});if(name==='Templates')await page.getByRole('menuitem',{name:'Add template',exact:true}).click();};
+  await show();
+  const popup = (await page.locator('.story-context-menu').boundingBox())!;
+  await page.keyboard.press('Escape');
   const head = (await page.locator('.story-playhead').boundingBox())!;
   const target = { x: popup.x + 70, y: Math.min(view.y + 65, popup.y + popup.height - 15) };
   const start = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
   await page.mouse.move(start.x, start.y); await page.mouse.down({ button: 'middle' });
   await page.mouse.move(start.x + target.x - head.x - head.width / 2, start.y + target.y - head.y - head.height / 2, { steps: 6 });
   await page.mouse.up({ button: 'middle' });
-  await menu.locator('summary').click();
+  await show();
   const moved = (await page.locator('.story-playhead').boundingBox())!;
   expect(moved.x).toBeGreaterThan(popup.x); expect(moved.x).toBeLessThan(popup.x + popup.width);
   expect(moved.y + moved.height).toBeGreaterThan(popup.y); expect(moved.y).toBeLessThan(popup.y + popup.height);
-  return menu.locator('.story-menu-popover');
+  return page.locator('.story-context-menu');
 }
 
 for (const width of [1440, 390]) {
@@ -104,13 +105,12 @@ for (const width of [1440, 390]) {
     await expectOnTop(page.locator('.mask-injection-popover')); await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Generation details', exact: true }).click();
     await expectOnTop(page.locator('.inspector-status-popover:popover-open')); await page.keyboard.press('Escape');
-    await page.locator('.story-menu summary').filter({ hasText: 'Templates' }).click();
-    await page.getByRole('button', { name: 'Save selected clips as template', exact: true }).click();
+    await saveSelectionAsTemplate(page);
     const template = page.getByRole('dialog', { name: 'Save selected clips as a template' });
     await expect(template).toBeVisible(); await expectOnTop(template.locator('form'));
     expect(await template.evaluate(el => el.matches(':modal'))).toBe(true);
     await page.keyboard.press('Escape'); await expect(template).toHaveCount(0);
-    await expect(page.locator('.story-menu summary').filter({ hasText: 'Templates' })).toBeFocused();
+    await expect(page.locator('.story-scroll')).toBeFocused();
     await page.locator('.file-menu>summary').filter({ hasText: /^File$/ }).click();
     await page.getByRole('menuitem', { name: 'Close project', exact: true }).click();
     const close = page.getByRole('dialog', { name: 'Save changes before closing?' });
@@ -129,13 +129,13 @@ test('fullscreen timeline menus and template dialogs remain above the player', a
   await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
   await page.locator('.story-clip-title').click();
   await expectOnTop(await overlapPlayhead(page, 'Templates'));
-  await page.getByRole('button', { name: 'Save selected clips as template', exact: true }).click();
+  await page.keyboard.press('Escape');await saveSelectionAsTemplate(page);
   const dialog = page.getByRole('dialog', { name: 'Save selected clips as a template' });
   await expectOnTop(dialog.locator('form'));
   await page.getByLabel('Template name', { exact: true }).fill('Fullscreen template');
   await page.getByRole('button', { name: 'Save template', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.locator('.video-stage').hover(); await page.getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
-  await page.locator('.story-menu summary').filter({ hasText: 'Templates' }).click();
-  await expect(page.locator('.story-template-row').getByRole('button', { name: 'Fullscreen template', exact: true })).toBeVisible();
+  await openTemplateMenu(page);
+  await expect(page.locator('.story-template-row').getByRole('menuitem', { name: 'Fullscreen template', exact: true })).toBeVisible();
 });

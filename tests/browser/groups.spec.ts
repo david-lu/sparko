@@ -53,7 +53,7 @@ test('templates stay grouped, move their clips and bends together, and support r
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(page.locator('.story-group')).toHaveCount(2);
   await fit(page); await header.click({button:'right'}); await page.getByRole('menuitem', { name: 'Save group as template', exact: true }).click(); await page.getByRole('button',{name:'Save template',exact:true}).click();
   project = await saved(page); expect(project.storyFlow.templates[0]).toMatchObject({ name: 'Scene group', color: 'green' });
-  await page.locator('.story-menu summary').filter({ hasText: 'Templates' }).click(); await page.locator('.story-template-row').getByRole('button', { name: 'Scene group', exact: true }).dragTo(page.locator('.story-scroll'), { force: true, targetPosition: { x: 140, y: 320 } });
+  await page.getByRole('button', { name: 'Add template Scene group', exact: true }).dragTo(page.locator('.story-scroll'), { force: true, targetPosition: { x: 140, y: 320 } });
   await expect(page.locator('.story-group')).toHaveCount(3); await expect(page.locator('.story-clip')).toHaveCount(13); await fit(page);
   await page.screenshot({ path: 'test-results/template-groups-desktop.png', fullPage: true });
   const beforeArchive = (await saved(page)).storyFlow;
@@ -73,7 +73,7 @@ test('source clips can be grouped and saved as footage templates with keyboard s
   const template = (await saved(page)).storyFlow.templates[0]; expect(template.nodes[0].kind).toBe('source');
   await fit(page); await page.getByRole('button', { name: 'Select group Reusable video', exact: true }).click(); await page.keyboard.press('Control+Shift+g');
   await expect(page.locator('.story-group')).toHaveCount(0); await expect(page.locator('.story-clip')).toHaveCount(1);
-  await page.locator('.story-menu summary').filter({ hasText: 'Templates' }).click(); await page.locator('.story-template-row').getByRole('button', { name: 'Reusable video', exact: true }).dragTo(page.locator('.story-scroll'), { force: true, targetPosition: { x: 90, y: 100 } });
+  await page.getByRole('button', { name: 'Add template Reusable video', exact: true }).dragTo(page.locator('.story-scroll'), { force: true, targetPosition: { x: 90, y: 100 } });
   await expect(page.locator('.story-group')).toHaveCount(1); await expect(page.locator('.story-clip.type-source')).toHaveCount(2); await fit(page);
   expect((await saved(page)).storyFlow.nodes[1].source.assetId).toBe(template.nodes[0].source.assetId);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
