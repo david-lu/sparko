@@ -21,6 +21,17 @@ Open **http://127.0.0.1:3000** and choose **Sample video** to open `examples/sam
 
 Copy `.env.example` to `.env` if you do not already have one. Set `COMFY_CLOUD_API_KEY` for interstitial generation. Set `OPENAI_API_KEY` and `GEMINI_KEY` for their respective analysis and voice features; `COMFY_API_KEY` and `GEMINI_API_KEY` are also accepted. Keys are read only by the server and never bundled into the frontend. The existing `.env` is ignored by Git.
 
+To fetch environment variables from an existing Vercel project:
+
+```sh
+npx vercel login
+npx vercel link # Select the existing Sparko project; only needed once per checkout.
+npm run vercel:env # Development variables by default.
+npm run vercel:env -- production # Or: preview
+```
+
+The script pulls into the repository's `.env`, saving any previous file as `.env.backup-<timestamp>-<id>`. Failed downloads leave `.env` unchanged; temporary files and backups are ignored by Git and excluded from deployments. Restart the development server after pulling. The [Vercel CLI](https://vercel.com/docs/cli/env) preserves local-only entries when merging, but cannot download unreadable Secret values; keep those values locally or fill in the placeholders it creates. Pulling does not set missing variables such as `APP_PASSWORD` on Vercel.
+
 **All model IDs are in [`shared/constants.ts`](shared/constants.ts).** Change them there, then restart/redeploy; there are no model overrides in `.env`.
 
 ## Clip graph editing

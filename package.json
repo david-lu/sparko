@@ -11,6 +11,7 @@
     "comfy:check": "tsx scripts/check-comfy.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "vercel:env": "node scripts/pull-env.mjs",
     "vercel:upload-default": "node scripts/upload-default.mjs",
     "vercel:upload-sample": "tsx scripts/upload-sample.ts",
     "deploy:preview": "npx vercel",
