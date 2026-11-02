@@ -2,7 +2,7 @@ import { fitAll, test, expect, type Page } from './fixtures';
 import { readFile } from 'node:fs/promises';
 
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
-const open=async(page:Page)=>{await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
+const open=async(page:Page)=>{await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
 const drag=async(page:Page,from:{x:number;y:number},to:{x:number;y:number},release=true)=>{
   await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move(to.x,to.y,{steps:8});if(release)await page.mouse.up();
 };
@@ -49,7 +49,7 @@ test('drawn frames move, resize, accept selected clips, retain empty membership 
   await page.getByRole('button',{name:`Remove ${before.nodes[0].name} from group`,exact:true}).click();
   graph=(await saved(page)).storyFlow;expect(graph.groups[0].nodeIds).toEqual([]);expect(graph.groups[0].bounds).toBeDefined();expect(graph.nodes).toEqual(before.nodes);
   await page.getByText('File',{exact:true}).click();const downloading=page.waitForEvent('download');await page.getByRole('menuitem',{name:'Export project',exact:true}).click();const download=await downloading,buffer=await readFile((await download.path())!);
-  await page.reload();await page.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'Groups.sparko',mimeType:'application/zip',buffer});
+  await page.reload(); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'Groups.sparko',mimeType:'application/zip',buffer});
   await expect(page.locator('.story-group')).toHaveCount(1);expect((await saved(page)).storyFlow.groups).toEqual(graph.groups);const restoredNodes=(await saved(page)).storyFlow.nodes;
   await page.locator('.story-group-header').click({button:'right'});await page.getByRole('menuitem',{name:/Remove group/}).click();
   await expect(page.locator('.story-group')).toHaveCount(0);expect((await saved(page)).storyFlow.nodes).toEqual(restoredNodes);

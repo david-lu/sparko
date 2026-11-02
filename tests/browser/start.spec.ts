@@ -53,6 +53,7 @@ test('opens the bundled sample project with its saved interstitials', async ({ p
 
 test('asks before closing a project with unsaved changes', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.story-clip')).toHaveCount(1);
   await page.getByRole('button', { name: 'Add interstitial', exact:true }).dragTo(page.locator('.story-scroll'));
@@ -70,6 +71,7 @@ test('asks before closing a project with unsaved changes', async ({ page }) => {
 
 test('saves an edited project to disk before closing', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.story-clip')).toHaveCount(1);
   await page.getByRole('button', { name: 'Add interstitial', exact:true }).dragTo(page.locator('.story-scroll'));

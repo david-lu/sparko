@@ -1,7 +1,7 @@
 import { saveSelectionAsTemplate, fitAll,test,expect,type Page} from './fixtures';
 import type {Locator} from '@playwright/test';
 
-const open=async(page:Page)=>{await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
+const open=async(page:Page)=>{await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
 const camera=(page:Page)=>page.locator('.story-scroll').evaluate(el=>{const style=(el as HTMLElement).style;return {x:parseFloat(style.backgroundPositionX),y:parseFloat(style.backgroundPositionY),zoom:parseInt(document.querySelector('.story-zoom')!.textContent!)/100};});
 const begin=async(page:Page,source:Locator,x:number,y:number)=>{
