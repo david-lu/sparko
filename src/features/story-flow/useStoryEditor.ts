@@ -27,10 +27,10 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   const changeGroupMembers=(id:string,ids:string[])=>{if(!graph)return;const next=setGroupMembers(graph,id,ids,items);change(next);selectGroup(id,next);setNotice('Group updated. Clips and connections are preserved.');};
   const removeFromGroup=(id:string,ids:string[])=>{const group=graph?.groups?.find(g=>g.id===id);if(group)changeGroupMembers(id,group.nodeIds.filter(n=>!ids.includes(n)));};
   const ungroup=(id=selectedGroup?.id)=>{if(!graph)return;const groups=graph.groups?.filter(g=>id?g.id!==id:!g.nodeIds.some(n=>selected.includes(n)));change({...graph,groups});setSelectedGroupId(null);setNotice('Group removed. Clips and connections are preserved. Undo restores the frame.');};
-  const select=(id:string,frame=0,multiple=false)=>{
+  const select=(id:string,frame:number|null=0,multiple=false)=>{
     setSelected(ids=>multiple?ids.includes(id)?ids.filter(value=>value!==id):[...ids,id]:[id]);setSelectedEdge(null);
     jobs.select(graph?.nodes.find(n=>n.id===id)?.interstitialId??null);
-    if(!multiple)player.seekFlowScene(id,frame);
+    if(!multiple&&frame!==null)player.seekFlowScene(id,frame);
   };
   const selectNew=(id:string,focus=true)=>{setSelected([id]);setSelectedEdge(null);if(focus)setFocusRevision(n=>n+1);setNotice('Clip added. Connect its input and output to include it in the story.');};
   const add=(kind:Exclude<NodeKind,'source'>,edgeId?:string,placement?:{x:number;y:number},fromId?:string)=>{

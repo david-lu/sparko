@@ -157,8 +157,8 @@ test('cut tool, context menu and S split source and interstitial clips without c
   const film=page.locator('.story-filmstrip').first(),box=await film.boundingBox();await page.mouse.click(box!.x+box!.width/2,box!.y+box!.height/2);await expect(page.locator('.story-clip')).toHaveCount(2);
   await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','false');
   await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:240,y:30}});await fitAll(page);
-  const generated=page.locator('.story-clip.type-simple .story-filmstrip');await generated.scrollIntoViewIfNeeded();await generated.click({button:'right',position:{x:60,y:20}});await expect(page.getByRole('menu',{name:'Clip actions'})).toBeVisible();await page.getByRole('menuitem',{name:/Split here/}).click();
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);const project=await saved(page),parts=project.storyFlow.nodes.filter((n:any)=>n.interstitialId);expect(parts[0].trim.outFrame).toBe(parts[1].trim.inFrame);expect(parts[0].trim.inFrame).toBe(0);expect(parts[1].trim.outFrame).toBe(144);
+  const generated=page.locator('.story-clip.type-simple .story-filmstrip');await generated.scrollIntoViewIfNeeded();await generated.focus();await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');await generated.click({button:'right',position:{x:60,y:20}});await expect(page.getByRole('menu',{name:'Clip actions'})).toBeVisible();await page.getByRole('menuitem',{name:/Cut at playhead/}).click();
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);const project=await saved(page),parts=project.storyFlow.nodes.filter((n:any)=>n.interstitialId);expect(parts[0].trim.outFrame).toBe(24);expect(parts[1].trim.inFrame).toBe(24);expect(parts[0].trim.inFrame).toBe(0);expect(parts[1].trim.outFrame).toBe(144);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
   await page.getByRole('slider',{name:'Scrub New scene',exact:true}).focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
   await page.screenshot({path:'test-results/story-flow-cut-tool.png',fullPage:true});
@@ -199,4 +199,23 @@ test('dropping a video on an existing arrow imports a separate clip and a failed
   const imported=await saved(page);expect(imported.storyFlow.edges).toEqual(before.storyFlow.edges);expect(imported.storyFlow.nodes.at(-1).name).toBe('Dropped video.mp4');
   const toolbar=await page.locator('.story-toolbar').boundingBox();await page.getByLabel('Import videos as clips',{exact:true}).setInputFiles([{name:'Valid.mp4',mimeType:'video/mp4',buffer:Buffer.from(bytes)},{name:'Invalid.mp4',mimeType:'video/mp4',buffer:Buffer.from('not video data')}]);
   await expect(page.locator('.error-banner')).toBeVisible();expect((await saved(page)).storyFlow).toEqual(imported.storyFlow);expect((await page.locator('.story-toolbar').boundingBox())?.y).toBe(toolbar?.y);
+});
+
+for(const width of [1440,390])test(`right-click cuts at the existing playhead without seeking at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:1000});await open(page);await fitAll(page);
+  const film=page.locator('.story-filmstrip').first();await film.focus();await page.keyboard.press('Home');
+  const original=(await saved(page)).storyFlow;
+  await film.click({button:'right',position:{x:50,y:20}});await expect(page.getByRole('menuitem',{name:/Cut at playhead/})).toBeDisabled();await expect(film).toHaveAttribute('aria-valuenow','0');await page.keyboard.press('Escape');
+  await film.focus();await page.keyboard.press('Shift+ArrowRight');await expect(film).toHaveAttribute('aria-valuenow','1');
+  // Deselect the clip, then right-click away from the playhead.
+  await fitAll(page);const box=(await film.boundingBox())!,toolbar=await page.locator('.story-toolbar').boundingBox();
+  await film.click({button:'right',position:{x:box.width*.8,y:20}});await expect(film).toHaveAttribute('aria-valuenow','1');
+  await page.getByRole('menuitem',{name:/Cut at playhead/}).click();await expect(page.locator('.story-clip')).toHaveCount(2);
+  const graph=(await saved(page)).storyFlow;expect(graph.nodes[0].source.outFrame).toBe(24);expect(graph.nodes[1].source.inFrame).toBe(24);
+  expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);
+  await fitAll(page);await film.focus();await page.keyboard.press('Home');await page.keyboard.press('ArrowRight');
+  await page.locator('.story-filmstrip').last().click({button:'right',position:{x:20,y:20}});
+  await expect(page.getByRole('menuitem',{name:/Cut at playhead/})).toBeDisabled();await expect(film).toHaveAttribute('aria-valuenow',String(1/24));
+  expect((await saved(page)).storyFlow).toEqual(graph);await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(1);expect((await saved(page)).storyFlow).toEqual(original);
 });
