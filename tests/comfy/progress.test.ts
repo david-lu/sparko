@@ -11,6 +11,11 @@ const job = (patch: Partial<Interstitial> = {}): Interstitial => ({
 });
 
 describe('Comfy render progress estimates', () => {
+  it('names official H3 2K regeneration and uses indeterminate progress for the hosted pass',()=>{
+    expect(comfyStage('regenerate_2k')).toBe('Regenerating with H3 2K');expect(comfyStage(undefined,'MinimaxHailuo03RegenerateNode')).toBe('Regenerating with H3 2K');
+    const item=job({progress:.98,progressDetails:{stage:comfyStage('regenerate_2k'),nodesDone:30,nodesTotal:31}});
+    expect(renderingProgress(item)).toBeUndefined();expect(phaseLabel(item)).toBe('Regenerating with H3 2K');
+  });
   it('weights the sampler at 90% instead of displaying the inflated node aggregate', () => {
     const reported = generationProgress({ value: .98, current_node: 'sample', step: 9, steps: 20, nodes_done: 32, nodes_total: 33 });
     const item = job(reported);

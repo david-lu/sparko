@@ -148,9 +148,9 @@ describe('portable project archives', () => {
     const snapshot = structuredClone(project);
     const item = snapshot.interstitials[1];
     item.generationSettings = interstitialSettings(item);
-    item.prompt = 'An updated scene'; item.duration = 8; item.enable_prompt_expansion = true;
+    item.prompt = 'An updated scene'; item.duration = 8; item.enable_prompt_expansion = true; item.resolution='2k';
     const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
-    expect(restored.project.interstitials[1]).toMatchObject({ prompt: item.prompt, duration: 8, enable_prompt_expansion: true, generationSettings: item.generationSettings });
+    expect(restored.project.interstitials[1]).toMatchObject({ prompt: item.prompt, duration: 8, enable_prompt_expansion: true, resolution:'2k', generationSettings: {...item.generationSettings,resolution:'native'} });
     expect(hasUnsubmittedChanges(restored.project.interstitials[1])).toBe(true);
   });
   it('rejects corrupt asset bytes instead of silently importing them', async () => {

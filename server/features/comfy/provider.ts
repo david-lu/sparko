@@ -3,11 +3,11 @@ import { z } from 'zod';
 import type { GenerationEvent, GenerationJob } from '../../../shared/contracts.js';
 import { readServerEvents } from '../../../shared/server-events.js';
 import { COMFY_MODELS } from '../../../shared/constants.js';
-import { comfyBridgePlan } from '../../../shared/comfy.js';
+import { comfyBridgePlan, validateComfyResolution } from '../../../shared/comfy.js';
 import { HttpError } from '../../shared/http.js';
 import { ComfyClient } from './client.js';
 import { bridgeWorkflow, type BridgeInput } from './workflow.js';
-import { normalizeMaskInjection, type MaskInjection } from '../../../shared/interstitials.js';
+import { normalizeMaskInjection, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { vignetteGradientPng } from './vignette.js';
 import { generationProgress, progressSchema } from './progress.js';
 
@@ -19,7 +19,7 @@ const jobSchema = statusSchema.extend({ id, progress: progressSchema.nullable().
 });
 export type ComfyReadiness = { ready: boolean; message?: string };
 export interface ComfyProvider {
-  check(maskInjection?: MaskInjection): Promise<ComfyReadiness>;
+  check(maskInjection?: MaskInjection, resolution?: GenerationResolution): Promise<ComfyReadiness>;
   submit(file: Blob | undefined, input: BridgeInput): Promise<GenerationJob>;
   status(requestId: string): Promise<GenerationJob>;
   events(requestId: string, signal: AbortSignal): AsyncIterable<GenerationEvent>;
@@ -29,26 +29,31 @@ export interface ComfyProvider {
 
 export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fetch = fetch): ComfyProvider {
   const client = new ComfyClient(env, transport);
-  const checks = new Map<MaskInjection, { promise: Promise<ComfyReadiness>; at: number }>();
-  const check = (maskInjection: MaskInjection = 'standard') => {
+  const partnerKey = env.COMFY_CLOUD_API_KEY || env.COMFY_API_KEY || '';
+  const checks = new Map<string, { promise: Promise<ComfyReadiness>; at: number }>();
+  const check = (maskInjection: MaskInjection = 'standard', resolution: GenerationResolution = 'native') => {
     if (!client.configured) return Promise.resolve({ ready: false, message: 'Add COMFY_CLOUD_API_KEY to .env and restart the server.' });
-    const cached = checks.get(maskInjection);
+    const key = `${maskInjection}:${resolution}`, cached = checks.get(key);
     if (cached && Date.now() - cached.at < 60_000) return cached.promise;
     const promise = (async () => {
       const nodes = await client.call<Record<string, { input?: { required?: Record<string, unknown[]> } }>>('/api/object_info', { signal: AbortSignal.timeout(15_000) });
-      const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, maskInjection }, 0, 'preflight-mask');
+      const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, maskInjection, resolution }, 0, 'preflight-mask');
       const missing = [...new Set(Object.values(graph).map(node => node.class_type))].filter(name => !nodes[name]);
       if (missing.length) return { ready: false, message: `Comfy is missing required nodes: ${missing.join(', ')}.` };
       const models = [['UNETLoader', 'unet_name', COMFY_MODELS.diffusion], ['CLIPLoader', 'clip_name', COMFY_MODELS.textEncoder], ['VAELoader', 'vae_name', COMFY_MODELS.videoVae], ['VAELoader', 'vae_name', COMFY_MODELS.audioVae]];
       if (maskInjection !== 'standard') models.push(['FrameInterpolationModelLoader', 'model_name', COMFY_MODELS.frameInterpolation]);
+      if (resolution === '2k') models.push(['MinimaxHailuo03RegenerateNode', 'model', COMFY_MODELS.regeneration]);
       for (const [node, field, model] of models) {
         const definition = nodes[node].input?.required?.[field];
-        const options = Array.isArray(definition?.[0]) ? definition[0] as unknown[] : (definition?.[1] as { options?: unknown[] } | undefined)?.options;
+        const values = Array.isArray(definition?.[0]) ? definition[0] : (definition?.[1] as { options?: unknown } | undefined)?.options;
+        // V3 DynamicCombo options carry a key plus their nested input schema.
+        const options = Array.isArray(values) ? values.map(value => typeof value === 'string' ? value : (value as {key?:string})?.key)
+          : values && typeof values === 'object' ? Object.keys(values) : undefined;
         if (options && !options.includes(model)) return { ready: false, message: `Comfy is missing model ${model}.` };
       }
       return { ready: true };
     })().catch(error => ({ ready: false, message: client.message(error instanceof Error ? error.message : error) }));
-    checks.set(maskInjection, { promise, at: Date.now() });
+    checks.set(key, { promise, at: Date.now() });
     return promise;
   };
   const status = async (requestId: string): Promise<GenerationJob> => {
@@ -85,9 +90,10 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
     },
     async submit(file, input) {
       const maskInjection = !input.before || !input.after ? 'standard' : normalizeMaskInjection(input.maskInjection, input.interpolateMiddle);
-      const readiness = await check(maskInjection);
+      const readiness = await check(maskInjection, input.resolution);
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
       const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
+      validateComfyResolution(plan,input.resolution);
       // Comfy reads multipart uploads sequentially: metadata must arrive before the file.
       let referenceAssetId: string | undefined;
       if (plan.prefixFrames || plan.suffixFrames) {
@@ -103,7 +109,9 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       }
       const workflow = bridgeWorkflow(referenceAssetId, { ...input, maskInjection }, randomInt(0, 2 ** 48 - 1), vignetteAssetId);
       // Never automatically retry a paid submission after an ambiguous network error.
-      const job = jobSchema.parse(await client.call('/api/v2/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() }, body: JSON.stringify({ workflow }) }));
+      const job = jobSchema.parse(await client.call('/api/v2/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },
+        // Partner credentials belong in per-job extra_data, never in the saved graph.
+        body: JSON.stringify({ workflow, ...(input.resolution === '2k' ? {extra_data:{api_key_comfy_org:partnerKey}} : {}) }) }));
       return { requestId: job.id, status: 'IN_QUEUE', insertion: plan.insertion };
     },
     async cancel(requestId) {

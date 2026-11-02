@@ -1,5 +1,5 @@
 import { INTERSTITIAL } from '../../../shared/constants';
-import { clipMaskInjection, generationMethods, interstitialSettings, normalizeGenerationMethod, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
+import { clipMaskInjection, generationMethods, interstitialSettings, normalizeGenerationMethod, normalizeGenerationResolution, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
 
 function readReference(value: unknown): GenerationReference | undefined {
   const validClip = (clip: ClipReference | undefined) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
@@ -47,6 +47,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         useInputReference: typeof item.useInputReference === 'boolean' ? item.useInputReference : undefined,
         useOutputReference: typeof item.useOutputReference === 'boolean' ? item.useOutputReference : undefined,
         maskInjection: clipMaskInjection(item),
+        resolution: normalizeGenerationResolution(item.resolution),
         start_range: Number.isFinite(item.start_range) ? item.start_range : INTERSTITIAL.defaultRange,
         end_range: Number.isFinite(item.end_range) ? item.end_range : INTERSTITIAL.defaultRange,
         duration: Number.isFinite(item.duration) ? item.duration : INTERSTITIAL.defaultDuration,

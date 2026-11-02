@@ -111,9 +111,11 @@ describe('story clip graph',()=>{
   });
   it('captures selected interstitials as reusable settings without source assets or rendered media',()=>{
     const result=instantiateTemplate(initial(),makePreset('question'),[]),ids=result.graph.nodes.filter(n=>n.interstitialId).map(n=>n.id);
+    result.items[0].resolution='2k';
     const template=captureTemplate(result.graph,ids,result.items,'Quiz')!;
     expect(template.nodes).toHaveLength(4);expect(template.nodes.every(n=>!n.source)).toBe(true);
     const next=instantiateTemplate(initial(),template,[]);expect(next.items.every(i=>!i.result&&i.phase==='draft')).toBe(true);
+    expect(next.items[0].resolution).toBe('2k');
   });
   it('plays conditional routing at the clip boundary, repeats when enabled, and follows the default otherwise',()=>{
     const result=instantiateTemplate(initial(),makePreset('question'),[]);result.graph.entryId=result.graph.nodes.find(n=>n.kind==='conditional')!.id;

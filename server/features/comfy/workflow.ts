@@ -1,9 +1,9 @@
 import { COMFY, COMFY_MODELS, TIMELINE_FPS } from '../../../shared/constants.js';
-import { comfyBridgePlan, type ComfyMode } from '../../../shared/comfy.js';
-import { normalizeMaskInjection, type MaskInjection } from '../../../shared/interstitials.js';
+import { comfyBridgePlan, validateComfyResolution, type ComfyMode } from '../../../shared/comfy.js';
+import { normalizeMaskInjection, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown> }>;
-export type BridgeInput = { before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; interpolateMiddle?: boolean };
+export type BridgeInput = { before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; interpolateMiddle?: boolean; resolution?: GenerationResolution };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Optional FILM targets use a uniform 0.97 mask or a gradual 1.00–0.95 vignette.
@@ -12,6 +12,7 @@ export type BridgeInput = { before: number; after: number; duration: number; pro
  */
 export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, vignetteAssetId?: string): Workflow {
   const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
+  validateComfyResolution(plan,input.resolution);
   const { prefixFrames, suffixFrames, middleFrames, totalFrames, insertion } = plan;
   const maskInjection = prefixFrames && suffixFrames ? normalizeMaskInjection(input.maskInjection, input.interpolateMiddle) : 'standard';
   if ((prefixFrames || suffixFrames) && !assetId) throw new Error('Reference footage is missing.');
@@ -94,7 +95,18 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   const streams = add('streams', 'LTXVSeparateAVLatent', { av_latent: sample });
   const images = add('decode_video', 'VAEDecode', { samples: streams, vae });
   const audio = add('decode_audio', 'VAEDecodeAudio', { samples: ['streams', 1], vae: audioVae });
-  add('output', 'VHS_VideoCombine', { images, audio, frame_rate: TIMELINE_FPS, loop_count: 0, filename_prefix: 'sparko/interstitial',
-    format: 'video/h264-mp4', pix_fmt: 'yuv420p', crf: 18, save_metadata: false, trim_to_audio: false, pingpong: false, save_output: true });
+  if (input.resolution === '2k') {
+    // The official partner node sends this untrimmed H3 video and its exact
+    // prompt to MiniMax's /v2/video_regeneration API, with resolution="2K".
+    const base = add('base_video', 'CreateVideo', { images, audio, fps: TIMELINE_FPS });
+    const regenerated = add('regenerate_2k', 'MinimaxHailuo03RegenerateNode', {
+      video: base, model: COMFY_MODELS.regeneration, 'model.prompt': input.prompt, 'model.resolution': '2K', watermark: false,
+    });
+    // Preserve the provider's encoded result rather than decoding and resizing it.
+    add('output', 'SaveVideo', { video: regenerated, filename_prefix: 'sparko/interstitial', format: 'mp4', 'format.codec': 'auto' });
+  } else {
+    add('output', 'VHS_VideoCombine', { images, audio, frame_rate: TIMELINE_FPS, loop_count: 0, filename_prefix: 'sparko/interstitial',
+      format: 'video/h264-mp4', pix_fmt: 'yuv420p', crf: 18, save_metadata: false, trim_to_audio: false, pingpong: false, save_output: true });
+  }
   return graph;
 }

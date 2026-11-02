@@ -1,7 +1,7 @@
 import { storyGenerationItem } from '../story-flow/referenceInputs';
 import { behaviors } from '../story-flow/behaviors';
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
-import { clipMaskInjection, frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, normalizeGenerationMethod, playableResult, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
+import { clipMaskInjection, frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, normalizeGenerationMethod, normalizeGenerationResolution, playableResult, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import type { AppStatus, InsertionRange, PromptClipKind } from '../../../shared/contracts';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
@@ -65,6 +65,7 @@ export class InterstitialController {
       const { interpolateMiddle: _legacyInterpolation, ...current } = item;
       const restored = { ...current, method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
         maskInjection: clipMaskInjection(item),
+        resolution: normalizeGenerationResolution(item.resolution),
         enable_prompt_expansion: item.enable_prompt_expansion ?? INTERSTITIAL.enablePromptExpansion };
       const generationSettings = item.generationSettings
         ? interstitialSettings({ ...item.generationSettings, method: normalizeGenerationMethod(item.generationSettings.method) })
@@ -129,7 +130,7 @@ export class InterstitialController {
     if (existing) { this.select(existing.id); return existing; }
     const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
-      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, maskInjection: 'standard', method: 'comfy', prompt: '', phase: 'draft' };
+      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, maskInjection: 'standard', resolution: 'native', method: 'comfy', prompt: '', phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
     return item;
   }

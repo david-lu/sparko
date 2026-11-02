@@ -1,8 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { comfyBridgePlan, comfyDimensions, comfyReferenceRange } from '../../shared/comfy';
+import { comfyBridgePlan, comfyDimensions, comfyReferenceRange, validateComfyResolution } from '../../shared/comfy';
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
 
 describe('H3 two-sided temporal bridge', () => {
+  it.each(['bridge','extend','loop','custom'] as const)('uses official H3 2K regeneration after the complete %s base render',mode=>{
+    const input={mode,before:mode==='custom'?0:1.625,after:mode==='extend'||mode==='custom'?0:1.625,duration:6,width:1344,height:768,prompt:'Details',hasAudio:true};
+    const native=bridgeWorkflow(input.before?'asset':undefined,input,123),high=bridgeWorkflow(input.before?'asset':undefined,{...input,resolution:'2k'},123);
+    expect(native.regenerate_2k).toBeUndefined();expect(high.conditioning).toEqual(native.conditioning);expect(high.sample).toEqual(native.sample);
+    expect(high.decode_video).toEqual(native.decode_video);expect(high.decode_audio).toEqual(native.decode_audio);
+    expect(high.base_video).toEqual({class_type:'CreateVideo',inputs:{images:['decode_video',0],audio:['decode_audio',0],fps:24}});
+    expect(high.regenerate_2k).toEqual({class_type:'MinimaxHailuo03RegenerateNode',inputs:{video:['base_video',0],model:'MiniMax H3','model.prompt':input.prompt,'model.resolution':'2K',watermark:false}});
+    expect(high.output).toEqual({class_type:'SaveVideo',inputs:{video:['regenerate_2k',0],filename_prefix:'sparko/interstitial',format:'mp4','format.codec':'auto'}});
+    expect(Object.values(high).some(node=>/Upscale|ImageScale/.test(node.class_type))).toBe(false);
+    expect(high.middle_mask).toEqual(native.middle_mask);expect(high.freeze_audio).toEqual(native.freeze_audio);
+  });
+  it('keeps the 2K base render on the native H3 canvas for small, portrait and square references',()=>{
+    expect(comfyDimensions(320,180)).toEqual({width:320,height:192});expect(comfyDimensions(320,180,'2k')).toEqual({width:1344,height:768});
+    for(const [width,height] of [[1920,1080],[1080,1920],[1000,1000]]){
+      const native=comfyDimensions(width,height,'2k');
+      expect(Math.max(native.width,native.height)).toBeLessThanOrEqual(1344);expect(Math.min(native.width,native.height)).toBeLessThanOrEqual(768);
+      expect(native.width%32).toBe(0);expect(native.height%32).toBe(0);expect(native.width*native.height).toBeLessThanOrEqual(1032192);
+    }
+    expect(()=>comfyDimensions(NaN,1080,'2k')).toThrow('dimensions');
+  });
+  it('rejects source renders shorter than the official regeneration frame minimum before paid submission',()=>{
+    const input={mode:'custom' as const,before:0,after:0,duration:2,width:1344,height:768,prompt:'Short scene',hasAudio:false};
+    expect(()=>bridgeWorkflow(undefined,{...input,resolution:'2k'},1)).toThrow('4.46 seconds');
+    expect(()=>bridgeWorkflow(undefined,input,1)).not.toThrow();
+    expect(()=>validateComfyResolution({totalFrames:107},'2k')).not.toThrow();
+    expect(()=>comfyReferenceRange({method:'comfy-loop',time:0,start_range:2,end_range:2,duration:2,resolution:'2k',useInputReference:false,useOutputReference:false},4)).toThrow('4.46 seconds');
+  });
   it.each([[true, true], [true, false], [false, true], [false, false]])('omits disabled reference loaders and masks (input %s, output %s)', (before, after) => {
     const input = { mode: 'custom' as const, before: before ? 1.625 : 0, after: after ? 1.625 : 0, duration: 6, width: 960, height: 544, prompt: 'A new scene', hasAudio: true };
     const plan = comfyBridgePlan(input.before, input.after, 6, 'custom');

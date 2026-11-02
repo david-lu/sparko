@@ -18,9 +18,10 @@ export const COMFY_MODELS = {
   videoVae: 'minimax_h3_video_vae_fp16.safetensors',
   audioVae: 'minimax_h3_audio_vae_fp32.safetensors',
   frameInterpolation: 'film_net_fp16.safetensors',
+  regeneration: 'MiniMax H3', // Official MiniMax-H3 API model through Comfy's partner node.
 } as const;
 export const COMFY = {
-  baseUrl: 'https://cloud.comfy.org', maxDimension: 1344, maxShortEdge: 768, minContextFrames: 39,
+  baseUrl: 'https://cloud.comfy.org', maxDimension: 1344, maxShortEdge: 768, minRegenerationFrames: 107, minContextFrames: 39,
   maxFrames: 362, frameGroup: 17, firstFrames: 5, steps: 20,
   sampler: 'res_multistep', shiftVideo: 12, shiftAudio: 3,
 } as const;

@@ -3,6 +3,9 @@ import type { GenerationProgress, InsertionRange } from './contracts.js';
 
 export type GenerationMethod = 'comfy' | 'comfy-extend' | 'comfy-loop';
 export const generationMethods = ['comfy', 'comfy-extend', 'comfy-loop'] as const;
+export const generationResolutions = ['native', '2k'] as const;
+export type GenerationResolution = typeof generationResolutions[number];
+export const normalizeGenerationResolution = (value: unknown): GenerationResolution => value === '2k' ? '2k' : 'native';
 export const normalizeGenerationMethod = (method: unknown): GenerationMethod => generationMethods.includes(method as GenerationMethod) ? method as GenerationMethod : 'comfy';
 export const maskInjections = ['standard', 'uniform', 'vignette'] as const;
 export type MaskInjection = typeof maskInjections[number];
@@ -30,6 +33,7 @@ export type CallResponseInterstitial = {
 };
 export type InterstitialSettings = {
   method?: GenerationMethod;
+  resolution?: GenerationResolution;
   /** Story references come from the connected input/output; disabled sides contribute no footage. */
   useInputReference?: boolean; useOutputReference?: boolean;
   start_range: number; end_range: number; duration: number; prompt: string;
@@ -66,8 +70,8 @@ export type Interstitial = InterstitialSettings & {
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
-export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', continuity, dialogue, loopAudio, maskInjection, interpolateMiddle, useInputReference, useOutputReference }: InterstitialSettings): InterstitialSettings =>
-  ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
+export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, interpolateMiddle, useInputReference, useOutputReference }: InterstitialSettings): InterstitialSettings =>
+  ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
     ...(useInputReference !== undefined ? { useInputReference } : {}), ...(useOutputReference !== undefined ? { useOutputReference } : {}),
     ...(continuity !== undefined ? { continuity } : {}), ...(dialogue !== undefined ? { dialogue } : {}), ...(loopAudio !== undefined ? { loopAudio } : {}) });
 export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&

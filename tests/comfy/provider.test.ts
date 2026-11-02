@@ -10,6 +10,26 @@ const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body)
 const collect = async <T>(stream: AsyncIterable<T>) => { const items: T[] = []; for await (const item of stream) items.push(item); return items; };
 
 describe('Comfy Cloud v2 adapter', () => {
+  it('checks official 2K regeneration independently of native readiness before any upload or paid submission',async()=>{
+    const transport=vi.fn<typeof fetch>().mockImplementation(async()=>reply(catalog)),provider=createComfyProvider({COMFY_CLOUD_API_KEY:'secret'},transport);
+    expect(await provider.check()).toEqual({ready:true});
+    await expect(provider.submit(new Blob(),{...input,resolution:'2k'})).rejects.toThrow('MinimaxHailuo03RegenerateNode');
+    expect(await provider.check()).toEqual({ready:true});expect(transport).toHaveBeenCalledTimes(2);
+    expect(transport.mock.calls.every(([url])=>String(url).endsWith('/api/object_info'))).toBe(true);
+  });
+  it('requires the official MiniMax H3 API model and submits regeneration without a community upscaler',async()=>{
+    const highCatalog=Object.fromEntries(Object.values(bridgeWorkflow('asset',{...input,resolution:'2k'},0)).map(node=>[node.class_type,{}]));
+    const missingModel={...highCatalog,MinimaxHailuo03RegenerateNode:{input:{required:{model:['COMFY_DYNAMICCOMBO_V3',{options:[{key:'Other model',inputs:[]}]}]}}}};
+    const missingTransport=vi.fn<typeof fetch>().mockResolvedValue(reply(missingModel));
+    await expect(createComfyProvider({COMFY_CLOUD_API_KEY:'secret'},missingTransport).submit(new Blob(),{...input,resolution:'2k'})).rejects.toThrow('MiniMax H3');expect(missingTransport).toHaveBeenCalledTimes(1);
+    const available={...highCatalog,MinimaxHailuo03RegenerateNode:{input:{required:{model:['COMFY_DYNAMICCOMBO_V3',{options:[{key:'MiniMax H3',inputs:[]}]}]}}}};
+    const transport=vi.fn<typeof fetch>().mockResolvedValueOnce(reply(available)).mockResolvedValueOnce(reply({id:'input-asset'})).mockResolvedValueOnce(reply({id:'comfy-job-123',status:'queued'}));
+    const provider=createComfyProvider({COMFY_CLOUD_API_KEY:'secret'},transport);await provider.submit(new Blob(),{...input,resolution:'2k'});
+    const payload=JSON.parse(String(transport.mock.calls[2][1]!.body)),workflow=payload.workflow;
+    expect(payload.extra_data).toEqual({api_key_comfy_org:'secret'});expect(JSON.stringify(workflow)).not.toContain('secret');
+    expect(workflow.regenerate_2k.inputs).toMatchObject({model:'MiniMax H3','model.resolution':'2K','model.prompt':input.prompt});expect(workflow.output.inputs.video).toEqual(['regenerate_2k',0]);
+    expect(await provider.check('standard','2k')).toEqual({ready:true});expect(transport).toHaveBeenCalledTimes(3);
+  });
   it('skips asset uploads when neither reference is enabled', async () => {
     const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(catalog)).mockResolvedValueOnce(reply({ id: 'comfy-job-123', status: 'queued' }));
     const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport);

@@ -1,6 +1,6 @@
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { z } from 'zod';
-import { generationMethods, interstitialSettings, maskInjections } from '../../../shared/interstitials';
+import { generationMethods, generationResolutions, interstitialSettings, maskInjections } from '../../../shared/interstitials';
 import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
 import { assetIds, type Asset, type Project } from './types';
 import { callResponseSchema } from '../call-response/schema';
@@ -18,6 +18,7 @@ const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uui
   start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
+  resolution: z.enum(generationResolutions).optional(),
   useInputReference: z.boolean().optional(), useOutputReference: z.boolean().optional(),
   method: z.enum([...generationMethods, 'fal']).optional().transform(value => value === 'fal' || value === undefined ? 'comfy' as const : value),
   continuity: text.optional(), dialogue: text.optional(), loopAudio: z.boolean().optional(),

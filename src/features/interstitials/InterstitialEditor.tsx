@@ -26,7 +26,7 @@ export type InterstitialEditorProps = {
   compact?: boolean; generationSettings?: ReactNode;
 };
 export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, generationSettings }: InterstitialEditorProps) {
-  const promptId = useId();
+  const promptId = useId(), resolutionId = useId();
   const dependency = controller.dependency(selected.id);
   const kind = controller.clipKind(selected.id);
   const [enhancing, setEnhancing] = useState(false);
@@ -132,6 +132,14 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
       </div>
       {!compact && <><div className="interstitial-enhancement-feedback">{enhancementError && <p className="inline-error" role="alert">{enhancementError}</p>}</div></>}
+      <div className="field interstitial-resolution">
+        <label className="interstitial-option" htmlFor={resolutionId}>
+          <input id={resolutionId} type="checkbox" aria-label="Enable 2K regeneration" aria-describedby={`${resolutionId}-help`} checked={selected.resolution === '2k'}
+            onChange={event=>controller.edit(selected.id,{resolution:event.target.checked?'2k':'native'})}/>
+          Enable 2K regeneration (optional)
+        </label>
+        <p id={`${resolutionId}-help`} className="hint">Off by default: Native H3 output. Enable this to add the official H3-Regenerate-2K pass.</p>
+      </div>
       <div className="interstitial-time-fields" key={selected.id}>{!compact && timeFields}{durationField}</div>
       {!compact && advanced}
     </fieldset>

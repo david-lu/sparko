@@ -26,6 +26,15 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it('validates resolution and requests the selected 2K capabilities and native sampling canvas',async()=>{
+    comfy.check.mockResolvedValue({ready:true});await request(app).get('/api/comfy/status?resolution=2k').expect(200);expect(comfy.check).toHaveBeenCalledWith('standard','2k');
+    await request(app).get('/api/comfy/status?resolution=4k').expect(400);
+    await submit('1.625','1.625','Large scene',{resolution:'2k'}).expect(202);expect(comfy.submit.mock.calls[0][1]).toMatchObject({resolution:'2k',width:1344,height:768});
+    await request(app).post('/api/comfy/interstitials').set('x-sparko-request','1').field({before:'0',after:'0',duration:'6',mode:'custom',prompt:'A new scene',width:'320',height:'180',resolution:'2k'}).expect(202);
+    expect(comfy.submit.mock.calls[1][1]).toMatchObject({resolution:'2k',width:1344,height:768});
+    await submit('1.625','1.625','Invalid',{resolution:'4k'}).expect(400);expect(comfy.submit).toHaveBeenCalledTimes(2);
+    await request(app).post('/api/comfy/interstitials').set('x-sparko-request','1').field({before:'0',after:'0',duration:'2',mode:'custom',prompt:'Too short',width:'960',height:'544',resolution:'2k'}).expect(400);expect(comfy.submit).toHaveBeenCalledTimes(2);
+  });
   it.each([['0', '1.625'], ['1.625', '0']])('accepts one connected reference (%s / %s)', async (before, after) => {
     mediaDuration = 1.625;
     await submit(before, after, 'One reference', { mode: 'custom' }).expect(202);

@@ -1,5 +1,5 @@
 import { COMFY, TIMELINE_FPS } from './constants.js';
-import { validateInterstitialDuration, type Interstitial } from './interstitials.js';
+import { validateInterstitialDuration, type GenerationResolution, type Interstitial } from './interstitials.js';
 
 /** H3 encodes 5 + 17k frames. Keep both context windows on that same grid. */
 export type ComfyMode = 'bridge' | 'extend' | 'loop' | 'custom';
@@ -17,7 +17,13 @@ export function comfyBridgePlan(before: number, after: number, duration: number,
     insertion: { start: prefixFrames / TIMELINE_FPS, duration: middleFrames / TIMELINE_FPS, totalDuration: totalFrames / TIMELINE_FPS } };
 }
 
-export function comfyReferenceRange(item: Pick<Interstitial, 'time' | 'start_range' | 'end_range' | 'duration' | 'method' | 'useInputReference' | 'useOutputReference'>, sourceDuration: number) {
+export function validateComfyResolution(plan: {totalFrames:number}, resolution?: GenerationResolution) {
+  if (resolution === '2k' && plan.totalFrames < COMFY.minRegenerationFrames) {
+    throw new Error('H3 2K regeneration needs at least 4.46 seconds including reference footage. Increase the duration or choose Native.');
+  }
+}
+
+export function comfyReferenceRange(item: Pick<Interstitial, 'time' | 'start_range' | 'end_range' | 'duration' | 'method' | 'resolution' | 'useInputReference' | 'useOutputReference'>, sourceDuration: number) {
   if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) throw new Error('Wait for the video to finish loading.');
   if (![item.time, item.start_range, item.end_range].every(Number.isFinite) || item.start_range > 4 || item.end_range > 4) throw new Error('Enter valid reference ranges up to 4 seconds.');
   const anchorFrame = Math.max(0, Math.min(Math.floor(sourceDuration * TIMELINE_FPS + 1e-6), Math.round(item.time * TIMELINE_FPS)));
@@ -26,13 +32,14 @@ export function comfyReferenceRange(item: Pick<Interstitial, 'time' | 'start_ran
   const mode: ComfyMode = custom ? 'custom' : item.method === 'comfy-extend' ? 'extend' : item.method === 'comfy-loop' ? 'loop' : 'bridge';
   const after = mode === 'extend' || custom && !item.useOutputReference ? 0 : Math.min(Math.floor(sourceDuration * TIMELINE_FPS + 1e-6) - anchorFrame, Math.floor(item.end_range * TIMELINE_FPS + 1e-6)) / TIMELINE_FPS;
   const plan = comfyBridgePlan(before, after, item.duration, mode);
+  validateComfyResolution(plan,item.resolution);
   // Upload exactly the windows used by the graph, with no removed source frame.
   return { start: (anchorFrame - plan.prefixFrames) / TIMELINE_FPS, end: (anchorFrame + plan.suffixFrames) / TIMELINE_FPS,
     insertAt: plan.prefixFrames / TIMELINE_FPS, after: plan.suffixFrames / TIMELINE_FPS, plan, mode };
 }
 
-export function comfyDimensions(width: number, height: number) {
+export function comfyDimensions(width: number, height: number, resolution: 'native' | '2k' = 'native') {
   if (![width, height].every(value => Number.isFinite(value) && value > 0)) throw new Error('The source video dimensions are invalid.');
-  const scale = Math.min(1, COMFY.maxDimension / Math.max(width, height), COMFY.maxShortEdge / Math.min(width, height));
+  const scale = Math.min(resolution === '2k' ? Infinity : 1, COMFY.maxDimension / Math.max(width, height), COMFY.maxShortEdge / Math.min(width, height));
   return { width: Math.max(32, Math.round(width * scale / 32) * 32), height: Math.max(32, Math.round(height * scale / 32) * 32) };
 }

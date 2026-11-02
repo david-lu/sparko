@@ -6,6 +6,7 @@ const stages: Record<string, string> = {
   shift: 'Preparing H3', empty_streams: 'Preparing reference context',
   place_before: 'Preparing reference context', place_after: 'Preparing reference context', joint: 'Preparing video and audio',
   video_vae: 'Loading video decoder', audio_vae: 'Loading audio decoder',
+  base_video: 'Preparing H3 video for regeneration', regenerate_2k: 'Regenerating with H3 2K',
   conditioning: 'Encoding prompt', encode_before: 'Encoding reference clips', encode_after: 'Encoding reference clips',
   interpolation_model: 'Loading motion interpolator', interpolate_middle: 'Preparing interpolated frames', encode_target: 'Encoding interpolated video',
   last_before: 'Preparing reference frames', first_after: 'Preparing reference frames', boundary_frames: 'Preparing reference frames',
@@ -24,7 +25,8 @@ const classes: Record<string, string> = {
   VHS_LoadVideo: 'Reading reference clips', UNETLoader: 'Loading H3', CLIPLoader: 'Loading text encoder',
   VAELoader: 'Loading decoder', VAEEncode: 'Encoding reference clips', VAEEncodeAudio: 'Encoding reference audio',
   SamplerCustomAdvanced: stages.sample, VAEDecode: stages.decode_video, VAEDecodeAudio: stages.decode_audio,
-  VHS_VideoCombine: stages.output,
+  CreateVideo: stages.base_video, MinimaxHailuo03RegenerateNode: stages.regenerate_2k,
+  VHS_VideoCombine: stages.output, SaveVideo: stages.output,
   FrameInterpolate: 'Interpolating reference motion',
 };
 export const comfyStage = (node?: string | null, nodeClass?: string | null) => stages[node ?? ''] || classes[nodeClass ?? ''] || 'Generating scene';
@@ -44,6 +46,7 @@ export function estimateComfyProgress(details?: GenerationProgress): number | un
   if (stage === stages.sample) return fraction === undefined ? undefined : preparationWeight + samplerWeight * fraction;
   // Stage milestones fill the final 5%; only a completed job is finished.
   if (stage === stages.streams) return .95;
+  if (stage === stages.regenerate_2k || stage === stages.base_video) return;
   if (stage === stages.decode_video) return .95 + .02 * (fraction ?? 0);
   if (stage === stages.decode_audio) return .97 + .01 * (fraction ?? 0);
   if (stage === stages.output) return Math.min(.99, .98 + .02 * (fraction ?? 0));
