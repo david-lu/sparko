@@ -1,5 +1,5 @@
 import { interstitialSettings, type Interstitial } from '../../../shared/interstitials';
-import { autoLayout, createNode, edge, freshId, type StoryEdge, type StoryGraph, type StoryTemplate } from './model';
+import { autoLayout, createNode, edge, freshId, withReferenceFade, type StoryEdge, type StoryGraph, type StoryTemplate } from './model';
 
 import { conditionsFor, normalizeConditions } from './behaviors';
 
@@ -14,7 +14,7 @@ export function makePreset(id:string):StoryTemplate {
   const edges=id==='question'?[edge(question.node.id,wait.node.id),{...edge(wait.node.id,yes.node.id,'answer','Yes'),values:['yes']},{...edge(wait.node.id,no.node.id,'answer','Not yet'),values:['no','not yet']}]:[];
   if(id==='question'){wait.node.referenceId=question.node.id;yes.node.referenceId=wait.node.id;no.node.referenceId=wait.node.id;}
   const layout=autoLayout({version:1,entryId:pairs[0].node.id,nodes:pairs.map(p=>p.node),edges,templates:[]},pairs.map(p=>p.item));
-  return normalizeConditions({id,name:builtInTemplates.find(t=>t.id===id)!.name,entryId:layout.entryId,nodes:layout.nodes,edges,settings:Object.fromEntries(pairs.map(p=>[p.node.id,interstitialSettings(p.item)]))});
+  return normalizeConditions({id,name:builtInTemplates.find(t=>t.id===id)!.name,entryId:layout.entryId,nodes:layout.nodes,edges:edges.map(e=>withReferenceFade(e,layout.nodes)),settings:Object.fromEntries(pairs.map(p=>[p.node.id,interstitialSettings(p.item)]))});
 }
 export function instantiateTemplate(graph:StoryGraph,template:StoryTemplate,items:Interstitial[],connectionId?:string,placement?:{x:number;y:number}) {
   template=normalizeConditions(template);
@@ -24,8 +24,8 @@ export function instantiateTemplate(graph:StoryGraph,template:StoryTemplate,item
   const nodes=template.nodes.map(n=>({...n,conditions:conditionsFor(template,n),x:n.x+offset.x,y:n.y+offset.y,id:remap.get(n.id)!,interstitialId:n.kind==='source'?undefined:itemIds.get(n.id)!,referenceId:remap.get(n.referenceId??'')??(n.id===template.entryId?connection?.from:undefined)}));
   const added:Interstitial[]=template.nodes.filter(n=>n.kind!=='source').map(n=>({id:itemIds.get(n.id)!,label:n.name,time:0,kind:'regular',phase:'draft',...template.settings[n.id]}));
   const edges:StoryEdge[]=template.edges.map(e=>({...e,conditionId:e.event==='answer'?e.conditionId??e.id:undefined,id:freshId(),from:remap.get(e.from)!,to:remap.get(e.to)!,points:e.points?.map(p=>({...p,id:freshId(),x:p.x+offset.x,y:p.y+offset.y}))}));
-  if(connection){edges.push({...connection,id:freshId(),to:remap.get(template.entryId)!,points:undefined});
-    for(const node of nodes.filter(n=>!edges.some(e=>e.from===n.id&&e.to!==n.id)))edges.push(edge(node.id,connection.to));}
+  if(connection){edges.push(withReferenceFade({...connection,id:freshId(),to:remap.get(template.entryId)!,points:undefined},[...graph.nodes,...nodes]));
+    for(const node of nodes.filter(n=>!edges.some(e=>e.from===n.id&&e.to!==n.id)))edges.push(withReferenceFade(edge(node.id,connection.to),[...graph.nodes,...nodes]));}
   const group={id:freshId(),name:template.name,nodeIds:nodes.map(n=>n.id),color:template.color??'blue' as const};
   const next=normalizeConditions({...graph,entryId:graph.entryId||remap.get(template.entryId)!,nodes:[...graph.nodes,...nodes],edges:[...graph.edges.filter(e=>e.id!==connectionId),...edges],groups:[...(graph.groups??[]),group]});
   const result=placement?next:autoLayout(next,[...items,...added]);

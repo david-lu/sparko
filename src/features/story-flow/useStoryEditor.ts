@@ -3,7 +3,7 @@ import { playableResult, type Interstitial } from '../../../shared/interstitials
 import type { ProjectController } from '../project/ProjectController';
 import type { InterstitialController } from '../interstitials/InterstitialController';
 import type { VideoPlayerController } from '../player/VideoPlayerController';
-import { autoLayout, connect, createNode, edge, freshId, nodeDuration, splitClip, type GroupBounds, type NodeKind, type StoryGraph, type StoryNode, type StoryTemplate, type StoryGroup } from './model';
+import { autoLayout, connect, createNode, edge, freshId, nodeDuration, splitClip, withReferenceFade, type GroupBounds, type NodeKind, type StoryGraph, type StoryNode, type StoryTemplate, type StoryGroup } from './model';
 import { captureTemplate, instantiateTemplate, makePreset } from './templates';
 import { groupClips, copyGroups, setGroupMembers } from './groups';
 import { conditionsFor, normalizeConditions, setBehavior } from './behaviors';
@@ -39,9 +39,10 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     node.x=before?before.x+nodeDuration(before,items)*32+104:40;
     node.y=connection?before?.y??90:Math.max(90,...graph.nodes.map(n=>n.y))+145;
     if(placement){node.x=placement.x;node.y=placement.y;}
+    const nodes=[...graph.nodes,node];
     let edges=graph.edges.filter(e=>e.id!==connection?.id);
-    if(connection)edges=[...edges,{...connection,to:node.id,points:undefined},edge(node.id,connection.to)];
-    let next=normalizeConditions({...graph,entryId:graph.entryId||node.id,nodes:[...graph.nodes,node],edges});if(fromId&&!connection)next=connect(next,fromId,node.id);
+    if(connection)edges=[...edges,withReferenceFade({...connection,to:node.id,points:undefined},nodes),withReferenceFade(edge(node.id,connection.to),nodes)];
+    let next=normalizeConditions({...graph,entryId:graph.entryId||node.id,nodes,edges});if(fromId&&!connection)next=connect(next,fromId,node.id);
     change(!placement&&(connection||fromId)?autoLayout(next,[...items,item]):next,[item]);selectNew(node.id,!placement);jobs.select(item.id);
     if(placement)setNotice(connection?'Interstitial inserted into the connection.':fromId?'Interstitial attached to the clip.':'Interstitial placed. Drag its sockets to connect it.');
   };

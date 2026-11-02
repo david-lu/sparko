@@ -1,0 +1,50 @@
+{
+  "import": {
+    "width": 1116,
+    "height": 500
+  },
+  "playhead": {
+    "width": 1032,
+    "height": 404
+  },
+  "cut": {
+    "width": 532,
+    "height": 300
+  },
+  "split": {
+    "width": 1048,
+    "height": 454
+  },
+  "add": {
+    "width": 1116,
+    "height": 378
+  },
+  "templates": {
+    "width": 1126,
+    "height": 628
+  },
+  "drop": {
+    "width": 1048,
+    "height": 434
+  },
+  "inserted": {
+    "width": 1768,
+    "height": 364
+  },
+  "references": {
+    "width": 1086,
+    "height": 266
+  },
+  "generate": {
+    "width": 1086,
+    "height": 578
+  },
+  "save": {
+    "width": 1000,
+    "height": 460
+  },
+  "workspace": {
+    "width": 1140,
+    "height": 640
+  }
+}

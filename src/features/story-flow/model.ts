@@ -4,6 +4,7 @@ import { composeFlows } from '../call-response/compose';
 import { interactionFor, sceneFrames, type CallResponseFlow, type TimelineScene } from '../call-response/model';
 import { projectFlows, type Project } from '../project/types';
 import { behaviors, conditionsFor, defaultCondition, normalizeConditions } from './behaviors';
+import { storyGenerationItem } from './referenceInputs';
 
 export type NodeKind = 'source' | 'simple' | 'looped' | 'conditional';
 export type StoryCondition = { id: string; label: string; values: string[] };
@@ -20,7 +21,7 @@ export type StoryNode = {
   loopCount: number;
   loop?: boolean; conditional?: boolean; conditions?: StoryCondition[]; defaultConditionId?: string;
 };
-export type StoryEdge = { id: string; from: string; to: string; event: 'next' | 'answer' | 'fallback'; conditionId?: string; label: string; values: string[]; crossfade?: number; points?: {id:string;x:number;y:number}[] };
+export type StoryEdge = { id: string; from: string; to: string; event: 'next' | 'answer' | 'fallback'; conditionId?: string; label: string; values: string[]; crossfade?: number; crossfadeReferenceRatio?: number; points?: {id:string;x:number;y:number}[] };
 export const groupColors = { blue: '#82a5bd', purple: '#a391c2', green: '#80a69a', amber: '#c4a779', rose: '#c58d99' } as const;
 export type GroupBounds = { x: number; y: number; width: number; height: number };
 export type StoryGroup = { id: string; name: string; nodeIds: string[]; color: keyof typeof groupColors; bounds?: GroupBounds };
@@ -30,17 +31,43 @@ export const PIXELS_PER_SECOND = 32;
 export const CLIP_HEIGHT = 76;
 export const freshId = (): string => crypto.randomUUID();
 export const edge = (from: string, to: string, event: StoryEdge['event'] = 'next', label = 'Next'): StoryEdge => ({ id: freshId(), from, to, event, label, values: [] });
-export function connectionFade(connection: StoryEdge, nodes: StoryNode[]) {
+/** New interstitial attachments follow their references until explicitly edited. */
+export function withReferenceFade(connection: StoryEdge, nodes: StoryNode[]): StoryEdge {
+  if (connection.from === connection.to || !nodes.some(n => n.interstitialId && (n.id === connection.from || n.id === connection.to))) return connection;
+  return { ...connection, crossfade: undefined, crossfadeReferenceRatio: .75 };
+}
+function referenceFadeLength(node: StoryNode | undefined, neighbor: StoryNode | undefined, items: Interstitial[], side: 'before' | 'after'): number | undefined {
+  const item = items.find(item => item.id === node?.interstitialId);
+  if (!node || !item) return;
+  const result = playableResult(item);
+  if (result) {
+    // Follow the video being played, even while different settings are queued for regeneration.
+    if (side === 'before' && result.reference?.mode === 'custom' && !result.reference.before) return;
+    if (side === 'after' && result.reference && (!result.reference.after || result.reference.mode === 'loop' || result.reference.mode === 'extend')) return;
+    return nodeMediaLayout(node, items)[side];
+  }
+  const settings = storyGenerationItem(item);
+  if (!(side === 'before' ? settings.useInputReference : settings.useOutputReference)) return;
+  const length = side === 'before' ? settings.start_range : settings.end_range;
+  return Math.max(0, Math.min(length, neighbor ? nodeDuration(neighbor, items) : 0));
+}
+export function connectionFade(connection: StoryEdge, nodes: StoryNode[], items: Interstitial[] = []) {
   if (connection.crossfade !== undefined) return connection.crossfade;
   const before = nodes.find(n => n.id === connection.from), after = nodes.find(n => n.id === connection.to);
+  if (connection.crossfadeReferenceRatio !== undefined) {
+    if (connection.from === connection.to) return 0;
+    // Playback prefers the destination's opening reference, then the source's ending reference.
+    const length = referenceFadeLength(after, before, items, 'before') ?? referenceFadeLength(before, after, items, 'after') ?? 0;
+    return Math.round(length * connection.crossfadeReferenceRatio * TIMELINE_FPS) / TIMELINE_FPS;
+  }
   return after?.interstitialId ? after.crossfadeStart ?? .25 : before?.interstitialId ? before.crossfadeEnd ?? .25
     : Math.max(before?.crossfadeEnd ?? 0, after?.crossfadeStart ?? 0);
 }
 export function migrateFades(graph: StoryGraph): StoryGraph {
   graph=normalizeConditions({...graph,templates:graph.templates.map(normalizeConditions)});
-  return { ...graph, edges: graph.edges.map(e => ({ ...e, crossfade: connectionFade(e, graph.nodes) })),
+  return { ...graph, edges: graph.edges.map(e => e.crossfadeReferenceRatio !== undefined ? e : ({ ...e, crossfade: connectionFade(e, graph.nodes) })),
     nodes: graph.nodes.map(({crossfadeStart, crossfadeEnd, ...node}) => node),
-    templates: graph.templates.map(t => ({ ...t, edges: t.edges.map(e => ({...e,crossfade:connectionFade(e,t.nodes)})),
+    templates: graph.templates.map(t => ({ ...t, edges: t.edges.map(e => e.crossfadeReferenceRatio !== undefined ? e : ({...e,crossfade:connectionFade(e,t.nodes)})),
       nodes:t.nodes.map(({crossfadeStart,crossfadeEnd,...node})=>node) })) };
 }
 export function nodeDuration(node: StoryNode, items: Interstitial[]): number {
@@ -144,7 +171,7 @@ export function migrateGraph(project: Project, duration: number): StoryGraph {
   if (project.storyFlow) {
     const graph=project.storyFlow,legacyFade=(project.crossfadeFrames??14)/TIMELINE_FPS;
     // Early graph migration halved the example's saved fade; restore untouched legacy joins.
-    const edges=graph.edges.map(e=>e.crossfade===undefined&&connectionFade(e,graph.nodes)===legacyFade/2&&
+    const edges=graph.edges.map(e=>e.crossfade===undefined&&e.crossfadeReferenceRatio===undefined&&connectionFade(e,graph.nodes)===legacyFade/2&&
       graph.nodes.some(n=>(n.id===e.from||n.id===e.to)&&project.interstitials.some(i=>i.id===n.interstitialId&&i.groupId))?{...e,crossfade:legacyFade}:e);
     const groups=graph.groups??legacyGroups(project,graph.nodes);
     return migrateFades({...graph,edges,...(groups.length||graph.groups?{groups}:{})});
@@ -201,7 +228,7 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
     else scene.clip = { ...scene.clip,assetId:sourceAssetId,inFrame:0,outFrame:Math.min(1,total) };
   };
   scenes.forEach(s => resolveDraft(s));
-  const edges: CallResponseFlow['edges'] = graph.edges.map(e => ({ ...e, when:e.event === 'answer' ? e.id : e.event === 'fallback' ? 'pending' : 'ended', transitionFrames:Math.round(connectionFade(e,graph.nodes)*fps) }));
+  const edges: CallResponseFlow['edges'] = graph.edges.map(e => ({ ...e, when:e.event === 'answer' ? e.id : e.event === 'fallback' ? 'pending' : 'ended', transitionFrames:Math.round(connectionFade(e,graph.nodes,items)*fps) }));
   const interactions: NonNullable<CallResponseFlow['storyInteractions']> = {};
   for (const node of graph.nodes) {
     const behavior=behaviors(node);
@@ -209,7 +236,7 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
       answers:conditionsFor(graph,node).flatMap(c=>{const e=graph.edges.find(e=>e.from===node.id&&e.event==='answer'&&(e.conditionId??e.id)===c.id);return e?[{id:e.id,label:c.label,values:c.values,sceneId:e.to}]:[]}) };
     else if (behavior.loop) {
       const next = graph.edges.find(e => e.from === node.id && e.event === 'next');
-      if (next) edges.push({ id:`${node.id}:exit`,from:node.id,to:next.to,when:`${node.id}:continue`,label:'Continue',transitionFrames:Math.round(connectionFade(next,graph.nodes)*fps) });
+      if (next) edges.push({ id:`${node.id}:exit`,from:node.id,to:next.to,when:`${node.id}:continue`,label:'Continue',transitionFrames:Math.round(connectionFade(next,graph.nodes,items)*fps) });
       interactions[node.id] = { question:'',waitSceneId:node.id,fallbackAnswerId:null,answers:next ? [{id:`${node.id}:continue`,label:'Continue',values:['continue'],sceneId:next.to}] : [] };
     }
     if(behavior.loop) edges.push({id:`${node.id}:repeat`,from:node.id,to:node.id,when:'repeat',label:'Repeat',transitionFrames:0});
@@ -228,12 +255,18 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
 
 export function connect(graph: StoryGraph, from: string, to: string, edgeId?: string, conditionId?: string): StoryGraph {
   const node=graph.nodes.find(n=>n.id===from); if(!node || !graph.nodes.some(n=>n.id===to)) return graph;
-  if(edgeId) return {...graph,edges:graph.edges.map(e=>e.id===edgeId?{...e,to}:e),nodes:graph.nodes.map(n=>n.id===to&&!n.referenceId&&from!==to?{...n,referenceId:from}:n)};
+  if(edgeId) return {...graph,edges:graph.edges.map(e=>{
+    if(e.id!==edgeId)return e;
+    const rewired={...e,to};
+    // Keep an interstitial connection's manual fade when redirecting it. A former
+    // source-to-source cut gains a reference fade when first attached to an interstitial.
+    return graph.nodes.some(n=>n.interstitialId&&(n.id===e.from||n.id===e.to))?rewired:withReferenceFade(rewired,graph.nodes);
+  }),nodes:graph.nodes.map(n=>n.id===to&&!n.referenceId&&from!==to?{...n,referenceId:from}:n)};
   const conditional=behaviors(node).conditional,conditions=conditionsFor(graph,node);
   const condition=conditional?(conditions.find(c=>c.id===conditionId)??(!conditionId?{id:freshId(),label:`Condition ${conditions.length+1}`,values:[]}:undefined)):undefined;
   if(conditional&&!condition)return graph;
   const event=conditional?'answer':'next';
-  const added={...edge(from,to,event,condition?.label??'Next'),conditionId:condition?.id,values:condition?.values??[]};
+  const added=withReferenceFade({...edge(from,to,event,condition?.label??'Next'),conditionId:condition?.id,values:condition?.values??[]},graph.nodes);
   return {...graph,edges:[...graph.edges.filter(e=>e.from!==from||(event==='answer'?(e.conditionId??e.id)!==condition?.id:e.event!==event)),added],
     nodes:graph.nodes.map(n=>n.id===from&&condition?{...n,conditions:conditions.some(c=>c.id===condition.id)?conditions:[...conditions,condition]}:n.id===to&&!n.referenceId&&from!==to?{...n,referenceId:from}:n)};
 }

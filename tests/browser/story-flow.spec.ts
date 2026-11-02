@@ -1,6 +1,6 @@
 import { saveSelectionAsTemplate, fitAll,test,expect,type Page} from './fixtures';
 import {readFile} from 'node:fs/promises';
-const open=async(page:Page)=>{await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1,{timeout:60000});};
+const open=async(page:Page)=>{await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1,{timeout:60000});};
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
 
 test('source clips split, insert, scrub, connect and retain independent fades through undo',async({page})=>{
@@ -11,8 +11,8 @@ test('source clips split, insert, scrub, connect and retain independent fades th
   await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.getByRole('button',{name:/Edit crossfade from/}));await expect(page.locator('.story-clip')).toHaveCount(3);
   await expect(page.getByLabel('Crossfade duration',{exact:true})).toHaveCount(0);await expect(page.locator('.story-fade,.story-fade-handle')).toHaveCount(0);
   await fitAll(page);
-  await page.locator('.story-crossfade').first().click();await page.getByLabel('Crossfade duration',{exact:true}).fill('0.25');
-  await page.locator('.story-crossfade').last().click();await page.getByLabel('Crossfade duration',{exact:true}).fill('0.75');
+  await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Crossfade duration',{exact:true})).toHaveValue('1.5');await expect(page.locator('.connection-inspector')).toContainText('Automatic: 75%');await page.getByLabel('Crossfade duration',{exact:true}).fill('0.25');
+  await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Crossfade duration',{exact:true})).toHaveValue('0');await page.getByLabel('Crossfade duration',{exact:true}).fill('0.75');
   let project=await saved(page);expect(project.storyFlow.edges.map((e:any)=>e.crossfade)).toEqual([.25,.75]);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
   await page.getByRole('button',{name:'Duplicate selected clips',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(4);
@@ -37,7 +37,8 @@ test('templates insert ordinary clips, routing stays editable, and selections ca
 
 test('narrow layout and loading keep graph and inspector controls in place',async({page})=>{
   await page.setViewportSize({width:390,height:844});await open(page);
-  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:220,y:90}});
+  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:220,y:90}});
+  await expect(page.locator('.story-clip')).toHaveCount(2);
   await fitAll(page);
   const before=await page.locator('.story-toolbar').boundingBox();
   const counts=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:window.innerWidth}));expect(counts.width).toBeLessThanOrEqual(counts.viewport);
@@ -57,7 +58,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   const source=page.getByRole('slider',{name:/Scrub/}).first();await source.focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
   await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.getByRole('button',{name:/Edit crossfade from/}));await page.getByLabel('Interstitial prompt',{exact:true}).fill('Continue the scene');
   await fitAll(page);
-  await page.locator('.story-crossfade').first().click();await page.getByLabel('Crossfade duration',{exact:true}).fill('0.25');
+  await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Crossfade duration',{exact:true})).toHaveValue('1.5');
   await page.locator('.story-crossfade').last().click();await page.getByLabel('Crossfade duration',{exact:true}).fill('0.5');
   await page.locator('.story-clip.type-simple .story-clip-title').click();
   const controls=()=>page.evaluate(()=>{const root=document.querySelector('.interstitial-editor')!.getBoundingClientRect();return ['textarea','.interstitial-time-fields','button[type=submit]','.task-status'].map(s=>{const r=document.querySelector('.interstitial-editor '+s)!.getBoundingClientRect();return {y:r.top-root.top,height:r.height};});});
@@ -77,6 +78,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   const generated=page.locator('.story-clip.type-simple');await expect(generated).toHaveAttribute('data-duration','2');
   await expect(placeholder).toHaveCount(0);await expect(generated.locator('.video-filmstrip img').first()).toBeVisible();expect((await generated.boundingBox())!.height).toBe(draftHeight);
   await expect(generated).toHaveAttribute('data-media-duration','4');await fitAll(page);
+  await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Crossfade duration',{exact:true})).toHaveValue('0.75');await expect(page.locator('.connection-inspector')).toContainText('Automatic: 75%');
   const sections=await generated.evaluate(el=>{const r=el.querySelector('.story-reference-section')!,g=el.querySelector('.story-generated-section')!;return {reference:r.getBoundingClientRect().width,generated:g.getBoundingClientRect().width,referenceColor:getComputedStyle(r).backgroundColor,generatedColor:getComputedStyle(g).backgroundColor,height:el.getBoundingClientRect().height};});
   expect(sections.reference/sections.generated).toBeCloseTo(.5,1);expect(sections.referenceColor).not.toBe(sections.generatedColor);expect(sections.height).toBe(76);
   await generated.locator('.story-filmstrip').focus();await page.keyboard.press('Home');expect(await generated.locator('.story-playhead').evaluate(el=>(el as HTMLElement).style.left)).toBe('25%');
@@ -89,9 +91,11 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await generated.locator('.story-clip-title').click();await page.locator('.inspector-output>summary').click();await page.getByRole('region',{name:'Video breakdown'}).scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/generated-reference-sections.png',fullPage:true});
   await page.locator('summary').filter({hasText:/^File$/}).click();const downloadEvent=page.waitForEvent('download');await page.getByRole('menuitem',{name:'Export project',exact:true}).click();const download=await downloadEvent;
   const context=await browser.newContext({baseURL:'http://127.0.0.1:3000'}),restored=await context.newPage();const errors:string[]=[];restored.on('pageerror',e=>errors.push(e.message));await restored.goto('/');
+  await expect(restored.getByRole('button',{name:/^New project/})).toBeEnabled();
   await restored.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'story.sparko',mimeType:'application/zip',buffer:await readFile((await download.path())!)});
   await expect(restored.locator('.story-clip')).toHaveCount(3,{timeout:60000});await restored.locator('.story-clip.type-simple .story-clip-title').click();
-  expect((await saved(restored)).storyFlow.edges.map((e:any)=>e.crossfade)).toEqual([.25,.5]);
+  expect((await saved(restored)).storyFlow.edges.map((e:any)=>e.crossfade)).toEqual([undefined,.5]);
+  await fitAll(restored);await restored.locator('.story-crossfade').first().click();await expect(restored.getByLabel('Crossfade duration',{exact:true})).toHaveValue('0.75');await expect(restored.locator('.connection-inspector')).toContainText('Automatic: 75%');await restored.locator('.story-clip.type-simple .story-clip-title').click();
   await restored.locator('.inspector-output>summary').click();const breakdown=restored.getByRole('region',{name:'Video breakdown'});await expect(breakdown).toContainText('0.000 s – 1.000 s');await expect(breakdown).toContainText('1.000 s – 3.000 s');await expect(breakdown).toContainText('3.000 s – 4.000 s');
   await expect(restored.getByLabel('Crossfade duration',{exact:true})).toHaveCount(0);await expect(restored.locator('.story-clip.type-simple')).toHaveAttribute('data-duration','2');expect(errors).toEqual([]);
   await restored.getByRole('slider',{name:'Scrub New scene',exact:true}).focus();await restored.keyboard.press('ArrowRight');await restored.keyboard.press('Space');await expect(restored.locator('.story-playhead')).toBeVisible();
@@ -165,7 +169,7 @@ test('cut tool, context menu and S split source and interstitial clips without c
 });
 
 test('the side panel drops interstitials and templates onto the canvas and inserts on arrows',async({page})=>{
-  await open(page);const library=page.locator('.story-library'),canvas=page.locator('.story-scroll');
+  await open(page);const library=page.getByRole('region',{name:'Interstitials and templates'}),canvas=page.locator('.story-scroll');
   await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(canvas,{targetPosition:{x:40,y:30}});await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
   let project=await saved(page);const bounds=(await canvas.boundingBox())!,loop=(await page.locator('.story-clip.type-simple').boundingBox())!;expect(loop.x-bounds.x).toBeCloseTo(40,0);expect(loop.y-bounds.y).toBeCloseTo(30,0);
   await library.getByRole('button',{name:'Add template Question & response',exact:true}).dragTo(canvas,{targetPosition:{x:250,y:100}});await expect(page.locator('.story-clip')).toHaveCount(6);

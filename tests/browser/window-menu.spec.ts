@@ -11,17 +11,18 @@ const drag=async(page:Page,target:Locator,dx:number,dy:number)=>{const r=(await 
 for(const width of [1440,390])test(`Window controls panels and locks layout without blocking editing at ${width}px`,async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width,height:1000});await open(page);
   await showMenu(page);await menu(page).getByRole('menuitemcheckbox',{name:'Inspector',exact:true}).click();await expect(page.locator('[data-panel-id=inspector]')).toHaveCount(0);
+  await menu(page).getByRole('menuitemcheckbox',{name:'Add clips',exact:true}).click();await expect(page.locator('[data-panel-id=create]')).toHaveCount(0);
   await menu(page).getByRole('menuitemcheckbox',{name:'Library',exact:true}).click();await expect(page.locator('.panels-empty')).toBeVisible();
   await menu(page).getByRole('menuitemcheckbox',{name:'Timeline',exact:true}).click();await expect(page.locator('.story-scroll')).toBeHidden();
-  for(const name of ['Library','Inspector','Timeline'])await menu(page).getByRole('menuitemcheckbox',{name,exact:true}).click();
-  await expect(page.locator('.sidePanelSection')).toHaveCount(2);await expect(page.locator('.story-scroll')).toBeVisible();
+  for(const name of ['Library','Add clips','Inspector','Timeline'])await menu(page).getByRole('menuitemcheckbox',{name,exact:true}).click();
+  await expect(page.locator('.sidePanelSection')).toHaveCount(3);await expect(page.locator('.story-scroll')).toBeVisible();
   await page.keyboard.press('Escape');const before=await layout(page);
   await showMenu(page);await menu(page).getByRole('menuitemcheckbox',{name:'Lock workspace',exact:true}).click();
   await expect(menu(page).getByRole('menuitemcheckbox',{name:'Lock workspace',exact:true})).toBeChecked();
-  for(const name of ['Library','Inspector','Timeline'])await expect(menu(page).getByRole('menuitemcheckbox',{name,exact:true})).toBeDisabled();
+  for(const name of ['Library','Add clips','Inspector','Timeline'])await expect(menu(page).getByRole('menuitemcheckbox',{name,exact:true})).toBeDisabled();
   await expect(menu(page).getByRole('menuitem',{name:'Reset workspace',exact:true})).toBeDisabled();expect(await layout(page)).toEqual(before);
   await page.screenshot({path:`test-results/window-workspace-locked-${width}.png`,fullPage:true});await page.keyboard.press('Escape');
-  const timeline=page.getByRole('separator',{name:'Resize story canvas'}),divider=page.getByRole('separator',{name:'Library and Inspector',exact:true}),side=page.getByRole('separator',{name:'Resize side panel'});
+  const timeline=page.getByRole('separator',{name:'Resize story canvas'}),divider=page.getByRole('separator',{name:'Library and Add clips',exact:true}),side=page.getByRole('separator',{name:'Resize side panel'});
   for(const handle of [timeline,divider,...(width>660?[side]:[])]){
     await expect(handle).toHaveAttribute('aria-disabled','true');await drag(page,handle,-55,35);await handle.dispatchEvent('keydown',{key:'Home',code:'Home'});
   }
@@ -45,7 +46,7 @@ for(const width of [1440,390])test(`Window controls panels and locks layout with
 test('locked docked columns ignore resize, balance and keyboard moves, then unlock normally',async({page})=>{
   await open(page);const header=page.getByRole('button',{name:'Move Library panel',exact:true});await header.focus();await page.keyboard.press('Alt+ArrowRight');await expect(page.locator('.sidePanelLane')).toHaveCount(2);
   const side=page.getByRole('separator',{name:'Resize side panel'});await side.press('Shift+ArrowRight');await side.press('Shift+ArrowRight');
-  const divider=page.getByRole('separator',{name:'Library and Inspector columns',exact:true});await divider.press('ArrowLeft');
+  const divider=page.getByRole('separator',{name:'Workspace columns',exact:true});await divider.press('ArrowLeft');
   const before=await layout(page);await showMenu(page);await menu(page).getByRole('menuitemcheckbox',{name:'Lock workspace',exact:true}).click();await page.keyboard.press('Escape');
   await expect(divider).toHaveAttribute('aria-disabled','true');await drag(page,divider,70,0);await divider.dblclick({force:true});await divider.dispatchEvent('keydown',{key:'End',code:'End'});
   await header.dispatchEvent('keydown',{key:'ArrowLeft',code:'ArrowLeft',altKey:true});await drag(page,header,-450,0);expect(await layout(page)).toEqual(before);

@@ -1,6 +1,6 @@
 import { fitAll, test, expect, type Page } from './fixtures';
 
-const open=async(page:Page)=>{await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);await expect(page.locator('.story-playhead')).toBeVisible();};
+const open=async(page:Page)=>{await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);await expect(page.locator('.story-playhead')).toBeVisible();};
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
 
 for(const width of [1440,390]) {
@@ -25,6 +25,16 @@ for(const width of [1440,390]) {
     expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);expect(await canvas.boundingBox()).toEqual(bounds);
     await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(initial.storyFlow);
     await page.getByRole('button',{name:'Redo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(after.storyFlow);
+    await fitAll(page);
+    await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Crossfade duration')).toHaveValue('0.75');
+    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Crossfade duration')).toHaveValue('0');
+    await title.click();await page.getByRole('checkbox',{name:'Use end reference',exact:true}).check();
+    await page.getByRole('spinbutton',{name:'end_range',exact:true}).fill('1.625');
+    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Crossfade duration')).toHaveValue('1.208');
+    await page.getByLabel('Crossfade duration').fill('0.5');
+    await title.click();await page.getByRole('spinbutton',{name:'end_range',exact:true}).fill('2');
+    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Crossfade duration')).toHaveValue('0.5');
+    await expect(page.locator('.connection-inspector')).not.toContainText('Automatic:');
   });
 
   test(`context menus follow the pointer and insert templates at ${width}px`,async({page})=>{

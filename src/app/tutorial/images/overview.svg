@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="500" viewBox="0 0 560 500">
+  <rect width="560" height="500" fill="#191814"/>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10" fill="#e6c08a"/></marker></defs>
+  <g stroke="#e6c08a" stroke-width="3" marker-end="url(#arrow)"><path d="M280 139v52"/><path d="M280 306v52"/></g>
+  <g font-family="Arial, sans-serif" text-anchor="middle">
+    <rect x="70" y="28" width="420" height="110" rx="12" fill="#263c40" stroke="#87afa9" stroke-width="2"/>
+    <text x="280" y="66" font-size="17" fill="#b1ccc8">FIRST PIECE</text>
+    <text x="280" y="105" font-size="29" font-weight="700" fill="#f5eee2">Your video plays</text>
+    <rect x="70" y="195" width="420" height="110" rx="12" fill="#463950" stroke="#e6c08a" stroke-width="3"/>
+    <text x="280" y="234" font-size="17" fill="#f4d6a6">INTERSTITIAL</text>
+    <text x="280" y="273" font-size="29" font-weight="700" fill="#fff5e2">Your new scene plays</text>
+    <rect x="70" y="362" width="420" height="110" rx="12" fill="#263c40" stroke="#87afa9" stroke-width="2"/>
+    <text x="280" y="401" font-size="17" fill="#b1ccc8">SECOND PIECE</text>
+    <text x="280" y="440" font-size="29" font-weight="700" fill="#f5eee2">Your video continues</text>
+  </g>
+</svg>

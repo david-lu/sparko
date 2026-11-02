@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CollapsiblePanelStack, type CollapsiblePanelItem } from './CollapsiblePanelStack';
 import { PanelSplit } from './PanelSplit';
-import type { WorkspaceLayoutController } from './workspaceLayout';
+import { workspacePanelTitles, type WorkspaceLayoutController } from './workspaceLayout';
 import './panels.css';
 import DropdownMenu from '../DropdownMenu';
 
 /** Same stack/adjacent-column docking used by the animation editor. */
-export default function WorkspacePanels({ library, inspector, narrow, onColumns, onReset, inspectorRevision = 0,workspace }: {
-  library: ReactNode; inspector: ReactNode; inspectorRevision?: number; narrow: boolean; onColumns: (count: number) => void; onReset: () => void;
+export default function WorkspacePanels({ library, create, inspector, narrow, onColumns, onReset, inspectorRevision = 0,workspace }: {
+  library: ReactNode; create: ReactNode; inspector: ReactNode; inspectorRevision?: number; narrow: boolean; onColumns: (count: number) => void; onReset: () => void;
   workspace:WorkspaceLayoutController;
 }) {
   const {layout,updateLayout:setLayout,locked}=workspace;
@@ -17,7 +17,11 @@ export default function WorkspacePanels({ library, inspector, narrow, onColumns,
   const [preview, setPreview] = useState<{ lane: number; before: string | null } | null>(null);
   const resolvers = useRef<Record<number, ((y: number) => string | null) | null>>({});
   const menu = useRef<HTMLDetailsElement>(null);
-  const items: CollapsiblePanelItem[] = [{ id: 'library', title: 'Library', content: library }, { id: 'inspector', title: 'Inspector', content: inspector }];
+  const items: CollapsiblePanelItem[] = [
+    { id: 'library', title: workspacePanelTitles.library, content: library },
+    { id: 'create', title: workspacePanelTitles.create, content: create },
+    { id: 'inspector', title: workspacePanelTitles.inspector, content: inspector },
+  ];
   const visible = layout.panels.filter(p => p.visible);
   const lanes = narrow ? [0] : [0, 1].filter(lane => visible.some(p => p.lane === lane));
   const columnCount = lanes.length;
@@ -62,7 +66,7 @@ export default function WorkspacePanels({ library, inspector, narrow, onColumns,
       <button disabled={locked} onClick={() => { setPreview(null); onReset(); if (menu.current) menu.current.open = false; }}>Reset workspace</button>
     </div></DropdownMenu></div>
     {!visible.length ? <div className="panels-empty">Open a panel from the Panels menu.</div> : lanes.length === 2 ?
-      <PanelSplit className="sidePanelColumns" direction="row" label="Library and Inspector columns" sizes={layout.columns} minSizes={[200, 200]} onSizesChange={columns => setLayout(old => ({ ...old, columns }))}>
+      <PanelSplit className="sidePanelColumns" direction="row" label="Workspace columns" sizes={layout.columns} minSizes={[200, 200]} onSizesChange={columns => setLayout(old => ({ ...old, columns }))}>
         {renderLane(0)}{renderLane(1)}
       </PanelSplit> : <div className="sidePanelColumns">{lanes.map(renderLane)}</div>}
   </div>;

@@ -13,8 +13,8 @@ describe('insert an existing interstitial into a transition',()=>{
     const {graph,node,connection}=fixture(),next=insertIntoConnection(graph,node.id,connection.id);
     expect(next.nodes).toHaveLength(graph.nodes.length);expect(next.groups).toEqual(graph.groups);expect(next.entryId).toBe(graph.entryId);
     expect(next.nodes[0]).toEqual({...node,referenceId:connection.from});
-    expect(next.edges[0]).toEqual({...connection,to:node.id,points:undefined});
-    expect(next.edges[1]).toMatchObject({from:node.id,to:connection.to,event:'next'});
+    expect(next.edges[0]).toEqual({...connection,to:node.id,points:undefined,crossfade:undefined,crossfadeReferenceRatio:.75});
+    expect(next.edges[1]).toMatchObject({from:node.id,to:connection.to,event:'next',crossfadeReferenceRatio:.75});
     expect(graph.edges).toEqual([connection]);
   });
   it('redirects the existing next output and retains unrelated incoming connections',()=>{
@@ -32,8 +32,8 @@ describe('insert an existing interstitial into a transition',()=>{
     expect(next.edges.find(e=>e.from===node.id&&e.to===connection.to)?.event).toBe('answer');
   });
   it('reuses an existing destination connection',()=>{
-    const {graph,node,connection}=fixture(),outgoing=edge(node.id,connection.to);graph.edges.push(outgoing);
-    expect(insertIntoConnection(graph,node.id,connection.id).edges).toEqual([{...connection,to:node.id,points:undefined},outgoing]);
+    const {graph,node,connection}=fixture(),outgoing={...edge(node.id,connection.to),crossfade:.5};graph.edges.push(outgoing);
+    expect(insertIntoConnection(graph,node.id,connection.id).edges).toEqual([{...connection,to:node.id,points:undefined,crossfade:undefined,crossfadeReferenceRatio:.75},outgoing]);
   });
   it('ignores source clips, missing targets, and connections already attached to the dragged clip',()=>{
     const {graph,node,connection}=fixture();
