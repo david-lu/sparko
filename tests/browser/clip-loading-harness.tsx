@@ -16,6 +16,7 @@ function Harness() {
   const [split, setSplit] = useState(false);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [pendingClip,setPendingClip]=useState<{id:string;url:string}|null>(null);
   useEffect(() => {
     void fetch('/__clips/flow.mp4').then(response => response.blob()).then(blob => assets.save(blob, 'flow.mp4')).then(async asset => {
       await assets.open(asset.id); setAssetId(asset.id);
@@ -31,6 +32,8 @@ function Harness() {
       <button onClick={() => setUrl('/__clips/broken.mp4')}>Fail clip</button>
       <button onClick={() => setStripWidth(width => width === 420 ? 840 : 420)}>Zoom filmstrip</button>
       <button onClick={() => setSplit(true)}>Split clip</button>
+      <button onClick={async()=>{const blob=await (await fetch('/__clips/saved.mp4')).blob(),asset=await assets.save(blob,'saved.mp4');setPendingClip({id:asset.id,url:''});}}>Save generated clip</button>
+      <button disabled={!pendingClip} onClick={async()=>{if(pendingClip){const {url}=await assets.open(pendingClip.id);setPendingClip({...pendingClip,url});}}}>Open saved clip</button>
       <button onClick={() => setGenerating(!generating)}>{generating ? 'Finish generation' : 'Render clips'}</button>
     </div>
     <div style={{ width: 'min(840px, 100%)' }}>
@@ -39,6 +42,7 @@ function Harness() {
       <button id="narrow-strip" aria-label="Select short clip" style={{ position: 'relative', width: 64, height: 76, display: 'block', marginTop: 10 }}><VideoFilmstrip url={url} start={0} end={3} /></button>
       <InterstitialPreview url={url} label="Test clip" downloadName="test.mp4" active onPlay={noop} />
     </div>
+    {pendingClip&&<div id="pending-strip" data-has-url={!!pendingClip.url} style={{position:'relative',width:300,maxWidth:'100%',height:76}}><VideoFilmstrip assetId={pendingClip.id} url={pendingClip.url} start={0} end={4}/></div>}
     {flow && example && <div className="timeline-section has-flow" style={{ width: 'min(800px, 100%)', height: 270, marginTop: 20, overflow: 'auto' }}>
       <FlowTracks value={flow} width={800} items={example.interstitials.map(item => generating ? { ...item, phase: 'rendering', progress: .4 } : item)} />
     </div>}

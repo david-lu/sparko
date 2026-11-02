@@ -328,11 +328,12 @@ export class InterstitialController {
       if (fullAsset) await assets.open(fullAsset.id);
       signal.throwIfAborted();
       result = { ...result, assetId: asset.id, ...(fullAsset ? { fullAssetId: fullAsset.id, fullRange } : {}) };
-      this.patch(id, { result });
     }
     this.patch(id, { phase: 'loading', progress: undefined, progressDetails: { stage: 'Checking generated video' } });
     const { url } = await assets.open(result.assetId!);
     signal.throwIfAborted();
+    // Publishing an asset also adds it to the library, whose previews need its local URL.
+    this.patch(id, { result });
     const media = new MediaEngine({ id, name: 'Interstitial', url });
     const abort = () => media.dispose(); signal.addEventListener('abort', abort, { once: true });
     try {

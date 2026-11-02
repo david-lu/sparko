@@ -7,6 +7,8 @@ export default function VideoFilmstrip({ assetId, url, start, end }: { assetId?:
   const [preview, setPreview] = useState<{ key: string; frames: Thumbnail[]; failed?: boolean } | null>(null);
   const key = assetId ? `asset:${assetId}` : `url:${url}`;
   useEffect(() => {
+    // An empty URL resolves to the app page and can poison an in-flight asset preview.
+    if (!url) return;
     let active = true;
     void assetThumbnails({ id: assetId ?? url, assetId, name: 'Clip', url })
       .then(frames => { if (active) setPreview({ key, frames, failed: !frames.length }); })

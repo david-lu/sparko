@@ -103,3 +103,20 @@ test('splitting a clip reuses its video asset thumbnails without showing a new l
   await expect(second.locator('img').first()).toBeVisible();
   await expect(page.locator('#strip .clip-loading, #split-strip .clip-loading')).toHaveCount(0);
 });
+
+for(const width of [1440,390])test(`a generated clip waits for its local URL without caching a failed preview at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:900});
+  let release!:()=>void,emptyUrlRequests=0;
+  const pending=new Promise<void>(resolve=>{release=resolve;});
+  await page.route('**/__clip-loading',async route=>{
+    if(route.request().resourceType()!=='fetch')return route.fallback();
+    emptyUrlRequests++;await pending;await route.fulfill({contentType:'text/html',body:'<!doctype html><title>App</title>'});
+  });
+  await page.goto('/__clip-loading',{waitUntil:'domcontentloaded'});
+  await page.getByRole('button',{name:'Save generated clip',exact:true}).click();
+  const strip=page.locator('#pending-strip');await expect(strip.getByRole('status',{name:'Loading clip…'})).toBeVisible();
+  const bounds=await strip.boundingBox();
+  await page.getByRole('button',{name:'Open saved clip',exact:true}).click();await expect(strip).toHaveAttribute('data-has-url','true');release();
+  await expect(strip.locator('img').first()).toBeVisible();await expect(strip.getByRole('status')).toHaveCount(0);
+  expect(emptyUrlRequests).toBe(0);expect(await strip.boundingBox()).toEqual(bounds);
+});

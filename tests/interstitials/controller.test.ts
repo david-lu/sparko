@@ -197,6 +197,23 @@ describe('interstitial lifecycle', () => {
     expect(labels).toEqual(expect.arrayContaining(['Saving generated video', 'Checking generated video', 'Ready']));
     expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', progress: undefined, progressDetails: undefined });
   });
+  it('opens the saved video before exposing its asset to the library and preview', async () => {
+    const id = add(), published: boolean[] = [];
+    let opened = false;
+    vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
+    vi.mocked(getInterstitialJob).mockResolvedValue(completed);
+    vi.spyOn(assets, 'open').mockImplementation(async () => {
+      await Promise.resolve(); opened = true;
+      return { asset: { id: 'stored-asset', name: 'video.mp4', blob: new Blob(['video']) }, url: 'blob:local-asset' };
+    });
+    controller.subscribe(() => {
+      if (controller.getSnapshot().items[0].result?.assetId) published.push(opened);
+    });
+    await controller.generate(id, media, info);
+    expect(controller.getSnapshot().items[0].phase).toBe('ready');
+    expect(published.length).toBeGreaterThan(0);
+    expect(published.every(Boolean)).toBe(true);
+  });
   it('gives added answers independent media jobs, Idle references and shared duration settings', () => {
     const example = createTimelineExample(crypto.randomUUID(), 12);
     controller.load('arbitrary', example.interstitials, responseInterstitialIds(example.flow), example.flow);
