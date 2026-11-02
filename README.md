@@ -30,7 +30,7 @@ npm run vercel:env # Development variables by default.
 npm run vercel:env -- production # Or: preview
 ```
 
-The script pulls into the repository's `.env`, saving any previous file as `.env.backup-<timestamp>-<id>`. Failed downloads leave `.env` unchanged; temporary files and backups are ignored by Git and excluded from deployments. Restart the development server after pulling. The [Vercel CLI](https://vercel.com/docs/cli/env) preserves local-only entries when merging, but cannot download unreadable Secret values; keep those values locally or fill in the placeholders it creates. Pulling does not set missing variables such as `APP_PASSWORD` on Vercel.
+The script pulls into the repository's `.env`, saving any previous file as `.env.backup-<timestamp>-<id>`. Failed downloads leave `.env` unchanged; temporary files and backups are ignored by Git and excluded from deployments. Restart the development server after pulling. The [Vercel CLI](https://vercel.com/docs/cli/env) preserves local-only entries when merging, but cannot download unreadable Secret values; keep those values locally or fill in the placeholders it creates. Pulling does not create or update variables on Vercel.
 
 **All model IDs are in [`shared/constants.ts`](shared/constants.ts).** Change them there, then restart/redeploy; there are no model overrides in `.env`.
 
@@ -262,12 +262,12 @@ The app starts with a project chooser showing recent projects, sample projects, 
    - `COMFY_CLOUD_API_KEY`
    - `BLOB_READ_WRITE_TOKEN` (provided by the store)
    - `DEFAULT_PROJECT_URL` (or `DEFAULT_VIDEO_URL` for a video-only sample)
-   - `APP_PASSWORD` (a separate workspace password, not an API key)
+   - `APP_PASSWORD` (optional: leave unset or empty for access without a password; set a separate workspace password to require unlocking AI tools)
 5. Run `npm run deploy:preview`, or `npm run deploy:production` for production.
 
-The deployed app requires the workspace password before granting upload tokens or making provider requests. The sample project archive is served by its public Blob URL. Temporary analysis uploads use random URLs in `transient/` and are deleted after retrieval or request cleanup. An interrupted browser can leave an upload behind; remove old `transient/` objects in Blob as needed. Only the configured Blob store is accepted for remote API inputs. Local runs do not need Blob or a password; the local chooser serves `examples/sample.sparko` automatically.
+The deployed app enables configured AI providers and uploads without a password by default. Setting `APP_PASSWORD` enables the workspace password gate for upload tokens and provider requests, both locally and on Vercel. To turn the gate off, remove or empty `APP_PASSWORD` and restart/redeploy. The sample project archive is served by its public Blob URL. Temporary analysis uploads use random URLs in `transient/` and are deleted after retrieval or request cleanup. An interrupted browser can leave an upload behind; remove old `transient/` objects in Blob as needed. Only the configured Blob store is accepted for remote API inputs. Local runs do not need Blob or a password; the local chooser serves `examples/sample.sparko` automatically.
 
-Do not prefix API secrets with `VITE_`. Redeploy after changing deployment environment variables. This is a single-workspace app; interstitials and panel sizes remain browser-local, and API credits are shared by users of the workspace password.
+Do not prefix API secrets with `VITE_`. Redeploy after changing deployment environment variables. This is a single-workspace app; interstitials and panel sizes remain browser-local, and all app users share the configured API credits.
 
 ## Verification
 

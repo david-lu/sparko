@@ -15,9 +15,8 @@ export const remoteProject = process.env.DEFAULT_PROJECT_URL;
 const digest = (value: string) => createHash('sha256').update(value).digest();
 
 export const authenticate: RequestHandler = (req, res, next) => {
-  if (!hosted && !process.env.APP_PASSWORD) return next();
   const password = process.env.APP_PASSWORD;
-  if (!password) { res.status(503).json({ error: 'Set APP_PASSWORD in the Vercel environment to enable this app.' }); return; }
+  if (!password) return next();
   if (!timingSafeEqual(digest(req.get('x-sparko-password') || ''), digest(password))) {
     res.status(401).json({ error: 'Enter the workspace password to use the AI tools.' }); return;
   }

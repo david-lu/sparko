@@ -29,7 +29,7 @@ export async function createApp(options: { root?: string; providers?: Providers 
   app.get('/api/status', async (_req, res) => {
     const info = await stat(defaultPath).catch(() => null);
     const sampleProject = await stat(sampleProjectPath).catch(() => null);
-    res.json({ uploadMode: hosted ? 'blob' : 'local', requiresPassword: hosted || !!process.env.APP_PASSWORD,
+    res.json({ uploadMode: hosted ? 'blob' : 'local', requiresPassword: !!process.env.APP_PASSWORD,
       providers: providers.configured, models: providers.models,
       defaultVideo: { name: 'sample.mp4', url: hosted ? remoteDefault || '' : info ? '/media/sample.mp4' : remoteDefault || '', size: info?.size || 0 },
       defaultProject: hosted ? remoteProject ? { url: remoteProject } : null : sampleProject ? { url: '/media/sample.sparko' } : remoteProject ? { url: remoteProject } : null });
