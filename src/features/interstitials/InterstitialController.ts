@@ -297,7 +297,10 @@ export class InterstitialController {
       // Discard a snapshot requested before a newer live update, however long the request took.
       // A subsequent poll still reconciles the state, including when the stream is silent.
       if (revisionAtRequest === liveRevision) this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition,
-        progress: job.status === 'IN_QUEUE' ? undefined : job.progress, progressDetails: job.status === 'IN_QUEUE' ? undefined : job.progressDetails });
+        // Cloud polling can return progress:null throughout a running job. An absent
+        // snapshot must not erase progress received from its live stream.
+        ...(job.status === 'IN_QUEUE' ? { progress: undefined, progressDetails: undefined }
+          : job.progress !== undefined || job.progressDetails !== undefined ? { progress: job.progress, progressDetails: job.progressDetails } : {}) });
       await wait(signal);
     } } finally { stream.abort(); }
   }

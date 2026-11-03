@@ -176,6 +176,35 @@ describe('interstitial lifecycle', () => {
       expect(cancelInterstitialJob).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
   });
+  it('retains streamed progress across empty polls and replaces it when a real snapshot arrives', async () => {
+    const id = add();
+    vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE', insertion: completed.insertion });
+    const running = { requestId: completed.requestId, status: 'IN_PROGRESS' as const };
+    let read!: (job: Awaited<ReturnType<typeof getInterstitialJob>>) => void;
+    vi.mocked(getInterstitialJob).mockImplementationOnce(() => new Promise(resolve => { read = resolve; })).mockResolvedValue(running);
+    const generation = controller.generate(id, media, info);
+    await vi.waitFor(() => expect(watchComfyJob).toHaveBeenCalledOnce());
+    const [, , update] = vi.mocked(watchComfyJob).mock.calls[0];
+    update({ type: 'progress', progress: .9892857142857142, progressDetails: { stage: 'Generating scene', nodesDone: 27, nodesTotal: 28 } });
+    vi.useFakeTimers();
+    try {
+      read(running);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(7500);
+      expect(getInterstitialJob).toHaveBeenCalledTimes(4);
+      expect(phaseLabel(controller.getSnapshot().items[0])).toBe('99% reported by Comfy · Generating scene');
+      vi.mocked(getInterstitialJob).mockResolvedValue({ requestId: completed.requestId, status: 'IN_PROGRESS', progress: .4 });
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(controller.getSnapshot().items[0].progressDetails).toBeUndefined();
+      expect(phaseLabel(controller.getSnapshot().items[0])).toBe('40% reported by Comfy · Generating scene');
+      vi.mocked(getInterstitialJob).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'queued', progress: undefined, progressDetails: undefined });
+      vi.mocked(getInterstitialJob).mockResolvedValue(completed);
+      await vi.advanceTimersByTimeAsync(2500); await generation;
+      expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', progress: undefined, progressDetails: undefined });
+    } finally { vi.useRealTimers(); }
+  });
   it.each([1_000, 0])('separates download, storage and video checks with a reported file size of %i', async total => {
     const id = add(), labels: string[] = [];
     controller.subscribe(() => labels.push(phaseLabel(controller.getSnapshot().items[0])));
