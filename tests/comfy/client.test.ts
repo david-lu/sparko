@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { ComfyClient } from '../../server/features/comfy/client';
 
 describe('Comfy transport failures', () => {
+  it('blocks live requests in the browser test server even when credentials are present', async () => {
+    const transport = vi.fn<typeof fetch>();
+    const client = new ComfyClient({ SPARKO_TEST_MODE: '1', COMFY_CLOUD_API_KEY: 'accidentally-inherited-key' }, transport);
+    expect(client.configured).toBe(false);
+    await expect(client.call('/api/v2/jobs', { method: 'POST' })).rejects.toMatchObject({ status: 503, message: 'Live Comfy requests are disabled in the test server.' });
+    expect(transport).not.toHaveBeenCalled();
+  });
   it('identifies a broken status connection without exposing error details or credentials', async () => {
     const cause = Object.assign(new Error('secret-key https://private.example/output?token=private'), { code: 'ECONNRESET' });
     const transport = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed', { cause }));

@@ -62,6 +62,8 @@ The video player stays on top, with the clip timeline directly below and dockabl
 
 | Shortcut | Action |
 | --- | --- |
+| Ctrl/Cmd + S | Save project (choose a file on the first save) |
+| Ctrl/Cmd + Shift + S | Save project as a new file |
 | Space | Play / pause |
 | N (or P) | New simple interstitial |
 | S | Split selected clip at its playhead |
@@ -275,6 +277,20 @@ Do not prefix API secrets with `VITE_`. Redeploy after changing deployment envir
 
 [The CI workflow](.github/workflows/ci.yml) runs the full TypeScript check, unit/API tests, production build, and Chrome browser tests on pull requests and pushes to `main`. Browser tests are divided across four independent runners, with one browser worker per runner. Updates to an open pull request rerun CI without a duplicate branch-push run. The required **Sparko quality checks** job succeeds only when verification and all four browser shards pass. Use pull requests for changes to `main` and require this check in GitHub branch rules.
 
+CI uses `npm run test:e2e:ci`, which excludes tests tagged `@slow` or `@generation`. The normal local `npm run test:e2e` command also excludes `@generation`. Generation scenarios are disabled even though their provider responses are mocked. The remaining browser suite continues to cover editing, playback, preview, menus, loading states, and project operations.
+
+The slow cases were selected from [PR #4's CI timings](https://github.com/david-lu/sparko/actions/runs/41590453223), including the preceding successful runs of those cases. Approximate time per test, including browser setup and teardown:
+
+| Excluded slow scenario | Cases | Time per case |
+| --- | ---: | ---: |
+| Comfy generation, recovery, and regeneration | 4 | 32–51 seconds |
+| Inspector generation with all reference combinations | 1 | 37–38 seconds |
+| Complete project archive round trip with generated media | 1 | 24 seconds |
+| Sample group sizing at desktop and mobile widths | 2 | 21–24 seconds |
+| Connected generation with save/reopen | 1 | 23 seconds |
+| H3 2K generation and persistence | 2 | 17–23 seconds; mobile also timed out at 90 seconds |
+| Full-resolution reference and Idle video processing | 1 | 21 seconds |
+
 Vercel's production check must match that job name and block production domain assignment until it succeeds. This lets builds run while CI is testing; failed or missing checks leave the previous production deployment serving traffic. Manual CLI deployments still need a matching successful GitHub check. The production build uses `tsconfig.build.json`, while `npm run typecheck` includes tests and development scripts. Tests and scripts are excluded from Vercel uploads, not from CI.
 
 For a fresh checkout, install dependencies with `npm ci`, fetch fixtures with `git lfs pull`, and install Chrome with `npx playwright install --with-deps chrome`. Then run:
@@ -286,7 +302,7 @@ npm run build
 npm run test:e2e
 ```
 
-CI never submits live model-generation jobs. Generation responses, progress, completion, and generated downloads are mocked; the test server clears provider credentials and tests assert that its real providers are unconfigured. Real video encoding/decoding, playback, audio, and project-file operations remain covered. Live-provider tests belong in `tests/live/`, which is excluded from the default unit and browser suites. The optional `npm run comfy:check` command calls the live readiness API without submitting a generation and is not run by CI.
+CI never submits live model-generation jobs. The browser test server clears provider credentials and sets `SPARKO_TEST_MODE=1`, which blocks outbound Comfy requests even if a credential is accidentally supplied. Comfy unit tests use injected mock transports and fake credentials. Real video encoding/decoding, playback, audio, and project-file operations remain covered. Live-provider tests belong in `tests/live/`, which is excluded from the default unit and browser suites. The optional `npm run comfy:check` command calls the live readiness API without submitting a generation and is not run by CI.
 
 Browser tests use installed Google Chrome. The new `story-flow.spec.ts` suite covers proportional clip widths, scrubbing, splitting, insertion, independent fades, templates, arrow dragging and reconnection, undo/redo, branching playback, stable narrow-screen loading, generated media save/reopen, and legacy sample migration. Former pin and fixed Call/Idle/Response UI tests now exercise graph clips, templates, independent durations, and condition sockets. Graph suites cover dragging, cancellation, history, resizing, routing, and legacy sample migration; retained legacy controllers and archive formats remain covered by unit and media tests. The existing media suites cover playback, persistence, subtitle toggling, viewport fit, resizing, real non-keyframe MP4 export with audio, real reference preparation, interstitial job recovery/cancellation, native playback across cuts, generated-media conversion on archive import, cache reuse, and composed-export frame counts and audio. Voice tests mount the retained component in an isolated harness and use synthetic audio, never your microphone. Browser tests own a server on port 3100 and clear provider credentials, passwords, and remote sample URLs so local `.env` settings cannot change their behavior. Unit tests cover frame mapping, reference bounds, legacy migration, job lifecycle, voice capture, provider adapters, and API validation. Provider responses and Comfy generation are mocked to avoid recurring paid jobs; media processing runs for real. `tests/fixtures/voice-answer.wav` is a locally generated Windows speech-synthesis fixture; `interstitial-reference.mp4` is a synthetic four-second validation fixture.
 

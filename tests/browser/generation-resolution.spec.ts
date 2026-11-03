@@ -9,7 +9,7 @@ const open=async(page:Page)=>{
   await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-crossfade'));await page.getByLabel('Interstitial prompt',{exact:true}).fill('Continue with fine detail');
 };
 
-for(const width of [1440,390])test(`official H3 2K generation keeps loading layout stable and persists with templates at ${width}px`,async({page})=>{
+for(const width of [1440,390])test(`official H3 2K generation keeps loading layout stable and persists with templates at ${width}px`,{tag:['@generation','@slow']},async({page})=>{
   await page.setViewportSize({width,height:width===390?844:1000});let complete=false,submitted=0,preflights=0;
   await page.route('**/api/comfy/status*',async route=>{expect(new URL(route.request().url()).searchParams.get('resolution')).toBe('2k');preflights++;await route.fulfill({json:{ready:true}});});
   await page.route('**/api/comfy/interstitials',async route=>{
@@ -37,20 +37,20 @@ for(const width of [1440,390])test(`official H3 2K generation keeps loading layo
   await page.screenshot({path:`test-results/2k-generation-${width}.png`,fullPage:true});
 });
 
-test('unavailable 2K capability fails before submission and keeps the draft editable',async({page})=>{
+test('unavailable 2K capability fails before submission and keeps the draft editable', {tag:'@generation'},async({page})=>{
   let submitted=0;await page.route('**/api/comfy/status*',route=>route.fulfill({json:{ready:false,message:'Comfy is missing the official H3-Regenerate-2K partner node.'}}));await page.route('**/api/comfy/interstitials',route=>{submitted++;return route.abort();});
   await open(page);await page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true}).check();await page.getByRole('button',{name:'Generate',exact:true}).click();
   await expect(page.locator('.task-status')).toContainText('missing the official H3-Regenerate-2K partner node');expect(submitted).toBe(0);await expect(page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true})).toBeEnabled();
 });
 
-test('short clips explain the official 2K minimum before generation and remain available in Native',async({page})=>{
+test('short clips explain the official 2K minimum before generation and remain available in Native',{tag:'@generation'},async({page})=>{
   let submitted=0;await page.route('**/api/comfy/interstitials',route=>{submitted++;return route.abort();});await open(page);
   await page.getByRole('checkbox',{name:/^Use (start|input) reference$/}).uncheck();await page.getByLabel('Duration',{exact:true}).fill('2');await page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true}).check();
   await expect(page.getByRole('button',{name:'Generate',exact:true})).toBeDisabled();await expect(page.locator('.task-status')).toContainText('4.46 seconds');expect(submitted).toBe(0);
   await page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true}).uncheck();await expect(page.getByRole('button',{name:'Generate',exact:true})).toBeEnabled();
 });
 
-test('Native is the default and generates without official 2K support',async({page})=>{
+test('Native is the default and generates without official 2K support',{tag:'@generation'},async({page})=>{
   let submitted=0;await page.route('**/api/comfy/status*',route=>{expect(new URL(route.request().url()).searchParams.has('resolution')).toBe(false);return route.fulfill({json:{ready:true}});});
   await page.route('**/api/comfy/interstitials',async route=>{
     const form=await new Response(Uint8Array.from(route.request().postDataBuffer()!),{headers:{'Content-Type':route.request().headers()['content-type']}}).formData();expect(form.get('resolution')).toBe('native');submitted++;

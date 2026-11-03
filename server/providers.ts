@@ -17,7 +17,7 @@ export interface Providers extends AnalysisProviders {
 export function createProviders(env: NodeJS.ProcessEnv): Providers {
   const clients = createAIClients(env);
   return {
-    configured: { openai: !!clients.openai, gemini: !!clients.gemini, comfy: !!(env.COMFY_CLOUD_API_KEY || env.COMFY_API_KEY) },
+    configured: { openai: !!clients.openai, gemini: !!clients.gemini, comfy: env.SPARKO_TEST_MODE !== '1' && !!(env.COMFY_CLOUD_API_KEY || env.COMFY_API_KEY) },
     models: { openai: AI_MODELS.openai, gemini: AI_MODELS.gemini },
     ...createAnalysisProviders(clients),
     voice: createVoiceProvider(clients),

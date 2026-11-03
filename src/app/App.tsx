@@ -1,4 +1,4 @@
-import { Activity, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { Activity, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { Download, Eye, FolderOpen, Pencil, Redo2, Save, Undo2, X } from 'lucide-react';
 import CallResponseControls from '../features/call-response/CallResponseControls';
 import { addAnswer, branchScenes, interstitialScenes, resolveFlow, type SceneId } from '../features/call-response/model';
@@ -119,6 +119,7 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
   const fileMenu = useRef<HTMLDetailsElement>(null);
+  const savePending = useRef(false);
   const sourceVersion = useRef(0);
   const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, loopAudio: item.loopAudio, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
   useEffect(()=>{if(info&&projectState.source)projects.initializeStoryFlow(info.duration);},[info,projectState.source,projects]);
@@ -224,20 +225,43 @@ export default function App() {
     link.href = url; link.download = result.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 60_000);
     return true;
   };
-  const saveAsFile = async () => {
-    const picker = (window as ProjectPickerWindow).showSaveFilePicker;
-    if (!picker) return exportProject();
+  const saveProject = async (saveAs = false) => {
+    const state = projects.getSnapshot();
+    if (savePending.current || state.busy || !state.project) return false;
+    savePending.current = true;
+    if (fileMenu.current) fileMenu.current.open = false;
     try {
-      const name = `${(projectState.project?.name || 'project').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')}.sparko`;
+      // Commit fields such as clip names that save on blur before archiving.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active.closest('[data-project-edit]')) active.blur();
+      projects.endHistoryGroup();
+      const current = saveAs ? null : projects.getFileHandle();
+      if (current) return !!await projects.saveToFile(current);
+      const picker = (window as ProjectPickerWindow).showSaveFilePicker;
+      if (!picker) return await exportProject();
+      const name = `${(projects.getSnapshot().project?.name || 'project').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')}.sparko`;
       const handle = await picker.call(window, { suggestedName: name, types: projectFileTypes });
       return !!await projects.saveToFile(handle);
     } catch (cause) { if ((cause as DOMException).name !== 'AbortError') setError((cause as Error).message); return false; }
+    finally { savePending.current = false; }
   };
-  const saveCurrent = () => {
-    if (fileMenu.current) fileMenu.current.open = false;
-    const handle = projects.getFileHandle();
-    return handle ? projects.saveToFile(handle).then(Boolean) : saveAsFile();
-  };
+  const saveCurrent = () => saveProject();
+  const saveAsFile = () => saveProject(true);
+  const saveKey = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.isComposing) return;
+    const action = keys.action(event);
+    if (action !== 'save' && action !== 'saveAs') return;
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if ((target?.isContentEditable || target?.closest('input,textarea,select')) && !event.ctrlKey && !event.metaKey && !event.altKey) return;
+    event.preventDefault();
+    if (event.repeat || target?.closest('dialog,[role="dialog"]')) return;
+    void saveProject(action === 'saveAs');
+  });
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => saveKey(event);
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, []);
   const closeCurrent = () => {
     if (fileMenu.current) fileMenu.current.open = false;
     if (projects.getSnapshot().dirty) setClosePrompt(true);
@@ -317,8 +341,8 @@ export default function App() {
     <header className="menubar" aria-label="Application menu">
       <DropdownMenu className="file-menu" ref={fileMenu}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
         <button role="menuitem" disabled={projectState.busy} onClick={closeCurrent}><FolderOpen size={14} />Close project</button>
-        <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { void saveCurrent(); }}><Save size={14} />Save project</button>
-        <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void saveAsFile(); }}><Save size={14} />Save as new file</button>
+        <button role="menuitem" aria-keyshortcuts={keys.aria('save')} title={keys.title('save')} disabled={projectState.busy || !projectState.project} onClick={() => { void saveCurrent(); }}><Save size={14} />Save project</button>
+        <button role="menuitem" aria-keyshortcuts={keys.aria('saveAs')} title={keys.title('saveAs')} disabled={projectState.busy || !projectState.project} onClick={() => { void saveAsFile(); }}><Save size={14} />Save as new file</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></DropdownMenu>
       {!preview && <><PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} onPreferences={()=>setPreferencesOpen(true)} />

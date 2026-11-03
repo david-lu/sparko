@@ -71,6 +71,8 @@ test('wire drops attach at the pointer and template drops preserve existing posi
 for(const width of [1440,390])test(`template drops replace a highlighted transition and reconnect every branch at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:width===390?844:1000});await open(page);
   await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');await fitAll(page);
+  // Keep the template and drop target away from native drag autoscroll at the viewport edge.
+  if(width===390)await page.getByRole('button',{name:'Collapse Library panel',exact:true}).click();
   await page.getByRole('button',{name:'Add template Question & response',exact:true}).scrollIntoViewIfNeeded();
   const initial=await saved(page),connection=initial.storyFlow.edges[0],view=await camera(page);
   const canvas=page.locator('.story-scroll'),bounds=(await canvas.boundingBox())!,toolbar=await page.locator('.story-toolbar').boundingBox(),status=await page.locator('.story-status').boundingBox();
