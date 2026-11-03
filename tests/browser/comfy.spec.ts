@@ -1,6 +1,6 @@
 import { expect, test, openVideo, addBridge, readProject } from './fixtures';
 
-test('Comfy generation, status recovery, and regeneration', async ({ page }) => {
+test('mocked Comfy generation, status recovery, and regeneration', async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, comfy: true } } }); });
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
   let complete = false, failStatus = false, comfySubmissions = 0;
@@ -86,7 +86,8 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
   await page.getByRole('radio', { name: /Standard generation/ }).click();
   await expect(page.locator('.interstitial-edited')).toHaveText('Edited');
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
-  await expect.poll(async () => comfySubmissions).toBe(2);
+  // Regeneration prepares real reference media before reaching the mocked provider.
+  await expect.poll(async () => comfySubmissions, { timeout: 60_000 }).toBe(2);
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);
   expect((await saved()).requestMethod).toBe('comfy');

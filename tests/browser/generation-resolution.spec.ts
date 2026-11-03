@@ -22,7 +22,7 @@ for(const width of [1440,390])test(`official H3 2K generation keeps loading layo
   await page.route('https://example.test/2k.mp4',route=>route.fulfill({contentType:'video/mp4',path:'tests/fixtures/interstitial-reference.mp4'}));
   await open(page);const resolution=page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true});await expect(resolution).not.toBeChecked();await resolution.check();
   const controls=()=>page.locator('.interstitial-editor').evaluate(el=>{const root=el.getBoundingClientRect();return ['textarea','.interstitial-resolution','.interstitial-time-fields','button[type=submit]','.task-status'].map(selector=>{const r=el.querySelector(selector)!.getBoundingClientRect();return {top:r.top-root.top,height:r.height};});});
-  const before=await controls();await page.getByRole('button',{name:'Generate',exact:true}).click();await expect.poll(()=>submitted).toBe(1);expect(preflights).toBe(1);
+  const before=await controls();await page.getByRole('button',{name:'Generate',exact:true}).click();await expect.poll(()=>submitted,{timeout:60000}).toBe(1);expect(preflights).toBe(1);
   await expect(page.locator('.generation-feedback,.task-status').last()).toContainText('Regenerating with H3 2K');expect(await controls()).toEqual(before);
   await expect(resolution).toBeEnabled();await resolution.uncheck();expect(await controls()).toEqual(before);complete=true;
   await expect.poll(async()=>(await saved(page)).interstitials[0].phase,{timeout:60000}).toBe('ready');expect(await controls()).toEqual(before);

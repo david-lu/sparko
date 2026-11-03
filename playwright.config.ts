@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
-  testDir: './tests/browser', outputDir: './test-results/browser', timeout: 90_000, workers: 1, fullyParallel: false,
+  testDir: './tests/browser', outputDir: './test-results/browser', timeout: 90_000, workers: 1, fullyParallel: true,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'list',
   use: { baseURL: 'http://127.0.0.1:3100', channel: 'chrome', viewport: { width: 1440, height: 1000 }, trace: 'retain-on-failure',

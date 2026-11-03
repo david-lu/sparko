@@ -169,6 +169,8 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toBeVisible({ timeout: 60_000 });
     unchanged(await bounds(page, editor), idleEditor);
     await expect(page.getByRole('button', { name: 'Cancel interstitial generation' })).toBeEnabled();
+    await expect(page.locator('.task-status-message')).toContainText('A long generation stage', { timeout: 60_000 });
+    unchanged(await bounds(page, editor), idleEditor);
     complete = true;
     await expect(page.locator('.task-status-message')).toContainText('Downloading generated video');
     await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toBeVisible();
