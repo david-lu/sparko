@@ -88,6 +88,9 @@ fieldset:disabled{opacity:.55}
 .menu-items button{width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:9px 10px;font-size:12px;background:transparent;border-radius:4px}
 .menu-items button:hover:not(:disabled){background:var(--hover)}
 .menu-items button span{margin-left:auto;font-size:10px;color:var(--muted)}
+.project-file-menu .menu-items{width:max-content;min-width:244px;max-width:calc(100vw - 16px)}
+.menu-shortcut{flex-shrink:0;white-space:nowrap;font-size:10px;color:var(--muted)}
+.history-controls .icon-button{gap:4px}
 .menu-document{font-size:11px;color:var(--muted);border-left:1px solid var(--line);padding-left:15px;margin-left:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .window-menu summary{gap:5px}.window-menu summary svg{flex:none;color:var(--accent)}.window-menu .menu-items>button svg{flex:none}.window-menu .menu-items>[role=separator]{height:1px;margin:5px 4px;background:var(--line-strong)}.window-menu .menu-items>button:disabled{cursor:default}
 .menu-app-name{margin-left:auto;font-size:10px;font-weight:600;letter-spacing:1.6px;color:var(--text-secondary);padding:0 7px 0 20px;flex-shrink:0}

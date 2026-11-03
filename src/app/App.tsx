@@ -34,7 +34,7 @@ import ShortcutSettings from './ShortcutSettings';
 import HelpTutorial from './HelpTutorial';
 import Preferences from './Preferences';
 import { pinchZoomPreference, savedPinchZoomSensitivity } from '../shared/preferences';
-import { useShortcuts } from '../shared/shortcuts';
+import { formatShortcut, useShortcuts, type ShortcutId } from '../shared/shortcuts';
 import DropdownMenu from '../shared/DropdownMenu';
 import ModalBackdrop from '../shared/ModalBackdrop';
 
@@ -83,6 +83,15 @@ export default function App() {
   const [pinchZoomSensitivity, setPinchZoomSensitivity] = useState(savedPinchZoomSensitivity);
   useEffect(() => { try { localStorage.setItem(pinchZoomPreference, String(pinchZoomSensitivity)); } catch { /* Apply without persistence. */ } }, [pinchZoomSensitivity]);
   const keys=useShortcuts();
+  const shortcutHint = (id: ShortcutId) => {
+    const binding = keys.bindings[id].find(Boolean);
+    if (!binding) return null;
+    const label = formatShortcut(binding);
+    const compact = /Mac|iPhone|iPad/.test(navigator.platform)
+      ? label.replace('Ctrl/Cmd', '⌘').replace('Alt', '⌥').replace('Shift', '⇧').replaceAll('+', '')
+      : label.replace('Ctrl/Cmd', 'Ctrl');
+    return <span className="menu-shortcut" aria-hidden="true">({compact})</span>;
+  };
   const [closePrompt, setClosePrompt] = useState(false);
   const [crossfade, setCrossfade] = useState(savedCrossfadePreference);
   useEffect(() => { try { localStorage.setItem(crossfadePreference, String(crossfade)); } catch { /* Apply without persistence. */ } }, [crossfade]);
@@ -339,19 +348,19 @@ export default function App() {
       onOpenSampleProject={() => { if (status?.defaultProject) void projects.openSampleProject(status.defaultProject.url); }}
       onDismissError={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }} /> : <>
     <header className="menubar" aria-label="Application menu">
-      <DropdownMenu className="file-menu" ref={fileMenu}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
+      <DropdownMenu className="file-menu project-file-menu" ref={fileMenu}><summary>File</summary><div className="menu-items" role="menu" aria-label="File">
         <button role="menuitem" disabled={projectState.busy} onClick={closeCurrent}><FolderOpen size={14} />Close project</button>
-        <button role="menuitem" aria-keyshortcuts={keys.aria('save')} title={keys.title('save')} disabled={projectState.busy || !projectState.project} onClick={() => { void saveCurrent(); }}><Save size={14} />Save project</button>
-        <button role="menuitem" aria-keyshortcuts={keys.aria('saveAs')} title={keys.title('saveAs')} disabled={projectState.busy || !projectState.project} onClick={() => { void saveAsFile(); }}><Save size={14} />Save as new file</button>
+        <button role="menuitem" aria-keyshortcuts={keys.aria('save')} title={keys.title('save')} disabled={projectState.busy || !projectState.project} onClick={() => { void saveCurrent(); }}><Save size={14} />Save project{shortcutHint('save')}</button>
+        <button role="menuitem" aria-keyshortcuts={keys.aria('saveAs')} title={keys.title('saveAs')} disabled={projectState.busy || !projectState.project} onClick={() => { void saveAsFile(); }}><Save size={14} />Save as new file{shortcutHint('saveAs')}</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></DropdownMenu>
       {!preview && <><PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} onPreferences={()=>setPreferencesOpen(true)} />
       <WindowMenu workspace={workspace} panelsAvailable={!!storyGraph} timelineVisible={!timelineCollapsed} onTimeline={()=>{if(!workspace.locked)setTimelineCollapsed(value=>!value);}} onReset={resetWorkspace} onHelp={()=>{controller.pause();setHelpOpen(true);}}/>
       <div className="history-controls" role="group" aria-label="Edit history">
         <button className="icon-button small" aria-label="Undo" aria-keyshortcuts={keys.aria('undo')} title={keys.title('undo',projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo')}
-          disabled={projectState.busy || !projectState.undoLabel} onClick={() => { controller.pause(); void projects.undo(); }}><Undo2 size={14} /></button>
+          disabled={projectState.busy || !projectState.undoLabel} onClick={() => { controller.pause(); void projects.undo(); }}><Undo2 size={14} />{shortcutHint('undo')}</button>
         <button className="icon-button small" aria-label="Redo" aria-keyshortcuts={keys.aria('redo')} title={keys.title('redo',projectState.redoLabel ? `Redo: ${projectState.redoLabel}` : 'Redo')}
-          disabled={projectState.busy || !projectState.redoLabel} onClick={() => { controller.pause(); void projects.redo(); }}><Redo2 size={14} /></button>
+          disabled={projectState.busy || !projectState.redoLabel} onClick={() => { controller.pause(); void projects.redo(); }}><Redo2 size={14} />{shortcutHint('redo')}</button>
       </div>
       <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-haspopup="dialog" aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button></>}
       <span className="menu-document">{projectState.fileName || (savedFlow || projectState.project?.name!==source.name.replace(/\.[^.]+$/,'') ? projectState.project?.name : source.name)}</span>
