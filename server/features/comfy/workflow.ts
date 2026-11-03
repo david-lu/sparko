@@ -86,11 +86,13 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
     const audio = after ? add('audio_full', 'AudioConcat', { audio1: a, audio2: ['after', 2], direction: 'after' }) : a;
     const encoded = add('encode_audio', 'VAEEncodeAudio', { audio, vae: audioVae });
     const fitted = add('fit_audio', 'LTXVConcatAVLatent', { video_latent: joint, audio_latent: encoded });
-    // H3 audio has 40 latent frames/second. Feather across each connected join;
-    // leave the rest of the reference fixed and the interior fully generative.
+    // H3 audio has 40 latent frames/second. Keep both feather ramps entirely
+    // inside the reference audio: a partial mask in the silent gap preserves
+    // some of that silence instead of fully generating the transition audio.
     const fade = Math.round(COMFY.audioMaskFadeSeconds * COMFY.audioLatentsPerSecond);
-    const start = before ? Math.max(0, Math.round(insertion.start * COMFY.audioLatentsPerSecond) - Math.floor(fade / 2)) : 0;
-    const end = Math.round((insertion.start + insertion.duration) * COMFY.audioLatentsPerSecond) + Math.ceil(fade / 2);
+    // Round outward so every latent frame overlapping the blank gap is white.
+    const start = before ? Math.max(0, Math.floor(insertion.start * COMFY.audioLatentsPerSecond) - fade) : 0;
+    const end = Math.ceil((insertion.start + insertion.duration) * COMFY.audioLatentsPerSecond) + fade;
     // Match the fitted latent exactly so MVEx won't stretch the timeline mask.
     const audioLength = add('audio_mask_size', 'GetAudioLatentSize', { latent: fitted });
     const preserved = add('audio_mask_base', 'SolidMask', { value: 0, width: audioLength, height: 1 });
