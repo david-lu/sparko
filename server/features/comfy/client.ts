@@ -14,17 +14,20 @@ function context(path: string, options: RequestInit) {
 export class ComfyClient {
   readonly baseUrl: string;
   private key: string;
+  private testMode: boolean;
   constructor(env: NodeJS.ProcessEnv, private transport: typeof fetch = fetch) {
+    this.testMode = env.SPARKO_TEST_MODE === '1';
     this.key = env.COMFY_CLOUD_API_KEY || env.COMFY_API_KEY || '';
     this.baseUrl = (env.COMFY_BASE_URL || COMFY.baseUrl).trim().replace(/\/$/, '');
   }
-  get configured() { return !!this.key; }
+  get configured() { return !this.testMode && !!this.key; }
   message(value: unknown) {
     let message = typeof value === 'string' ? value : 'The Comfy request failed.';
     if (this.key) message = message.split(this.key).join('[redacted]');
     return message.replace(/https?:\/\/\S+/gi, '[URL]').replace(/(?:Bearer\s+|comfyui-)[^\s,;]+/gi, '[redacted]').slice(0, 1200);
   }
   async response(path: string, options: RequestInit = {}): Promise<Response> {
+    if (this.testMode) throw new HttpError(503, 'Live Comfy requests are disabled in the test server.');
     if (!this.key) throw new HttpError(503, 'COMFY_CLOUD_API_KEY is missing. Add it to .env and restart the server.');
     // Invalid optional Comfy settings must not prevent the app server from starting.
     let base: URL;

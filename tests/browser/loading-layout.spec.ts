@@ -122,7 +122,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     expect(await page.evaluate(() => (window as any).__chooserMessages)).toEqual([]);
   });
 
-  test(`loading preserves workspace and editor geometry at ${viewport.width}px`, async ({ page }) => {
+  test(`loading preserves workspace and editor geometry at ${viewport.width}px`, { tag: '@generation' }, async ({ page }) => {
     await page.setViewportSize(viewport);
     const video = await readFile('tests/fixtures/interstitial-reference.mp4');
     await page.route('**/api/status', route => route.fulfill({ json: {

@@ -118,6 +118,7 @@ export class VideoPlayerController {
     this.applySettings(); this.setSubtitles(this.subtitles.track, this.subtitles.cues, this.subtitles.enabled);
   }
   seekFlowScene(id: SceneId, frame = 0) { this.flowPlayback?.seekScene(id, frame); }
+  seekPreviewScene(id: SceneId, frame = 0) { this.flowPlayback?.seekScene(id, frame, this.state.playing, true); }
   setSubtitles(track: TextTrack | null, cues: VTTCue[], enabled = true) {
     this.subtitles = { track, cues, enabled };
     if (this.flowPlayback) this.flowPlayback.setSubtitles(track, cues, enabled);

@@ -1,7 +1,7 @@
 import { expect, test, openVideo, addBridge, readProject } from './fixtures';
 import { generationProgress } from '../../server/features/comfy/progress';
 
-for (const width of [1440,390]) for (const detailed of [true, false]) test(`mocked Comfy generation, status recovery, and regeneration with ${detailed ? 'detailed' : 'aggregate-only'} progress at ${width}px`, async ({ page }) => {
+for (const width of [1440,390]) for (const detailed of [true, false]) test(`mocked Comfy generation, status recovery, and regeneration with ${detailed ? 'detailed' : 'aggregate-only'} progress at ${width}px`, { tag: ['@generation', '@slow'] }, async ({ page }) => {
   await page.setViewportSize({width,height:width===390?844:1000});
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, comfy: true } } }); });
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));

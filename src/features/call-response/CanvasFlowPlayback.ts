@@ -148,8 +148,11 @@ export class CanvasFlowPlayback {
     this.decks.elapsed(); this.render();
   }
   pause() { this.session = { ...this.session, playing: false }; this.decks.pause(); this.render(); }
-  seekScene(id: SceneId, frame = 0, playing = false) {
-    this.session = { ...previewScene(this.flow, id), frame: Math.max(0, Math.min(sceneFrames(getScene(this.flow, id)) - 1, Math.round(frame))), playing };
+  seekScene(id: SceneId, frame = 0, playing = false, preserveRoute = false) {
+    const scene = getScene(this.flow, id);
+    const route = preserveRoute ? { traversedEdgeIds: this.session.traversedEdgeIds,
+      outcome: scene.clip.kind === 'idle' ? null : this.session.outcome } : {};
+    this.session = { ...previewScene(this.flow, id), ...route, frame: Math.max(0, Math.min(sceneFrames(scene) - 1, Math.round(frame))), playing };
     this.remainder = 0; this.buffering = true; this.decks.pause(); this.render();
   }
   seek(time: number) {

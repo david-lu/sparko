@@ -34,7 +34,7 @@ describe('interstitial prompt enhancement', () => {
     expect(result.prompt.split('\n')).toHaveLength(3);
     const [options, requestOptions] = respond.mock.calls[0];
     expect(options).toMatchObject({ model: AI_MODELS.promptEnhancement, store: false, reasoning: { effort: 'low' } });
-    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft: input.prompt, kind: 'call' });
+    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft: input.prompt, kind: 'call', duration: input.duration });
     expect(options.input[0].content[1]).toEqual({ type: 'input_image', image_url: input.referenceFrames[0], detail: 'low' });
     expect(options.instructions).toContain('Nothing may snap to a new position');
     expect(options.instructions).toContain('The background must not jump, shift or suddenly change between frames');
@@ -81,7 +81,7 @@ describe('interstitial prompt enhancement', () => {
       ...input, kind: 'response', prompt: `${draft} Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. English speech only.`,
     });
     const options = respond.mock.calls[0][0];
-    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft, kind: 'response' });
+    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft, kind: 'response', duration: input.duration });
     expect(options.instructions).toContain('Response dialogue is mandatory');
     expect(options.instructions).toContain('Do not leave spoken words in quotation marks or as untagged prose');
     expect(options.instructions).toContain('<d>[English] We made it!</d>');

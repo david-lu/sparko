@@ -5,7 +5,7 @@ const saved = (page: Page) => page.evaluate(async () => { const { readActiveProj
 const open = async (page: Page) => { await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4'); await expect(page.locator('.story-clip')).toHaveCount(1, { timeout: 60000 }); };
 const fit = (page: Page) => fitAll(page);
 
-for(const width of [1440,390])test(`sample group frames fit their clips when opening and zooming at ${width}px`,async({page})=>{
+for(const width of [1440,390])test(`sample group frames fit their clips when opening and zooming at ${width}px`,{tag:'@slow'},async({page})=>{
   await page.setViewportSize({width,height:width===390?844:1000});await page.goto('/');
   await page.getByRole('button',{name:/Sample project/}).click();await expect(page.locator('.story-group')).toHaveCount(2,{timeout:120000});
   await expect.poll(async()=>(await saved(page))?.storyFlow?.groups?.length).toBe(2);

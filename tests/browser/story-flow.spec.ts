@@ -1,4 +1,4 @@
-import { saveSelectionAsTemplate, fitAll,test,expect,type Page} from './fixtures';
+import { dragIntoView, saveSelectionAsTemplate, fitAll,test,expect,type Page} from './fixtures';
 import {readFile} from 'node:fs/promises';
 const open=async(page:Page)=>{await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1,{timeout:60000});};
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
@@ -37,7 +37,7 @@ test('templates insert ordinary clips, routing stays editable, and selections ca
 
 test('narrow layout and loading keep graph and inspector controls in place',async({page})=>{
   await page.setViewportSize({width:390,height:844});await open(page);
-  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:220,y:90}});
+  await dragIntoView(page,page.getByRole('button',{name:'Add interstitial',exact:true}),page.locator('.story-scroll'),{x:220,y:90});
   await expect(page.locator('.story-clip')).toHaveCount(2);
   await fitAll(page);
   const before=await page.locator('.story-toolbar').boundingBox();
@@ -46,7 +46,7 @@ test('narrow layout and loading keep graph and inspector controls in place',asyn
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(1);const after=await page.locator('.story-toolbar').boundingBox();expect(after?.y).toBe(before?.y);
 });
 
-test('connected generation uses clip references, keeps controls stable, and reopens with media and fades',async({page,browser})=>{
+test('connected generation uses clip references, keeps controls stable, and reopens with media and fades',{tag:['@generation','@slow']},async({page,browser})=>{
   await page.route('**/api/status',async route=>{const response=await route.fetch();await route.fulfill({json:{...await response.json(),providers:{openai:false,gemini:false,comfy:true}}});});
   await page.route('**/api/comfy/status',route=>route.fulfill({json:{ready:true}}));
   let complete=false,submitted=0;
@@ -56,7 +56,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await page.route('https://example.test/story.mp4',route=>route.fulfill({contentType:'video/mp4',path:'tests/fixtures/interstitial-reference.mp4'}));
   await open(page);await page.setViewportSize({width:390,height:844});
   const source=page.getByRole('slider',{name:/Scrub/}).first();await source.focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
-  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.getByRole('button',{name:/Edit crossfade from/}));await page.getByLabel('Interstitial prompt',{exact:true}).fill('Continue the scene');
+  await dragIntoView(page,page.getByRole('button',{name:'Add interstitial',exact:true}),page.getByRole('button',{name:/Edit crossfade from/}));await page.getByLabel('Interstitial prompt',{exact:true}).fill('Continue the scene');
   await page.getByRole('button',{name:'Auto layout',exact:true}).click();
   await fitAll(page);
   await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Crossfade duration',{exact:true})).toHaveValue('1.5');

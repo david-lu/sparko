@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 export { test, expect, type Page } from '@playwright/test';
 
 export const readProject = (page: Page) => page.evaluate(async () => {
@@ -12,6 +12,22 @@ export async function openVideo(page: Page) {
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.story-clip')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeEnabled();
+}
+
+/** Start the native drag before scrolling the stacked workspace to its target.
+ * Scrolling first can move the pressed source out from under the pointer. */
+export async function dragIntoView(page: Page, source: Locator, target: Locator, position?: { x: number; y: number }) {
+  await source.scrollIntoViewIfNeeded();
+  const from = (await source.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 10, from.y + from.height / 2 + 10, { steps: 3 });
+  await target.scrollIntoViewIfNeeded();
+  const to = (await target.boundingBox())!;
+  const x = to.x + (position?.x ?? to.width / 2), y = to.y + (position?.y ?? to.height / 2);
+  await page.mouse.move(x, y, { steps: 8 });
+  await page.mouse.move(x, y);
+  await page.mouse.up();
 }
 
 export async function seekSource(page: Page, seconds: number) {
