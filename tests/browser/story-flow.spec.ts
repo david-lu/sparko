@@ -46,7 +46,7 @@ test('narrow layout and loading keep graph and inspector controls in place',asyn
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(1);const after=await page.locator('.story-toolbar').boundingBox();expect(after?.y).toBe(before?.y);
 });
 
-test('connected generation uses clip references, keeps controls stable, and reopens with media and fades',async({page,browser})=>{
+test('connected generation uses clip references, keeps controls stable, and reopens with media and fades',{tag:['@generation','@slow']},async({page,browser})=>{
   await page.route('**/api/status',async route=>{const response=await route.fetch();await route.fulfill({json:{...await response.json(),providers:{openai:false,gemini:false,comfy:true}}});});
   await page.route('**/api/comfy/status',route=>route.fulfill({json:{ready:true}}));
   let complete=false,submitted=0;

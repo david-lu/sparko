@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures';
 
-test('compact inspector uses connected references, supports all switch combinations, and keeps progress in place', async ({ page }) => {
+test('compact inspector uses connected references, supports all switch combinations, and keeps progress in place', { tag: ['@generation', '@slow'] }, async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, comfy: true } } }); });
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));

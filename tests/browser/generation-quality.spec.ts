@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('call-response references and finished Idle retain the generated clip resolution', async ({ page }) => {
+test('call-response references and finished Idle retain the generated clip resolution', { tag: '@slow' }, async ({ page }) => {
   await page.goto('/');
   const dimensions = await page.evaluate(async () => {
     const { ALL_FORMATS, BlobSource, BufferTarget, CanvasSource, Input, Mp4OutputFormat, Output, VideoSampleSink } = await import('/node_modules/.vite/deps/mediabunny.js' as string);

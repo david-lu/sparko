@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
 });
 
-test('exports a complete project and restores assets, drafts, subtitles and analysis in a fresh browser', async ({ page, browser }) => {
+test('exports a complete project and restores assets, drafts, subtitles and analysis in a fresh browser', { tag: ['@generation', '@slow'] }, async ({ page, browser }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
 
   const videoBytes = await readFile('tests/fixtures/interstitial-reference.mp4');
