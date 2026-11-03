@@ -37,6 +37,7 @@ describe('H3 two-sided temporal bridge', () => {
     expect(!!graph.before).toBe(before); expect(!!graph.place_before).toBe(before);
     expect(!!graph.after).toBe(after); expect(!!graph.place_after).toBe(after);
     expect(!!graph.freeze_audio).toBe(before || after);
+    expect(!!graph.audio_mask).toBe(before || after);
     expect(graph.middle_mask.inputs.ranges).toBe(`${plan.prefixFrames}:${plan.totalFrames - plan.suffixFrames}`);
     if (before) expect(graph.before).toMatchObject({ class_type: 'VHS_LoadVideoFFmpeg', inputs: { start_time: 0, frame_load_cap: plan.prefixFrames } });
     if (after) expect(graph.after).toMatchObject({ class_type: 'VHS_LoadVideoFFmpeg', inputs: { start_time: plan.prefixFrames / 24, frame_load_cap: plan.suffixFrames } });
@@ -140,9 +141,26 @@ describe('H3 two-sided temporal bridge', () => {
   it('generates audio when the source is silent without connecting missing source audio', () => {
     const graph = bridgeWorkflow('uploaded-asset', { before: 1.625, after: 1.625, duration: 6, width: 960, height: 544, prompt: 'Continue', hasAudio: false }, 123);
     expect(graph.encode_audio).toBeUndefined();
+    expect(graph.audio_mask).toBeUndefined();
     expect(graph.sample.inputs.latent_image).toEqual(['joint', 0]);
     expect(graph.joint.inputs.audio_latent).toEqual(['empty_streams', 1]);
     expect(graph.decode_audio).toBeDefined();
+  });
+  it.each([
+    { before: 1.625, after: 1.625, start: 61, width: 255, left: 8, right: 8 },
+    { before: 3, after: 2, start: 89, width: 255, left: 8, right: 8 },
+    { before: 1.625, after: 0, start: 61, width: ['audio_mask_size', 0], left: 8, right: 0 },
+    { before: 0, after: 1.625, start: 0, width: 259, left: 0, right: 8 },
+  ])('feathers only connected audio boundaries: $before / $after', ({ before, after, start, width, left, right }) => {
+    const graph = bridgeWorkflow('asset', { mode: 'custom', before, after, duration: 6, width: 960, height: 544, prompt: 'Continue', hasAudio: true }, 123);
+    expect(graph.audio_mask_size).toEqual({ class_type: 'GetAudioLatentSize', inputs: { latent: ['fit_audio', 0] } });
+    expect(graph.audio_mask_base.inputs).toEqual({ value: 0, width: ['audio_mask_size', 0], height: 1 });
+    expect(graph.audio_mask_middle.inputs).toEqual({ value: 1, width, height: 1 });
+    expect(graph.audio_mask_feather).toEqual({ class_type: 'FeatherMask', inputs: { mask: ['audio_mask_middle', 0], left, top: 0, right, bottom: 0 } });
+    expect(graph.audio_mask.inputs).toEqual({ destination: ['audio_mask_base', 0], source: ['audio_mask_feather', 0], x: start, y: 0, operation: 'add' });
+    expect(graph.freeze_audio.inputs).toMatchObject({ latent: ['fit_audio', 0], mask: ['audio_mask', 0], existing_mask: 'replace' });
+    expect(graph.freeze_video.inputs.mask).toEqual(['latent_mask', 0]);
+    expect(graph.sample.inputs.latent_image).toEqual(['freeze_audio', 0]);
   });
   it.each(['bridge', 'loop'] as const)('seeds %s with motion interpolation at 0.97 while keeping the references and audio masks independent', mode => {
     const plan = comfyBridgePlan(2, 3, 6, mode);

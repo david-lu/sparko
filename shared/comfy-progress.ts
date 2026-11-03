@@ -17,6 +17,8 @@ const stages: Record<string, string> = {
   vignette_scaled: 'Preparing vignette mask', vignette_floor: 'Preparing vignette mask', vignette_mask: 'Preparing vignette mask',
   gap_audio: 'Preparing audio context', audio_prefix: 'Preparing audio context', audio_full: 'Preparing audio context',
   encode_audio: 'Encoding reference audio', fit_audio: 'Preparing audio context', freeze_audio: 'Preparing audio mask',
+  audio_mask_size: 'Preparing audio mask', audio_mask_base: 'Preparing audio mask', audio_mask_middle: 'Preparing audio mask',
+  audio_mask_feather: 'Preparing audio mask', audio_mask: 'Preparing audio mask',
   sample: 'Generating video and audio', decode_video: 'Decoding video', decode_audio: 'Decoding audio', output: 'Encoding MP4',
   noise: 'Preparing generation', guider: 'Preparing generation', sampler: 'Preparing generation', schedule: 'Preparing generation',
   streams: 'Preparing video and audio for decoding',

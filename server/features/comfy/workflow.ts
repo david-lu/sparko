@@ -86,8 +86,20 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
     const audio = after ? add('audio_full', 'AudioConcat', { audio1: a, audio2: ['after', 2], direction: 'after' }) : a;
     const encoded = add('encode_audio', 'VAEEncodeAudio', { audio, vae: audioVae });
     const fitted = add('fit_audio', 'LTXVConcatAVLatent', { video_latent: joint, audio_latent: encoded });
+    // H3 audio has 40 latent frames/second. Feather across each connected join;
+    // leave the rest of the reference fixed and the interior fully generative.
+    const fade = Math.round(COMFY.audioMaskFadeSeconds * COMFY.audioLatentsPerSecond);
+    const start = before ? Math.max(0, Math.round(insertion.start * COMFY.audioLatentsPerSecond) - Math.floor(fade / 2)) : 0;
+    const end = Math.round((insertion.start + insertion.duration) * COMFY.audioLatentsPerSecond) + Math.ceil(fade / 2);
+    // Match the fitted latent exactly so MVEx won't stretch the timeline mask.
+    const audioLength = add('audio_mask_size', 'GetAudioLatentSize', { latent: fitted });
+    const preserved = add('audio_mask_base', 'SolidMask', { value: 0, width: audioLength, height: 1 });
+    // Without an ending reference the white region extends through any padding.
+    const generated = add('audio_mask_middle', 'SolidMask', { value: 1, width: after ? end - start : audioLength, height: 1 });
+    const feathered = add('audio_mask_feather', 'FeatherMask', { mask: generated, left: before ? fade : 0, top: 0, right: after ? fade : 0, bottom: 0 });
+    const audioMask = add('audio_mask', 'MaskComposite', { destination: preserved, source: feathered, x: start, y: 0, operation: 'add' });
     joint = add('freeze_audio', 'MVEx_AudioMaskToLatent', { latent: fitted, timing: 'auto', vae: audioVae,
-      start_time: insertion.start, end_time: insertion.start + insertion.duration, existing_mask: 'replace' });
+      mask: audioMask, start_time: insertion.start, end_time: insertion.start + insertion.duration, existing_mask: 'replace' });
   }
   const noise = add('noise', 'RandomNoise', { noise_seed: seed });
   const guider = add('guider', 'BasicGuider', { model: shifted, conditioning: positive });

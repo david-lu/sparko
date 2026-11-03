@@ -98,11 +98,11 @@ describe('Comfy Cloud v2 adapter', () => {
     await expect(createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport).submit(new Blob(), input)).rejects.toThrow('MVEx_MaskToLatentSpace');
     expect(transport).toHaveBeenCalledTimes(1);
   });
-  it('requires the FFmpeg reference loader before uploading or submitting a job', async () => {
+  it.each(['VHS_LoadVideoFFmpeg', 'GetAudioLatentSize', 'FeatherMask'])('requires %s before uploading or submitting a job', async node => {
     const legacyCatalog: typeof catalog = { ...catalog, VHS_LoadVideo: {} };
-    delete legacyCatalog.VHS_LoadVideoFFmpeg;
+    delete legacyCatalog[node];
     const transport = vi.fn<typeof fetch>().mockResolvedValue(reply(legacyCatalog));
-    await expect(createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport).submit(new Blob(), input)).rejects.toThrow('VHS_LoadVideoFFmpeg');
+    await expect(createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport).submit(new Blob(), input)).rejects.toThrow(node);
     expect(transport).toHaveBeenCalledTimes(1);
     expect(String(transport.mock.calls[0][0])).toBe('https://cloud.comfy.org/api/object_info');
   });
