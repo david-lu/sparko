@@ -79,6 +79,12 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const position=(id:string)=>nodes.find(n=>n.id===id)!;
   const updateCamera=(value:Camera|((current:Camera)=>Camera))=>{const next=typeof value==='function'?value(cameraRef.current):value;cameraRef.current=next;setCamera(next);};
   const localPoint=(client:Point)=>{const bounds=scroll.current!.getBoundingClientRect();return {x:client.x-bounds.left,y:client.y-bounds.top};};
+  // Keep the clip (or a template's entry clip) centered under the pointer.
+  // Clip height stays fixed even when the camera compresses the row spacing.
+  const libraryOrigin=(point:Point)=>{
+    const anchor=dragPreview.find(n=>n.id===templatePreview?.selectedId)??dragPreview[0],view=cameraRef.current;
+    return anchor?{x:point.x-(anchor.x+anchor.duration*PIXELS_PER_SECOND/2)*view.zoom,y:point.y-anchor.y*view.rowScale-CLIP_HEIGHT/2}:point;
+  };
   const chooseTool=(tool:'cut'|'group'|'pan'|null)=>{
     gestureCancel.current?.();setCutTool(tool==='cut'&&!cutTool);setGroupTool(tool==='group'&&!groupTool);setPanTool(tool==='pan'&&!panTool);
     setCutPreview(null);setDrawnGroup(null);editor.setConnecting(null);
@@ -337,12 +343,13 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     if(!event.dataTransfer.types.includes(STORY_DRAG_TYPE)&&!event.dataTransfer.types.includes('Files'))return;
     event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='copy';
     const files=event.dataTransfer.types.includes('Files');
-    setFileDrag(files);setDropPoint(localPoint({x:event.clientX,y:event.clientY}));
+    const pointer=localPoint({x:event.clientX,y:event.clientY});
+    setFileDrag(files);setDropPoint(files?pointer:libraryOrigin(pointer));
     setDropTarget(libraryDropTarget(event.target,files?null:libraryDrag).targetId);
   };
   const drop=(event:React.DragEvent<HTMLDivElement>)=>{
     const payload=event.dataTransfer.getData(STORY_DRAG_TYPE),files=Array.from(event.dataTransfer.files);if(!payload&&(!files.length||files.some(file=>/\.sparko$/i.test(file.name))))return;event.preventDefault();event.stopPropagation();setFileDrag(false);setLibraryDrag(null);setDropTarget(null);setDropPoint(null);
-    const view=scroll.current!,bounds=view.getBoundingClientRect(),point=toWorld({x:event.clientX-bounds.left,y:event.clientY-bounds.top},cameraRef.current);
+    const pointer=localPoint({x:event.clientX,y:event.clientY}),point=toWorld(files.length?pointer:libraryOrigin(pointer),cameraRef.current);
     if(files.length){void editor.importVideos(files,point);return;}
     const item=readLibraryDrag(event.dataTransfer);if(!item)return;
     if('assetId' in item){editor.addAsset(item.assetId,point);return;}

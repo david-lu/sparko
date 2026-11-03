@@ -34,28 +34,12 @@ const classes: Record<string, string> = {
 };
 export const comfyStage = (node?: string | null, nodeClass?: string | null) => stages[node ?? ''] || classes[nodeClass ?? ''] || 'Generating scene';
 
-const preparationStages = new Set([...Object.values(stages), ...Object.values(classes)]);
-const preparationWeight = .05, samplerWeight = .9;
-
-/** Estimated render work: 5% setup, 90% sampling, 5% decoding/encoding.
- * Comfy's aggregate value is based on node counts, not expected duration.
- * Keep the estimate derived from the latest stage/steps, including restored jobs.
+/** Progress within the current stage, not completion of the whole render.
+ * The aggregate workflow value weights nodes, regardless of their runtime.
+ * Without step counts there is no reliable render percentage to display.
  */
-export function estimateComfyProgress(details?: GenerationProgress): number | undefined {
+export function comfyStepProgress(details?: GenerationProgress): number | undefined {
   if (!details) return;
-  const { stage, step, steps, nodesDone, nodesTotal } = details;
-  const fraction = step !== undefined && steps !== undefined && Number.isFinite(step) && Number.isFinite(steps) && step >= 0 && steps > 0
-    ? Math.min(1, step / steps) : undefined;
-  if (stage === stages.sample) return fraction === undefined ? undefined : preparationWeight + samplerWeight * fraction;
-  // Stage milestones fill the final 5%; only a completed job is finished.
-  if (stage === stages.streams) return .95;
-  if (stage === stages.regenerate_2k || stage === stages.base_video) return;
-  if (stage === stages.decode_video) return .95 + .02 * (fraction ?? 0);
-  if (stage === stages.decode_audio) return .97 + .01 * (fraction ?? 0);
-  if (stage === stages.output) return Math.min(.99, .98 + .02 * (fraction ?? 0));
-  if (preparationStages.has(stage) && nodesDone !== undefined && nodesTotal !== undefined
-    && Number.isFinite(nodesDone) && Number.isFinite(nodesTotal) && nodesDone >= 0 && nodesTotal > 0) {
-    return preparationWeight * Math.min(1, nodesDone / nodesTotal);
-  }
-  // Unknown stages or absent sampler steps cannot support a useful percentage.
+  const { step, steps } = details;
+  if (step !== undefined && steps !== undefined && Number.isInteger(step) && Number.isInteger(steps) && step >= 0 && steps > 0) return Math.min(1, step / steps);
 }

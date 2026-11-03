@@ -10,20 +10,33 @@ const begin=async(page:Page,source:Locator,x:number,y:number)=>{
   await page.mouse.move(rect.x+rect.width/2+10,rect.y+rect.height/2+10,{steps:3});
   await page.mouse.move(x,y,{steps:8});await page.mouse.move(x,y);
 };
-const at=async(clip:Locator,x:number,y:number)=>{await expect.poll(async()=>{const r=(await clip.boundingBox())!;return Math.abs(r.x-x)+Math.abs(r.y-y);}).toBeLessThan(2);};
+const centeredAt=async(clip:Locator,x:number,y:number)=>{await expect.poll(async()=>{const r=(await clip.boundingBox())!;return Math.abs(r.x+r.width/2-x)+Math.abs(r.y+r.height/2-y);}).toBeLessThan(2);};
 
 test('library dragging previews the exact zoomed position, preserves the view, and cancels cleanly',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await open(page);
+  // Native drag images are outside page screenshots. Check the bitmap supplied
+  // to the browser is already decoded and transparent when the drag starts.
+  await page.evaluate(()=>{
+    const original=DataTransfer.prototype.setDragImage;
+    DataTransfer.prototype.setDragImage=function(image,x,y){
+      const ready=image instanceof HTMLImageElement&&image.complete&&image.naturalWidth===1&&image.naturalHeight===1;
+      const bitmap=document.createElement('canvas');bitmap.width=bitmap.height=1;const context=bitmap.getContext('2d')!;
+      if(ready)context.drawImage(image,0,0);
+      (window as any).__nativeDragImage={ready,alpha:context.getImageData(0,0,1,1).data[3]};
+      original.call(this,image,x,y);
+    };
+  });
   const canvas=page.locator('.story-scroll'),source=page.locator('.story-clip.type-source');
   await page.getByRole('button',{name:'Zoom out story',exact:true}).click();await canvas.hover();await page.mouse.wheel(-380,-110);
   const initial=await saved(page),view=await camera(page),sourceRect=await source.boundingBox(),toolbar=await page.locator('.story-toolbar').boundingBox();
   const simple=page.getByRole('button',{name:'Add interstitial',exact:true});
   await simple.click();await expect(page.locator('.story-clip')).toHaveCount(1);await expect(page.locator('.story-status')).toContainText('Drag an interstitial');
   const bounds=(await canvas.boundingBox())!,x=bounds.x+100,y=bounds.y+45;
-  await begin(page,simple,x,y);const ghost=page.locator('.story-drop-preview');await expect(ghost).toHaveCount(1);await at(ghost,x,y);
+  await begin(page,simple,x,y);const ghost=page.locator('.story-drop-preview');await expect(ghost).toHaveCount(1);await centeredAt(ghost,x,y);
+  expect(await page.evaluate(()=>(window as any).__nativeDragImage)).toEqual({ready:true,alpha:0});
   expect((await ghost.boundingBox())!.height).toBe(76);expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);
   await page.screenshot({path:'test-results/drag-placement-preview.png',fullPage:true});await page.mouse.up();
-  const clip=page.locator('.story-clip.type-simple');await expect(clip).toHaveCount(1);await at(clip,x,y);await expect(ghost).toHaveCount(0);
+  const clip=page.locator('.story-clip.type-simple');await expect(clip).toHaveCount(1);await centeredAt(clip,x,y);await expect(ghost).toHaveCount(0);
   expect(await source.boundingBox()).toEqual(sourceRect);expect(await camera(page)).toEqual(view);
   const project=await saved(page);expect(project.storyFlow.nodes[0]).toEqual(initial.storyFlow.nodes[0]);expect(project.storyFlow.nodes[1].x).toBeLessThan(0);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(clip).toHaveCount(0);
@@ -40,7 +53,7 @@ test('wire drops attach at the pointer and template drops preserve existing posi
   await begin(page,page.getByRole('button',{name:'Add interstitial',exact:true}),x,y);await expect(page.locator('.story-status')).toContainText('replace transition and connect both sides');
   await expect(page.locator('.story-edge.drop-target')).toHaveAttribute('data-edge-id',initial.storyFlow.edges[0].id);
   await expect(page.locator('.story-transition-drop-label')).toHaveText('Replace transition');
-  await at(page.locator('.story-drop-preview'),x,y);await page.mouse.up();const loop=page.locator('.story-clip.type-simple');await expect(loop).toHaveCount(1);await at(loop,x,y);
+  await centeredAt(page.locator('.story-drop-preview'),x,y);await page.mouse.up();const loop=page.locator('.story-clip.type-simple');await expect(loop).toHaveCount(1);await centeredAt(loop,x,y);
   let project=await saved(page);expect(project.storyFlow.nodes.slice(0,2)).toEqual(initial.storyFlow.nodes);expect(await camera(page)).toEqual(view);
   const added=project.storyFlow.nodes.at(-1);expect(project.storyFlow.edges.map((e:any)=>[e.from,e.to])).toEqual([[initial.storyFlow.edges[0].from,added.id],[added.id,initial.storyFlow.edges[0].to]]);
   expect(added.referenceId).toBe(initial.storyFlow.edges[0].from);
@@ -48,6 +61,7 @@ test('wire drops attach at the pointer and template drops preserve existing posi
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(loop).toHaveCount(0);
   const canvas=page.locator('.story-scroll'),bounds=(await canvas.boundingBox())!;
   await begin(page,page.getByRole('button',{name:'Add template Question & response',exact:true}),bounds.x+30,bounds.y+25);
+  await centeredAt(page.locator('.story-drop-preview').filter({hasText:'Ask a question'}),bounds.x+30,bounds.y+25);
   const ghostRects=await page.locator('.story-drop-preview').evaluateAll(nodes=>nodes.map(el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}));
   expect(ghostRects).toHaveLength(4);const groupRect=await page.locator('.story-group-preview').boundingBox();await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(6);
   const clipRects=await page.locator('.story-clip:not(.type-source)').evaluateAll(nodes=>nodes.map(el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}));
@@ -99,16 +113,16 @@ test('cancelled transition replacements and media drops leave the original conne
 test('narrow library drops and saved templates use the same drag placement',async({page})=>{
   await page.setViewportSize({width:390,height:844});await open(page);await page.getByRole('button',{name:'Collapse Library panel',exact:true}).click();await page.getByRole('button',{name:'Add interstitial',exact:true}).scrollIntoViewIfNeeded();const canvas=page.locator('.story-scroll'),toolbar=await page.locator('.story-toolbar').boundingBox();
   const bounds=(await canvas.boundingBox())!;await begin(page,page.getByRole('button',{name:'Add interstitial',exact:true}),bounds.x+200,bounds.y+30);await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(2);
-  await at(page.locator('.story-clip.type-simple'),bounds.x+200,bounds.y+30);
+  await centeredAt(page.locator('.story-clip.type-simple'),bounds.x+200,bounds.y+30);
   expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);
   await saveSelectionAsTemplate(page);await page.getByLabel('Template name',{exact:true}).fill('Saved scene');await page.getByRole('button',{name:'Save template',exact:true}).click();
   const savedTemplate=page.getByRole('button',{name:'Add template Saved scene',exact:true});
   await savedTemplate.click();await expect(page.locator('.story-clip')).toHaveCount(2);
   await savedTemplate.scrollIntoViewIfNeeded();const templateBounds=(await canvas.boundingBox())!;
   await begin(page,savedTemplate,templateBounds.x+20,templateBounds.y+80);
-  await at(page.locator('.story-drop-preview'),templateBounds.x+20,templateBounds.y+80);const beforeDropToolbar=await page.locator('.story-toolbar').boundingBox();
+  await centeredAt(page.locator('.story-drop-preview'),templateBounds.x+20,templateBounds.y+80);const beforeDropToolbar=await page.locator('.story-toolbar').boundingBox();
   await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(3);
-  await at(page.locator('.story-clip.type-simple').last(),templateBounds.x+20,templateBounds.y+80);
+  await centeredAt(page.locator('.story-clip.type-simple').last(),templateBounds.x+20,templateBounds.y+80);
   expect(await page.locator('.story-toolbar').boundingBox()).toEqual(beforeDropToolbar);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({path:'test-results/drag-placement-mobile.png',fullPage:true});
 });

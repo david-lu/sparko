@@ -10,14 +10,14 @@ export default function InterstitialTimeField({ name, label, value, min, max, st
   useEffect(() => {
     if (!open) return;
     const dismiss = (event: PointerEvent) => { if (!field.current?.contains(event.target as Node)) setOpen(false); };
-    document.addEventListener('pointerdown', dismiss);
-    return () => document.removeEventListener('pointerdown', dismiss);
+    document.addEventListener('pointerdown', dismiss, true);
+    return () => document.removeEventListener('pointerdown', dismiss, true);
   }, [open]);
 
   return <div className="interstitial-time-field" ref={field}
     onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}
     onKeyDown={event => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || !open) return;
       event.preventDefault(); event.stopPropagation();
       number.current?.focus(); setOpen(false);
     }}>

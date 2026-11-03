@@ -192,11 +192,13 @@ describe('interstitial lifecycle', () => {
       await vi.advanceTimersByTimeAsync(0);
       await vi.advanceTimersByTimeAsync(7500);
       expect(getInterstitialJob).toHaveBeenCalledTimes(4);
-      expect(phaseLabel(controller.getSnapshot().items[0])).toBe('99% reported by Comfy · Generating scene');
+      expect(controller.getSnapshot().items[0].progress).toBe(.9892857142857142);
+      expect(phaseLabel(controller.getSnapshot().items[0])).toBe('Generating scene');
       vi.mocked(getInterstitialJob).mockResolvedValue({ requestId: completed.requestId, status: 'IN_PROGRESS', progress: .4 });
       await vi.advanceTimersByTimeAsync(2500);
       expect(controller.getSnapshot().items[0].progressDetails).toBeUndefined();
-      expect(phaseLabel(controller.getSnapshot().items[0])).toBe('40% reported by Comfy · Generating scene');
+      expect(controller.getSnapshot().items[0].progress).toBe(.4);
+      expect(phaseLabel(controller.getSnapshot().items[0])).toBe('Generating scene');
       vi.mocked(getInterstitialJob).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
       await vi.advanceTimersByTimeAsync(2500);
       expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'queued', progress: undefined, progressDetails: undefined });

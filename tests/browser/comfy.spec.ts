@@ -1,14 +1,15 @@
 import { expect, test, openVideo, addBridge, readProject } from './fixtures';
 import { generationProgress } from '../../server/features/comfy/progress';
 
-for (const detailed of [true, false]) test(`mocked Comfy generation, status recovery, and regeneration with ${detailed ? 'detailed' : 'aggregate-only'} progress`, async ({ page }) => {
+for (const width of [1440,390]) for (const detailed of [true, false]) test(`mocked Comfy generation, status recovery, and regeneration with ${detailed ? 'detailed' : 'aggregate-only'} progress at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({width,height:width===390?844:1000});
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, comfy: true } } }); });
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
   let complete = false, failStatus = false, comfySubmissions = 0, statusReads = 0;
-  const progress = generationProgress(detailed ? { value: .98, current_node: 'sample', step: 9, steps: 20 }
+  const progress = generationProgress(detailed ? { value: .98, current_node: 'sample', step: 7, steps: 20 }
     : { value: .9892857142857142, nodes_done: 27, nodes_total: 28 });
-  const displayed = detailed ? '0.455' : '0.9892857142857142';
-  const label = detailed ? '46% estimated overall · Generating video and audio · step 9/20' : '99% reported by Comfy · Generating scene';
+  const displayed = detailed ? .35 : -1;
+  const label = detailed ? '35% of stage · Generating video and audio · step 7/20' : 'Generating scene';
   await page.route('**/api/comfy/jobs/comfy-test-job/events', route => route.fulfill({ contentType: 'text/event-stream',
     body: `event: progress\ndata: ${JSON.stringify({ type: 'progress', ...progress })}\n\n` }));
   await page.route('**/api/comfy/interstitials', async route => {
@@ -53,17 +54,24 @@ for (const detailed of [true, false]) test(`mocked Comfy generation, status reco
   await mask.click();
   await page.getByRole('radio', { name: /FILM \+ vignette mask/ }).click();
   await expect(mask).toContainText('FILM + vignette');
-  await page.setViewportSize({ width: 390, height: 844 });
+  const controls = () => page.locator('.interstitial-editor').evaluate(form => {
+    const top=form.getBoundingClientRect().top;
+    return ['textarea','.interstitial-time-fields','button[type=submit]','.task-status'].map(selector=>{
+      const bounds=form.querySelector(selector)!.getBoundingClientRect();return {top:bounds.top-top,height:bounds.height};
+    });
+  });
+  const idleControls=await controls();
   const optionPosition = () => mask.evaluate(element => element.getBoundingClientRect().top - element.closest('form')!.getBoundingClientRect().top);
   const optionTop = await optionPosition();
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
-  await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', displayed, { timeout: 60_000 });
+  await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveJSProperty('position', displayed, { timeout: 60_000 });
   await expect.poll(() => statusReads).toBeGreaterThanOrEqual(2);
   expect(await optionPosition()).toBeCloseTo(optionTop, 0);
+  expect(await controls()).toEqual(idleControls);
   await expect(page.locator('.story-clip .timeline-generation-spinner')).toHaveCount(1);
   await expect(page.locator('.task-status')).toContainText(label);
-  if (detailed) await expect(page.locator('.task-status')).not.toContainText('98%');
-  await expect(page.locator('.story-clip [role=status]')).toHaveAttribute('aria-label', new RegExp(detailed ? '46% estimated overall.*step 9/20' : '99% reported by Comfy'));
+  await expect(page.locator('.task-status')).not.toContainText(/98%|99%|reported by Comfy|estimated overall/);
+  await expect(page.locator('.story-clip [role=status]')).toHaveAttribute('aria-label', new RegExp(detailed ? '35% of stage.*step 7/20' : 'Generating scene'));
   const percentageFits = () => page.locator('.task-status-message').evaluate(element => {
     const text = element.firstChild!, range = document.createRange();
     range.setStart(text, 0); range.setEnd(text, text.textContent!.indexOf('%') + 1);
@@ -72,18 +80,17 @@ for (const detailed of [true, false]) test(`mocked Comfy generation, status reco
   });
   await page.locator('.task-status-message').scrollIntoViewIfNeeded();
   await expect(page.locator('.task-status-message')).toBeInViewport();
-  expect(await percentageFits()).toBe(true);
-  await page.screenshot({ path: `test-results/comfy-progress-${detailed ? 'detailed' : 'aggregate'}-narrow.png` });
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  expect(await percentageFits()).toBe(true);
-  await page.setViewportSize({ width: 390, height: 844 });
+  if(detailed)expect(await percentageFits()).toBe(true);
+  else await expect(page.locator('.task-status-message')).not.toContainText('%');
+  await page.screenshot({ path: `test-results/comfy-progress-${detailed ? 'detailed' : 'aggregate'}-${width}.png` });
   failStatus = true;
   await expect(page.locator('.task-status')).toContainText('The request failed. Please try again.');
   expect(await optionPosition()).toBeCloseTo(optionTop, 0);
+  expect(await controls()).toEqual(idleControls);
   await expect(page.getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled();
   failStatus = false;
   await page.getByRole('button', { name: 'Check result', exact: true }).click();
-  await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveAttribute('value', displayed);
+  await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveJSProperty('position', displayed);
   expect(comfySubmissions).toBe(1);
   await expect(page.locator('.task-status')).toContainText(label);
   complete = true;
@@ -96,11 +103,12 @@ for (const detailed of [true, false]) test(`mocked Comfy generation, status reco
   expect((await saved()).requestMethod).toBe('comfy');
   expect((await saved()).generationSettings.maskInjection).toBe('vignette');
   expect(await optionPosition()).toBeCloseTo(optionTop, 0);
+  expect(await controls()).toEqual(idleControls);
   await expect(page.locator('.inspector-clip-meta')).toContainText('Generated');
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
   await page.locator('.inspector-output > summary').click();
   const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click(); await download;
-  await page.screenshot({ path: `test-results/comfy-interstitial-${detailed ? 'detailed' : 'aggregate'}.png` });
+  await page.screenshot({ path: `test-results/comfy-interstitial-${detailed ? 'detailed' : 'aggregate'}-${width}.png` });
   await mask.click();
   await page.getByRole('radio', { name: /Standard generation/ }).click();
   await expect(page.locator('.interstitial-edited')).toHaveText('Edited');
