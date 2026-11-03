@@ -142,7 +142,8 @@ test('chooses a video, then opens and deletes an explicitly saved project', asyn
       const file = await (await (await navigator.storage.getDirectory()).getFileHandle('interstitial-reference.sparko')).getFile();
       return (await unpackProject(file, new AbortController().signal, () => undefined)).project.interstitials[0].prompt;
     } catch (error) {
-      if ((error as DOMException).name === 'NotReadableError') return '';
+      // Chrome can briefly hide the old file while committing the replacement.
+      if (['NotReadableError', 'NotFoundError'].includes((error as DOMException).name)) return '';
       throw error;
     }
   })).toBe('Updated draft');
