@@ -57,6 +57,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await open(page);await page.setViewportSize({width:390,height:844});
   const source=page.getByRole('slider',{name:/Scrub/}).first();await source.focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
   await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.getByRole('button',{name:/Edit crossfade from/}));await page.getByLabel('Interstitial prompt',{exact:true}).fill('Continue the scene');
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();
   await fitAll(page);
   await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Crossfade duration',{exact:true})).toHaveValue('1.5');
   await page.locator('.story-crossfade').last().click();await page.getByLabel('Crossfade duration',{exact:true}).fill('0.5');
@@ -171,9 +172,10 @@ test('cut tool, context menu and S split source and interstitial clips without c
 test('the side panel drops interstitials and templates onto the canvas and inserts on arrows',async({page})=>{
   await open(page);const library=page.getByRole('region',{name:'Interstitials and templates'}),canvas=page.locator('.story-scroll');
   await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(canvas,{targetPosition:{x:40,y:30}});await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  let project=await saved(page);const bounds=(await canvas.boundingBox())!,loop=(await page.locator('.story-clip.type-simple').boundingBox())!;expect(loop.x-bounds.x).toBeCloseTo(40,0);expect(loop.y-bounds.y).toBeCloseTo(30,0);
+  let project=await saved(page);const bounds=(await canvas.boundingBox())!,loop=(await page.locator('.story-clip.type-simple').boundingBox())!;expect(loop.x+loop.width/2-bounds.x).toBeCloseTo(40,0);expect(loop.y+loop.height/2-bounds.y).toBeCloseTo(30,0);
   await library.getByRole('button',{name:'Add template Question & response',exact:true}).dragTo(canvas,{targetPosition:{x:250,y:100}});await expect(page.locator('.story-clip')).toHaveCount(6);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();await fitAll(page);
   const source=page.locator('.story-clip.type-source');await source.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(source);await expect(page.locator('.story-clip')).toHaveCount(3);
   project=await saved(page);const sourceId=project.storyFlow.nodes.find((n:any)=>n.kind==='source').id,next=project.storyFlow.edges.find((e:any)=>e.from===sourceId);expect(next).toBeTruthy();
   await fitAll(page);const insert=page.getByRole('button',{name:/Edit crossfade from/}).first();await insert.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(insert);
