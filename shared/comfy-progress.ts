@@ -4,6 +4,7 @@ const stages: Record<string, string> = {
   before: 'Reading reference clips', after: 'Reading reference clips',
   model: 'Loading H3', text_encoder: 'Loading text encoder',
   shift: 'Preparing H3', empty_streams: 'Preparing reference context',
+  loop_start: 'Anchoring the loop start', loop_end: 'Matching the loop ending to its start',
   place_before: 'Preparing reference context', place_after: 'Preparing reference context', joint: 'Preparing video and audio',
   video_vae: 'Loading video decoder', audio_vae: 'Loading audio decoder',
   base_video: 'Preparing H3 video for regeneration', regenerate_2k: 'Regenerating with H3 2K',
@@ -32,7 +33,8 @@ const classes: Record<string, string> = {
   VHS_VideoCombine: stages.output, SaveVideo: stages.output,
   FrameInterpolate: 'Interpolating reference motion',
 };
-export const comfyStage = (node?: string | null, nodeClass?: string | null) => stages[node ?? ''] || classes[nodeClass ?? ''] || 'Generating scene';
+export const comfyStage = (node?: string | null, nodeClass?: string | null) => node?.startsWith('reference_image_') ? 'Reading image references'
+  : nodeClass === 'MiniMaxH3ReferenceToVideo' ? 'Encoding prompt and image references' : stages[node ?? ''] || classes[nodeClass ?? ''] || 'Generating scene';
 
 /** Progress within the current stage, not completion of the whole render.
  * The aggregate workflow value weights nodes, regardless of their runtime.

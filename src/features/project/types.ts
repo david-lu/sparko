@@ -23,9 +23,11 @@ export const projectFlows = (project?: Pick<Project, 'callResponse' | 'callRespo
 export const activeFlows = (project?: Project | null) => projectFlows(project).filter(flow => project?.interstitials.find(item => item.id === flow.interstitial.id)?.kind !== 'regular');
 export const withFlows = (project: Project, callResponses: CallResponseFlow[]): Project => ({ ...project, callResponses, callResponse: callResponses[0] });
 export const assetIds = (project: Project) => [...new Set([project.source.assetId, project.source.originalAssetId, project.subtitle?.assetId,
+  ...project.storyFlow?.templates.flatMap(template => Object.values(template.settings).flatMap(settings => settings.imageReferences?.map(image => image.assetId) ?? [])) ?? [],
   ...(project.library ?? []).flatMap(item => [item.assetId, item.originalAssetId]),
   ...project.storyFlow?.nodes.flatMap(node => node.source ? [node.source.assetId,node.source.originalAssetId] : []) ?? [],
   ...project.storyFlow?.templates.flatMap(t => t.nodes.flatMap(node => node.source ? [node.source.assetId,node.source.originalAssetId] : [])) ?? [],
   ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId)),
   ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId,
+    ...[item, item.generationSettings].flatMap(settings => settings?.imageReferences?.map(image => image.assetId) ?? []),
     ...[item.result?.reference, item.previousResult?.reference, item.requestReference].flatMap(input => [input?.before?.assetId, input?.after?.assetId])])].filter((id): id is string => !!id))];

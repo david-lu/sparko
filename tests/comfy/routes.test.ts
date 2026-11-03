@@ -26,6 +26,20 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it('passes ordered images alongside footage and requests image-reference preflight', async () => {
+    const image = `data:image/jpeg;base64,${Buffer.from([255, 216, 255, 224, 1, 255, 217]).toString('base64')}`;
+    comfy.check.mockResolvedValue({ ready: true });
+    await request(app).get('/api/comfy/status?imageReferences=true').expect(200);
+    expect(comfy.check).toHaveBeenCalledWith('standard', undefined, true);
+    await submit('1.625', '1.625', 'Use <Picture 1>', { imageReferences: JSON.stringify([image]) }).expect(202);
+    expect(comfy.submit.mock.calls[0][2]).toHaveLength(1);
+    expect(comfy.submit.mock.calls[0][2][0].type).toBe('image/jpeg');
+    expect([...new Uint8Array(await comfy.submit.mock.calls[0][2][0].arrayBuffer())]).toEqual([255, 216, 255, 224, 1, 255, 217]);
+  });
+  it.each(['invalid json', JSON.stringify(['https://example.com/image.jpg']), JSON.stringify(['data:image/jpeg;base64,YmFk']), JSON.stringify(Array(10).fill('data:image/jpeg;base64,/9j/2Q=='))])('rejects malformed or excessive image references before submission: %s', async imageReferences => {
+    await submit('1.625', '1.625', 'Image reference', { imageReferences }).expect(400);
+    expect(comfy.submit).not.toHaveBeenCalled();
+  });
   it('validates resolution and requests the selected 2K capabilities and native sampling canvas',async()=>{
     comfy.check.mockResolvedValue({ready:true});await request(app).get('/api/comfy/status?resolution=2k').expect(200);expect(comfy.check).toHaveBeenCalledWith('standard','2k');
     await request(app).get('/api/comfy/status?resolution=4k').expect(400);

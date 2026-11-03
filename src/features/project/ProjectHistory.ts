@@ -6,7 +6,7 @@ export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'stor
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
-  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item) })),
+  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [] })),
     callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }
 function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' | 'key'> {

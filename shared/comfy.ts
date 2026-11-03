@@ -5,7 +5,8 @@ import { validateInterstitialDuration, type GenerationResolution, type Interstit
 export type ComfyMode = 'bridge' | 'extend' | 'loop' | 'custom';
 export function comfyBridgePlan(before: number, after: number, duration: number, mode: ComfyMode = 'bridge') {
   validateInterstitialDuration(duration, (mode === 'loop' || mode === 'custom') ? 'comfy-loop' : 'comfy');
-  if (!(mode === 'extend' ? [before] : [before, after]).every(value => Number.isFinite(value) && (mode === 'custom' && value === 0 || value >= COMFY.minContextFrames / TIMELINE_FPS && value <= 4 + 1e-6)) || mode === 'extend' && after !== 0) {
+  const imageLoop = mode === 'loop' && before === 0 && after === 0;
+  if (!(mode === 'extend' ? [before] : [before, after]).every(value => Number.isFinite(value) && ((mode === 'custom' || imageLoop) && value === 0 || value >= COMFY.minContextFrames / TIMELINE_FPS && value <= 4 + 1e-6)) || mode === 'extend' && after !== 0) {
     throw new Error('Comfy needs at least 1.625 seconds of source footage on each side of the draft (up to 4 seconds).');
   }
   const contextFrames = (seconds: number) => COMFY.firstFrames + Math.floor((Math.floor(seconds * TIMELINE_FPS + 1e-6) - COMFY.firstFrames) / COMFY.frameGroup) * COMFY.frameGroup;
@@ -29,7 +30,7 @@ export function comfyReferenceRange(item: Pick<Interstitial, 'time' | 'start_ran
   const anchorFrame = Math.max(0, Math.min(Math.floor(sourceDuration * TIMELINE_FPS + 1e-6), Math.round(item.time * TIMELINE_FPS)));
   const custom = item.useInputReference !== undefined || item.useOutputReference !== undefined;
   const before = custom && item.useInputReference === false ? 0 : Math.min(anchorFrame, Math.floor(item.start_range * TIMELINE_FPS + 1e-6)) / TIMELINE_FPS;
-  const mode: ComfyMode = custom ? 'custom' : item.method === 'comfy-extend' ? 'extend' : item.method === 'comfy-loop' ? 'loop' : 'bridge';
+  const mode: ComfyMode = item.method === 'comfy-loop' ? 'loop' : custom ? 'custom' : item.method === 'comfy-extend' ? 'extend' : 'bridge';
   const after = mode === 'extend' || custom && !item.useOutputReference ? 0 : Math.min(Math.floor(sourceDuration * TIMELINE_FPS + 1e-6) - anchorFrame, Math.floor(item.end_range * TIMELINE_FPS + 1e-6)) / TIMELINE_FPS;
   const plan = comfyBridgePlan(before, after, item.duration, mode);
   validateComfyResolution(plan,item.resolution);

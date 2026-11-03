@@ -42,11 +42,12 @@ function referenceFadeLength(node: StoryNode | undefined, neighbor: StoryNode | 
   const result = playableResult(item);
   if (result) {
     // Follow the video being played, even while different settings are queued for regeneration.
-    if (side === 'before' && result.reference?.mode === 'custom' && !result.reference.before) return;
+    if (side === 'before' && result.reference && ['custom', 'loop'].includes(result.reference.mode ?? '') && !result.reference.before) return;
     if (side === 'after' && result.reference && (!result.reference.after || result.reference.mode === 'loop' || result.reference.mode === 'extend')) return;
     return nodeMediaLayout(node, items)[side];
   }
-  const settings = storyGenerationItem(item);
+  const settings = storyGenerationItem(item, node);
+  if (side === 'after' && settings.method === 'comfy-loop') return;
   if (!(side === 'before' ? settings.useInputReference : settings.useOutputReference)) return;
   const length = side === 'before' ? settings.start_range : settings.end_range;
   return Math.max(0, Math.min(length, neighbor ? nodeDuration(neighbor, items) : 0));

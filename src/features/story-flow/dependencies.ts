@@ -8,7 +8,8 @@ import { connectedReferences, storyGenerationItem } from './referenceInputs';
 export function storyDependency(graph: StoryGraph, items: Interstitial[], assetId: string, duration: number, itemId: string): ClipDependency {
   const node = graph.nodes.find(n => n.interstitialId === itemId), saved = items.find(i => i.id === itemId);
   if (!node || !saved) return { label: 'Source', stale: false };
-  const item = storyGenerationItem(saved), connected = connectedReferences(graph, node.id);
+  const item = storyGenerationItem(saved, node), connected = connectedReferences(graph, node.id);
+  const loop = item.method === 'comfy-loop';
   const flow = runtimeFlow(graph, items, assetId, duration), byId = new Map(flow.scenes.map(s => [s.id, s]));
   const ref = (id: string): ClipReference => {
     const scene = byId.get(id)!, range = sceneMediaRange(scene, flow.fps);
@@ -19,24 +20,28 @@ export function storyDependency(graph: StoryGraph, items: Interstitial[], assetI
     return input.assetId === current.assetId && input.inFrame === current.inFrame && input.outFrame === current.outFrame
       || input.assetId === scene.clip.assetId && input.inFrame === scene.clip.inFrame && input.outFrame === scene.clip.outFrame;
   };
-  const input: GenerationReference = { mode: 'custom' };
+  const input: GenerationReference = { mode: loop ? 'loop' : 'custom' };
   let blocked: string | undefined;
+  if (loop && !item.useInputReference && !item.imageReferences?.length) blocked = 'Choose a loop reference: enable the connected video or add an image. The start and end need the same reference.';
   for (const side of ['input', 'output'] as const) {
+    if (loop && side === 'output') continue;
     if (!(side === 'input' ? item.useInputReference : item.useOutputReference)) continue;
     const ids = connected[side];
     if (ids.length !== 1) {
+      if (loop) { blocked ??= 'Connect exactly one incoming clip for Loop ref, or choose Picture 1 and add an image.'; continue; }
       blocked ??= ids.length ? `${side === 'input' ? 'Input' : 'Output'} reference needs one connected clip. Turn it off for multiple ${side === 'input' ? 'inputs' : 'destinations'}.`
         : `Connect ${side === 'input' ? 'an incoming' : 'a following'} clip, or turn off its ${side} reference.`;
       continue;
     }
     input[side === 'input' ? 'before' : 'after'] = ref(ids[0]);
     const scene = byId.get(ids[0])!, job = items.find(i => i.id === scene.interstitialId);
-    if (scene.draft || job && isGenerating(job)) blocked ??= `Generate ${scene.label} first, or turn off its ${side} reference.`;
+    if (scene.draft || job && isGenerating(job)) blocked ??= loop ? `Generate ${scene.label} first, or choose Picture 1 as Loop ref.` : `Generate ${scene.label} first, or turn off its ${side} reference.`;
     // Check saved footage, without recursively following future settings through playback cycles.
     for (const previous of [job && playableResult(job)?.reference?.before, job && playableResult(job)?.reference?.after]) {
       if (previous && byId.has(previous.sceneId) && !matches(previous, ref(previous.sceneId))) blocked ??= `Regenerate ${scene.label} to match its updated reference first.`;
     }
   }
+  if (loop && input.before) input.after = { ...input.before };
   const submitted = playableResult(saved)?.reference, normalized = submitted ? { ...submitted } : undefined;
   if (normalized) {
     if (normalized.mode !== 'loop') normalized.mode = 'custom';

@@ -8,6 +8,12 @@ const assetId = '44444444-4444-4444-8444-444444444444';
 const source = (side: 'before' | 'after'): StoryNode => { const ref = clipMetadata.references[side]!; return { id: ref.sceneId, name: ref.name, kind: 'source', source: { assetId: ref.assetId, inFrame: ref.inFrame, outFrame: ref.outFrame }, x: 0, y: 0, loopCount: 0 }; };
 const graph = (nodes: StoryNode[]): StoryGraph => ({ version: 1, entryId: nodes[0].id, nodes, edges: [], templates: [] });
 describe('restoring generated clips', () => {
+  it('keeps image provenance from a standalone MP4 without requiring absent image assets', () => {
+    const metadata = { ...clipMetadata, settings: { ...clipMetadata.settings, imageReferences: [{ assetId: crypto.randomUUID(), name: 'Character.jpg' }] } };
+    const restored = restoreClip(metadata, assetId, 4)!;
+    expect(restored.item.imageReferences).toBeUndefined(); expect(restored.item.generationSettings?.imageReferences).toBeUndefined();
+    expect(restored.item.result?.metadata?.settings.imageReferences).toEqual(metadata.settings.imageReferences);
+  });
   it('restores editable settings and body boundaries, allocates fresh IDs, and reconnects matching source ranges', () => {
     const a = restoreClip(clipMetadata, assetId, 4)!, b = restoreClip(clipMetadata, assetId, 4)!;
     expect(a.node.id).not.toBe(b.node.id); expect(a.item.id).not.toBe(b.item.id);

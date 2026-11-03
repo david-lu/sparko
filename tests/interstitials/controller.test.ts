@@ -45,6 +45,11 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
+  it('restores image-only loop provenance for submitted and completed renders', async () => {
+    const item = await readyScene();
+    localStorage.setItem(interstitialKey('source'), JSON.stringify([{ ...item, requestReference: { mode: 'loop' }, result: { ...item.result, reference: { mode: 'loop' } } }]));
+    expect(loadInterstitials('source')[0]).toMatchObject({ requestReference: { mode: 'loop' }, result: { reference: { mode: 'loop' } } });
+  });
   it('migrates browser-saved interpolation without marking the existing render as edited', async () => {
     const item = await readyScene();
     const { maskInjection: _mode, ...legacy } = item;

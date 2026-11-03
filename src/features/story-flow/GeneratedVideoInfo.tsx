@@ -15,6 +15,7 @@ export default function GeneratedVideoInfo({item,node,nodes,items}:{item:Interst
     if(!ref)return 'Reference footage saved with this render';
     const source=nodes.find(n=>n.id===ref.sceneId)??nodes.find(n=>n.source?.assetId===ref.assetId||items.some(i=>i.id===n.interstitialId&&(playableResult(i)?.assetId===ref.assetId||playableResult(i)?.fullAssetId===ref.assetId)));
     const name=items.find(i=>i.id===source?.interstitialId)?.label??source?.name??saved?.name??'Saved reference clip';
+    if (ending && result.reference?.mode === 'loop') return `${name} · held final frame at ${format((ref.outFrame - 1) / TIMELINE_FPS)} · same pose as the loop start`;
     const start=ending&&result.reference?.mode!=='loop'?ref.inFrame/TIMELINE_FPS:Math.max(ref.inFrame/TIMELINE_FPS,ref.outFrame/TIMELINE_FPS-length);
     return `${name} · ${span(start,start+length)}${!source&&saved?' · Original clip is not in this project':''}`;
   };

@@ -17,6 +17,7 @@ import GroupInspector from './GroupInspector';
 import { connectedReferences, storyGenerationItem } from './referenceInputs';
 import './inspector.css';
 import { useShortcuts } from '../../shared/shortcuts';
+import LoopReferenceHelp from './LoopReferenceHelp';
 
 function ClipName({ value, onSave }: { value: string; onSave: (name: string) => void }) {
   const [name, setName] = useState(value);
@@ -37,7 +38,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   if (connection) return <ConnectionInspector editor={editor} connection={connection} info={info} />;
   if (editor.selectedGroup) return <GroupInspector key={editor.selectedGroup.id} editor={editor} group={editor.selectedGroup} />;
   if (!node) return <div className="story-inspector"><h2>No clip selected</h2><p className="hint">Select a clip to edit its properties, or a connection to adjust its crossfade.</p></div>;
-  const savedItem = items.find(i => i.id === node.interstitialId), item = savedItem && storyGenerationItem(savedItem);
+  const savedItem = items.find(i => i.id === node.interstitialId), item = savedItem && storyGenerationItem(savedItem, node);
   const duration = nodeDuration(node, items), behavior=behaviors(node), conditions=conditionsFor(graph,node);
   const refs = connectedReferences(graph, node.id);
   const referenceLabel = (ids: string[]) => ids.length === 1 ? nameOf(ids[0]) : ids.length ? `${ids.length} connected clips` : 'Not connected';
@@ -55,7 +56,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <span>{duration.toFixed(2)} s · {item ? playableResult(item) ? 'Generated' : 'Draft' : 'Source'}{editor.selected.length > 1 ? ` · ${editor.selected.length} selected` : ''}</span>
       <button className="inspector-entry" aria-pressed={graph.entryId === node.id} title="Start story from this clip" onClick={() => graph.entryId !== node.id && editor.change({ ...graph, entryId: node.id })}><Flag size={11} />{graph.entryId === node.id ? 'Start clip' : 'Set as start'}</button>
     </div>
-    <BehaviorSection key={`loop:${node.id}`} name="Loop" enabled={behavior.loop} onToggle={enabled=>editor.toggleBehavior(node.id,'loop',enabled)}>
+    <BehaviorSection key={`loop:${node.id}`} name="Loop" enabled={behavior.loop} onToggle={enabled=>editor.toggleBehavior(node.id,'loop',enabled)} help={!item && <LoopReferenceHelp />}>
       <label className="inspector-property"><span>Loop count</span><input aria-label="Loop count" type="number" min={0} max={10000} value={node.loopCount} title="0 repeats until a condition matches or Continue is pressed." onChange={e=>Number.isFinite(e.target.valueAsNumber)&&editor.patch(node.id,{loopCount:Math.max(0,Math.min(10000,Math.round(e.target.valueAsNumber)))})}/></label>
       <p className="inspector-behavior-hint">{node.loopCount?`Play up to ${node.loopCount} times; a choice can exit sooner.`:behavior.conditional?'Repeat until a condition matches.':'Repeat until Continue is pressed.'}</p>
     </BehaviorSection>
@@ -70,7 +71,17 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
     </BehaviorSection>
     {item && <InterstitialEditor key={item.id} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
       generationSettings={<div className="inspector-references">
-        {(['input', 'output'] as const).map(side => {
+        {behavior.loop ? <>
+          <div className="inspector-reference inspector-loop-reference" role="group" aria-label="Loop reference">
+            <div className="loop-reference-label"><span>Loop ref</span><LoopReferenceHelp /></div>
+            <select aria-label="Loop reference source" value={item.useInputReference ? 'video' : 'image'} onChange={event => editor.jobs.edit(item.id, { useInputReference: event.target.value === 'video' })}>
+              <option value="video">Connected video</option><option value="image">Picture 1{item.imageReferences?.length ? '' : ' (add image)'}</option>
+            </select>
+            <InterstitialTimeField name="Loop footage" label="Loop footage" value={item.start_range} disabled={!item.useInputReference} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025}
+              onChange={start_range => editor.jobs.edit(item.id, { start_range })} />
+          </div>
+          <p className="loop-reference-source" title={item.useInputReference ? referenceLabel(refs.input) : item.imageReferences?.[0]?.name}>{item.useInputReference ? referenceLabel(refs.input) : item.imageReferences?.[0]?.name ?? 'Add an image below'} · same reference at both ends</p>
+        </> : (['input', 'output'] as const).map(side => {
           const field = side === 'input' ? 'useInputReference' : 'useOutputReference', ids = refs[side];
           const range = side === 'input' ? 'start_range' : 'end_range';
           return <div className="inspector-reference" role="group" aria-label={`${side === 'input' ? 'Start' : 'End'} reference`} key={side}>

@@ -19,6 +19,32 @@ const setup = () => {
 };
 
 describe('connected reference switches', () => {
+  it('reuses the incoming reference for a loop regardless of outgoing destinations or an old end range', () => {
+    const { graph, node, item, other, dependency } = setup();
+    node.loop = true; item.start_range = 2; item.end_range = 4; item.useOutputReference = false;
+    graph.edges.push(edge(node.id, other.id, 'answer'));
+    const { reference, blocked } = dependency(), prepared = storyGenerationItem(item, node);
+    expect(blocked).toBeUndefined(); expect(reference!.mode).toBe('loop');
+    expect(reference!.after).toEqual(reference!.before);
+    expect(reference!.before!.sceneId).toBe('input');
+    expect(prepared).toMatchObject({ method: 'comfy-loop', useInputReference: true, useOutputReference: true, start_range: 2, end_range: 2 });
+    const timing = referenceTiming(prepared, reference!);
+    const plan = comfyReferenceRange({ ...prepared, time: timing.time }, timing.duration).plan;
+    expect(plan.prefixFrames).toBe(plan.suffixFrames);
+    node.loop = false;
+    expect(storyGenerationItem(item, node)).toMatchObject({ useOutputReference: false, end_range: 4, method: 'comfy-extend' });
+  });
+  it('requires an image for an image-only loop and keeps its saved provenance', () => {
+    const { node, item, dependency } = setup(); node.loop = true; item.useInputReference = false;
+    expect(dependency().blocked).toContain('Choose a loop reference');
+    item.imageReferences = [{ assetId: crypto.randomUUID(), name: 'pose.jpg' }];
+    expect(dependency()).toMatchObject({ blocked: undefined, reference: { mode: 'loop' } });
+    const prepared = storyGenerationItem(item, node), reference = dependency().reference!;
+    expect(referenceTiming(prepared, reference)).toEqual({ before: 0, after: 0, time: 0, duration: 0 });
+    item.phase = 'ready'; item.result = { url: 'asset:render', assetId: 'render', start: 0, duration: 6, totalDuration: 6, reference };
+    expect(dependency().stale).toBe(false);
+    node.loop = false; expect(dependency().stale).toBe(true);
+  });
   it.each([[true, true], [true, false], [false, true], [false, false]])('uses only enabled footage (input %s, output %s)', (input, output) => {
     const { a, b, item, dependency } = setup();
     item.useInputReference = input; item.useOutputReference = output;

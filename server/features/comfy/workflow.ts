@@ -2,6 +2,7 @@ import { COMFY, COMFY_MODELS, MASK_TRANSITION, TIMELINE_FPS } from '../../../sha
 import { comfyBridgePlan, validateComfyResolution, type ComfyMode } from '../../../shared/comfy.js';
 import { normalizeMaskInjection, validateMaskTransitionMs, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { videoTransitionPoints } from './mask-transition.js';
+import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown> }>;
 export type BridgeInput = { before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; interpolateMiddle?: boolean; resolution?: GenerationResolution };
@@ -11,10 +12,13 @@ export type BridgeInput = { before: number; after: number; duration: number; pro
  * Separately encoded references stay frozen outside their soft transitions.
  * The original source footage is kept by Sparko's compositor, outside this render.
  */
-export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, vignetteAssetId?: string): Workflow {
+export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, vignetteAssetId?: string, imageAssetIds: string[] = []): Workflow {
+  if (imageAssetIds.length > IMAGE_REFERENCE.maxCount) throw new Error('H3 supports up to 9 image references.');
   const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
   validateComfyResolution(plan,input.resolution);
   const { prefixFrames, suffixFrames, middleFrames, totalFrames, insertion } = plan;
+  const imageLoop = input.mode === 'loop' && !prefixFrames && !suffixFrames;
+  if (imageLoop && !imageAssetIds.length) throw new Error('An image-only loop needs an image reference for both the start and end.');
   const audioTransitionMs = input.audioMaskTransitionMs ?? MASK_TRANSITION.defaultMs;
   const videoTransitionMs = input.videoMaskTransitionMs ?? MASK_TRANSITION.defaultMs;
   validateMaskTransitionMs(audioTransitionMs, 'Audio mask transition');
@@ -36,7 +40,17 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   const vae = add('video_vae', 'VAELoader', { vae_name: COMFY_MODELS.videoVae });
   const audioVae = add('audio_vae', 'VAELoader', { vae_name: COMFY_MODELS.audioVae });
   const shifted = add('shift', 'MiniMaxH3SigmaShift', { model, shift_video: COMFY.shiftVideo, shift_audio: COMFY.shiftAudio });
-  const positive = add('conditioning', 'MiniMaxH3ImageToVideo', { clip, vae, prompt: input.prompt, width: input.width, height: input.height, length: totalFrames });
+  const referenceImages = Object.fromEntries(imageAssetIds.map((id, index) => [`ref_images.ref_image_${index}`,
+    add(`reference_image_${index}`, 'LoadImage', { image: { __type: 'core/ASSET', info: { id } } })]));
+  let positive = add('conditioning', imageAssetIds.length ? 'MiniMaxH3ReferenceToVideo' : 'MiniMaxH3ImageToVideo', {
+    clip, vae, prompt: input.prompt, width: input.width, height: input.height, length: totalFrames,
+    ...(imageAssetIds.length ? { ref_image_size: 'match', ...referenceImages } : {}),
+  });
+  if (imageLoop) {
+    // Picture 1 is the shared boundary pose. Other images retain their prompt roles.
+    positive = add('loop_start', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: ['reference_image_0', 0], frame_idx: 0 });
+    positive = add('loop_end', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: ['reference_image_0', 0], frame_idx: -1 });
+  }
   const empty = add('empty_streams', 'LTXVSeparateAVLatent', { av_latent: ['conditioning', 1] });
   let target = empty;
   if (before && after && maskInjection !== 'standard') {

@@ -90,3 +90,4 @@
 .clip-inspector .generated-play-range{padding-top:8px;gap:4px}
 .clip-inspector .interstitial-preview{margin-top:8px;padding-top:8px}
 @container(max-width:280px){.story-inspector.clip-inspector{--property-label:63px;padding-inline:7px}.inspector-options button{font-size:9px;padding-inline:2px}.inspector-clip-tools .icon-button.small{width:22px;min-width:22px}}
+.loop-reference-label{display:flex;align-items:center;gap:2px;white-space:nowrap}.inspector-loop-reference select{width:100%;min-width:0;height:24px;border:1px solid var(--line);border-radius:3px;background:var(--input);color:var(--accent);padding:2px;font-size:10px}.loop-reference-source{height:20px;line-height:20px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--muted)}

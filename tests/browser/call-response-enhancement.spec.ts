@@ -12,8 +12,11 @@ test('each template prompt enhances independently without submitting a generatio
   for (const [index, name] of ['Ask a question', 'Wait for the viewer', 'Celebrate', 'Encourage'].entries()) {
     await page.locator('.story-clip-title').filter({ hasText: name }).click();
     // Draft predecessors have no media yet. Text-only enhancement is still available.
-    await page.getByRole('checkbox', { name: 'Use start reference', exact: true }).uncheck();
-    await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).uncheck();
+    if (name === 'Wait for the viewer') await page.getByLabel('Loop reference source').selectOption('image');
+    else {
+      await page.getByRole('checkbox', { name: 'Use start reference', exact: true }).uncheck();
+      await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).uncheck();
+    }
     await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
     await expect(page.getByLabel('Interstitial prompt')).toHaveValue(`Enhanced prompt ${index + 1}`);
   }

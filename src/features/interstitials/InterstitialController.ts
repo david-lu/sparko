@@ -31,7 +31,7 @@ const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
 /** Owns persisted drafts and independently cancellable generation jobs, outside React. */
 export class InterstitialController {
   private story?: {graph:StoryGraph;assetId:string;duration:number};
-  generationItem(item: Interstitial) { return this.story ? storyGenerationItem(item) : item; }
+  generationItem(item: Interstitial) { return this.story ? storyGenerationItem(item, this.story.graph.nodes.find(node => node.interstitialId === item.id)) : item; }
   setStoryGraph(graph:StoryGraph|undefined,assetId='',duration=0) { this.story=graph?{graph,assetId,duration}:undefined;if(graph)this.linkedDurationIds=[]; }
   private sourceId = '';
   private linkedDurationIds: string[] = [];
@@ -220,11 +220,11 @@ export class InterstitialController {
     }
     return cancelled;
   }
-  async generate(id: string, engine: MediaEngine, info: MediaInfo) {
+  async generate(id: string, engine: MediaEngine | null, info: MediaInfo | null) {
     if (sequenceActive(this.state.sequence) && this.state.sequence!.ids.includes(id)) return;
     return this.generateClip(id, engine, info);
   }
-  private async generateClip(id: string, engine: MediaEngine, info: MediaInfo) {
+  private async generateClip(id: string, engine: MediaEngine | null, info: MediaInfo | null) {
     const saved = this.state.items.find(item => item.id === id);
     const item = saved && this.generationItem(saved);
     if (!item || isGenerating(item) || this.tasks.has(id) || this.cancelling.has(id)) return;
@@ -324,7 +324,15 @@ export class InterstitialController {
       let blob = fetched.blob;
       if (result.metadata) {
         this.patch(id, { progress: undefined, progressDetails: { stage: 'Saving clip metadata' } });
-        blob = await writeClipMetadata(blob, result.metadata, signal, progress => this.patch(id, { progress }));
+        // Packet-copy progress can fire synchronously hundreds of times. Limit
+        // store updates so React can paint while the output is being saved.
+        let lastProgress = -1, lastUpdate = -Infinity;
+        blob = await writeClipMetadata(blob, result.metadata, signal, progress => {
+          const now = performance.now();
+          if (progress !== lastProgress && (progress === 1 || now - lastUpdate >= 100)) {
+            lastProgress = progress; lastUpdate = now; this.patch(id, { progress });
+          }
+        });
       }
       let fullBlob: Blob | undefined;
       let fullRange: Pick<typeof result, 'start' | 'duration' | 'totalDuration'> | undefined;

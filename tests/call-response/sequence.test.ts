@@ -51,7 +51,7 @@ beforeEach(async () => {
 afterEach(() => { controller.dispose(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('call-response generation sequence', () => {
-  it('uses independent switches and durations after migrating legacy clips to a story graph', async () => {
+  it('keeps durations independent while using one shared reference for migrated loop clips', async () => {
     const source: StoryNode = { id: 'source', name: 'Source', kind: 'source', x: 0, y: 0, loopCount: 0, source: { assetId: example.flow.scenes[0].clip.assetId, inFrame: 0, outFrame: 240 } };
     const node = { ...createNode('looped').node, interstitialId: ids[1] };
     controller.setStoryGraph({ version: 1, entryId: source.id, nodes: [source, node], edges: [edge(source.id, node.id)], templates: [] }, source.source!.assetId, 20);
@@ -62,10 +62,9 @@ describe('call-response generation sequence', () => {
     vi.mocked(finishLoop).mockClear();
     await controller.generate(ids[1], media, info);
     expect(item(1).phase).toBe('ready');
-    expect(item(1).result?.reference).toMatchObject({ mode: 'custom', before: { sceneId: source.id } });
-    expect(item(1).result?.reference?.after).toBeUndefined();
-    expect(generateInterstitial).toHaveBeenCalledWith(expect.objectContaining({ useInputReference: true, useOutputReference: false, method: 'comfy-extend' }), expect.anything(), expect.anything(), expect.anything(), expect.anything());
-    expect(finishLoop).not.toHaveBeenCalled();
+    expect(item(1).result?.reference).toMatchObject({ mode: 'loop', before: { sceneId: source.id }, after: { sceneId: source.id } });
+    expect(generateInterstitial).toHaveBeenCalledWith(expect.objectContaining({ useInputReference: true, useOutputReference: true, method: 'comfy-loop' }), expect.anything(), expect.anything(), expect.anything(), expect.anything());
+    expect(finishLoop).toHaveBeenCalledOnce();
   });
   it('waits for each result to be saved and inspected, then uses it for the next reference', async () => {
     const saved = deferred<any>();

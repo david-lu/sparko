@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { packProject, unpackProject } from '../../src/features/project/archive';
-import { emptyAnalysis, type Asset, type Project } from '../../src/features/project/types';
+import { assetIds, emptyAnalysis, type Asset, type Project } from '../../src/features/project/types';
 import { hasUnsubmittedChanges, interstitialSettings } from '../../shared/interstitials';
 
 const sourceId = crypto.randomUUID(), sceneId = crypto.randomUUID(), subtitleId = crypto.randomUUID();
@@ -30,6 +30,27 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('retains images used only by submitted settings or templates and remaps their IDs on import', async () => {
+    const images = ['character.jpg', 'style.jpg', 'template.jpg'].map(name => ({ id: crypto.randomUUID(), name, blob: new Blob([name], { type: 'image/jpeg' }) }));
+    const refs = images.map(image => ({ assetId: image.id, name: image.name }));
+    const snapshot = structuredClone(project), item = snapshot.interstitials[0];
+    item.imageReferences = [refs[0]]; item.generationSettings = interstitialSettings(item);
+    expect(hasUnsubmittedChanges(item)).toBe(false);
+    item.imageReferences = [refs[1]];
+    expect(hasUnsubmittedChanges(item)).toBe(true);
+    const node = { id: 'node', name: 'Scene', kind: 'simple' as const, interstitialId: item.id, x: 0, y: 0, loopCount: 0 };
+    snapshot.storyFlow = { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [{ id: 'template', name: 'Saved images', entryId: node.id,
+      nodes: [node], edges: [], settings: { [node.id]: { ...interstitialSettings(item), imageReferences: [refs[2]] } } }] };
+    expect(assetIds(snapshot)).toEqual(expect.arrayContaining(images.map(image => image.id)));
+    await expect(packProject(snapshot, media, signal(), progress)).rejects.toThrow('asset is missing');
+    const restored = await unpackProject(await packProject(snapshot, [...media, ...images], signal(), progress), signal(), progress);
+    const idFor = (name: string) => restored.assets.find(asset => asset.name === name)!.id;
+    expect(restored.project.interstitials[0].imageReferences).toEqual([{ name: 'style.jpg', assetId: idFor('style.jpg') }]);
+    expect(restored.project.interstitials[0].generationSettings!.imageReferences).toEqual([{ name: 'character.jpg', assetId: idFor('character.jpg') }]);
+    expect(restored.project.storyFlow!.templates[0].settings.node.imageReferences).toEqual([{ name: 'template.jpg', assetId: idFor('template.jpg') }]);
+    expect(idFor('style.jpg')).not.toBe(images[1].id);
+    expect(hasUnsubmittedChanges(restored.project.interstitials[0])).toBe(true);
+  });
   it('saves and restores an empty project without a source asset',async()=>{
     const empty:Project={...project,source:{name:'Untitled project'},name:'Untitled project',interstitials:[],subtitle:null,library:[],storyFlow:{version:1,entryId:'',nodes:[],edges:[],templates:[]}};
     const restored=await unpackProject(await packProject(empty,[],signal(),progress),signal(),progress);

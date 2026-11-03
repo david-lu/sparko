@@ -13,6 +13,11 @@ function fixture(){
   return {graph,node,generated,flow:()=>runtimeFlow(graph,[generated],'source',10)};
 }
 describe('saved reference matching and timeline sections',()=>{
+  it('recognizes that an image-only loop has no opening footage reference',()=>{
+    const f=fixture(); f.generated.result!.reference={mode:'loop'};
+    const flow=f.flow();
+    expect(connectionReference(flow,flow.edges[0])).toEqual({state:'unknown',message:'Start reference was disabled for this render. Playback uses a cut.'});
+  });
   it('compares saved assets and cut frames, independently of the next generation settings',()=>{
     const f=fixture();let flow=f.flow();expect(flow.edges.map(e=>connectionReference(flow,e).state)).toEqual(['match','match']);
     f.node.referenceId='after';f.generated.start_range=3;f.generated.end_range=3;flow=f.flow();expect(connectionReference(flow,flow.edges[0]).state).toBe('match');

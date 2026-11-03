@@ -1,4 +1,5 @@
 import { INTERSTITIAL } from '../../../shared/constants';
+import { imageReferencesSchema } from '../../../shared/image-references';
 import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
 import { clipMaskInjection, generationMethods, interstitialSettings, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
 
@@ -6,7 +7,7 @@ function readReference(value: unknown): GenerationReference | undefined {
   const validClip = (clip: ClipReference | undefined) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
     && Number.isInteger(clip.inFrame) && Number.isInteger(clip.outFrame) && clip.inFrame >= 0 && clip.outFrame > clip.inFrame;
   const input = value as GenerationReference | undefined;
-  return input && (input.before ? validClip(input.before) : input.mode === 'custom') && (!input.after || validClip(input.after)) ? input : undefined;
+  return input && (input.before ? validClip(input.before) : input.mode === 'custom' || input.mode === 'loop' && !input.after) && (!input.after || validClip(input.after)) ? input : undefined;
 }
 
 function readSettings(value: unknown): InterstitialSettings | undefined {
@@ -16,7 +17,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
   if (method !== undefined && method !== 'fal' && !generationMethods.includes(method as InterstitialSettings['method'] & string)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
-  return interstitialSettings({ ...settings, method: normalizeGenerationMethod(method) });
+  return interstitialSettings({ ...settings, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, method: normalizeGenerationMethod(method) });
 }
 
 function readResult(value: unknown): InterstitialResult | undefined {
@@ -51,6 +52,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         audioMaskTransitionMs: normalizeMaskTransitionMs(item.audioMaskTransitionMs ?? item.maskTransitionMs),
         videoMaskTransitionMs: normalizeMaskTransitionMs(item.videoMaskTransitionMs ?? item.maskTransitionMs),
         resolution: normalizeGenerationResolution(item.resolution),
+        imageReferences: imageReferencesSchema.safeParse(item.imageReferences).data,
         start_range: Number.isFinite(item.start_range) ? item.start_range : INTERSTITIAL.defaultRange,
         end_range: Number.isFinite(item.end_range) ? item.end_range : INTERSTITIAL.defaultRange,
         duration: Number.isFinite(item.duration) ? item.duration : INTERSTITIAL.defaultDuration,

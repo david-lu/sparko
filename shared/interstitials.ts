@@ -1,6 +1,7 @@
 import { INTERSTITIAL, MASK_TRANSITION } from './constants.js';
 import type { GenerationProgress, InsertionRange } from './contracts.js';
 import type { ClipMetadata, ClipOrigin } from './clip-metadata.js';
+import type { ImageReference } from './image-references.js';
 
 export type GenerationMethod = 'comfy' | 'comfy-extend' | 'comfy-loop';
 export const generationMethods = ['comfy', 'comfy-extend', 'comfy-loop'] as const;
@@ -38,6 +39,8 @@ export type CallResponseInterstitial = {
   linkResponseDurations?: boolean;
 };
 export type InterstitialSettings = {
+  /** Ordered H3 references, addressed as <Picture 1>, <Picture 2>, etc. */
+  imageReferences?: ImageReference[];
   method?: GenerationMethod;
   resolution?: GenerationResolution;
   /** Story references come from the connected input/output; disabled sides contribute no footage. */
@@ -83,15 +86,18 @@ export type Interstitial = InterstitialSettings & {
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
-export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference }: InterstitialSettings): InterstitialSettings =>
+export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences }: InterstitialSettings): InterstitialSettings =>
   ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
+    ...(imageReferences?.length ? { imageReferences: imageReferences.map(image => ({ ...image })) } : {}),
     audioMaskTransitionMs: normalizeMaskTransitionMs(audioMaskTransitionMs ?? maskTransitionMs),
     videoMaskTransitionMs: normalizeMaskTransitionMs(videoMaskTransitionMs ?? maskTransitionMs),
     ...(useInputReference !== undefined ? { useInputReference } : {}), ...(useOutputReference !== undefined ? { useOutputReference } : {}),
     ...(continuity !== undefined ? { continuity } : {}), ...(dialogue !== undefined ? { dialogue } : {}), ...(loopAudio !== undefined ? { loopAudio } : {}) });
 export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&
   ([...new Set([...Object.keys(interstitialSettings(item)), ...Object.keys(interstitialSettings(item.generationSettings))])] as (keyof InterstitialSettings)[])
-    .some(key => !['loopAudio', 'continuity', 'dialogue'].includes(key) && interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]);
+    .some(key => !['loopAudio', 'continuity', 'dialogue'].includes(key) && (key === 'imageReferences'
+      ? JSON.stringify(item.imageReferences ?? []) !== JSON.stringify(item.generationSettings!.imageReferences ?? [])
+      : interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]));
 export const frameTime = (seconds: number, fps: number) => Math.round(seconds * fps) / fps;
 
 export function validateInterstitialDuration(duration: number, method: GenerationMethod = 'comfy') {

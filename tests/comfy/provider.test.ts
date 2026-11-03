@@ -11,6 +11,47 @@ const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body)
 const collect = async <T>(stream: AsyncIterable<T>) => { const items: T[] = []; for await (const item of stream) items.push(item); return items; };
 
 describe('Comfy Cloud v2 adapter', () => {
+  it('checks loop guides independently and fails before uploading when unavailable', async () => {
+    const settings = { ...input, mode: 'loop' as const, before: 0, after: 0 };
+    const nodes = { ...catalog, ...catalogFor(bridgeWorkflow(undefined, settings, 0, undefined, ['pose'])) };
+    delete nodes.MiniMaxH3AddGuide;
+    const transport = vi.fn<typeof fetch>().mockImplementation(async () => reply(nodes));
+    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport);
+    expect(await provider.check('standard', 'native', true)).toEqual({ ready: true });
+    await expect(provider.submit(undefined, settings, [new Blob(['image'], { type: 'image/jpeg' })])).rejects.toThrow('MiniMaxH3AddGuide');
+    expect(transport).toHaveBeenCalledTimes(2);
+    expect(transport.mock.calls.every(([url]) => String(url).endsWith('/api/object_info'))).toBe(true);
+  });
+  it('checks image-reference support separately and fails before uploads when the node is missing', async () => {
+    const transport = vi.fn<typeof fetch>().mockImplementation(async () => reply(catalog));
+    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport);
+    expect(await provider.check()).toEqual({ ready: true });
+    await expect(provider.submit(new Blob(), input, [new Blob(['image'], { type: 'image/jpeg' })])).rejects.toThrow('MiniMaxH3ReferenceToVideo');
+    expect(transport).toHaveBeenCalledTimes(2);
+    expect(transport.mock.calls.every(([url]) => String(url).endsWith('/api/object_info'))).toBe(true);
+  });
+  it('uploads ordered JPEG references and submits reference conditioning with 2K regeneration', async () => {
+    const settings = { ...input, mode: 'custom' as const, before: 0, after: 0, resolution: '2k' as const };
+    const nodes = { ...catalog, ...catalogFor(bridgeWorkflow(undefined, settings, 0, undefined, ['image-one', 'image-two'])) };
+    const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(nodes)).mockResolvedValueOnce(reply({ id: 'image-one' }))
+      .mockResolvedValueOnce(reply({ id: 'image-two' })).mockResolvedValueOnce(reply({ id: 'comfy-job-123', status: 'queued' }));
+    const images = ['first', 'second'].map(text => new Blob([text], { type: 'image/jpeg' }));
+    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport);
+    await provider.submit(undefined, settings, images);
+    for (const [index, text] of ['first', 'second'].entries()) {
+      const body = transport.mock.calls[index + 1][1]!.body as FormData;
+      expect([...body.keys()]).toEqual(['content_type', 'file_path', 'file']);
+      expect(body.get('content_type')).toBe('image/jpeg');
+      expect(await (body.get('file') as Blob).text()).toBe(text);
+    }
+    const payload = JSON.parse(String(transport.mock.calls[3][1]!.body));
+    expect(payload.workflow.reference_image_0.inputs.image.info.id).toBe('image-one');
+    expect(payload.workflow.reference_image_1.inputs.image.info.id).toBe('image-two');
+    expect(payload.workflow.conditioning.class_type).toBe('MiniMaxH3ReferenceToVideo');
+    expect(payload.workflow.regenerate_2k.inputs['model.prompt']).toBe(input.prompt);
+    expect(await provider.check('standard', '2k', true)).toEqual({ ready: true });
+    expect(transport).toHaveBeenCalledTimes(4);
+  });
   it('checks official 2K regeneration independently of native readiness before any upload or paid submission',async()=>{
     const transport=vi.fn<typeof fetch>().mockImplementation(async()=>reply(catalog)),provider=createComfyProvider({COMFY_CLOUD_API_KEY:'secret'},transport);
     expect(await provider.check()).toEqual({ready:true});

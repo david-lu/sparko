@@ -18,6 +18,8 @@ import TaskStatus from '../../shared/TaskStatus';
 import { sequenceActive } from '../call-response/sequence';
 import MaskInjectionField from './MaskInjectionField';
 import GenerationFeedback from './GenerationFeedback';
+import ImageReferences from './ImageReferences';
+import { hasImageOnlyInput } from './api';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -30,20 +32,24 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const dependency = controller.dependency(selected.id);
   const kind = controller.clipKind(selected.id);
   const [enhancing, setEnhancing] = useState(false);
+  const [addingImages, setAddingImages] = useState(false);
+  useEffect(() => { setAddingImages(false); }, [selected.id, controller]);
   const [enhancementError, setEnhancementError] = useState('');
   const enhancement = useRef<AbortController | null>(null);
   const referenceKey = JSON.stringify(dependency?.reference);
   useEffect(() => {
     setEnhancing(false); setEnhancementError('');
     return () => { enhancement.current?.abort(); enhancement.current = null; };
-  }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey]);
+  }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey, selected.imageReferences]);
   const enhance = async () => {
     if (enhancement.current || !status?.providers.openai || !selected.prompt.trim()) return;
     const operation = new AbortController(); enhancement.current = operation;
     setEnhancing(true); setEnhancementError('');
     try {
       const result = await enhancePrompt(selected, kind, dependency?.reference, engine, info, operation.signal);
-      if (!operation.signal.aborted && enhancement.current === operation && controller.getSnapshot().items.find(item => item.id === selected.id)?.prompt === selected.prompt) {
+      const current = controller.getSnapshot().items.find(item => item.id === selected.id);
+      if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt
+        && JSON.stringify(current.imageReferences ?? []) === JSON.stringify(selected.imageReferences ?? [])) {
         controller.edit(selected.id, { prompt: result.prompt });
       }
     } catch (error) {
@@ -69,21 +75,24 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const trimmedLoop = (currentResult?.reference?.mode === 'loop' || !compact && (kind === 'idle' || method === 'comfy-loop')) && !currentResult?.fullAssetId;
   const downloadName = `${selected.label.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'interstitial'}-${trimmedLoop ? 'loop' : 'full'}.mp4`;
   let validationError = '';
+  const imageOnly = hasImageOnlyInput(selected);
   let comfyPlan: ReturnType<typeof comfyReferenceRange>['plan'] | undefined;
   try {
     validateInterstitialDuration(selected.duration, compact ? 'comfy-loop' : method);
     validateMaskTransitionMs(selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Audio mask transition');
     validateMaskTransitionMs(selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Video mask transition');
     if (selected.prompt.length > 8000) throw new Error('Shorten the prompt to fit this model.');
-    if (info && !dependency?.blocked) {
+    if ((info || imageOnly) && !dependency?.blocked) {
       const timing = dependency?.reference && referenceTiming(selected, dependency.reference);
       const input = timing ? { ...selected, time: timing.time } : selected;
-      const duration = timing?.duration || info.duration;
+      const duration = timing?.duration || info?.duration || selected.duration;
       comfyPlan = comfyReferenceRange(input, duration).plan;
     }
   } catch (error) { validationError = (error as Error).message; }
-  const canGenerate = !!engine && !!info && !!status?.providers.comfy && !validationError && !dependency?.blocked && !!selected.prompt.trim();
-  const referenceDescription = dependency ? dependency.reference?.before && dependency.reference?.after
+  const canGenerate = (!!engine && !!info || imageOnly) && !!status?.providers.comfy && !validationError && !dependency?.blocked && !!selected.prompt.trim();
+  const referenceDescription = dependency?.reference?.mode === 'loop'
+    ? dependency.reference.before ? `Uses the ending of ${dependency.label} as the shared start and end pose.` : 'Picture 1 guides both the first and last frames of this loop.'
+    : dependency ? dependency.reference?.before && dependency.reference?.after
     ? `Uses the connected input’s ending and output’s beginning.`
     : dependency.reference?.before ? `Uses the ending of ${dependency.label}.`
     : dependency.reference?.after ? `Uses the beginning of ${dependency.label}.` : 'Generates from the prompt without reference footage.' : '';
@@ -124,7 +133,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const output = <>{resultDetails}{currentResult&&promptDetails}{fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
     heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
     active={active} muted={(kind === 'idle' || method === 'comfy-loop') && !selected.loopAudio} onPlay={onPreviewPlay} />}</>;
-  const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced) return; if (recovering) void controller.resume(selected.id); else if (engine && info) void controller.generate(selected.id, engine, info); }}>
+  const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>
     <fieldset>
       {!compact && <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>}
       {generationSettings}
@@ -132,13 +141,14 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         <div className="prompt-field-heading">
           <label htmlFor={promptId}>Prompt</label>
           {changed && <span className="interstitial-edited" title="Changes apply to the next generation">Edited</span>}
-          <EnhancePromptActions promptId={promptId} enhancing={enhancing} enabled={!!selected.prompt.trim()} connected={!!status?.providers.openai}
+          <EnhancePromptActions promptId={promptId} enhancing={enhancing} enabled={!!selected.prompt.trim() && !addingImages} connected={!!status?.providers.openai}
             onEnhance={() => void enhance()} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
         </div>
         <textarea id={promptId} aria-label="Interstitial prompt" rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
         {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
       </div>
       {!compact && <><div className="interstitial-enhancement-feedback">{enhancementError && <p className="inline-error" role="alert">{enhancementError}</p>}</div></>}
+      <ImageReferences key={`images:${selected.id}`} value={selected.imageReferences} onBusyChange={setAddingImages} onChange={imageReferences => controller.edit(selected.id, { imageReferences })} />
       <div className="field interstitial-resolution">
         <label className="interstitial-option" htmlFor={resolutionId}>
           <input id={resolutionId} type="checkbox" aria-label="Enable 2K regeneration" aria-describedby={`${resolutionId}-help`} checked={selected.resolution === '2k'}
@@ -158,11 +168,11 @@ export default function InterstitialEditor({ selected, controller, engine, info,
       {selected.phase === 'cancelled' && <p className="hint">Cancelled</p>}
     </div>}
     <div className={compact ? 'inspector-generate-actions' : undefined}>
-      <button type="submit" className="button primary full-width" disabled={busy || sequenced || enhancing || (recovering ? !canRecover : !canGenerate)}>
+      <button type="submit" className="button primary full-width" disabled={busy || sequenced || enhancing || addingImages || (recovering ? !canRecover : !canGenerate)}>
         <span className="status-icon">{busy ? <span className="spinner" /> : action === 'Generate' ? <Clapperboard size={14} /> : <RotateCcw size={14} />}</span> {busy ? 'Generating…' : action}
       </button>
-      <div className="interstitial-recovery-slot">{canCheck && <button type="button" className="button full-width" disabled={sequenced || enhancing || (retryChecking ? !canGenerate : !canRecover)} onClick={() => {
-        if (retryChecking && engine && info) void controller.generate(selected.id, engine, info);
+      <div className="interstitial-recovery-slot">{canCheck && <button type="button" className="button full-width" disabled={sequenced || enhancing || addingImages || (retryChecking ? !canGenerate : !canRecover)} onClick={() => {
+        if (retryChecking && canGenerate) void controller.generate(selected.id, engine, info);
         else if (!retryChecking) void controller.resume(selected.id);
       }}>{retryChecking ? 'Regenerate' : 'Check result'}</button>}</div>
     </div>

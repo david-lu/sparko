@@ -159,7 +159,17 @@ export class ProjectController {
     this.unsubscribe ??= this.interstitials.subscribe(() => {
       const project = this.state.project;
       if (!project || this.switching || project.interstitials === this.interstitials.getSnapshot().items) return;
-      this.save({ ...project, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() });
+      let next = { ...project, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() };
+      // An image-only project gets its playback canvas from its first render.
+      const first = !project.source.assetId && next.interstitials.find(item => item.phase === 'ready' && item.result?.assetId);
+      const assetId = first && first.result?.assetId, url = assetId && assets.url(assetId);
+      if (first && assetId && url) {
+        const name = `${first.label}.mp4`;
+        next = { ...next, source: { name, assetId } }; this.storyDuration = first.result!.totalDuration;
+        this.interstitials.setStoryGraph(next.storyFlow, assetId, this.storyDuration);
+        this.update({ source: { id: project.id, name, assetId, url } });
+      }
+      this.save(next);
     });
     await this.task('Loading projects', async signal => {
       const active = await readActiveProject();

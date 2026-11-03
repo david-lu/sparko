@@ -20,6 +20,26 @@ beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
 
 describe('interstitial prompt enhancement', () => {
+  it('uses the first picture as both boundaries when enhancing an image-only loop', async () => {
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('The subject in <Picture 1> moves gently and returns to the same pose.') }) });
+    await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: 'A subtle loop', kind: 'idle', referenceFrames: [], imageReferences: ['data:image/jpeg;base64,YQ=='] });
+    expect(respond.mock.calls[0][0].instructions).toContain('<Picture 1>');
+    expect(respond.mock.calls[0][0].instructions).toContain('never use another picture as a different ending');
+  });
+  it('shows every attached image with its H3 picture number independently of video boundary frames', async () => {
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('The character from <Picture 1> walks through the setting in <Picture 2>.') }) });
+    const images = ['data:image/jpeg;base64,Yg==', 'data:image/jpeg;base64,Yw=='];
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, imageReferences: images });
+    const options = respond.mock.calls[0][0], content = options.input[0].content;
+    expect(content.slice(1)).toEqual([
+      { type: 'input_image', image_url: input.referenceFrames[0], detail: 'low' },
+      { type: 'input_text', text: 'H3 image reference <Picture 1>' }, { type: 'input_image', image_url: images[0], detail: 'low' },
+      { type: 'input_text', text: 'H3 image reference <Picture 2>' }, { type: 'input_image', image_url: images[1], detail: 'low' },
+    ]);
+    expect(options.instructions).toContain('Preserve these exact tags');
+    expect(options.instructions).toContain('Unlabeled video boundary frames are context only');
+    expect(result.prompt).toContain('<Picture 1>'); expect(result.prompt).toContain('<Picture 2>');
+  });
   it('uses the current model, reference frames and original dialogue with mandatory shot and position continuity', async () => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) });
     const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt(input);

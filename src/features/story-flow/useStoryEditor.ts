@@ -13,10 +13,10 @@ import { TIMELINE_FPS } from '../../../shared/constants';
 export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],projects:ProjectController,jobs:InterstitialController,player:VideoPlayerController) {
   const [selected,setSelection]=useState<string[]>([]),[selectedGroupId,setSelectedGroupId]=useState<string|null>(null),[selectedEdge,setSelectedEdge]=useState<string|null>(null),[connecting,setConnecting]=useState<{from:string;edgeId?:string}|null>(null);
   const [notice,setNotice]=useState(''),[focusRevision,setFocusRevision]=useState(0),[inspectorRevision,setInspectorRevision]=useState(0);
-  const source=projects.getSnapshot().source;
+  const activationRevision=projects.getSnapshot().activationRevision;
   const selectedGroup=graph?.groups?.find(g=>g.id===selectedGroupId);
   const setSelected=(value:string[]|((ids:string[])=>string[]))=>{setSelectedGroupId(null);setSelection(value);};
-  useEffect(()=>{setSelected([]);setSelectedEdge(null);setConnecting(null);setNotice('');},[source]);
+  useEffect(()=>{setSelected([]);setSelectedEdge(null);setConnecting(null);setNotice('');},[activationRevision]);
   const selectConnection=(id:string)=>{setSelectedEdge(id);setSelected([]);jobs.select(null);setInspectorRevision(n=>n+1);};
   useEffect(()=>{setSelection(ids=>ids.filter(id=>graph?.nodes.some(n=>n.id===id)));setSelectedGroupId(id=>graph?.groups?.some(g=>g.id===id)?id:null);setSelectedEdge(id=>graph?.edges.some(e=>e.id===id)?id:null);setConnecting(null);},[graph?.entryId,graph?.nodes.length,graph?.groups?.length,projects.getSnapshot().historyRevision]);
   const change=(next:StoryGraph,added:Interstitial[]=[])=>{player.pause();projects.updateStoryFlow(next,added);};

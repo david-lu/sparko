@@ -6,6 +6,7 @@ import { assetIds, type Asset, type Project } from './types';
 import { callResponseSchema } from '../call-response/schema';
 import { storyGraphSchema } from '../story-flow/schema';
 import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
+import { imageReferencesSchema } from '../../../shared/image-references';
 
 const MAX_BYTES = 8 * 1024 ** 3;
 const MAX_MANIFEST = 8 * 1024 ** 2;
@@ -19,6 +20,7 @@ const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uui
   start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
+  imageReferences: imageReferencesSchema.optional(),
   resolution: z.enum(generationResolutions).optional(),
   useInputReference: z.boolean().optional(), useOutputReference: z.boolean().optional(),
   method: z.enum([...generationMethods, 'fal']).optional().transform(value => value === 'fal' || value === undefined ? 'comfy' as const : value),
@@ -127,6 +129,9 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const total = descriptions.reduce((sum, asset) => sum + asset.size, 0);
     if (total > MAX_BYTES) throw new Error('This project exceeds the 8 GB import limit.');
     const remap = new Map(descriptions.map(asset => [asset.id, crypto.randomUUID()]));
+    const remapSettings = (settings: Parameters<typeof interstitialSettings>[0]) => ({ ...interstitialSettings(settings),
+      ...(settings.imageReferences?.length ? { imageReferences: settings.imageReferences.map(image => ({ ...image, assetId: remap.get(image.assetId)! })) } : {}),
+    });
     const remapReference = (input?: z.infer<typeof generationReferenceSchema>) => input ? { mode: input.mode, before: input.before ? { ...input.before, assetId: remap.get(input.before.assetId)! } : undefined,
       after: input.after ? { ...input.after, assetId: remap.get(input.after.assetId)! } : undefined } : undefined;
     const assets: Asset[] = []; let read = 0;
@@ -144,13 +149,13 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
       ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(),
       library: project.library?.map(item => ({ ...item, assetId: remap.get(item.assetId)!, originalAssetId: item.originalAssetId ? remap.get(item.originalAssetId)! : undefined })),
       storyFlow: project.storyFlow ? {...project.storyFlow,nodes:project.storyFlow.nodes.map(n=>({...n,source:n.source?{...n.source,assetId:remap.get(n.source.assetId)!,originalAssetId:n.source.originalAssetId?remap.get(n.source.originalAssetId)!:undefined}:undefined})),
-        templates:project.storyFlow.templates.map(t=>({...t,nodes:t.nodes.map(n=>({...n,source:n.source?{...n.source,assetId:remap.get(n.source.assetId)!,originalAssetId:n.source.originalAssetId?remap.get(n.source.originalAssetId)!:undefined}:undefined}))}))}:undefined,
+        templates:project.storyFlow.templates.map(t=>({...t,settings:Object.fromEntries(Object.entries(t.settings).map(([id,settings])=>[id,remapSettings(settings)])),nodes:t.nodes.map(n=>({...n,source:n.source?{...n.source,assetId:remap.get(n.source.assetId)!,originalAssetId:n.source.originalAssetId?remap.get(n.source.originalAssetId)!:undefined}:undefined}))}))}:undefined,
       callResponse: project.callResponse ? { ...project.callResponse, scenes: project.callResponse.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) } : undefined,
       callResponses: project.callResponses?.map(flow => ({ ...flow, scenes: flow.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) })),
       source: { ...project.source, assetId: project.source.assetId?remap.get(project.source.assetId)!:undefined, originalAssetId: project.source.originalAssetId ? remap.get(project.source.originalAssetId)! : undefined },
       subtitle: project.subtitle ? { ...project.subtitle, assetId: remap.get(project.subtitle.assetId)! } : null,
-      interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
-        generationSettings: item.generationSettings ? interstitialSettings(item.generationSettings) : undefined,
+      interstitials: project.interstitials.map(item => ({ ...item, ...remapSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
+        generationSettings: item.generationSettings ? remapSettings(item.generationSettings) : undefined,
         requestReference: remapReference(item.requestReference),
         phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase,
         result: item.result ? { ...item.result, reference: remapReference(item.result.reference), assetId: remap.get(item.result.assetId)!, ...(item.result.fullAssetId ? { fullAssetId: remap.get(item.result.fullAssetId)! } : {}), url: `asset:${remap.get(item.result.assetId)}` } : undefined,

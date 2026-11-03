@@ -5,6 +5,28 @@ import { COMFY } from '../../shared/constants';
 import { videoTransitionPoints } from '../../server/features/comfy/mask-transition';
 
 describe('H3 two-sided temporal bridge', () => {
+  it('anchors both ends of an image-only loop to Picture 1, keeping other images as references', () => {
+    const input = { mode: 'loop' as const, before: 0, after: 0, duration: 6, prompt: 'A gentle looping motion', width: 960, height: 544, hasAudio: false };
+    expect(() => bridgeWorkflow(undefined, input, 1)).toThrow('needs an image reference');
+    const graph = bridgeWorkflow(undefined, input, 1, undefined, ['pose', 'style']);
+    expect(graph.loop_start).toMatchObject({ class_type: 'MiniMaxH3AddGuide', inputs: { image: ['reference_image_0', 0], frame_idx: 0 } });
+    expect(graph.loop_end).toMatchObject({ class_type: 'MiniMaxH3AddGuide', inputs: { image: ['reference_image_0', 0], frame_idx: -1, positive: ['loop_start', 0] } });
+    expect(graph.guider.inputs.conditioning).toEqual(['loop_end', 0]);
+    expect(graph.reference_image_1.inputs.image).toEqual({ __type: 'core/ASSET', info: { id: 'style' } });
+    expect(graph.before).toBeUndefined(); expect(graph.after).toBeUndefined();
+  });
+  it.each(['bridge', 'extend', 'loop', 'custom'] as const)('conditions %s generation on ordered image references without changing timeline masks', mode => {
+    const input = { mode, before: mode === 'custom' ? 0 : 1.625, after: mode === 'extend' || mode === 'custom' ? 0 : 1.625,
+      duration: 6, prompt: 'Use <Picture 1> for the character and <Picture 2> for style.', width: 960, height: 544, hasAudio: true };
+    const base = bridgeWorkflow('video-asset', input, 123);
+    const graph = bridgeWorkflow('video-asset', input, 123, undefined, ['character-asset', 'style-asset']);
+    expect(graph.conditioning).toEqual({ class_type: 'MiniMaxH3ReferenceToVideo', inputs: { ...base.conditioning.inputs,
+      ref_image_size: 'match', 'ref_images.ref_image_0': ['reference_image_0', 0], 'ref_images.ref_image_1': ['reference_image_1', 0] } });
+    expect(graph.reference_image_0.inputs.image).toEqual({ __type: 'core/ASSET', info: { id: 'character-asset' } });
+    expect(graph.reference_image_1.inputs.image).toEqual({ __type: 'core/ASSET', info: { id: 'style-asset' } });
+    for (const node of ['middle_mask', 'freeze_video', 'freeze_audio', 'sample', 'empty_streams']) expect(graph[node]).toEqual(base[node]);
+    expect(() => bridgeWorkflow('video-asset', input, 0, undefined, Array(10).fill('image'))).toThrow('9 image references');
+  });
   it.each(['bridge','extend','loop','custom'] as const)('uses official H3 2K regeneration after the complete %s base render',mode=>{
     const input={mode,before:mode==='custom'?0:1.625,after:mode==='extend'||mode==='custom'?0:1.625,duration:6,width:1344,height:768,prompt:'Details',hasAudio:true};
     const native=bridgeWorkflow(input.before?'asset':undefined,input,123),high=bridgeWorkflow(input.before?'asset':undefined,{...input,resolution:'2k'},123);

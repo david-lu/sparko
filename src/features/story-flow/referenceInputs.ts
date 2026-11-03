@@ -1,7 +1,8 @@
 import type { Interstitial } from '../../../shared/interstitials';
-import type { StoryGraph } from './model';
+import type { StoryGraph, StoryNode } from './model';
+import { behaviors } from './behaviors';
 
-/** Wires are the only source of generation references. Repeats are playback, not inputs. */
+/** Wires identify footage; loop generation reuses the incoming reference at both ends. */
 export function connectedReferences(graph: StoryGraph, nodeId: string) {
   return {
     input: [...new Set(graph.edges.filter(e => e.to === nodeId && e.from !== nodeId).map(e => e.from))],
@@ -9,9 +10,12 @@ export function connectedReferences(graph: StoryGraph, nodeId: string) {
   };
 }
 
-/** Legacy methods supply defaults; the two switches determine future story renders. */
-export function storyGenerationItem(item: Interstitial): Interstitial {
+/** Loop behavior links the two boundaries; other clips retain independent switches. */
+export function storyGenerationItem(item: Interstitial, node?: StoryNode): Interstitial {
   const useInputReference = item.useInputReference ?? true;
+  if (node ? behaviors(node).loop : item.method === 'comfy-loop') return {
+    ...item, method: 'comfy-loop', useInputReference, useOutputReference: useInputReference, end_range: item.start_range,
+  };
   const useOutputReference = item.useOutputReference ?? item.method === 'comfy';
   return { ...item, useInputReference, useOutputReference, method: useOutputReference ? 'comfy' : 'comfy-extend' };
 }

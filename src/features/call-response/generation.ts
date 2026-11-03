@@ -8,7 +8,8 @@ import { assets } from '../project/assets';
 
 export function referenceTiming(item: Interstitial, input: GenerationReference) {
   const before = input.before ? Math.min(input.before.outFrame - input.before.inFrame, Math.ceil(item.start_range * TIMELINE_FPS)) : 0;
-  const after = input.mode === 'extend' || input.mode === 'custom' && !input.after ? 0 : Math.min(input.after && input.mode !== 'loop' ? input.after.outFrame - input.after.inFrame : Infinity, Math.ceil(item.end_range * TIMELINE_FPS));
+  const after = input.mode === 'loop' && !input.before && !input.after || input.mode === 'extend' || input.mode === 'custom' && !input.after ? 0
+    : Math.min(input.after && input.mode !== 'loop' ? input.after.outFrame - input.after.inFrame : Infinity, Math.ceil((input.mode === 'loop' ? item.start_range : item.end_range) * TIMELINE_FPS));
   return { before, after, time: before / TIMELINE_FPS, duration: (before + after) / TIMELINE_FPS };
 }
 
@@ -24,12 +25,12 @@ export async function generationSource(item: Interstitial, input: GenerationRefe
   let info;
   try { info = await media.inspect(); signal.throwIfAborted(); }
   finally { signal.removeEventListener('abort', abort); media.dispose(); }
-  const after = input.after ? await assets.open(input.after.assetId) : before;
+  const after = input.mode !== 'loop' && input.after ? await assets.open(input.after.assetId) : before;
   signal.throwIfAborted();
   const segments: TimelineSegment[] = [
     ...(input.before && timing.before ? [{ id: 'before', kind: 'source' as const, label: 'Previous clip', source: { id: input.before.assetId, name: 'Previous clip', url: before.url },
       sourceStart: (input.before.outFrame - timing.before) / TIMELINE_FPS, startFrame: 0, endFrame: timing.before }] : []),
-    ...(timing.after ? [{ id: 'after', kind: 'source' as const, label: 'Return context', source: { id: input.after?.assetId ?? first.assetId, name: 'Return context', url: after.url },
+    ...(timing.after ? [{ id: 'after', kind: 'source' as const, label: 'Return context', source: { id: input.mode === 'loop' ? first.assetId : input.after?.assetId ?? first.assetId, name: 'Return context', url: after.url },
       sourceStart: (input.mode === 'loop' ? first.outFrame - 1 : input.after?.inFrame ?? first.outFrame - 1) / TIMELINE_FPS, startFrame: timing.before, endFrame: timing.before + timing.after, still: !input.after || input.mode === 'loop' },
     ] : []),
   ];
