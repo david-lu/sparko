@@ -1,6 +1,8 @@
 import { TIMELINE_FPS } from '../../../shared/constants';
 import type { MediaInfo } from '../../media/media';
+import { sceneFrames } from '../call-response/model';
 import { flowTransition } from '../call-response/transitions';
+import InterstitialTimeField from '../interstitials/InterstitialTimeField';
 import { connectionFade, runtimeFlow, type StoryEdge } from './model';
 import { sceneMediaRange } from './mediaRange';
 import type { StoryEditor } from './useStoryEditor';
@@ -17,8 +19,8 @@ export default function ConnectionInspector({ editor, connection, info }: {edito
   return <div className="story-inspector connection-inspector" data-project-edit>
     <span className="eyebrow">CONNECTION</span><h2>Crossfade</h2>
     <p className="connection-names"><span>{before.label}</span><span aria-hidden>→</span><span>{after.label}</span></p>
-    <label className="field">Duration (seconds)<input aria-label="Crossfade duration" type="number" min={0} step={1/fps}
-      value={Number(duration.toFixed(3))} disabled={self} onChange={e=>Number.isFinite(e.target.valueAsNumber)&&patch(e.target.valueAsNumber)}/></label>
+    <InterstitialTimeField key={connection.id} name="Crossfade duration" label="Duration" min={0} max={Math.max(duration,Math.min(sceneFrames(before),sceneFrames(after))/fps)} step={1/fps}
+      value={Number(duration.toFixed(3))} disabled={self} onChange={value=>Number.isFinite(value)&&patch(value)}/>
     <p className="hint">{connection.crossfade===undefined&&connection.crossfadeReferenceRatio!==undefined?`Automatic: ${Math.round(connection.crossfadeReferenceRatio*100)}% of the reference. Edit to set a fixed duration.`:'Set to 0 for a cut. This setting applies only to this connection.'}</p>
     <div className={`connection-reference-status ${reference.state}`} aria-label="Reference matching"><strong>{reference.state==='mismatch'?'Reference mismatch':reference.state==='match'?'References match':'Reference check'}</strong><p className="hint">{reference.message}</p></div>
     <section className="connection-timing" aria-label="Crossfade timing">

@@ -24,6 +24,7 @@ export const COMFY = {
   baseUrl: 'https://cloud.comfy.org', maxDimension: 1344, maxShortEdge: 768, minRegenerationFrames: 107, minContextFrames: 39,
   maxFrames: 362, frameGroup: 17, firstFrames: 5, steps: 20,
   sampler: 'res_multistep', shiftVideo: 12, shiftAudio: 3,
+  audioLatentsPerSecond: 40, audioMaskFadeSeconds: 0.2,
 } as const;
 // Cap newly converted working videos; the untouched original remains in the project.
 // Set maxHeight to 0 to keep the original resolution during preparation.

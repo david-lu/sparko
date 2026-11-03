@@ -1,11 +1,12 @@
 import type { Interstitial } from '../../../shared/interstitials';
-import { estimateComfyProgress } from '../../../shared/comfy-progress';
+import { comfyStepProgress } from '../../../shared/comfy-progress';
 
-export const renderingProgress = (item: Interstitial) => estimateComfyProgress(item.progressDetails);
+export const renderingProgress = (item: Interstitial) => comfyStepProgress(item.progressDetails);
 function renderingLabel(item: Interstitial) {
   const progress = renderingProgress(item);
-  const steps = item.progressDetails?.step === undefined || !item.progressDetails.steps ? '' : ` · step ${item.progressDetails.step}/${item.progressDetails.steps}`;
-  return `${item.progressDetails?.stage || 'Generating scene'}${steps}${progress === undefined ? '' : ` · ${Math.round(progress * 100)}% estimated overall`}`;
+  const steps = progress === undefined ? '' : ` · step ${item.progressDetails!.step}/${item.progressDetails!.steps}`;
+  // Keep the percentage visible when a narrow inspector truncates the stage text.
+  return `${progress === undefined ? '' : `${Math.round(progress * 100)}% of stage · `}${item.progressDetails?.stage || 'Generating scene'}${steps}`;
 }
 
 export const phaseLabel = (item: Interstitial) => ({

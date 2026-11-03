@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateComfyProgress, comfyStage } from '../../shared/comfy-progress';
+import { comfyStepProgress, comfyStage } from '../../shared/comfy-progress';
 import { generationProgress } from '../../server/features/comfy/progress';
 import { phaseLabel, renderingProgress } from '../../src/features/interstitials/status';
 import type { Interstitial } from '../../shared/interstitials';
@@ -10,47 +10,54 @@ const job = (patch: Partial<Interstitial> = {}): Interstitial => ({
   ...patch,
 });
 
-describe('Comfy render progress estimates', () => {
-  it('names official H3 2K regeneration and uses indeterminate progress for the hosted pass',()=>{
+describe('Comfy stage progress', () => {
+  it('names official H3 2K regeneration without inventing a time estimate for the hosted pass',()=>{
     expect(comfyStage('regenerate_2k')).toBe('Regenerating with H3 2K');expect(comfyStage(undefined,'MinimaxHailuo03RegenerateNode')).toBe('Regenerating with H3 2K');
     const item=job({progress:.98,progressDetails:{stage:comfyStage('regenerate_2k'),nodesDone:30,nodesTotal:31}});
     expect(renderingProgress(item)).toBeUndefined();expect(phaseLabel(item)).toBe('Regenerating with H3 2K');
+    expect(renderingProgress({...item,progress:undefined})).toBeUndefined();
+    expect(phaseLabel({...item,progressDetails:{...item.progressDetails!,step:7,steps:20}})).toBe('35% of stage · Regenerating with H3 2K · step 7/20');
   });
-  it('weights the sampler at 90% instead of displaying the inflated node aggregate', () => {
-    const reported = generationProgress({ value: .98, current_node: 'sample', step: 9, steps: 20, nodes_done: 32, nodes_total: 33 });
+  it('shows the actual 35% sampling progress even when the workflow aggregate is 98%', () => {
+    const reported = generationProgress({ value: .98, current_node: 'sample', step: 7, steps: 20, nodes_done: 32, nodes_total: 33 });
     const item = job(reported);
     expect(item.progress).toBe(.98); // Retain the original provider snapshot.
-    expect(renderingProgress(item)).toBeCloseTo(.05 + .9 * .45);
-    expect(phaseLabel(item)).toBe('Generating video and audio · step 9/20 · 46% estimated overall');
-    const start = estimateComfyProgress({ ...reported.progressDetails, step: 0 })!;
-    const end = estimateComfyProgress({ ...reported.progressDetails, step: 20 })!;
-    expect(start).toBeCloseTo(.05);
-    expect(end - start).toBeCloseTo(.9);
-    expect(end).toBeCloseTo(.95);
+    expect(renderingProgress(item)).toBe(.35);
+    expect(phaseLabel(item)).toBe('35% of stage · Generating video and audio · step 7/20');
+    expect(comfyStepProgress({ ...reported.progressDetails, step: 0 })).toBe(0);
+    expect(comfyStepProgress({ ...reported.progressDetails, step: 20 })).toBe(1);
+    expect(phaseLabel({...item,progressDetails:{...reported.progressDetails,step:20}})).toBe('100% of stage · Generating video and audio · step 20/20');
   });
-  it('reserves preparation and finishing work without claiming completion before the output is ready', () => {
-    expect(estimateComfyProgress({ stage: comfyStage('conditioning'), nodesDone: 25, nodesTotal: 33 })).toBeLessThan(.05);
-    for (const node of ['streams', 'decode_video', 'decode_audio', 'output']) {
-      const progress = estimateComfyProgress({ stage: comfyStage(node) })!;
-      expect(progress).toBeGreaterThanOrEqual(.95);
-      expect(progress).toBeLessThan(1);
+  it('does not invent percentages for setup or finishing stages', () => {
+    for (const node of ['conditioning', 'streams', 'decode_video', 'decode_audio', 'output']) {
+      const item=job({progress:.98,progressDetails:{stage:comfyStage(node),nodesDone:25,nodesTotal:33}});
+      expect(renderingProgress(item)).toBeUndefined();
+      expect(phaseLabel(item)).toBe(comfyStage(node));
     }
-    expect(estimateComfyProgress({ stage: comfyStage('output'), step: 1, steps: 1 })).toBe(.99);
+    expect(comfyStepProgress({ stage: comfyStage('decode_video'), step: 1, steps: 4 })).toBe(.25);
     expect(phaseLabel(job({ phase: 'ready' }))).toBe('Ready');
   });
-  it.each([{}, { step: 9 }, { step: 9, steps: 0 }, { step: NaN, steps: 20 }])('uses indeterminate progress if sampler steps are missing or invalid: %j', counts => {
+  it.each([{}, { step: 9 }, { step: 9, steps: 0 }, { step: NaN, steps: 20 }, {step:-1,steps:20}, {step:7,steps:Infinity}, {step:1.5,steps:20}])('keeps progress indeterminate if sampler steps are missing or invalid: %j', counts => {
     const item = job({ progress: .98, progressDetails: { stage: comfyStage('sample'), ...counts } });
     expect(renderingProgress(item)).toBeUndefined();
-    expect(phaseLabel(item)).not.toContain('%');
+    expect(phaseLabel(item)).toBe('Generating video and audio');
   });
-  it('does not substitute node counts or aggregate values for an unknown stage', () => {
-    expect(renderingProgress(job({ progress: .98 }))).toBeUndefined();
-    expect(renderingProgress(job({ progress: .98, progressDetails: { stage: 'Generating scene', nodesDone: 32, nodesTotal: 33 } }))).toBeUndefined();
+  it('does not use the live Cloud aggregate as render progress when stage and step counts are absent', () => {
+    const item = job(generationProgress({ value: .9892857142857142, nodes_done: 27, nodes_total: 28 }));
+    expect(renderingProgress(item)).toBeUndefined();
+    expect(phaseLabel(item)).toBe('Generating scene');
+    expect(phaseLabel(JSON.parse(JSON.stringify(item)))).toBe(phaseLabel(item));
+    for(const progress of [.42,0,1])expect(phaseLabel(job({ progress }))).toBe('Generating scene');
   });
-  it('keeps Comfy progress estimates after saving and loading', () => {
+  it.each([undefined, NaN, Infinity, -1, 2])('keeps missing or invalid progress indeterminate: %s', progress => {
+    const item = job({ progress, progressDetails: { stage: 'Generating scene', nodesDone: 27, nodesTotal: 28 } });
+    expect(renderingProgress(item)).toBeUndefined();
+    expect(phaseLabel(item)).toBe('Generating scene');
+  });
+  it('keeps actual Comfy step progress after saving and loading', () => {
     const item = job({ progress: .98, progressDetails: { stage: comfyStage('numeric-id', 'SamplerCustomAdvanced'), step: 9, steps: 20 } });
-    expect(renderingProgress(JSON.parse(JSON.stringify(item)))).toBeCloseTo(.455);
-    expect(phaseLabel(item)).toContain('46% estimated overall');
+    expect(renderingProgress(JSON.parse(JSON.stringify(item)))).toBe(.45);
+    expect(phaseLabel(item)).toContain('45% of stage');
     expect(phaseLabel({ ...item, phase: 'loading', progress: .25, progressDetails: { stage: 'Downloading generated video' } })).toBe('Downloading generated video · 25%');
   });
 });

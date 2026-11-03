@@ -20,10 +20,12 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   const graph: Workflow = {};
   const add = (id: string, class_type: string, inputs: Record<string, unknown>) => { graph[id] = { class_type, inputs }; return [id, 0]; };
   const asset = { __type: 'core/ASSET', info: { id: assetId } };
+  // FFmpeg preserves reference colors better than the OpenCV loader. The upload
+  // concatenates the two windows at TIMELINE_FPS; seek in seconds without rounding.
   const loader = (skip: number, frames: number) => ({ video: asset, force_rate: TIMELINE_FPS, custom_width: input.width, custom_height: input.height,
-    frame_load_cap: frames, skip_first_frames: skip, select_every_nth: 1, format: 'None' });
-  const before = prefixFrames ? add('before', 'VHS_LoadVideo', loader(0, prefixFrames)) : undefined;
-  const after = suffixFrames ? add('after', 'VHS_LoadVideo', loader(prefixFrames, suffixFrames)) : undefined;
+    frame_load_cap: frames, start_time: skip / TIMELINE_FPS, format: 'None' });
+  const before = prefixFrames ? add('before', 'VHS_LoadVideoFFmpeg', loader(0, prefixFrames)) : undefined;
+  const after = suffixFrames ? add('after', 'VHS_LoadVideoFFmpeg', loader(prefixFrames, suffixFrames)) : undefined;
   const model = add('model', 'UNETLoader', { unet_name: COMFY_MODELS.diffusion, weight_dtype: 'default' });
   const clip = add('text_encoder', 'CLIPLoader', { clip_name: COMFY_MODELS.textEncoder, type: 'minimax', device: 'default' });
   const vae = add('video_vae', 'VAELoader', { vae_name: COMFY_MODELS.videoVae });
@@ -84,8 +86,22 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
     const audio = after ? add('audio_full', 'AudioConcat', { audio1: a, audio2: ['after', 2], direction: 'after' }) : a;
     const encoded = add('encode_audio', 'VAEEncodeAudio', { audio, vae: audioVae });
     const fitted = add('fit_audio', 'LTXVConcatAVLatent', { video_latent: joint, audio_latent: encoded });
+    // H3 audio has 40 latent frames/second. Keep both feather ramps entirely
+    // inside the reference audio: a partial mask in the silent gap preserves
+    // some of that silence instead of fully generating the transition audio.
+    const fade = Math.round(COMFY.audioMaskFadeSeconds * COMFY.audioLatentsPerSecond);
+    // Round outward so every latent frame overlapping the blank gap is white.
+    const start = before ? Math.max(0, Math.floor(insertion.start * COMFY.audioLatentsPerSecond) - fade) : 0;
+    const end = Math.ceil((insertion.start + insertion.duration) * COMFY.audioLatentsPerSecond) + fade;
+    // Match the fitted latent exactly so MVEx won't stretch the timeline mask.
+    const audioLength = add('audio_mask_size', 'GetAudioLatentSize', { latent: fitted });
+    const preserved = add('audio_mask_base', 'SolidMask', { value: 0, width: audioLength, height: 1 });
+    // Without an ending reference the white region extends through any padding.
+    const generated = add('audio_mask_middle', 'SolidMask', { value: 1, width: after ? end - start : audioLength, height: 1 });
+    const feathered = add('audio_mask_feather', 'FeatherMask', { mask: generated, left: before ? fade : 0, top: 0, right: after ? fade : 0, bottom: 0 });
+    const audioMask = add('audio_mask', 'MaskComposite', { destination: preserved, source: feathered, x: start, y: 0, operation: 'add' });
     joint = add('freeze_audio', 'MVEx_AudioMaskToLatent', { latent: fitted, timing: 'auto', vae: audioVae,
-      start_time: insertion.start, end_time: insertion.start + insertion.duration, existing_mask: 'replace' });
+      mask: audioMask, start_time: insertion.start, end_time: insertion.start + insertion.duration, existing_mask: 'replace' });
   }
   const noise = add('noise', 'RandomNoise', { noise_seed: seed });
   const guider = add('guider', 'BasicGuider', { model: shifted, conditioning: positive });

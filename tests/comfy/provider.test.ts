@@ -98,6 +98,14 @@ describe('Comfy Cloud v2 adapter', () => {
     await expect(createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport).submit(new Blob(), input)).rejects.toThrow('MVEx_MaskToLatentSpace');
     expect(transport).toHaveBeenCalledTimes(1);
   });
+  it.each(['VHS_LoadVideoFFmpeg', 'GetAudioLatentSize', 'FeatherMask'])('requires %s before uploading or submitting a job', async node => {
+    const legacyCatalog: typeof catalog = { ...catalog, VHS_LoadVideo: {} };
+    delete legacyCatalog[node];
+    const transport = vi.fn<typeof fetch>().mockResolvedValue(reply(legacyCatalog));
+    await expect(createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport).submit(new Blob(), input)).rejects.toThrow(node);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(String(transport.mock.calls[0][0])).toBe('https://cloud.comfy.org/api/object_info');
+  });
   it('returns step progress, a durable authenticated media route, and refreshed signed URLs', async () => {
     const transport = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(reply({ id: 'comfy-job-123', status: 'running', progress: { value: .4, current_node: 'sample', step: 8, steps: 20, nodes_done: 12, nodes_total: 30 } }))
@@ -118,6 +126,7 @@ describe('Comfy Cloud v2 adapter', () => {
     const event = (name: string, data: unknown) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
     const transport = vi.fn<typeof fetch>().mockResolvedValue(new Response(
       event('status', { status: 'queued', queue_position: 2 }) +
+      event('progress', { value: .9892857142857142, nodes_done: 27, nodes_total: 28 }) +
       event('progress', { value: .4, current_node: 'sample', step: 8, steps: 20, message: 'secret-key https://private.example/file' }) +
       event('preview', { data_base64: 'not-forwarded' }) + event('log', { message: 'secret-key' }) +
       event('progress', { value: .9, current_node: 'decode_video', step: null, steps: null }) +
@@ -127,6 +136,7 @@ describe('Comfy Cloud v2 adapter', () => {
     const events = await collect(provider.events('comfy-job-123', new AbortController().signal));
     expect(events).toEqual([
       { type: 'status', status: 'IN_QUEUE', queuePosition: 2 },
+      { type: 'progress', progress: .9892857142857142, progressDetails: { stage: 'Generating scene', nodesDone: 27, nodesTotal: 28 } },
       { type: 'progress', progress: .4, progressDetails: { stage: 'Generating video and audio', step: 8, steps: 20 } },
       { type: 'progress', progress: .9, progressDetails: { stage: 'Decoding video' } },
       { type: 'refresh' },

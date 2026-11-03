@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { comfyBridgePlan, comfyDimensions, comfyReferenceRange, validateComfyResolution } from '../../shared/comfy';
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
+import { COMFY } from '../../shared/constants';
 
 describe('H3 two-sided temporal bridge', () => {
   it.each(['bridge','extend','loop','custom'] as const)('uses official H3 2K regeneration after the complete %s base render',mode=>{
@@ -37,8 +38,10 @@ describe('H3 two-sided temporal bridge', () => {
     expect(!!graph.before).toBe(before); expect(!!graph.place_before).toBe(before);
     expect(!!graph.after).toBe(after); expect(!!graph.place_after).toBe(after);
     expect(!!graph.freeze_audio).toBe(before || after);
+    expect(!!graph.audio_mask).toBe(before || after);
     expect(graph.middle_mask.inputs.ranges).toBe(`${plan.prefixFrames}:${plan.totalFrames - plan.suffixFrames}`);
-    if (after) expect(graph.after.inputs.skip_first_frames).toBe(plan.prefixFrames);
+    if (before) expect(graph.before).toMatchObject({ class_type: 'VHS_LoadVideoFFmpeg', inputs: { start_time: 0, frame_load_cap: plan.prefixFrames } });
+    if (after) expect(graph.after).toMatchObject({ class_type: 'VHS_LoadVideoFFmpeg', inputs: { start_time: plan.prefixFrames / 24, frame_load_cap: plan.suffixFrames } });
     if (!before && after) expect(graph.audio_full.inputs.audio1).toEqual(['gap_audio', 0]);
     if (!before && !after) expect(graph.freeze_video.inputs.samples).toEqual(['empty_streams', 0]);
     // Every node link points at an existing node, including either one-sided path.
@@ -103,10 +106,23 @@ describe('H3 two-sided temporal bridge', () => {
     expect(comfyDimensions(720, 1280)).toEqual({ width: 736, height: 1280 });
     expect(comfyDimensions(2000, 2000)).toEqual({ width: 768, height: 768 });
   });
+  it.each([[2, 39], [3, 56], [4, 90]])('loads %s-second reference windows with FFmpeg without rounding the suffix seek', (before, prefixFrames) => {
+    const graph = bridgeWorkflow('asset', { before, after: 2, duration: 6, width: 960, height: 544, prompt: 'Continue', hasAudio: true }, 123);
+    for (const [node, start, frames] of [[graph.before, 0, prefixFrames], [graph.after, prefixFrames / 24, 39]] as const) {
+      expect(node).toEqual({ class_type: 'VHS_LoadVideoFFmpeg', inputs: {
+        video: { __type: 'core/ASSET', info: { id: 'asset' } }, force_rate: 24, custom_width: 960, custom_height: 544,
+        frame_load_cap: frames, start_time: start, format: 'None',
+      } });
+    }
+    expect(graph.encode_before.inputs.pixels).toEqual(['before', 0]);
+    expect(graph.encode_after.inputs.pixels).toEqual(['after', 0]);
+    expect(graph.audio_prefix.inputs.audio1).toEqual(['before', 2]);
+    expect(graph.audio_full.inputs.audio2).toEqual(['after', 2]);
+  });
   it('conditions on both motion windows and masks only the missing middle', () => {
     const graph = bridgeWorkflow('uploaded-asset', { before: 1.625, after: 1.625, duration: 6, width: 960, height: 544, prompt: 'Continue moving', hasAudio: true }, 123);
-    expect(graph.before.inputs).toMatchObject({ video: { __type: 'core/ASSET', info: { id: 'uploaded-asset' } }, skip_first_frames: 0, frame_load_cap: 39 });
-    expect(graph.after.inputs).toMatchObject({ skip_first_frames: 39, frame_load_cap: 39 });
+    expect(graph.before.inputs).toMatchObject({ video: { __type: 'core/ASSET', info: { id: 'uploaded-asset' } }, start_time: 0, frame_load_cap: 39 });
+    expect(graph.after.inputs).toMatchObject({ start_time: 39 / 24, frame_load_cap: 39 });
     expect(graph.place_before.inputs).toMatchObject({ source: ['encode_before', 0], index: 0 });
     expect(graph.place_after.inputs).toMatchObject({ source: ['encode_after', 0], index: -12 });
     expect(graph.end_guide).toBeUndefined();
@@ -126,9 +142,45 @@ describe('H3 two-sided temporal bridge', () => {
   it('generates audio when the source is silent without connecting missing source audio', () => {
     const graph = bridgeWorkflow('uploaded-asset', { before: 1.625, after: 1.625, duration: 6, width: 960, height: 544, prompt: 'Continue', hasAudio: false }, 123);
     expect(graph.encode_audio).toBeUndefined();
+    expect(graph.audio_mask).toBeUndefined();
     expect(graph.sample.inputs.latent_image).toEqual(['joint', 0]);
     expect(graph.joint.inputs.audio_latent).toEqual(['empty_streams', 1]);
     expect(graph.decode_audio).toBeDefined();
+  });
+  it.each([
+    { before: 1.625, after: 1.625, start: 57, width: 263, left: 8, right: 8 },
+    { before: 3, after: 2, start: 85, width: 263, left: 8, right: 8 },
+    { before: 1.625, after: 0, start: 57, width: ['audio_mask_size', 0], left: 8, right: 0 },
+    { before: 0, after: 1.625, start: 0, width: 263, left: 0, right: 8 },
+  ])('feathers only inside connected reference audio: $before / $after', ({ before, after, start, width, left, right }) => {
+    const graph = bridgeWorkflow('asset', { mode: 'custom', before, after, duration: 6, width: 960, height: 544, prompt: 'Continue', hasAudio: true }, 123);
+    expect(graph.audio_mask_size).toEqual({ class_type: 'GetAudioLatentSize', inputs: { latent: ['fit_audio', 0] } });
+    expect(graph.audio_mask_base.inputs).toEqual({ value: 0, width: ['audio_mask_size', 0], height: 1 });
+    expect(graph.audio_mask_middle.inputs).toEqual({ value: 1, width, height: 1 });
+    expect(graph.audio_mask_feather).toEqual({ class_type: 'FeatherMask', inputs: { mask: ['audio_mask_middle', 0], left, top: 0, right, bottom: 0 } });
+    expect(graph.audio_mask.inputs).toEqual({ destination: ['audio_mask_base', 0], source: ['audio_mask_feather', 0], x: start, y: 0, operation: 'add' });
+    expect(graph.freeze_audio.inputs).toMatchObject({ latent: ['fit_audio', 0], mask: ['audio_mask', 0], existing_mask: 'replace' });
+    expect(graph.freeze_video.inputs.mask).toEqual(['latent_mask', 0]);
+    expect(graph.sample.inputs.latent_image).toEqual(['freeze_audio', 0]);
+  });
+  it.each([
+    { before: 1.625, after: 1.625, duration: 9.5 }, // Reported clip: joins at 1.625s / 11.333s.
+    { before: 3, after: 2, duration: 6 }, // Reference boundaries between audio latent frames.
+    { before: 1.625, after: 0, duration: 6 },
+    { before: 0, after: 1.625, duration: 6 },
+  ])('leaves every latent frame overlapping the blank audio fully generative: %j', input => {
+    const plan = comfyBridgePlan(input.before, input.after, input.duration, 'custom');
+    const graph = bridgeWorkflow('asset', { ...input, mode: 'custom', width: 960, height: 544, prompt: 'Continue', hasAudio: true }, 123);
+    const x = Number(graph.audio_mask.inputs.x), left = Number(graph.audio_mask_feather.inputs.left), right = Number(graph.audio_mask_feather.inputs.right);
+    const gapFirst = Math.floor(plan.insertion.start * COMFY.audioLatentsPerSecond);
+    const gapEnd = Math.ceil((plan.insertion.start + plan.insertion.duration) * COMFY.audioLatentsPerSecond);
+    // FeatherMask ramps inward from each end of the white region. Neither ramp
+    // may overlap even a fraction of a latent frame that contains seeded silence.
+    expect(x + left).toBeLessThanOrEqual(gapFirst);
+    if (input.after) expect(x + Number(graph.audio_mask_middle.inputs.width) - right).toBeGreaterThanOrEqual(gapEnd);
+    else expect(right).toBe(0);
+    if (input.before) expect(left).toBeGreaterThan(0);
+    else expect(left).toBe(0);
   });
   it.each(['bridge', 'loop'] as const)('seeds %s with motion interpolation at 0.97 while keeping the references and audio masks independent', mode => {
     const plan = comfyBridgePlan(2, 3, 6, mode);
