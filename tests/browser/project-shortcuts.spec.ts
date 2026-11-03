@@ -35,8 +35,8 @@ for (const modifier of ['Control', 'Meta']) test(`${modifier} save shortcuts com
 
   await name.fill('Updated copy');
   await page.keyboard.press(`${modifier}+s`);
-  await expect.poll(() => archivedClipName(page, 'Copy.sparko')).toBe('Updated copy');
   await expect(page.getByRole('button', { name: 'Preview', exact: true })).toBeEnabled();
+  await expect.poll(() => archivedClipName(page, 'Copy.sparko')).toBe('Updated copy');
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await page.keyboard.press(`${modifier}+s`);
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeEnabled();
