@@ -16,7 +16,7 @@ test('starts with an empty project and keeps the player above its timeline', asy
   expect(sampleRequests).toBe(0);
   await page.getByText('File', { exact: true }).click();
   await expect(page.getByRole('menu', { name: 'File' }).getByRole('menuitem')).toHaveText([
-    'Close project', 'Save project', 'Save as new file', 'Export project',
+    'Close project', /^Save project\((?:⌘S|Ctrl\+S)\)$/, /^Save as new file\((?:⌘⇧S|Ctrl\+Shift\+S)\)$/, 'Export project',
   ]);
   await page.getByRole('menuitem', { name: 'Close project' }).click();
   await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
