@@ -62,6 +62,8 @@ The video player stays on top, with the clip timeline directly below and dockabl
 
 | Shortcut | Action |
 | --- | --- |
+| Ctrl/Cmd + S | Save project (choose a file on the first save) |
+| Ctrl/Cmd + Shift + S | Save project as a new file |
 | Space | Play / pause |
 | N (or P) | New simple interstitial |
 | S | Split selected clip at its playhead |

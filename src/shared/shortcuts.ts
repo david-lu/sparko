@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
 
 export const shortcutActions = [
+  { id: 'save', label: 'Save project', group: 'Project', defaults: ['Mod+S'] },
+  { id: 'saveAs', label: 'Save project as', group: 'Project', defaults: ['Mod+Shift+S'] },
   { id: 'fit', label: 'Fit', group: 'Timeline', defaults: ['F'], description: 'Fit selected clips, or all clips when nothing is selected.' },
   { id: 'layout', label: 'Auto layout', group: 'Timeline', defaults: ['A'] },
   { id: 'select', label: 'Select tool', group: 'Timeline', defaults: ['V'] },
