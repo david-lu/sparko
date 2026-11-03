@@ -22,7 +22,8 @@ const stages: Record<string, string> = {
   streams: 'Preparing video and audio for decoding',
 };
 const classes: Record<string, string> = {
-  VHS_LoadVideo: 'Reading reference clips', UNETLoader: 'Loading H3', CLIPLoader: 'Loading text encoder',
+  VHS_LoadVideo: 'Reading reference clips', VHS_LoadVideoFFmpeg: 'Reading reference clips',
+  UNETLoader: 'Loading H3', CLIPLoader: 'Loading text encoder',
   VAELoader: 'Loading decoder', VAEEncode: 'Encoding reference clips', VAEEncodeAudio: 'Encoding reference audio',
   SamplerCustomAdvanced: stages.sample, VAEDecode: stages.decode_video, VAEDecodeAudio: stages.decode_audio,
   CreateVideo: stages.base_video, MinimaxHailuo03RegenerateNode: stages.regenerate_2k,

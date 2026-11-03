@@ -20,10 +20,12 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   const graph: Workflow = {};
   const add = (id: string, class_type: string, inputs: Record<string, unknown>) => { graph[id] = { class_type, inputs }; return [id, 0]; };
   const asset = { __type: 'core/ASSET', info: { id: assetId } };
+  // FFmpeg preserves reference colors better than the OpenCV loader. The upload
+  // concatenates the two windows at TIMELINE_FPS; seek in seconds without rounding.
   const loader = (skip: number, frames: number) => ({ video: asset, force_rate: TIMELINE_FPS, custom_width: input.width, custom_height: input.height,
-    frame_load_cap: frames, skip_first_frames: skip, select_every_nth: 1, format: 'None' });
-  const before = prefixFrames ? add('before', 'VHS_LoadVideo', loader(0, prefixFrames)) : undefined;
-  const after = suffixFrames ? add('after', 'VHS_LoadVideo', loader(prefixFrames, suffixFrames)) : undefined;
+    frame_load_cap: frames, start_time: skip / TIMELINE_FPS, format: 'None' });
+  const before = prefixFrames ? add('before', 'VHS_LoadVideoFFmpeg', loader(0, prefixFrames)) : undefined;
+  const after = suffixFrames ? add('after', 'VHS_LoadVideoFFmpeg', loader(prefixFrames, suffixFrames)) : undefined;
   const model = add('model', 'UNETLoader', { unet_name: COMFY_MODELS.diffusion, weight_dtype: 'default' });
   const clip = add('text_encoder', 'CLIPLoader', { clip_name: COMFY_MODELS.textEncoder, type: 'minimax', device: 'default' });
   const vae = add('video_vae', 'VAELoader', { vae_name: COMFY_MODELS.videoVae });
