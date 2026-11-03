@@ -10,11 +10,13 @@ export default function GeneratedVideoInfo({item,node,nodes,items}:{item:Interst
   if(!range)return <section className="generated-video-info" aria-label="Video breakdown"><h3>Saved video</h3><p className="hint">{format(result.duration)} playable loop. Reference timings were not saved with this older render.</p></section>;
   const end=range.start+range.duration,tail=Math.max(0,range.totalDuration-end),bounds=generatedBounds(node,result.duration);
   const reference=(ref:ClipReference|undefined,length:number,ending:boolean)=>{
+    const saved=result.metadata?.references[ending?'after':'before'];
+    ref??=saved;
     if(!ref)return 'Reference footage saved with this render';
     const source=nodes.find(n=>n.id===ref.sceneId)??nodes.find(n=>n.source?.assetId===ref.assetId||items.some(i=>i.id===n.interstitialId&&(playableResult(i)?.assetId===ref.assetId||playableResult(i)?.fullAssetId===ref.assetId)));
-    const name=items.find(i=>i.id===source?.interstitialId)?.label??source?.name??'Saved reference clip';
+    const name=items.find(i=>i.id===source?.interstitialId)?.label??source?.name??saved?.name??'Saved reference clip';
     const start=ending&&result.reference?.mode!=='loop'?ref.inFrame/TIMELINE_FPS:Math.max(ref.inFrame/TIMELINE_FPS,ref.outFrame/TIMELINE_FPS-length);
-    return `${name} · ${span(start,start+length)}`;
+    return `${name} · ${span(start,start+length)}${!source&&saved?' · Original clip is not in this project':''}`;
   };
   const sections=[{id:'reference',label:'Opening reference',start:0,end:range.start,detail:reference(result.reference?.before,range.start,false)},
     {id:'generated',label:'Generated section',start:range.start,end,detail:'New video created for this clip'},

@@ -11,11 +11,13 @@ import { generationSource } from '../../src/features/call-response/generation';
 import { watchComfyJob } from '../../src/features/interstitials/progress-stream';
 import { phaseLabel } from '../../src/features/interstitials/status';
 import { finishLoop } from '../../src/features/call-response/finishLoop';
+import { writeClipMetadata } from '../../src/media/clipMetadata';
 
 vi.mock('../../src/features/interstitials/api', () => ({ generateInterstitial: vi.fn(), getInterstitialJob: vi.fn(), cancelInterstitialJob: vi.fn() }));
 vi.mock('../../src/features/interstitials/progress-stream', () => ({ watchComfyJob: vi.fn() }));
 vi.mock('../../src/features/call-response/generation', () => ({ generationSource: vi.fn() }));
 vi.mock('../../src/features/call-response/finishLoop', () => ({ finishLoop: vi.fn(async (blob, result) => ({ blob, result })) }));
+vi.mock('../../src/media/clipMetadata', () => ({ writeClipMetadata: vi.fn(async blob => blob) }));
 vi.mock('../../src/media/MediaEngine', () => ({ MediaEngine: class { inspect() { return Promise.resolve({ duration: 9, fps: 25 }); } dispose() {} } }));
 vi.mock('../../src/features/project/assets', () => ({ assets: {
   fetch: async () => ({ id: 'fetched-asset', name: 'video.mp4', blob: new Blob(['video']) }),
@@ -485,7 +487,7 @@ describe('interstitial lifecycle', () => {
     vi.mocked(getInterstitialJob).mockResolvedValue(completed);
     await controller.generate(id, media, info);
     expect(phases).toEqual(expect.arrayContaining(['preparing', 'uploading', 'queued', 'loading', 'ready']));
-    expect(loadInterstitials('source')[0].result).toEqual({ url: completed.videoUrl, ...completed.insertion, assetId: 'stored-asset', prompt:'A scene' });
+    expect(loadInterstitials('source')[0].result).toMatchObject({ url: completed.videoUrl, ...completed.insertion, assetId: 'stored-asset', prompt:'A scene' });
     expect(loadInterstitials('source')[0].duration).toBe(7.5);
     expect(vi.mocked(generateInterstitial).mock.calls[0][0].duration).toBe(7.5);
   });
@@ -516,6 +518,7 @@ describe('interstitial lifecycle', () => {
     await controller.generate(id, media, info);
     expect([...edited]).toEqual(['preparing', 'uploading', 'queued', 'loading', 'ready']);
     expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', prompt: 'Edited during ready', duration: 7.5, generationSettings: submitted });
+    expect(vi.mocked(writeClipMetadata).mock.calls.at(-1)?.[1]).toMatchObject({ settings: submitted, prompt: submitted.prompt, media: completed.insertion });
     expect(hasUnsubmittedChanges(controller.getSnapshot().items[0])).toBe(true);
     controller.load('source');
     // Opening a saved completed video must not block editing either.

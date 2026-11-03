@@ -5,6 +5,7 @@ import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/con
 import { assetIds, type Asset, type Project } from './types';
 import { callResponseSchema } from '../call-response/schema';
 import { storyGraphSchema } from '../story-flow/schema';
+import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
 
 const MAX_BYTES = 8 * 1024 ** 3;
 const MAX_MANIFEST = 8 * 1024 ** 2;
@@ -12,7 +13,7 @@ const number = z.number().finite().nonnegative();
 const text = z.string().max(50_000);
 const clipReferenceSchema = z.object({ sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
 const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge', 'custom']).optional(), before: clipReferenceSchema.optional(), after: clipReferenceSchema.optional() });
-const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(), prompt:z.string().max(8000).optional(),
+const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(), prompt:z.string().max(8000).optional(), metadata: clipMetadataSchema.optional(),
   fullRange: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
     .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid full video boundaries.').optional(),
   start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
@@ -55,6 +56,7 @@ const projectSchema = z.object({
     requestMethod: z.enum([...generationMethods, 'fal']).optional(),
     requestPrompt: z.string().max(8000).optional(),
     requestReference: generationReferenceSchema.optional(),
+    requestOrigin: clipOriginSchema.optional(),
     requestInsertion: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
       .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid job boundaries.').optional(),
     phase: z.enum(['draft', 'preparing', 'uploading', 'queued', 'rendering', 'loading', 'ready', 'error', 'cancelled']),

@@ -18,6 +18,8 @@ import { draftClip } from '../call-response/draft';
 import { finishLoop } from '../call-response/finishLoop';
 import type { StoryGraph } from '../story-flow/model';
 import { storyDependency } from '../story-flow/dependencies';
+import { captureClipOrigin } from './clipMetadata';
+import { writeClipMetadata } from '../../media/clipMetadata';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null; sequence: GenerationSequence | null };
 const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -234,8 +236,9 @@ export class InterstitialController {
     const method = normalizeGenerationMethod(item.method);
     this.patch(id, { phase: 'preparing', error: undefined, progress: 0, progressDetails: undefined, queuePosition: undefined,
       previousResult: playableResult(item)?{...playableResult(item)!,prompt:playableResult(item)!.prompt??(item.phase==='ready'?item.requestPrompt:undefined)}:undefined, result: undefined, requestId: item.phase === 'ready' ? undefined : item.requestId,
-      requestMethod: item.requestMethod, generationSettings: interstitialSettings(item), requestReference: dependency?.reference });
+      requestMethod: item.requestMethod, generationSettings: interstitialSettings(item), requestReference: dependency?.reference, requestOrigin: undefined });
     try {
+      this.patch(id, { requestOrigin: captureClipOrigin(item, dependency?.reference, this.story?.graph, this.state.items) });
       // A failed status request may still belong to an active job. Retire it before resubmitting.
       if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId);
       operation.signal.throwIfAborted();
@@ -291,7 +294,8 @@ export class InterstitialController {
         const insertion = job.insertion || submittedInsertion;
         if (!job.videoUrl || !insertion) throw new Error('The result is missing its generated scene boundaries. Retry checking the result.');
         const submitted=this.state.items.find(item=>item.id===id);
-        const result = { url: job.videoUrl, ...insertion, reference: submitted?.requestReference, prompt: submitted?.requestPrompt };
+        const result = { url: job.videoUrl, ...insertion, reference: submitted?.requestReference, prompt: submitted?.requestPrompt,
+          metadata: submitted?.requestOrigin ? { ...submitted.requestOrigin, media: insertion, prompt: submitted.requestPrompt ?? submitted.requestOrigin.settings.prompt, jobId: requestId } : undefined };
         stream.abort();
         this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined, progressDetails: undefined });
         await this.loadResult(id, result, signal); return;
@@ -318,6 +322,10 @@ export class InterstitialController {
       });
       signal.throwIfAborted();
       let blob = fetched.blob;
+      if (result.metadata) {
+        this.patch(id, { progress: undefined, progressDetails: { stage: 'Saving clip metadata' } });
+        blob = await writeClipMetadata(blob, result.metadata, signal, progress => this.patch(id, { progress }));
+      }
       let fullBlob: Blob | undefined;
       let fullRange: Pick<typeof result, 'start' | 'duration' | 'totalDuration'> | undefined;
       const idle = !this.story && this.flowFor(id)?.scenes.some(scene => scene.interstitialId === id && scene.clip.kind === 'idle');

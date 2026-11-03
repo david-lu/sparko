@@ -1,5 +1,6 @@
 import { INTERSTITIAL, MASK_TRANSITION } from './constants.js';
 import type { GenerationProgress, InsertionRange } from './contracts.js';
+import type { ClipMetadata, ClipOrigin } from './clip-metadata.js';
 
 export type GenerationMethod = 'comfy' | 'comfy-extend' | 'comfy-loop';
 export const generationMethods = ['comfy', 'comfy-extend', 'comfy-loop'] as const;
@@ -21,7 +22,8 @@ export const minimumDuration = (method: GenerationMethod = 'comfy') => method ==
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
 export type ClipReference = { sceneId: string; assetId: string; inFrame: number; outFrame: number };
 export type GenerationReference = { before?: ClipReference; after?: ClipReference; mode?: 'extend' | 'loop' | 'bridge' | 'custom' };
-export type InterstitialResult = { url: string; assetId?: string; /** Original output with reference sections, kept separately from the repeatable loop. */ fullAssetId?: string;
+export type InterstitialResult = { url: string; assetId?: string; /** Portable render provenance; reference IDs here may belong to another project. */ metadata?: ClipMetadata;
+  /** Original output with reference sections, kept separately from the repeatable loop. */ fullAssetId?: string;
   /** Generated body boundaries in the original output, used to play its reference sections at transitions. */ fullRange?: InsertionRange;
   start: number; duration: number; totalDuration: number; reference?: GenerationReference; /** Exact prompt for this video, retained during regeneration. */ prompt?: string };
 /** A single interstitial whose child clips share an interaction and branching timeline. */
@@ -71,6 +73,8 @@ export type Interstitial = InterstitialSettings & {
   requestPrompt?: string;
   requestInsertion?: InsertionRange;
   requestReference?: GenerationReference;
+  /** Clip identity, behaviors and named references captured at submission. */
+  requestOrigin?: ClipOrigin;
   result?: InterstitialResult;
   /** Last playable render, retained until a replacement has loaded and passed validation. */
   previousResult?: InterstitialResult;

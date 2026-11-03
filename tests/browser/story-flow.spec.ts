@@ -72,6 +72,14 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await expect(placeholder).toHaveCount(1);expect((await page.locator('.story-clip.type-simple').boundingBox())!.height).toBe(draftHeight);
   expect(await libraryControls()).toEqual(libraryBefore);
   complete=true;await expect.poll(async()=>(await saved(page)).interstitials[0].phase,{timeout:60000}).toBe('ready');expect(await controls()).toEqual(before);
+  const portable=await page.evaluate(async()=>{
+    const {readActiveProject,readAsset}=await import('/src/features/project/database.ts' as string);
+    const {readClipMetadata}=await import('/src/media/clipMetadata.ts' as string);
+    const project=await readActiveProject(),asset=await readAsset(project.interstitials[0].result.assetId);
+    return readClipMetadata(asset.blob,new AbortController().signal);
+  });
+  expect(portable.prompt).toBe('Continue the scene');expect(portable.references.before.name).toBe('interstitial-reference.mp4');
+  expect(portable.media).toEqual({start:1,duration:2,totalDuration:4});
   await page.locator('.inspector-output>summary').click();await expect(page.getByRole('region',{name:'Video breakdown'})).toContainText('Generated section');
   await page.locator('.inspector-output .interstitial-prompt-details>summary').click();await expect(page.locator('.inspector-output pre')).toHaveText('Continue the scene');
   await page.getByLabel('Interstitial prompt',{exact:true}).fill('A different next render');await expect(page.locator('.inspector-output pre')).toHaveText('Continue the scene');await expect(page.locator('.inspector-advanced .interstitial-prompt-details')).toHaveCount(0);

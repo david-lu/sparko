@@ -128,11 +128,13 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
     const regenerated = add('regenerate_2k', 'MinimaxHailuo03RegenerateNode', {
       video: base, model: COMFY_MODELS.regeneration, 'model.prompt': input.prompt, 'model.resolution': '2K', watermark: false,
     });
-    // Preserve the provider's encoded result rather than decoding and resizing it.
+    // SaveVideo embeds the prompt graph by default while preserving the provider's
+    // encoded result (unless the Comfy deployment disables metadata globally).
     add('output', 'SaveVideo', { video: regenerated, filename_prefix: 'sparko/interstitial', format: 'mp4', 'format.codec': 'auto' });
   } else {
+    // VHS embeds Comfy's prompt graph: the exact prompt, seed, models and settings.
     add('output', 'VHS_VideoCombine', { images, audio, frame_rate: TIMELINE_FPS, loop_count: 0, filename_prefix: 'sparko/interstitial',
-      format: 'video/h264-mp4', pix_fmt: 'yuv420p', crf: 18, save_metadata: false, trim_to_audio: false, pingpong: false, save_output: true });
+      format: 'video/h264-mp4', pix_fmt: 'yuv420p', crf: 18, save_metadata: true, trim_to_audio: false, pingpong: false, save_output: true });
   }
   return graph;
 }

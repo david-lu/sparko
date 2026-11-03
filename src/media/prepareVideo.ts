@@ -55,7 +55,7 @@ export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: 
     reportProgress(0);
     await ensureAac();
     signal.throwIfAborted();
-    const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
+    const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory', metadataFormat: 'mdta' }) });
     conversion = await Conversion.init({ input, output, tracks: 'primary', trim: { start: 0 },
       video: { codec: 'avc', frameRate: TIMELINE_FPS, forceTranscode: true, keyFrameInterval: 1, quality: new Quality('high'),
         ...(VIDEO_PREPARATION.maxHeight > 0 && await video.getDisplayHeight() > VIDEO_PREPARATION.maxHeight ? { height: VIDEO_PREPARATION.maxHeight } : {}) },

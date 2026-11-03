@@ -89,14 +89,10 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     player.pause();const ids=await projects.importVideos(files,position);
     if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice(`Imported ${ids.length} video${ids.length===1?'':'s'} as separate clips.`);}
   };
-  const addAsset=(assetId:string,position?:{x:number;y:number})=>{
-    const asset=projects.getSnapshot().project?.library?.find(item=>item.assetId===assetId);
-    if(!graph||!asset||asset.kind==='subtitle'||!asset.duration)return;
-    if(graph.nodes.length>=1000){setNotice('A project can contain up to 1,000 clips.');return;}
-    const node:StoryNode={id:freshId(),name:asset.name,kind:'source',source:{assetId,originalAssetId:asset.originalAssetId,duration:asset.duration,
-      inFrame:asset.inFrame??0,outFrame:asset.outFrame??Math.max(1,Math.floor(asset.duration*TIMELINE_FPS))},
-      x:position?.x??40,y:position?.y??Math.max(90,...graph.nodes.map(n=>n.y))+145,crossfadeStart:0,crossfadeEnd:0,loopCount:0};
-    change({...graph,entryId:graph.entryId||node.id,nodes:[...graph.nodes,node]});setSelected([node.id]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice(`Added ${asset.name} as a separate clip.`);
+  const addAsset=async(assetId:string,position?:{x:number;y:number})=>{
+    player.pause();
+    const ids=await projects.importLibraryAsset(assetId,position);
+    if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice('Added clip from the library.');}
   };
   return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
     selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player};

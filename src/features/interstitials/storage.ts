@@ -1,4 +1,5 @@
 import { INTERSTITIAL } from '../../../shared/constants';
+import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
 import { clipMaskInjection, generationMethods, interstitialSettings, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
 
 function readReference(value: unknown): GenerationReference | undefined {
@@ -27,7 +28,7 @@ function readResult(value: unknown): InterstitialResult | undefined {
   if (result.fullRange && (![result.fullRange.start, result.fullRange.duration, result.fullRange.totalDuration].every(value => typeof value === 'number' && Number.isFinite(value))
     || result.fullRange.start < 0 || result.fullRange.duration <= 0 || result.fullRange.start + result.fullRange.duration > result.fullRange.totalDuration + 0.1)) return;
   if (![result.start, result.duration, result.totalDuration].every(value => typeof value === 'number' && Number.isFinite(value))) return;
-  if (result.start! >= 0 && result.duration! > 0 && result.start! + result.duration! <= result.totalDuration! + 0.1) return { ...result, reference: readReference(result.reference) } as InterstitialResult;
+  if (result.start! >= 0 && result.duration! > 0 && result.start! + result.duration! <= result.totalDuration! + 0.1) return { ...result, metadata: clipMetadataSchema.safeParse(result.metadata).data, reference: readReference(result.reference) } as InterstitialResult;
 }
 
 export const interstitialKey = (sourceId: string) => `sparko:interstitials:v1:${sourceId}`;
@@ -59,6 +60,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
           : item.requestId && (item.method === 'fal' || item.generationSettings?.method === 'fal') ? 'fal' : undefined,
         requestPrompt: typeof item.requestPrompt === 'string' ? item.requestPrompt : undefined,
         requestReference: readReference(item.requestReference),
+        requestOrigin: clipOriginSchema.safeParse(item.requestOrigin).data,
         requestInsertion: item.requestInsertion && [item.requestInsertion.start, item.requestInsertion.duration, item.requestInsertion.totalDuration].every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
           && item.requestInsertion.start >= 0 && item.requestInsertion.duration > 0 && item.requestInsertion.start + item.requestInsertion.duration <= item.requestInsertion.totalDuration + 0.1 ? item.requestInsertion : undefined,
         prompt: typeof item.prompt === 'string' ? item.prompt : '', phase: phase === 'ready' && !result ? 'error' : phase,
