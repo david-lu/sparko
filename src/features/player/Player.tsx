@@ -1,6 +1,6 @@
 import './styles.css';
 import { useShortcuts } from '../../shared/shortcuts';
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Activity, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Captions, Maximize, Minimize, PanelBottomClose, PanelBottomOpen, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, MediaSource, Thumbnail } from '../../media/media';
@@ -10,6 +10,8 @@ import type { VideoPlayerController } from './VideoPlayerController';
 import Timeline from '../timeline/Timeline';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import PlayerChoices from './PlayerChoices';
+import PreviewTimeline from './PreviewTimeline';
+import { previewCompositionSegments, previewFlowSegments, previewSegmentAt } from './previewSegments';
 
 type Props = {
   source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[];
@@ -24,6 +26,7 @@ type Props = {
   timelineHeight: number; maxTimelineHeight: number; onTimelineHeight: (value: number) => void;
   callResponse?: FlowTimeline;
   storyCanvas?: ReactNode;
+  preview?: boolean;
 };
 
 export default function Player(props: Props) {
@@ -41,6 +44,22 @@ export default function Player(props: Props) {
   const subtitle = props.subtitle;
   const [captions, setCaptions] = useState(true);
   const flow = props.callResponse;
+  const preview = !!props.preview;
+  const previewSegments = useMemo(() => flow ? previewFlowSegments(flow.flow, flow.session) : previewCompositionSegments(props.composition),
+    [flow?.flow, flow?.session?.sceneId, flow?.session?.outcome, flow?.session?.traversedEdgeIds, props.composition]);
+  const previewDuration = previewSegments.at(-1)?.end ?? duration;
+  const currentSegment = previewSegments.find(segment => segment.sceneId === flow?.session?.sceneId);
+  const previewTime = flow?.session && currentSegment ? Math.min(currentSegment.end, currentSegment.start + flow.session.frame / flow.flow.fps) : time;
+  const displayTime = preview ? previewTime : time;
+  const displayDuration = preview ? previewDuration : duration;
+  const variableDuration = previewSegments.some(segment => segment.kind === 'loop' || segment.kind === 'choice')
+    || !!flow?.flow.edges.some(edge => edge.to === flow.flow.entrySceneId);
+  const seek = (target: number) => {
+    if (!preview || !flow) { onSeek(target); return; }
+    const bounded = Math.max(0, Math.min(previewDuration, target));
+    const segment = previewSegmentAt(previewSegments, bounded);
+    if (segment?.sceneId) controller.seekPreviewScene(segment.sceneId, (bounded - segment.start) * flow.flow.fps);
+  };
   const originalCues = useRef<{ url: string; cues: VTTCue[] } | null>(null);
   useEffect(() => {
     const video = controller.subtitleVideo;
@@ -112,7 +131,7 @@ export default function Player(props: Props) {
     catch { onError('Picture-in-picture is not available for this video.'); }
   };
   const toggleCaptions = () => {
-    if (!subtitle) { captionInput.current?.click(); return; }
+    if (!subtitle) { if (!preview) captionInput.current?.click(); return; }
     setCaptions(!captions);
   };
 
@@ -122,7 +141,7 @@ export default function Player(props: Props) {
       if (event.defaultPrevented || event.isComposing || target.isContentEditable || target.closest('video[controls],dialog,[role="dialog"],[role="menu"]')
         || target.closest('textarea, select, input:not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"])')) return;
       const action=shortcuts.action(event);
-      if (action==='delete' && props.selectedId) {
+      if (!preview && action==='delete' && props.selectedId) {
         event.preventDefault();
         if (!event.repeat) props.onRemoveInterstitial(props.selectedId);
         return;
@@ -136,32 +155,36 @@ export default function Player(props: Props) {
       }
       if (target.closest('input, button, a, summary, [role="separator"]')) return;
       const actions:Partial<Record<NonNullable<typeof action>,()=>void>>={
-        play:playPause,back10:()=>onSeek(time-10),forward10:()=>onSeek(time+10),back5:()=>onSeek(time-5),forward5:()=>onSeek(time+5),
+        play:playPause,back10:()=>seek(displayTime-10),forward10:()=>seek(displayTime+10),back5:()=>seek(displayTime-5),forward5:()=>seek(displayTime+5),
         volumeUp:()=>changeVolume(volume+.05),volumeDown:()=>changeVolume(volume-.05),mute:toggleMute,fullscreen:()=>void toggleFullscreen(),
-        add:()=>{if(!props.storyCanvas)onAddInterstitial();},captions:toggleCaptions,previousFrame:()=>controller.stepFrame(-1),nextFrame:()=>controller.stepFrame(1),start:()=>onSeek(0),end:()=>onSeek(duration),
+        add:()=>{if(!preview&&!props.storyCanvas)onAddInterstitial();},captions:toggleCaptions,
+        previousFrame:()=>preview?seek(displayTime-1/(flow?.flow.fps??24)):controller.stepFrame(-1),nextFrame:()=>preview?seek(displayTime+1/(flow?.flow.fps??24)):controller.stepFrame(1),start:()=>seek(0),end:()=>seek(displayDuration),
       };
-      if(action?.startsWith('jump')){event.preventDefault();onSeek(duration*Number(action.slice(4))/10);}
+      if(action?.startsWith('jump')){event.preventDefault();seek(displayDuration*Number(action.slice(4))/10);}
       else if(action&&actions[action]){event.preventDefault();if(!event.repeat||['back10','forward10','back5','forward5','volumeUp','volumeDown','previousFrame','nextFrame'].includes(action))actions[action]();}
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   });
 
-  return <div className={`player-card${fullscreenTimeline ? '' : ' fullscreen-timeline-hidden'}`} ref={container} data-controls-visible={fullscreenControls}>
+  return <div className={`player-card${preview ? ' player-preview' : ''}${fullscreenTimeline ? '' : ' fullscreen-timeline-hidden'}`} ref={container} data-controls-visible={fullscreenControls}>
     <div className="video-stage" onDoubleClick={() => void toggleFullscreen()}>
       <video key={source.assetId??source.id} ref={controller.attach} preload="metadata" playsInline aria-label={source.name} onClick={playPause}>
         {subtitle && <track key={subtitle.url} src={subtitle.url} kind="subtitles" label={subtitle.name} srcLang="en" default />}
       </video>
-      {flow?.session && flow.flow.scenes.find(scene => scene.id === flow.session!.sceneId)?.draft && <span className="draft-preview-label">Draft · reference frame</span>}
-      {props.empty?<span className="player-empty">Add clips to preview your video</span>:!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
+      {!preview && flow?.session && flow.flow.scenes.find(scene => scene.id === flow.session!.sceneId)?.draft && <span className="draft-preview-label">Draft · reference frame</span>}
+      {props.empty?<span className="player-empty">{preview ? 'No video to preview. Add clips in Edit mode.' : 'Add clips to preview your video'}</span>:!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
       {buffering && <div className="buffering" role="status"><span className="spinner" /><span className="sr-only">Buffering</span></div>}
       {flow && <PlayerChoices key={flow.flow.interstitial.id} value={flow} />}
     <div className="transport" ref={transport} onDoubleClick={event => event.stopPropagation()}>
+      {preview && <PreviewTimeline segments={previewSegments} time={previewTime} duration={previewDuration} variable={variableDuration} onSeek={seek}
+        buffered={flow ? buffered.map(range => ({ start: previewTime, end: Math.min(currentSegment?.end ?? previewDuration, previewTime + Math.max(0, range.end - time)) })) : buffered} />}
+      <div className="transport-row">
       <div className="transport-group">
         <button className="icon-button play-button" aria-label={playing ? 'Pause' : 'Play'} title={shortcuts.title('play')} disabled={!duration} onClick={playPause}>{playing ? <Pause /> : <Play fill="currentColor" />}</button>
-        <button className="icon-button" aria-label="Back 10 seconds" title={shortcuts.title('back10')} disabled={!duration} onClick={() => onSeek(time - 10)}><RotateCcw size={18} /><span className="sr-only">10</span></button>
-        <button className="icon-button" aria-label="Forward 10 seconds" title={shortcuts.title('forward10')} disabled={!duration} onClick={() => onSeek(time + 10)}><RotateCw size={18} /></button>
-        <span className="time-display"><strong>{formatTime(time)}</strong><span>/</span>{props.callResponse ? 'variable' : formatTime(duration)}</span>
+        <button className="icon-button skip-button" aria-label="Back 10 seconds" title={shortcuts.title('back10')} disabled={!duration} onClick={() => seek(displayTime - 10)}><RotateCcw size={18} /><span className="sr-only">10</span></button>
+        <button className="icon-button skip-button" aria-label="Forward 10 seconds" title={shortcuts.title('forward10')} disabled={!duration} onClick={() => seek(displayTime + 10)}><RotateCw size={18} /></button>
+        <span className="time-display" title={preview && variableDuration ? 'One pass through the current path; choices and loops can change the running time.' : undefined}><strong>{formatTime(displayTime)}</strong><span>/</span>{preview ? `${variableDuration ? '~' : ''}${formatTime(displayDuration)}` : props.callResponse ? 'variable' : formatTime(duration)}</span>
       </div>
       <div className="transport-group transport-options">
         <button className="icon-button" aria-label={muted || !volume ? 'Unmute' : 'Mute'} title={shortcuts.title('mute')} onClick={toggleMute}>{muted || !volume ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
@@ -169,21 +192,21 @@ export default function Player(props: Props) {
         <select className="speed-select" aria-label="Playback speed" value={speed} onChange={event => controller.setSpeed(Number(event.target.value))}>
           {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(rate => <option key={rate} value={rate}>{rate}×</option>)}
         </select>
-        <button className={`icon-button ${loop ? 'active' : ''}`} aria-label="Loop video" aria-pressed={loop} title={props.callResponse ? 'Idle clip types control repeating playback' : 'Loop video'} disabled={!!props.callResponse} onClick={() => controller.setLoop(!loop)}><Repeat2 size={18} /></button>
-        <button className={`icon-button ${subtitle && captions ? 'active' : ''}`} aria-label={subtitle ? 'Toggle captions' : 'Load captions'} aria-pressed={!!subtitle && captions} title={shortcuts.title('captions',subtitle?'Toggle captions':'Load WebVTT subtitles')} onClick={toggleCaptions}><Captions size={19} /></button>
+        {!preview && <button className={`icon-button ${loop ? 'active' : ''}`} aria-label="Loop video" aria-pressed={loop} title={props.callResponse ? 'Idle clip types control repeating playback' : 'Loop video'} disabled={!!props.callResponse} onClick={() => controller.setLoop(!loop)}><Repeat2 size={18} /></button>}
+        {(!preview || subtitle) && <button className={`icon-button ${subtitle && captions ? 'active' : ''}`} aria-label={subtitle ? 'Toggle captions' : 'Load captions'} aria-pressed={!!subtitle && captions} title={shortcuts.title('captions',subtitle?'Toggle captions':'Load WebVTT subtitles')} onClick={toggleCaptions}><Captions size={19} /></button>}
         {document.pictureInPictureEnabled && <button className="icon-button pip-button" aria-label="Picture in picture" title="Picture in picture" disabled={!duration} onClick={() => void togglePip()}><PictureInPicture2 size={18} /></button>}
-        {fullscreen && <button className={`icon-button fullscreen-timeline-toggle ${fullscreenTimeline ? 'active' : ''}`} aria-label={fullscreenTimeline ? 'Hide timeline' : 'Show timeline'} aria-expanded={fullscreenTimeline} title={fullscreenTimeline ? 'Hide timeline' : 'Show timeline'} onClick={() => setFullscreenTimeline(visible => !visible)}
+        {fullscreen && !preview && <button className={`icon-button fullscreen-timeline-toggle ${fullscreenTimeline ? 'active' : ''}`} aria-label={fullscreenTimeline ? 'Hide timeline' : 'Show timeline'} aria-expanded={fullscreenTimeline} title={fullscreenTimeline ? 'Hide timeline' : 'Show timeline'} onClick={() => setFullscreenTimeline(visible => !visible)}
           onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>{fullscreenTimeline ? <PanelBottomClose size={19} /> : <PanelBottomOpen size={19} />}</button>}
         <button className="icon-button" aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'} title={shortcuts.title('fullscreen')} aria-keyshortcuts={shortcuts.aria('fullscreen')} onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={19} /> : <Maximize size={19} />}</button>
       </div>
+      </div>
     </div>
     </div>
-
-    {props.storyCanvas ?? <Timeline key={source.url} name={source.name} info={info} thumbnails={thumbnails} thumbnailsFailed={props.thumbnailsFailed} interstitials={interstitials} selectedId={props.selectedId} composition={props.composition} time={time} duration={duration} buffered={buffered} selection={selection}
+    <Activity mode={preview ? 'hidden' : 'visible'}>{props.storyCanvas ?? <Timeline key={source.url} name={source.name} info={info} thumbnails={thumbnails} thumbnailsFailed={props.thumbnailsFailed} interstitials={interstitials} selectedId={props.selectedId} composition={props.composition} time={time} duration={duration} buffered={buffered} selection={selection}
       callResponse={props.callResponse}
       height={props.timelineHeight} maxHeight={props.maxTimelineHeight} onHeight={props.onTimelineHeight} onSeek={onSeek}
-      onMoveInterstitial={props.onMoveInterstitial} onRemoveInterstitial={props.onRemoveInterstitial} onSelectInterstitial={props.onSelectInterstitial} />}
-    <input ref={captionInput} className="sr-only" type="file" accept=".vtt,text/vtt" aria-label="Choose subtitle file" onChange={event => {
+      onMoveInterstitial={props.onMoveInterstitial} onRemoveInterstitial={props.onRemoveInterstitial} onSelectInterstitial={props.onSelectInterstitial} />}</Activity>
+    <input ref={captionInput} className="sr-only" type="file" accept=".vtt,text/vtt" aria-label="Choose subtitle file" disabled={preview} onChange={event => {
       const file = event.target.files?.[0];
       if (!file) return;
       props.onSubtitle(file);

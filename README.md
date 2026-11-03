@@ -36,6 +36,8 @@ The script pulls into the repository's `.env`, saving any previous file as `.env
 
 ## Clip graph editing
 
+Use **Preview** in the top bar to view the project in a read-only video player, and **Edit** to return to the workspace. Preview hides the graph and panels and disables editing shortcuts and file imports. The seek bar marks scenes in blue, loops in amber, and choices in purple; hover or scrub to see clip names. Playback, captions, speed, volume, fullscreen, and audience answer buttons remain available. The bar follows the current branch and shows one pass through loops, so interactive running times are approximate. Ungenerated scenes retain their reference-frame preview and are labeled in the player controls. Switching modes retains playback, selection, and workspace layout.
+
 The video player stays on top, with the clip timeline directly below and dockable Library and Inspector panels on the side. Opening a project fits all clips and wire reroutes on screen and starts paused at the first frame of the starting clip. The timeline is a graph of horizontal filmstrip clips. Every clip uses the same duration scale: a six-second clip is twice the width of a three-second clip. Drafts use their planned duration; completed clips use their actual playable duration. Each active clip displays a local playhead and timestamp. Click or drag its filmstrip to scrub, and drag its title to move it without changing playback order.
 
 - **Connect clips:** drag an output handle onto another clip, or click the output followed by a destination input. Drag an existing arrow onto another clip to redirect it. A live wire previews the drag; Escape cancels. Selecting an arrow opens its destination and disconnect controls.

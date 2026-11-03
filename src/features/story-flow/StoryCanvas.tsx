@@ -107,13 +107,13 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     if(p.x+layouts[n.id].total*PIXELS_PER_SECOND*cameraRef.current.zoom<24||p.x>view.clientWidth-24||p.y+CLIP_HEIGHT<24||p.y>view.clientHeight-24)focus(id);};
   // Opening a saved project starts with every group in view. Interactive fitting
   // preserves readable rows; a large branch can then be panned.
-  const openingFit=()=>fit(nodes,2,graph.edges,false),latestFit=useRef(openingFit);latestFit.current=openingFit;
+  const openingFit=()=>fit(nodes,2,graph.edges,false),latestFit=useRef(openingFit),hasOpeningFit=useRef(false);latestFit.current=openingFit;
   useLayoutEffect(()=>{
-    const view=scroll.current;if(!view)return;let opening=true,frame=0;
+    const view=scroll.current;if(!view)return;let opening=!hasOpeningFit.current,frame=0;
     const resize=()=>{if(!view.clientWidth||!view.clientHeight)return;setSize({width:view.clientWidth,height:view.clientHeight});
       // Let restored docked panels settle before the initial fit. Later resizes keep the user's view.
-      if(opening){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(!view.clientWidth||!view.clientHeight)return;opening=false;latestFit.current();});}};
-    const observer=new ResizeObserver(resize);observer.observe(view);resize();latestFit.current();
+      if(opening){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(!view.clientWidth||!view.clientHeight)return;opening=false;hasOpeningFit.current=true;latestFit.current();});}};
+    const observer=new ResizeObserver(resize);observer.observe(view);resize();if(opening)latestFit.current();
     return()=>{observer.disconnect();cancelAnimationFrame(frame);};
   },[]);
   useEffect(()=>{if(collapsed||lastFocusRevision.current===editor.focusRevision)return;lastFocusRevision.current=editor.focusRevision;focus();},[editor.focusRevision,collapsed]);
