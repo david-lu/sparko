@@ -8,6 +8,13 @@ import { createNode } from '../../src/features/story-flow/model';
 const primary=crypto.randomUUID(),extra=crypto.randomUUID();
 const project=():Project=>({id:'test',name:'Library',updatedAt:0,source:{name:'Source.mp4',assetId:primary},interstitials:[],subtitle:null,analysis:emptyAnalysis()});
 describe('project library',()=>{
+  it('removes legacy subtitle entries without changing the project subtitle track', () => {
+    const p = project(); p.subtitle = { assetId: extra, name: 'Captions.vtt' };
+    p.library = [{ ...p.subtitle, kind: 'subtitle' }] as unknown as Project['library'];
+    p.library = collectLibrary(p);
+    expect(p.library).toEqual([{ ...p.source, kind: 'video', duration: undefined }]);
+    expect(assetIds(p)).toContain(extra); expect(p.subtitle.name).toBe('Captions.vtt');
+  });
   it('retains unused footage and uses whole media bounds rather than the trim of one instance',()=>{
     const p=project();p.storyFlow={version:1,entryId:'one',templates:[],edges:[],nodes:[{id:'one',name:'Trimmed',kind:'source',x:0,y:0,crossfadeStart:0,crossfadeEnd:0,loopCount:0,source:{assetId:extra,duration:20,inFrame:48,outFrame:96}}]};
     p.library=collectLibrary(p,4);p.storyFlow.nodes=[];

@@ -105,8 +105,8 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.goto('/');
     await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
     await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-    await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Add interstitial', exact: true }).press('Enter');
+    await expect(page.getByRole('button', { name: 'Add video', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Add video', exact: true }).press('Enter');
     await page.evaluate(() => {
       (window as any).__chooserMessages = [];
       new MutationObserver(() => {
@@ -132,7 +132,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.goto('/');
     await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
     await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-    await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: 'Add video', exact: true })).toBeEnabled({ timeout: 60_000 });
     await expect(page.locator('.buffering')).toHaveCount(0);
 
     // Opening a project leaves the workspace geometry stable.
@@ -140,7 +140,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     unchanged(await bounds(page, workspace), baseWorkspace);
 
     await addBridge(page);
-    await page.getByLabel('Interstitial prompt').fill('Continue the dance');
+    await page.getByLabel('Video prompt').fill('Continue the dance');
     await page.locator('.sidebar').evaluate(element => { element.scrollTop = 0; });
     const idleEditor = await bounds(page, editor);
     let finishEnhancing!: () => void;
@@ -153,7 +153,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await expect(page.getByRole('button', { name: 'Enhancing…', exact: true })).toBeDisabled();
     unchanged(await bounds(page, editor), idleEditor);
     finishEnhancing();
-    await expect(page.getByLabel('Interstitial prompt')).toHaveValue('Continue the dance in the same shot.');
+    await expect(page.getByLabel('Video prompt')).toHaveValue('Continue the dance in the same shot.');
     unchanged(await bounds(page, editor), idleEditor);
 
     let complete = false, releaseDownload!: () => void;
@@ -166,14 +166,14 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       : { requestId: 'layout-job', status: 'IN_PROGRESS', progress: .4, progressDetails: { stage: 'A long generation stage that must never wrap and push the editor controls down', step: 8, steps: 20 } } }));
     await page.route('https://example.test/layout.mp4', async route => { await downloading; await route.fulfill({ contentType: 'video/mp4', body: video }); });
     await page.getByRole('button', { name: 'Generate', exact: true }).evaluate(button => (button as HTMLButtonElement).click());
-    await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('progressbar', { name: 'Generating video' })).toBeVisible({ timeout: 60_000 });
     unchanged(await bounds(page, editor), idleEditor);
-    await expect(page.getByRole('button', { name: 'Cancel interstitial generation' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Cancel video generation' })).toBeEnabled();
     await expect(page.locator('.task-status-message')).toContainText('A long generation stage', { timeout: 60_000 });
     unchanged(await bounds(page, editor), idleEditor);
     complete = true;
     await expect(page.locator('.task-status-message')).toContainText('Downloading generated video');
-    await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toBeVisible();
+    await expect(page.getByRole('progressbar', { name: 'Generating video' })).toBeVisible();
     unchanged(await bounds(page, editor), idleEditor);
     await page.screenshot({ path: `test-results/loading-states-${viewport.width}.png` });
     releaseDownload();

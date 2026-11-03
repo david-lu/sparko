@@ -23,7 +23,7 @@ function render(item: Interstitial, graph: StoryGraph, assetId: string) {
     reference: { mode: 'custom', before: { sceneId: graph.nodes[0].id, assetId, inFrame: 0, outFrame: 48 }, after: { sceneId: graph.nodes[2].id, assetId, inFrame: 48, outFrame: 96 } } };
 }
 
-describe('reference-based interstitial fades', () => {
+describe('reference-based video fades', () => {
   it('keeps video and audio edits independent of each other and of automatic reference lengths', () => {
     const { graph, item, assetId } = fixture(), connection = graph.edges[0];
     connection.videoCrossfade = 0;

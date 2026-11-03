@@ -88,25 +88,25 @@ for(const width of [1440,390])test(`help opens from Window and preserves editing
 
 test('Add clips has its own search, saved templates, and independent panel controls',async({page},testInfo)=>{
   await open(page);
-  const library=page.getByRole('region',{name:'Asset library'}),create=page.getByRole('region',{name:'Interstitials and templates'});
-  await expect(library.getByRole('button',{name:'Add interstitial',exact:true})).toHaveCount(0);
+  const library=page.getByRole('region',{name:'Asset library'}),create=page.getByRole('region',{name:'Videos and templates'});
+  await expect(library.getByRole('button',{name:'Add video',exact:true})).toHaveCount(0);
   await expect(library.getByRole('button',{name:/Add template/})).toHaveCount(0);
   await library.getByLabel('Search library').fill('no matching media');
-  await create.getByLabel('Search interstitials and templates').fill('loop');
+  await create.getByLabel('Search videos and templates').fill('loop');
   await expect(create.getByRole('button')).toHaveCount(1);await expect(create.getByRole('button',{name:'Add template Loop until ready',exact:true})).toBeVisible();
-  await create.getByLabel('Search interstitials and templates').fill('no matching template');await expect(create.getByText('No matching interstitials or templates.')).toBeVisible();
-  await create.getByLabel('Search interstitials and templates').fill('');
-  const add=create.getByRole('button',{name:'Add interstitial',exact:true});await add.focus();await add.press('Enter');
+  await create.getByLabel('Search videos and templates').fill('no matching template');await expect(create.getByText('No matching videos or templates.')).toBeVisible();
+  await create.getByLabel('Search videos and templates').fill('');
+  const add=create.getByRole('button',{name:'Add video',exact:true});await add.focus();await add.press('Enter');
   await expect(page.locator('.story-clip')).toHaveCount(2);
   await saveSelectionAsTemplate(page);await page.getByLabel('Template name',{exact:true}).fill('My saved scene');await page.getByRole('button',{name:'Save template',exact:true}).click();
-  await create.getByLabel('Search interstitials and templates').fill('My saved scene');
+  await create.getByLabel('Search videos and templates').fill('My saved scene');
   const savedTemplate=create.getByRole('button',{name:'Add template My saved scene',exact:true});await expect(savedTemplate).toBeVisible();await savedTemplate.focus();await savedTemplate.press('Enter');await expect(page.locator('.story-clip')).toHaveCount(3);
   await page.getByRole('button',{name:'Move Add clips panel',exact:true}).focus();await page.keyboard.press('Alt+ArrowRight');
   await expect(page.locator('.sidePanelLane')).toHaveCount(2);
   await page.getByRole('button',{name:'Collapse Add clips panel',exact:true}).click();await expect(create).toBeHidden();
   await showWindow(page);await windowMenu(page).getByRole('menuitemcheckbox',{name:'Add clips',exact:true}).click();await expect(page.locator('[data-panel-id=create]')).toHaveCount(0);
   await expect(library).toBeVisible();await windowMenu(page).getByRole('menuitemcheckbox',{name:'Add clips',exact:true}).click();await page.keyboard.press('Escape');
-  await expect(create).toBeVisible();await expect(create.getByRole('button',{name:'Add interstitial',exact:true})).toBeVisible();
+  await expect(create).toBeVisible();await expect(create.getByRole('button',{name:'Add video',exact:true})).toBeVisible();
   await page.screenshot({path:testInfo.outputPath('add-clips-docked.png')});
 });
 

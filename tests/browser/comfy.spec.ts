@@ -50,7 +50,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Video generation method' })).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion' })).toHaveCount(0);
-  await page.getByLabel('Interstitial prompt').fill('Continue the motion');
+  await page.getByLabel('Video prompt').fill('Continue the motion');
   await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
   await page.getByText('Simple transition durations',{exact:true}).click();
   const audioTransition = page.getByRole('spinbutton', { name: 'Audio mask transition duration', exact: true });
@@ -75,7 +75,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   const optionPosition = () => mask.evaluate(element => element.getBoundingClientRect().top - element.closest('form')!.getBoundingClientRect().top);
   const optionTop = await optionPosition();
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
-  await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveJSProperty('position', displayed, { timeout: 60_000 });
+  await expect(page.getByRole('progressbar', { name: 'Generating video' })).toHaveJSProperty('position', displayed, { timeout: 60_000 });
   await expect.poll(() => statusReads).toBeGreaterThanOrEqual(2);
   expect(await optionPosition()).toBeCloseTo(optionTop, 0);
   expect(await controls()).toEqual(idleControls);
@@ -101,12 +101,12 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(page.getByRole('button', { name: 'Regenerate', exact: true })).toBeEnabled();
   failStatus = false;
   await page.getByRole('button', { name: 'Check result', exact: true }).click();
-  await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveJSProperty('position', displayed);
+  await expect(page.getByRole('progressbar', { name: 'Generating video' })).toHaveJSProperty('position', displayed);
   expect(comfySubmissions).toBe(1);
   await expect(page.locator('.task-status')).toContainText(label);
   complete = true;
   await expect(page.locator('.task-status')).toContainText('Downloading generated video');
-  await expect(page.getByRole('progressbar', { name: 'Generating interstitial' })).toHaveJSProperty('position', -1);
+  await expect(page.getByRole('progressbar', { name: 'Generating video' })).toHaveJSProperty('position', -1);
   releaseDownload();
   const saved = async () => (await readProject(page)).interstitials[0];
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');

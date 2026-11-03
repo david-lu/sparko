@@ -2,9 +2,11 @@ import type { CaptionResult, Provider, Slice } from '../../../shared/contracts';
 import type { Interstitial } from '../../../shared/interstitials';
 import type { CallResponseFlow } from '../call-response/model';
 import type { StoryGraph } from '../story-flow/model';
+import type { AssetGeneration } from '../../../shared/asset-generation';
 
 export type Asset = { id: string; name: string; blob: Blob };
-export type LibraryAsset = { assetId: string; originalAssetId?: string; name: string; kind: 'video' | 'generated' | 'subtitle'; duration?: number; inFrame?: number; outFrame?: number };
+export type LibraryAsset = { assetId: string; originalAssetId?: string; name: string; kind: 'video' | 'generated' | 'image' | 'audio'; folderId?: string; generationId?: string; width?: number; height?: number; duration?: number; inFrame?: number; outFrame?: number };
+export type LibraryFolder = { id: string; name: string; parentId?: string };
 export type AnalysisState = { slice: Slice; provider: Provider; instructions: string; result: CaptionResult | null };
 export type Project = {
   id: string; name: string; updatedAt: number; saved?: boolean;
@@ -15,6 +17,8 @@ export type Project = {
   callResponses?: CallResponseFlow[];
   storyFlow?: StoryGraph;
   library?: LibraryAsset[];
+  libraryFolders?: LibraryFolder[];
+  assetGenerations?: AssetGeneration[];
   subtitle: { name: string; assetId: string } | null;
   analysis: AnalysisState;
 };
@@ -23,11 +27,12 @@ export const projectFlows = (project?: Pick<Project, 'callResponse' | 'callRespo
 export const activeFlows = (project?: Project | null) => projectFlows(project).filter(flow => project?.interstitials.find(item => item.id === flow.interstitial.id)?.kind !== 'regular');
 export const withFlows = (project: Project, callResponses: CallResponseFlow[]): Project => ({ ...project, callResponses, callResponse: callResponses[0] });
 export const assetIds = (project: Project) => [...new Set([project.source.assetId, project.source.originalAssetId, project.subtitle?.assetId,
-  ...project.storyFlow?.templates.flatMap(template => Object.values(template.settings).flatMap(settings => settings.imageReferences?.map(image => image.assetId) ?? [])) ?? [],
+  ...(project.assetGenerations ?? []).flatMap(g => [g.selectedAssetId, ...g.versions.flatMap(v => [v.assetId, ...v.settings.references.map(r => r.assetId)]), ...g.settings.references.map(r => r.assetId), ...(g.submitted?.references.map(r => r.assetId) ?? [])]),
+  ...project.storyFlow?.templates.flatMap(template => Object.values(template.settings).flatMap(settings => [settings.startVideoAsset?.assetId, settings.endVideoAsset?.assetId, ...settings.imageReferences?.map(image => image.assetId) ?? []])) ?? [],
   ...(project.library ?? []).flatMap(item => [item.assetId, item.originalAssetId]),
   ...project.storyFlow?.nodes.flatMap(node => node.source ? [node.source.assetId,node.source.originalAssetId] : []) ?? [],
   ...project.storyFlow?.templates.flatMap(t => t.nodes.flatMap(node => node.source ? [node.source.assetId,node.source.originalAssetId] : [])) ?? [],
   ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId)),
   ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId,
-    ...[item, item.generationSettings].flatMap(settings => settings?.imageReferences?.map(image => image.assetId) ?? []),
+    ...[item, item.generationSettings].flatMap(settings => [settings?.startVideoAsset?.assetId, settings?.endVideoAsset?.assetId, ...settings?.imageReferences?.map(image => image.assetId) ?? []]),
     ...[item.result?.reference, item.previousResult?.reference, item.requestReference].flatMap(input => [input?.before?.assetId, input?.after?.assetId])])].filter((id): id is string => !!id))];

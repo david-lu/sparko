@@ -11,7 +11,7 @@ const providers: Providers = {
   openai: vi.fn<Providers['openai']>(async input => ({ caption: 'A caption', description: 'A description', provider: 'openai', model: 'test-openai', start: input.start, end: input.end, basis: 'Sampled frames' })),
   gemini: vi.fn(),
   voice: vi.fn<Providers['voice']>(async (provider, input) => ({ transcript: 'My spoken answer', response: 'Answer received.', provider, model: `test-${provider}`, context: input.context })),
-  enhancePrompt: vi.fn(),
+  enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(),
 };
 let app: Express;
 beforeAll(async () => { app = await createApp({ providers }); app.use(errorHandler); });
@@ -19,7 +19,7 @@ const post = (url: string) => request(app).post(url).set('x-sparko-request', '1'
 describe('server API boundaries', () => {
   it('reports configuration without exposing secrets', async () => {
     const result = await request(app).get('/api/status').expect(200);
-    expect(result.body.providers).toEqual({ openai: true, gemini: true, comfy: false });
+    expect(result.body.providers).toEqual({ openai: true, gemini: true, comfy: false, fal: false });
     expect(result.body.defaultVideo.name).toBe('sample.mp4');
     expect(result.body.defaultVideo.url).toBe('/media/sample.mp4');
     expect(result.text).not.toMatch(/sk-|COMFY_CLOUD_API_KEY|OPENAI_API_KEY|GEMINI_KEY/);

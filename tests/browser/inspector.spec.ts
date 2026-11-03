@@ -15,11 +15,11 @@ test('compact inspector uses connected references, supports all switch combinati
   await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.story-clip')).toHaveCount(1, { timeout: 60000 });
   await page.getByRole('slider', { name: /Scrub/ }).focus(); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('s');
-  await page.getByRole('button', { name: 'Add interstitial', exact: true }).dragTo(page.getByRole('button', { name: /Edit crossfade from/ }));
+  await page.getByRole('button', { name: 'Add video', exact: true }).dragTo(page.getByRole('button', { name: /Edit crossfade from/ }));
   const inspector = page.locator('.clip-inspector');
   await expect(inspector.locator('.inspector-references').getByRole('combobox')).toHaveCount(0); // Routing stays collapsed; references have switches, not pickers.
   await expect(page.getByRole('checkbox', { name: 'Loop', exact: true })).not.toBeChecked(); await expect(page.getByRole('checkbox', { name: 'Conditional', exact: true })).not.toBeChecked();
-  await page.getByLabel('Interstitial prompt', { exact: true }).fill('Continue the camera move.');
+  await page.getByLabel('Video prompt', { exact: true }).fill('Continue the camera move.');
   const bounds = () => inspector.evaluate(root => {
     const top = root.getBoundingClientRect().top;
     return ['.inspector-prompt', '.interstitial-time-fields', 'button[type=submit]', '.task-status', '.inspector-output', '.inspector-group:last-of-type'].map(s => {
@@ -45,7 +45,7 @@ test('compact inspector uses connected references, supports all switch combinati
     expect(await bounds()).toEqual(before);
     const reference = await page.evaluate(async () => { const { readActiveProject } = await import('/src/features/project/database.ts' as string); return (await readActiveProject())!.interstitials[0].requestReference; });
     expect(!!reference.before).toBe(input); expect(!!reference.after).toBe(output);
-    await page.getByRole('button', { name: 'Cancel interstitial generation' }).click();
+    await page.getByRole('button', { name: 'Cancel video generation' }).click();
     await expect(inspector.locator('button[type=submit]')).toHaveText('Retry'); expect(await bounds()).toEqual(before);
   }
   await page.screenshot({ path: 'test-results/inspector-compact-mobile.png', fullPage: true });

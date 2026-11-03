@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { videoReferenceSettings } from './video-references.js';
 import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from './constants.js';
 import { generationMethods, generationResolutions, maskInjections } from './interstitials.js';
 import { imageReferencesSchema, imageReferenceIndexSchema } from './image-references.js';
@@ -11,6 +12,7 @@ const seconds = z.number().finite().nonnegative().max(1e8);
 const frame = z.number().int().nonnegative().max(1e10);
 const range = z.object({ inFrame: frame, outFrame: frame }).refine(v => v.outFrame > v.inFrame);
 export const clipSettingsSchema = z.object({
+  ...videoReferenceSettings,
   imageReferences: imageReferencesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),

@@ -32,7 +32,7 @@ for (const width of [1440, 390]) test(`dropping a portable video restores an int
   const project = await readProject(page); expect(project.interstitials[0]).toMatchObject({ phase: 'ready', generationSettings: { ...clipMetadata.settings, maskInjection: 'standard' }, result: { metadata: clipMetadata, start: 1, duration: 2, totalDuration: 4 } });
   expect(project.interstitials[0].requestId).toBeUndefined(); expect(project.storyFlow.nodes[0].source).toBeUndefined();
   await fitAll(page); await page.locator('.story-clip-title').click();
-  await expect(page.getByLabel('Interstitial prompt', { exact: true })).toHaveValue(clipMetadata.settings.prompt);
+  await expect(page.getByLabel('Video prompt', { exact: true })).toHaveValue(clipMetadata.settings.prompt);
   await page.locator('.inspector-output>summary').click();
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Opening video');
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Ending video');
@@ -42,7 +42,7 @@ for (const width of [1440, 390]) test(`dropping a portable video restores an int
   expect(saved).toEqual(clipMetadata);
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(page.locator('.story-clip')).toHaveCount(0);
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Add Across the doorway as clip', exact: true }).click();
+  await page.getByRole('button', { name: 'Library asset Across the doorway', exact: true }).dblclick();
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
   const duplicate = await readProject(page); expect(new Set(duplicate.interstitials.map((i: any) => i.id)).size).toBe(2);
   expect(new Set(duplicate.interstitials.map((i: any) => i.result.assetId)).size).toBe(1);
@@ -54,11 +54,11 @@ for (const width of [1440, 390]) test(`dropping a portable video restores an int
 test('opening a portable video directly restores it; ordinary and invalid metadata files remain sources', async ({ page }) => {
   await page.goto('/'); await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'portable.mp4', mimeType: 'video/mp4', buffer: await video() });
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await page.getByLabel('Import videos as clips', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
+  await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
   const unknownVersion = await video(), offset = unknownVersion.indexOf('"version":1');
   expect(offset).toBeGreaterThan(0); unknownVersion.write('2', offset + '"version":'.length);
-  await page.getByLabel('Import videos as clips', { exact: true }).setInputFiles({ name: 'future-version.mp4', mimeType: 'video/mp4', buffer: unknownVersion });
+  await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles({ name: 'future-version.mp4', mimeType: 'video/mp4', buffer: unknownVersion });
   await expect(page.locator('.story-clip.type-source')).toHaveCount(2);
   expect((await readProject(page)).interstitials).toHaveLength(1);
 });

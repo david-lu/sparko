@@ -8,7 +8,7 @@ const fixture=()=>{
   const graph:StoryGraph={version:1,entryId:nodes[1].id,nodes,edges:[connection],templates:[],groups:[{id:'group',name:'Group',color:'blue',nodeIds:[nodes[0].id]}]};
   return {graph,node:nodes[0],connection};
 };
-describe('insert an existing interstitial into a transition',()=>{
+describe('insert an existing video into a transition',()=>{
   it('keeps the node identity, group, settings link, and incoming branch metadata',()=>{
     const {graph,node,connection}=fixture(),next=insertIntoConnection(graph,node.id,connection.id);
     expect(next.nodes).toHaveLength(graph.nodes.length);expect(next.groups).toEqual(graph.groups);expect(next.entryId).toBe(graph.entryId);

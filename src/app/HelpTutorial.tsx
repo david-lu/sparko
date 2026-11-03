@@ -14,12 +14,12 @@ const topics = [
 ] as const;
 type Topic = typeof topics[number]['id'];
 const steps: { title: string; text: string; picture: HelpPictureId }[] = [
-  { title: 'What are we adding?', text: 'An interstitial is a new scene that plays between two parts of your video.', picture: 'overview' },
+  { title: 'What are we adding?', text: 'A video is a new scene that plays between two parts of your video.', picture: 'overview' },
   { title: 'Import your video', text: 'Click the upload button in Library. Choose your video.', picture: 'import' },
   { title: 'Pick the moment', text: 'Click the images inside your clip. The vertical line, called the playhead, moves to that moment.', picture: 'playhead' },
   { title: 'Cut your video into two pieces', text: 'Right-click the clip → Cut at playhead. Both pieces keep their footage.', picture: 'cut' },
-  { title: 'Find the Interstitial card', text: 'Open Add clips. Find the card labeled Interstitial.', picture: 'add' },
-  { title: 'Drop it between the pieces', text: 'Drag the Interstitial card onto the connecting line, then release.', picture: 'drop' },
+  { title: 'Find the Video card', text: 'Open Add clips. Find the card labeled Video.', picture: 'add' },
+  { title: 'Drop it between the pieces', text: 'Drag the Video card onto the connecting line, then release.', picture: 'drop' },
   { title: 'Check the clips on either side', text: 'Select your new scene. In Inspector, turn on Start and End to match the first and second pieces.', picture: 'references' },
   { title: 'Describe your new scene', text: 'Write what should happen. Set Duration to how many seconds it should last.', picture: 'generate' },
   { title: 'Make the video', text: 'Click Generate. Wait for it to finish, then open Generated video to preview it.', picture: 'generate' },
@@ -62,7 +62,7 @@ export default function HelpTutorial({onClose}:{onClose:()=>void}) {
             <h3>Move around</h3><ul className="help-tips"><li><strong>Space + drag:</strong> move around the timeline.</li><li><strong>Pinch:</strong> zoom in or out.</li><li><strong>Fit:</strong> bring your clips into view.</li></ul>
           </>}
           {topic==='generate'&&<>
-            <p>Select an interstitial, then open <strong>Inspector</strong>.</p>
+            <p>Select a video, then open <strong>Inspector</strong>.</p>
             {illustration('generate')}
             <h3>Start and End</h3><p><strong>Start</strong> matches the previous clip. <strong>End</strong> matches the next clip.</p>
             {illustration('references')}

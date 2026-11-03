@@ -72,7 +72,7 @@ describe('project edit history', () => {
     const start = { ...project(), callResponse: example.flow, interstitials: example.interstitials };
     const removed = { ...start, callResponse: undefined, interstitials: [] };
     history.record(start, removed);
-    expect(history.undoLabel).toBe('Remove call-response interstitial');
+    expect(history.undoLabel).toBe('Remove call-response video');
     expect(history.target('undo')).toEqual(projectEdit(start));
     history.commit('undo'); expect(history.undoLabel).toBeNull();
     history.commit('redo'); expect(history.target('undo')).toEqual(projectEdit(start));

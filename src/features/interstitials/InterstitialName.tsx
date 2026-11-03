@@ -4,7 +4,7 @@ export default function InterstitialName({ name, onChange }: { name: string; onC
   const [draft, setDraft] = useState(name);
   const cancelled = useRef(false);
   useEffect(() => setDraft(name), [name]);
-  return <input className="interstitial-name" aria-label="Interstitial name" placeholder="Untitled" maxLength={1000}
+  return <input className="interstitial-name" aria-label="Video name" placeholder="Untitled" maxLength={1000}
     value={draft} onChange={event => setDraft(event.target.value)} onBlur={() => {
       if (cancelled.current) { cancelled.current = false; return; }
       const next = draft.trim() || 'Untitled'; setDraft(next);

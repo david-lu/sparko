@@ -15,7 +15,7 @@ vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: cla
 } }));
 const comfy = { check: vi.fn(), submit: vi.fn(), status: vi.fn(), events: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn() };
 const providers: Providers = { configured: { openai: false, gemini: false, comfy: true }, models: { openai: 'test', gemini: 'test' },
-  openai: vi.fn(), gemini: vi.fn(), voice: vi.fn(), enhancePrompt: vi.fn(), comfy };
+  openai: vi.fn(), gemini: vi.fn(), voice: vi.fn(), enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(), comfy };
 let app: Express;
 beforeAll(async () => { app = await createApp({ providers }); app.use(errorHandler); });
 beforeEach(() => {

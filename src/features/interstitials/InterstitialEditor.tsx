@@ -21,14 +21,16 @@ import ImageReferences from './ImageReferences';
 import { hasNoVideoInput } from './api';
 import MaskCurveEditor from './MaskCurveEditor';
 import { maskCurveSchema } from '../../../shared/mask-curves';
+import type { ProjectController } from '../project/ProjectController';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
   status: AppStatus | null; active: boolean; onPreviewPlay: () => void;
   resultDetails?: ReactNode;
   compact?: boolean; generationSettings?: ReactNode;
+  projects?: ProjectController;
 };
-export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, generationSettings }: InterstitialEditorProps) {
+export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, generationSettings, projects }: InterstitialEditorProps) {
   const promptId = useId(), resolutionId = useId();
   const dependency = controller.dependency(selected.id);
   const kind = controller.clipKind(selected.id);
@@ -74,7 +76,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const action = retryLoading ? 'Retry loading' : retryChecking ? 'Check result' : selected.phase === 'error' || selected.phase === 'cancelled' ? 'Retry' : currentResult ? 'Regenerate' : 'Generate';
   const fullVideoUrl = currentResult?.fullAssetId ? assets.url(currentResult.fullAssetId) : currentResult?.assetId ? assets.url(currentResult.assetId) : undefined;
   const trimmedLoop = (currentResult?.reference?.mode === 'loop' || !compact && (kind === 'idle' || method === 'comfy-loop')) && !currentResult?.fullAssetId;
-  const downloadName = `${selected.label.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'interstitial'}-${trimmedLoop ? 'loop' : 'full'}.mp4`;
+  const downloadName = `${selected.label.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'video'}-${trimmedLoop ? 'loop' : 'full'}.mp4`;
   let validationError = '';
   const noVideo = hasNoVideoInput(selected);
   const hasSource = !!engine && !!info || !!(dependency?.reference?.before || dependency?.reference?.after);
@@ -153,13 +155,13 @@ export default function InterstitialEditor({ selected, controller, engine, info,
           <EnhancePromptActions promptId={promptId} enhancing={enhancing} enabled={!!selected.prompt.trim() && !addingImages} connected={!!status?.providers.openai}
             onEnhance={() => void enhance()} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
         </div>
-        <textarea id={promptId} aria-label="Interstitial prompt" rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
+        <textarea id={promptId} aria-label="Video prompt" rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
         {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
       </div>
       {!compact && <><div className="interstitial-enhancement-feedback">{enhancementError && <p className="inline-error" role="alert">{enhancementError}</p>}</div></>}
       <details className="inspector-group inspector-references-panel" open><summary>References<span>Optional</span></summary><div className="inspector-group-body">
         {generationSettings}
-        <ImageReferences key={`images:${selected.id}`} value={selected.imageReferences} onBusyChange={setAddingImages} onChange={imageReferences => {
+        <ImageReferences key={`images:${selected.id}`} projects={projects} value={selected.imageReferences} onBusyChange={setAddingImages} onChange={imageReferences => {
           const saved = controller.getSnapshot().items.find(item => item.id === selected.id) ?? selected;
           const remap = (index: number | undefined) => {
             if (index === undefined) return undefined;
@@ -210,8 +212,8 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         {dependency?.stale && <p className="clip-stale" role="status">Stale: upstream video changed. Regenerate this clip to match.</p>}
         {dependency?.blocked && <p className="hint">{dependency.blocked}</p>}
       </div>{form}
-      <TaskStatus active={busy} message={phaseLabel(selected)} cancelLabel="Cancel interstitial generation" onCancel={() => void controller.cancel(selected.id)}
-        progress={busy ? { label: selected.phase === 'preparing' ? 'Preparing reference' : selected.phase === 'loading' ? 'Loading generated video' : 'Generating interstitial', value: progress } : undefined} />
+      <TaskStatus active={busy} message={phaseLabel(selected)} cancelLabel="Cancel video generation" onCancel={() => void controller.cancel(selected.id)}
+        progress={busy ? { label: selected.phase === 'preparing' ? 'Preparing reference' : selected.phase === 'loading' ? 'Loading generated video' : 'Generating video', value: progress } : undefined} />
     </>}
     {compact ? <details className="inspector-group inspector-output"><summary>Generated video<span>{currentResult ? `${(currentResult.fullRange?.totalDuration ?? currentResult.totalDuration).toFixed(2)} s` : 'Not generated'}</span></summary>
       <div className="inspector-group-body">{currentResult ? output : <p className="hint">Generate this clip to see its video and reference breakdown.</p>}</div>

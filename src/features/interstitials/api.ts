@@ -32,7 +32,7 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   if (!readiness.ready) throw new Error(readiness.message || 'Comfy Cloud is not ready.');
   if ((!engine || !info) && !hasNoVideoInput(item)) throw new Error('Connect reference footage or set Start and End to None or Image.');
   const range = comfyReferenceRange(item, info?.duration ?? item.duration);
-  if (!item.prompt.trim()) throw new Error('Describe the interstitial before generating.');
+  if (!item.prompt.trim()) throw new Error('Describe the video before generating.');
   onProgress('preparing', 0);
   const images = await referenceImageData(item.imageReferences, signal);
   let canvas = info;

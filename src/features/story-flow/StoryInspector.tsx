@@ -18,6 +18,7 @@ import './inspector.css';
 import { useShortcuts } from '../../shared/shortcuts';
 import LoopReferenceHelp from './LoopReferenceHelp';
 import StoryReferences from './StoryReferences';
+import AssetInspector from '../project/AssetInspector';
 
 function ClipName({ value, onSave }: { value: string; onSave: (name: string) => void }) {
   const [name, setName] = useState(value);
@@ -32,6 +33,11 @@ function ClipName({ value, onSave }: { value: string; onSave: (name: string) => 
 export default function StoryInspector({ editor, engine, info, status }: { editor: StoryEditor; engine: MediaEngine | null; info: MediaInfo | null; status: AppStatus | null }) {
   const shortcuts=useShortcuts();
   const { graph, items } = editor;
+  if (editor.librarySelection?.type === 'asset' || editor.librarySelection?.type === 'generation') return <AssetInspector editor={editor} status={status}/>;
+  if (editor.librarySelection?.type === 'job') {
+    const job = items.find(i => i.id === editor.librarySelection!.id);
+    if (job) return <div className="story-inspector clip-inspector"><h2>{job.label}</h2><InterstitialEditor compact selected={job} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}/></div>;
+  }
   if (!graph) return null;
   const node = graph.nodes.find(n => n.id === editor.selectedId), connection = graph.edges.find(e => e.id === editor.selectedEdge);
   const nameOf = (id: string) => { const n = graph.nodes.find(n => n.id === id); return items.find(i => i.id === n?.interstitialId)?.label ?? n?.name ?? 'Disconnected'; };
@@ -69,8 +75,8 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <button className="text-button inspector-add-choice" disabled={conditions.length>=100} onClick={()=>editor.updateConditions(node.id,[...conditions,{id:freshId(),label:`Condition ${conditions.length+1}`,values:[]}])}>+ Add condition</button>
       <p className="hint">Drag each labeled output on the clip to its destination.</p>
     </BehaviorSection>
-    {item && <InterstitialEditor key={item.id} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
-      generationSettings={<StoryReferences item={item} loop={behavior.loop} labels={{ start: referenceLabel(refs.input), end: referenceLabel(refs.output) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
+    {item && <InterstitialEditor key={item.id} projects={editor.projects} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
+      generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} labels={{ start: referenceLabel(refs.input), end: referenceLabel(refs.output) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
       resultDetails={<GeneratedVideoInfo item={item} node={node} nodes={graph.nodes} items={items} />} />}
     {node.source && <div className="inspector-source-range">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'Source in' : 'Source out'}</span><input type="number" step={1 / TIMELINE_FPS} min={field === 'inFrame' ? 0 : (node.source!.inFrame + 1) / TIMELINE_FPS} max={field === 'inFrame' ? (node.source!.outFrame - 1) / TIMELINE_FPS : node.source!.duration ?? info?.duration}
       value={Number((node.source![field] / TIMELINE_FPS).toFixed(3))} onChange={e => {

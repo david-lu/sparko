@@ -21,8 +21,8 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
     const section = Array.from(panels.current?.children ?? []).find(element => (element as HTMLElement).dataset.sceneId === value.selectedSceneId);
     section?.scrollIntoView({ block: 'nearest' });
   }, [value.selectedSceneId]);
-  return <div className="panel-content interstitial-panel call-response-panel" aria-label="Call Response Interstitial panel">
-    <button className="text-button interstitial-back" onClick={onBack}><ArrowLeft size={13} /> All interstitials</button>
+  return <div className="panel-content interstitial-panel call-response-panel" aria-label="Call Response Video panel">
+    <button className="text-button interstitial-back" onClick={onBack}><ArrowLeft size={13} /> All videos</button>
     <div className="interstitial-title"><InterstitialName key={value.flow.interstitial.id} name={value.flow.interstitial.label} onChange={value.onRenameInterstitial} />
       <button className="icon-button small" aria-label={`Remove ${value.flow.interstitial.label}`} onClick={() => value.onRemoveInterstitial()}><Trash2 size={14} /></button>
     </div>

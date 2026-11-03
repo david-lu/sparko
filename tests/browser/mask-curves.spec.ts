@@ -81,7 +81,7 @@ for(const width of [1440,390]) test(`custom masks submit independently and keep 
     ?{requestId:'mask-curve-test-job',status:'COMPLETED',videoUrl:'https://example.test/mask.mp4',insertion:{start:1,duration:2,totalDuration:4}}
     :{requestId:'mask-curve-test-job',status:'IN_PROGRESS'}}));
   await page.route('https://example.test/mask.mp4',route=>route.fulfill({contentType:'video/mp4',path:'tests/fixtures/interstitial-reference.mp4'}));
-  await openVideo(page);await addBridge(page);await page.getByLabel('Interstitial prompt',{exact:true}).fill('Continue moving forward.');
+  await openVideo(page);await addBridge(page);await page.getByLabel('Video prompt',{exact:true}).fill('Continue moving forward.');
   await page.getByRole('button',{name:'Edit video mask',exact:true}).click();
   await page.getByRole('button',{name:'Add keyframe',exact:true}).click();await page.getByLabel('Keyframe regeneration').fill('45');
   await page.getByRole('button',{name:'Apply video mask',exact:true}).click();

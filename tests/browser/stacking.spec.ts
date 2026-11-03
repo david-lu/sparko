@@ -74,7 +74,7 @@ for (const width of [1440, 390]) {
     await page.locator('.story-scroll').click({ position: { x: 10, y: 10 } });
     await expect(page.locator('.story-clip.selected')).toHaveCount(0);
     const toolbar = await page.locator('.story-toolbar').boundingBox();
-    for (const name of ['Interstitial', 'Templates']) {
+    for (const name of ['Video', 'Templates']) {
       const popup = await overlapPlayhead(page, name);
       await expectOnTop(popup);
       await page.screenshot({ path: `test-results/layers-${name}-${width}.png` });
@@ -98,7 +98,7 @@ for (const width of [1440, 390]) {
 
   test(`inspector popovers and modal dialogs stay above the workspace at ${width}px`, async ({ page }) => {
     await open(page, width);
-    await page.getByRole('button', { name: 'Add interstitial', exact: true }).dragTo(page.locator('.story-scroll'), { targetPosition: { x: 90, y: 60 } });
+    await page.getByRole('button', { name: 'Add video', exact: true }).dragTo(page.locator('.story-scroll'), { targetPosition: { x: 90, y: 60 } });
     await page.getByRole('spinbutton', { name: 'Duration', exact: true }).click();
     await expectOnTop(page.locator('.interstitial-time-popover')); await page.keyboard.press('Escape');
     await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');

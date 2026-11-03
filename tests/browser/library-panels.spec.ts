@@ -5,7 +5,8 @@ const saved=(page:Page)=>page.evaluate(async()=>{const db=await new Promise<IDBD
 
 test('library media survives deleting its clip, is reusable without arrows, and survives an archive',async({page,browser})=>{
   await open(page);const buffer=await readFile('tests/fixtures/interstitial-reference.mp4');
-  await page.getByLabel('Import videos as clips',{exact:true}).setInputFiles({name:'Library footage.mp4',mimeType:'video/mp4',buffer});await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.getByLabel('Import library assets',{exact:true}).setInputFiles({name:'Library footage.mp4',mimeType:'video/mp4',buffer});await expect(page.locator('.story-clip')).toHaveCount(1);
+  await page.getByRole('button',{name:'Library asset Library footage.mp4',exact:true}).dblclick();await expect(page.locator('.story-clip')).toHaveCount(2);
   await page.getByRole('button',{name:'Collapse Library panel',exact:true}).click();
   await page.locator('.story-scroll').focus();await page.keyboard.press('Delete');await expect(page.locator('.story-clip')).toHaveCount(1);
   await page.getByRole('button',{name:'Expand Library panel',exact:true}).click();

@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => { await openVideo(page); });
 test('fullscreen timeline can be hidden, restored and remembered without losing editing state', async ({ page }) => {
   const timeline = page.locator('.story-canvas'), stage = page.locator('.video-stage');
   await addDraft(page, 'Retained draft');
-  await page.getByLabel('Interstitial prompt').fill('Remember this prompt');
+  await page.getByLabel('Video prompt').fill('Remember this prompt');
   await stage.hover(); await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement?.classList.contains('player-card'))).toBe(true);
   await expect(timeline).toBeVisible();

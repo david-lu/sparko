@@ -16,7 +16,7 @@ export default function InterstitialHelp() {
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true); };
   }, [position]);
   return <>
-    <button ref={button} className="icon-button small" aria-label="What is an interstitial?" title="What is an interstitial?"
+    <button ref={button} className="icon-button small" aria-label="What is a video?" title="What is a video?"
       aria-expanded={!!position} aria-controls={position ? id : undefined} aria-describedby={position ? id : undefined} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}
       onClick={() => {
         if (position) { setPosition(null); return; }
@@ -24,7 +24,7 @@ export default function InterstitialHelp() {
         setPosition({ right: Math.max(12, window.innerWidth - rect.right), bottom: window.innerHeight - rect.top + 8 });
       }}><CircleHelp size={14} /></button>
     {position && createPortal(<div ref={popup} id={id} className="interstitial-help-popover" role="note" style={position}>
-      <strong>What is an interstitial?</strong>
+      <strong>What is a video?</strong>
       <p>Add a regular scene or a call-response sequence at the playhead. Draft call-response clips stay in the editor until their videos are generated.</p>
     </div>, document.body)}
   </>;

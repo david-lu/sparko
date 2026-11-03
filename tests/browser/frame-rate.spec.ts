@@ -73,7 +73,7 @@ test('cancelling a fallback conversion preserves the active project and leaves n
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Add video', exact: true })).toBeEnabled();
   const before = await page.evaluate(async () => {
     const { readActiveProject } = await import('/src/features/project/database.ts' as string);
     return readActiveProject();
@@ -138,7 +138,7 @@ test('opens a saved 25 fps source without moving its drafts', async ({ page }) =
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Add video', exact: true })).toBeEnabled();
   const legacy = await page.evaluate(async () => {
     const { readActiveProject, writeProject } = await import('/src/features/project/database.ts' as string);
     const saved = await readActiveProject();

@@ -31,6 +31,17 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('opens legacy subtitle library entries while retaining the separate subtitle track', async () => {
+    const blob = await packProject(project, media, signal(), progress);
+    const legacy = await rewrite(blob, value => { value.project.library = [
+      { assetId: sourceId, name: 'source.mp4', kind: 'video' },
+      { assetId: subtitleId, name: 'subtitles.vtt', kind: 'subtitle' },
+    ]; });
+    const restored = await unpackProject(legacy, signal(), progress);
+    expect(restored.project.library).toEqual([{ assetId: restored.project.source.assetId, name: 'source.mp4', kind: 'video' }]);
+    const track = restored.assets.find(asset => asset.id === restored.project.subtitle?.assetId)!;
+    expect(track.name).toBe('subtitles.vtt'); expect(await track.blob.text()).toBe('WEBVTT\n');
+  });
   it('retains mask pins and Bézier handles in drafts, submitted settings, and templates',async()=>{
     const snapshot=structuredClone(project),item=snapshot.interstitials[0];
     item.videoMaskCurve=defaultMaskCurve(2,2,500);item.videoMaskCurve.interpolation='bezier';

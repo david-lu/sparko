@@ -16,6 +16,9 @@ import { ProjectHistory } from './ProjectHistory';
 import { packProject, unpackProject } from './archive';
 import { freshId, migrateFades, migrateGraph, removeNodes, type StoryGraph, type StoryNode } from '../story-flow/model';
 import { collectLibrary } from './library';
+import { inspectAsset, mediaKind, mediaFile, type LibraryFile } from './libraryFiles';
+import type { LibraryAsset, LibraryFolder } from './types';
+import type { AssetGeneration } from '../../../shared/asset-generation';
 import { readClipMetadata } from '../../media/clipMetadata';
 import { reconnectClipReferences, restoreClip } from '../interstitials/clipMetadata';
 
@@ -67,7 +70,8 @@ export class ProjectController {
     return this.importClips(files.map(file => ({ file })), position);
   }
   async importLibraryAsset(assetId: string, position?: { x: number; y: number }) {
-    if (this.state.busy || this.state.project?.library?.find(item => item.assetId === assetId)?.kind === 'subtitle') return;
+    const kind = this.state.project?.library?.find(item => item.assetId === assetId)?.kind;
+    if (this.state.busy || (kind !== 'video' && kind !== 'generated')) return;
     const projectId = this.state.project?.id;
     try {
       const asset = await readAsset(assetId);
@@ -137,6 +141,7 @@ export class ProjectController {
     } catch { return `draft:${crypto.randomUUID()}`; }
   })();
   private history = new ProjectHistory();
+  private generationStates = new Map<string, AssetGeneration>();
   private listeners = new Set<() => void>();
   private unsubscribe?: () => void;
   private switching = false;
@@ -147,7 +152,40 @@ export class ProjectController {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private update(patch: Partial<State>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
   clearError() { this.update({ error: null }); }
+  editAssets(change: (project: Project) => Project, record = true) {
+    if (this.state.project) { this.save(change(this.state.project), record); this.update({ dirty: true }); }
+  }
+  async importAssets(entries: LibraryFile[], folderId?: string, onProgress?: (message: string) => void) {
+    const initial = this.state.project;
+    if (!initial || !entries.length) return [];
+    if ((initial.library?.length ?? 0) + entries.length > 2000) throw new Error('A project supports up to 2,000 assets.');
+    const folders: LibraryFolder[] = [...initial.libraryFolders ?? []], added: LibraryAsset[] = [];
+    // Validate the entire batch before publishing it to the document.
+    for (const entry of entries) mediaKind(entry.file);
+    for (const entry of entries) {
+      const file = mediaFile(entry.file), path = entry.path;
+      if (!file.size) throw new Error(`${file.name} is empty.`);
+      onProgress?.(`Importing ${file.name}`);
+      let parentId = folderId;
+      const parts = path.split('/').slice(0, -1).filter(part => part && part !== '.' && part !== '..');
+      if (parts.length > 50) throw new Error('Folders can be nested up to 50 levels.');
+      for (const name of parts) {
+        let folder = folders.find(f => f.parentId === parentId && f.name === name);
+        if (!folder) { folder = { id: crypto.randomUUID(), name: name.slice(0, 1000), parentId }; folders.push(folder); }
+        parentId = folder.id;
+      }
+      const kind = mediaKind(file), metadata = await inspectAsset(file, kind);
+      const asset = await assets.save(file, file.name.slice(0, 1000));
+      await assets.open(asset.id);
+      added.push({ assetId: asset.id, name: asset.name, kind, folderId: parentId, ...metadata });
+    }
+    if (this.state.project?.id !== initial.id) throw new Error('Project changed while importing. Import into the current project again.');
+    this.editAssets(project => ({ ...project, library: [...project.library ?? [], ...added],
+      libraryFolders: [...project.libraryFolders ?? [], ...folders.filter(f => !initial.libraryFolders?.some(old => old.id === f.id))] }));
+    return added;
+  }
   private save(project: Project, record = true) {
+    for (const generation of project.assetGenerations ?? []) this.generationStates.set(generation.id, generation);
     project = { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
     if (record && this.state.project?.id === project.id) this.history.record(this.state.project, project);
     this.revision++;
@@ -201,14 +239,15 @@ export class ProjectController {
       if (!flow.interstitial) grouped.interstitial.time = project.interstitials.find(item => grouped.scenes.some(scene => scene.interstitialId === item.id))?.time ?? grouped.interstitial.time;
       return grouped;
     }));
-    project = { ...project, interstitials: project.interstitials.map(item => {
+    project = { ...project, assetGenerations: project.assetGenerations?.map(g => g.phase === 'preparing' ? { ...g, phase: 'draft' as const } : g), interstitials: project.interstitials.map(item => {
       const rename = renamedClips.get(item.id);
       return rename && item.label === rename.before ? { ...item, label: rename.after } : item;
     }) };
     ({ project, pendingAssets } = await this.prepareSource(project, pendingAssets, signal));
     ({ project, pendingAssets } = await this.prepareGraphSources(project,pendingAssets,signal));
     await this.prepareGenerated(project, pendingAssets, signal);
-    project = { ...project, interstitials: project.interstitials.map(item => ({ ...item, groupId: projectFlows(project).find(flow => flow.scenes.some(scene => scene.interstitialId === item.id))?.interstitial.id, phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase })) };
+    project = { ...project, library: collectLibrary(project) };
+    project = { ...project, assetGenerations: project.assetGenerations?.map(g => g.phase === 'preparing' ? { ...g, phase: 'draft' as const } : g), interstitials: project.interstitials.map(item => ({ ...item, groupId: projectFlows(project).find(flow => flow.scenes.some(scene => scene.interstitialId === item.id))?.interstitial.id, phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase })) };
     this.update({ message: 'Saving prepared project', progress: null });
     await this.writes;
     await writeProject(project, pendingAssets, true, signal);
@@ -281,22 +320,22 @@ export class ProjectController {
     // dimensions. Import validates decoding without encoding another copy.
     for (const [index, id] of generated.entries()) {
       signal.throwIfAborted();
-      const asset = await get(id); if (!asset) throw new Error('An interstitial video is missing.');
-      this.update({ message: `Checking interstitial ${index + 1} of ${generated.length}`, progress: index / generated.length });
+      const asset = await get(id); if (!asset) throw new Error('A generated video is missing.');
+      this.update({ message: `Checking video ${index + 1} of ${generated.length}`, progress: index / generated.length });
       if (!await canPlaySourceVideo(asset.blob, signal)) throw new Error(`This browser cannot decode ${asset.name}.`);
     }
     signal.throwIfAborted();
   }
   private async prepareGraphSources(project:Project,pendingAssets:Asset[],signal:AbortSignal){
     let graph=project.storyFlow;if(!graph)return {project,pendingAssets};
-    const ids=[...new Set([...graph.nodes.flatMap(node=>node.source?[node.source.assetId]:[]), ...(project.library ?? []).filter(item => item.kind === 'video').map(item => item.assetId)])].filter(id => id !== project.source.assetId);
+    const ids=[...new Set(graph.nodes.flatMap(node=>node.source?[node.source.assetId]:[]))].filter(id => id !== project.source.assetId);
     for(const [index,id] of ids.entries()){
       signal.throwIfAborted();const original=pendingAssets.find(asset=>asset.id===id)??await readAsset(id);if(!original)throw new Error('An imported video is missing.');
       this.update({message:`Checking video ${index+1} of ${ids.length}`,progress:index/ids.length});
       const blob=await prepareSourceVideo(original.blob,signal,progress=>this.update({message:`Preparing ${original.name}`,progress}));
       const info=await this.validateVideo(blob,signal),working=blob===original.blob?original:{id:freshId(),name:original.name,blob};
       if(working!==original)pendingAssets=[...pendingAssets,working];
-      project = { ...project, library: project.library?.map(item => item.assetId === id ? { ...item, assetId: working.id, duration: info.duration, originalAssetId: item.originalAssetId ?? (working !== original ? original.id : undefined) } : item) };
+      // Library inputs keep their original identity; only playback clips need a prepared copy.
       graph={...graph,nodes:graph.nodes.map(n=>n.source?.assetId===id?{...n,source:{...n.source,assetId:working.id,duration:info.duration,originalAssetId:n.source.originalAssetId??(working!==original?original.id:undefined)}}:n)};
     }
     return {project:{...project,storyFlow:graph},pendingAssets};
@@ -413,11 +452,11 @@ export class ProjectController {
     }
   }
   async addCallResponse(time: number, duration: number) {
-    return this.task('Creating call-response interstitial', async () => {
+    return this.task('Creating call-response video', async () => {
       const project = this.state.project;
       if (!project?.source.assetId) return;
       const totalFrames = Math.floor(duration * TIMELINE_FPS);
-      if (totalFrames < 78) throw new Error('A call-response interstitial needs at least 3.25 seconds of source video.');
+      if (totalFrames < 78) throw new Error('A call-response video needs at least 3.25 seconds of source video.');
       const anchor = Math.max(39, Math.min(totalFrames - 39, Math.round(frameTime(time, TIMELINE_FPS) * TIMELINE_FPS))) / TIMELINE_FPS;
       const pin: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor, kind: 'call-response',
         method: 'comfy', phase: 'draft', prompt: '', start_range: 2, end_range: 2, duration: 6, enable_prompt_expansion: false };
@@ -478,14 +517,15 @@ export class ProjectController {
       } finally {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
-          ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, storyFlow: target.storyFlow, library: target.library, subtitle: target.subtitle, crossfadeFrames: target.crossfadeFrames } : {}),
+          ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, storyFlow: target.storyFlow, library: target.library, libraryFolders: target.libraryFolders,
+            assetGenerations: target.assetGenerations?.map(g => ({ phase: 'draft' as const, versions: [], ...this.generationStates.get(g.id), ...g })), subtitle: target.subtitle, crossfadeFrames: target.crossfadeFrames } : {}),
           interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() }, false);
       }
       this.interstitials.setStoryGraph(this.state.project?.storyFlow,this.state.project?.source.assetId,this.storyDuration);
     });
   }
   async removeCallResponse(groupId?: string) {
-    return this.task('Removing call-response interstitial', async signal => {
+    return this.task('Removing call-response video', async signal => {
       const project = this.state.project;
       const flow = projectFlows(project).find(flow => !groupId || flow.interstitial.id === groupId);
       if (!project || !flow) return false;
@@ -502,7 +542,7 @@ export class ProjectController {
           callResponses: removed ? projectFlows(project).filter(group => group.interstitial.id !== flow.interstitial.id) : projectFlows(project),
           interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() });
       }
-      if (!removed && !signal.aborted) throw new Error('Could not remove the call-response interstitial because a generation job could not be cancelled. Try again.');
+      if (!removed && !signal.aborted) throw new Error('Could not remove the call-response video because a generation job could not be cancelled. Try again.');
       return removed;
     });
   }
@@ -584,7 +624,7 @@ export class ProjectController {
       if (fileName) snapshot.name = fileName;
       signal.throwIfAborted();
       if (!snapshot.source.assetId&&!snapshot.storyFlow) throw new Error('Wait for the source video to finish preparing.');
-      if (snapshot.interstitials.some(item => item.result && (!item.result.assetId || item.phase !== 'ready'))) throw new Error('An interstitial result has not finished loading. Finish loading or retry the interstitial before exporting.');
+      if (snapshot.interstitials.some(item => item.result && (!item.result.assetId || item.phase !== 'ready'))) throw new Error('A video result has not finished loading. Finish loading or retry the video before exporting.');
       const stored: Asset[] = [];
       for (const id of assetIds(snapshot)) {
         const asset = await readAsset(id); signal.throwIfAborted();
@@ -620,18 +660,18 @@ export class ProjectController {
       if(node.source.outFrame/TIMELINE_FPS>info.duration+1/info.fps)throw new Error('A story clip extends beyond its source media.');
     }
     for(const item of imported.project.library??[]){
-      if(item.kind==='subtitle')continue;
+      if(item.kind==='image'||item.kind==='audio') { await inspectAsset(byId.get(item.assetId)!.blob,item.kind); continue; }
       let info=clipInfo.get(item.assetId);
       if(!info){info=await this.validateVideo(byId.get(item.assetId)!.blob,signal);clipInfo.set(item.assetId,info);}
       if((item.outFrame??0)/TIMELINE_FPS>info.duration+1/info.fps)throw new Error('A library clip extends beyond its media.');
       item.duration=info.duration;
     }
     for (const item of imported.project.interstitials) {
-      if (!imported.project.storyFlow&&source&&item.time > source.duration + Math.max(1 / source.fps, 1 / TIMELINE_FPS)) throw new Error('An interstitial anchor lies outside the source video.');
+      if (!imported.project.storyFlow&&source&&item.time > source.duration + Math.max(1 / source.fps, 1 / TIMELINE_FPS)) throw new Error('A video anchor lies outside the source video.');
       for (const result of [item.result, item.previousResult]) {
         if (!result) continue;
         const info = await this.validateVideo(byId.get(result.assetId!)!.blob, signal);
-        if (result.start + result.duration > info.duration + 1 / info.fps) throw new Error('An interstitial asset is shorter than its saved scene boundaries.');
+        if (result.start + result.duration > info.duration + 1 / info.fps) throw new Error('A video asset is shorter than its saved scene boundaries.');
       }
     }
     if (imported.project.subtitle) {

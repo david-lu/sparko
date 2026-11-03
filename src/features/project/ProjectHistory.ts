@@ -2,14 +2,17 @@ import { interstitialSettings, type Interstitial, type InterstitialSettings } fr
 import type { Project } from './types';
 
 export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId'> & InterstitialSettings;
-export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'subtitle' | 'crossfadeFrames'> & { interstitials: InterstitialEdit[] };
+export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'libraryFolders' | 'subtitle' | 'crossfadeFrames'> & { interstitials: InterstitialEdit[]; assetGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings'>[] };
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
   return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [] })),
-    callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
+    callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, libraryFolders: project.libraryFolders,
+    assetGenerations: project.assetGenerations?.map(({id,name,kind,folderId,settings}) => ({id,name,kind,folderId,settings})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }
 function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' | 'key'> {
+  if (!same(before.libraryFolders, after.libraryFolders)) return { label: 'Organize library folders' };
+  if (!same(before.assetGenerations, after.assetGenerations)) return { label: 'Edit generation', key: 'asset-generation' };
   if (!same(before.storyFlow, after.storyFlow)) {
     const a=before.storyFlow,b=after.storyFlow;
     if(!a || !b) return {label:'Create story flow'};
@@ -23,9 +26,9 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
   }
   if (before.crossfadeFrames !== after.crossfadeFrames) return { label: 'Change crossfade length', key: 'crossfadeFrames' };
   if (!same(before.callResponse, after.callResponse)) {
-    if (!after.callResponse) return { label: 'Remove call-response interstitial' };
-    if (!before.callResponse) return { label: 'Add call-response interstitial' };
-    if (before.callResponse.interstitial.label !== after.callResponse.interstitial.label) return { label: 'Rename interstitial' };
+    if (!after.callResponse) return { label: 'Remove call-response video' };
+    if (!before.callResponse) return { label: 'Add call-response video' };
+    if (before.callResponse.interstitial.label !== after.callResponse.interstitial.label) return { label: 'Rename video' };
     const previousAnswers = before.callResponse.interaction.answers, answers = after.callResponse.interaction.answers;
     if (answers.length > previousAnswers.length) return { label: 'Add answer' };
     if (answers.length < previousAnswers.length) return { label: 'Remove answer' };
@@ -40,15 +43,15 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
   }
   if (!same(before.subtitle, after.subtitle)) return { label: 'Change subtitles' };
   if (!same(before.library, after.library)) return { label: 'Update library' };
-  if (!same(before.callResponses, after.callResponses)) return { label: 'Edit call-response interstitial' };
+  if (!same(before.callResponses, after.callResponses)) return { label: 'Edit call-response video' };
   const previous = new Map(before.interstitials.map(item => [item.id, item]));
-  if (after.interstitials.some(item => !previous.has(item.id))) return { label: 'Add interstitial' };
-  if (after.interstitials.length < before.interstitials.length) return { label: 'Remove interstitial' };
+  if (after.interstitials.some(item => !previous.has(item.id))) return { label: 'Add video' };
+  if (after.interstitials.length < before.interstitials.length) return { label: 'Remove video' };
   const changed = after.interstitials.flatMap(item => Object.keys(item).filter(key => !same(item[key as keyof InterstitialEdit], previous.get(item.id)?.[key as keyof InterstitialEdit])).map(key => ({ id: item.id, key })));
-  if (changed.some(change => change.key === 'time')) return { label: 'Move interstitial' };
+  if (changed.some(change => change.key === 'time')) return { label: 'Move video' };
   const field = changed[0]?.key;
-  const labels: Record<string, string> = { label: 'Rename interstitial', prompt: 'Edit prompt', duration: 'Change duration', audioMaskTransitionMs: 'Change audio mask transition', videoMaskTransitionMs: 'Change video mask transition', start_range: 'Change start range', end_range: 'Change end range', method: 'Change generation method', enable_prompt_expansion: 'Change prompt expansion', loopAudio: 'Toggle Idle audio' };
-  return { label: labels[field] ?? 'Edit interstitial',
+  const labels: Record<string, string> = { label: 'Rename video', prompt: 'Edit prompt', duration: 'Change duration', audioMaskTransitionMs: 'Change audio mask transition', videoMaskTransitionMs: 'Change video mask transition', start_range: 'Change start range', end_range: 'Change end range', method: 'Change generation method', enable_prompt_expansion: 'Change prompt expansion', loopAudio: 'Toggle Idle audio' };
+  return { label: labels[field] ?? 'Edit video',
     key: ['prompt', 'duration', 'audioMaskTransitionMs', 'videoMaskTransitionMs', 'start_range', 'end_range'].includes(field) && changed.every(change => change.key === field)
       ? changed.map(change => `${change.id}:${change.key}`).sort().join('|') : undefined };
 }

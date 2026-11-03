@@ -8,7 +8,7 @@ test('source clips split, insert, scrub, connect and retain independent fades th
   expect(await page.locator('.timeline-pin').count()).toBe(0);
   const source=page.getByRole('slider',{name:/Scrub/}).first();await source.focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('Shift+ArrowRight');
   await page.keyboard.press('s');await expect(page.locator('.story-clip')).toHaveCount(2);
-  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.getByRole('button',{name:/Edit crossfade from/}));await expect(page.locator('.story-clip')).toHaveCount(3);
+  await page.getByRole('button',{name:'Add video',exact:true}).dragTo(page.getByRole('button',{name:/Edit crossfade from/}));await expect(page.locator('.story-clip')).toHaveCount(3);
   await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveCount(0);await expect(page.locator('.story-fade,.story-fade-handle')).toHaveCount(0);
   await fitAll(page);
   await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.5');await expect(page.locator('.connection-inspector')).toContainText('Automatic: 75%');await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.25');
@@ -37,7 +37,7 @@ test('templates insert ordinary clips, routing stays editable, and selections ca
 
 test('narrow layout and loading keep graph and inspector controls in place',async({page})=>{
   await page.setViewportSize({width:390,height:844});await open(page);
-  await dragIntoView(page,page.getByRole('button',{name:'Add interstitial',exact:true}),page.locator('.story-scroll'),{x:220,y:90});
+  await dragIntoView(page,page.getByRole('button',{name:'Add video',exact:true}),page.locator('.story-scroll'),{x:220,y:90});
   await expect(page.locator('.story-clip')).toHaveCount(2);
   await fitAll(page);
   const before=await page.locator('.story-toolbar').boundingBox();
@@ -56,14 +56,14 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await page.route('https://example.test/story.mp4',route=>route.fulfill({contentType:'video/mp4',path:'tests/fixtures/interstitial-reference.mp4'}));
   await open(page);await page.setViewportSize({width:390,height:844});
   const source=page.getByRole('slider',{name:/Scrub/}).first();await source.focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
-  await dragIntoView(page,page.getByRole('button',{name:'Add interstitial',exact:true}),page.getByRole('button',{name:/Edit crossfade from/}));await page.getByLabel('Interstitial prompt',{exact:true}).fill('Continue the scene');
+  await dragIntoView(page,page.getByRole('button',{name:'Add video',exact:true}),page.getByRole('button',{name:/Edit crossfade from/}));await page.getByLabel('Video prompt',{exact:true}).fill('Continue the scene');
   await page.getByRole('button',{name:'Auto layout',exact:true}).click();
   await fitAll(page);
   await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.5');
   await page.locator('.story-crossfade').last().click();await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.5');
   await page.locator('.story-clip.type-simple .story-clip-title').click();
   const controls=()=>page.evaluate(()=>{const root=document.querySelector('.interstitial-editor')!.getBoundingClientRect();return ['textarea','.interstitial-time-fields','button[type=submit]','.task-status'].map(s=>{const r=document.querySelector('.interstitial-editor '+s)!.getBoundingClientRect();return {y:r.top-root.top,height:r.height};});});
-  const libraryControls=()=>page.locator('.asset-library').evaluate(el=>{const root=el.getBoundingClientRect();return ['.library-toolbar','.library-filter','.library-preview'].map(selector=>{const rect=el.querySelector(selector)!.getBoundingClientRect();return {y:rect.top-root.top,height:rect.height};});});
+  const libraryControls=()=>page.locator('.asset-library').evaluate(el=>{const root=el.getBoundingClientRect();return ['.library-toolbar','.library-filter','.library-root'].map(selector=>{const rect=el.querySelector(selector)!.getBoundingClientRect();return {y:rect.top-root.top,height:rect.height};});});
   const libraryBefore=await libraryControls();
   const placeholder=page.locator('.story-clip.type-simple .story-unavailable-thumbnail');await expect(placeholder).toHaveAttribute('aria-label','Video unavailable: not generated yet');
   await expect(page.locator('.story-clip.type-simple .video-filmstrip')).toHaveCount(0);const draftHeight=(await page.locator('.story-clip.type-simple').boundingBox())!.height;
@@ -82,7 +82,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   expect(portable.media).toEqual({start:1,duration:2,totalDuration:4});
   await page.locator('.inspector-output>summary').click();await expect(page.getByRole('region',{name:'Video breakdown'})).toContainText('Generated section');
   await page.locator('.inspector-output .interstitial-prompt-details>summary').click();await expect(page.locator('.inspector-output pre')).toHaveText('Continue the scene');
-  await page.getByLabel('Interstitial prompt',{exact:true}).fill('A different next render');await expect(page.locator('.inspector-output pre')).toHaveText('Continue the scene');await expect(page.locator('.inspector-references-panel .interstitial-prompt-details')).toHaveCount(0);
+  await page.getByLabel('Video prompt',{exact:true}).fill('A different next render');await expect(page.locator('.inspector-output pre')).toHaveText('Continue the scene');await expect(page.locator('.inspector-references-panel .interstitial-prompt-details')).toHaveCount(0);
   expect(await libraryControls()).toEqual(libraryBefore);
   const generated=page.locator('.story-clip.type-simple');await expect(generated).toHaveAttribute('data-duration','2');
   await expect(placeholder).toHaveCount(0);await expect(generated.locator('.video-filmstrip img').first()).toBeVisible();expect((await generated.boundingBox())!.height).toBe(draftHeight);
@@ -145,7 +145,7 @@ test('arrows drag onto clip bodies, can be redirected, and cancel without changi
 });
 
 test('clip names accept spaces, Escape cancels, and rename is one undoable edit',async({page})=>{
-  await open(page);await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:220,y:90}});
+  await open(page);await page.getByRole('button',{name:'Add video',exact:true}).dragTo(page.locator('.story-scroll'),{force:true,targetPosition:{x:220,y:90}});
   const input=page.locator('#story-clip-name');await input.fill('');await input.pressSequentially('A quiet new scene');await input.press('Enter');
   await expect(page.locator('.story-clip.type-simple .story-clip-title')).toContainText('A quiet new scene');expect((await saved(page)).interstitials[0].label).toBe('A quiet new scene');
   await input.fill('Discard this name');await input.press('Escape');await expect(input).toHaveValue('A quiet new scene');
@@ -164,12 +164,12 @@ test('the existing sample project opens with two editable interaction groups',as
   await page.screenshot({path:'test-results/story-flow-sample.png',fullPage:true});expect(errors).toEqual([]);
 });
 
-test('cut tool, context menu and S split source and interstitial clips without changing the player layout',async({page})=>{
+test('cut tool, context menu and S split source and video clips without changing the player layout',async({page})=>{
   await open(page);const stage=await page.locator('.video-stage').boundingBox(),timeline=await page.locator('.story-canvas').boundingBox();expect(stage!.y+stage!.height).toBeLessThanOrEqual(timeline!.y+1);
   await page.getByRole('button',{name:'Cut tool',exact:true}).click();await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','true');
   const film=page.locator('.story-filmstrip').first(),box=await film.boundingBox();await page.mouse.click(box!.x+box!.width/2,box!.y+box!.height/2);await expect(page.locator('.story-clip')).toHaveCount(2);
   await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','false');
-  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:240,y:30}});await fitAll(page);
+  await page.getByRole('button',{name:'Add video',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:240,y:30}});await fitAll(page);
   const generated=page.locator('.story-clip.type-simple .story-filmstrip');await generated.scrollIntoViewIfNeeded();await generated.focus();await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');await generated.click({button:'right',position:{x:60,y:20}});await expect(page.getByRole('menu',{name:'Clip actions'})).toBeVisible();await page.getByRole('menuitem',{name:/Cut at playhead/}).click();
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);const project=await saved(page),parts=project.storyFlow.nodes.filter((n:any)=>n.interstitialId);expect(parts[0].trim.outFrame).toBe(24);expect(parts[1].trim.inFrame).toBe(24);expect(parts[0].trim.inFrame).toBe(0);expect(parts[1].trim.outFrame).toBe(144);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
@@ -177,23 +177,23 @@ test('cut tool, context menu and S split source and interstitial clips without c
   await page.screenshot({path:'test-results/story-flow-cut-tool.png',fullPage:true});
 });
 
-test('the side panel drops interstitials and templates onto the canvas and inserts on arrows',async({page})=>{
-  await open(page);const library=page.getByRole('region',{name:'Interstitials and templates'}),canvas=page.locator('.story-scroll');
-  await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(canvas,{targetPosition:{x:40,y:30}});await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+test('the side panel drops videos and templates onto the canvas and inserts on arrows',async({page})=>{
+  await open(page);const library=page.getByRole('region',{name:'Videos and templates'}),canvas=page.locator('.story-scroll');
+  await library.getByRole('button',{name:'Add video',exact:true}).dragTo(canvas,{targetPosition:{x:40,y:30}});await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
   let project=await saved(page);const bounds=(await canvas.boundingBox())!,loop=(await page.locator('.story-clip.type-simple').boundingBox())!;expect(loop.x+loop.width/2-bounds.x).toBeCloseTo(40,0);expect(loop.y+loop.height/2-bounds.y).toBeCloseTo(30,0);
   await library.getByRole('button',{name:'Add template Question & response',exact:true}).dragTo(canvas,{targetPosition:{x:250,y:100}});await expect(page.locator('.story-clip')).toHaveCount(6);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(2);
   await page.getByRole('button',{name:'Auto layout',exact:true}).click();await fitAll(page);
-  const source=page.locator('.story-clip.type-source');await source.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(source);await expect(page.locator('.story-clip')).toHaveCount(3);
+  const source=page.locator('.story-clip.type-source');await source.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add video',exact:true}).dragTo(source);await expect(page.locator('.story-clip')).toHaveCount(3);
   project=await saved(page);const sourceId=project.storyFlow.nodes.find((n:any)=>n.kind==='source').id,next=project.storyFlow.edges.find((e:any)=>e.from===sourceId);expect(next).toBeTruthy();
-  await fitAll(page);const insert=page.getByRole('button',{name:/Edit crossfade from/}).first();await insert.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(insert);
+  await fitAll(page);const insert=page.getByRole('button',{name:/Edit crossfade from/}).first();await insert.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add video',exact:true}).dragTo(insert);
   await expect(page.locator('.story-clip')).toHaveCount(4);project=await saved(page);const inserted=project.storyFlow.nodes.at(-1);expect(project.storyFlow.edges.find((e:any)=>e.from===sourceId).to).toBe(inserted.id);expect(project.storyFlow.edges.find((e:any)=>e.from===inserted.id&&e.event==='next').to).toBe(next.to);
   await page.screenshot({path:'test-results/story-flow-library.png',fullPage:true});
 });
 
 test('multiple videos import as independent clips and retain their assets through undo and archive reopening',async({page,browser})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await open(page);const original=await saved(page),buffer=await readFile('tests/fixtures/interstitial-reference.mp4');
-  await page.getByLabel('Import videos as clips',{exact:true}).setInputFiles([{name:'First extra video.mp4',mimeType:'video/mp4',buffer},{name:'Second extra video.mp4',mimeType:'video/mp4',buffer}]);
+  await page.getByLabel('Import videos onto timeline',{exact:true}).setInputFiles([{name:'First extra video.mp4',mimeType:'video/mp4',buffer},{name:'Second extra video.mp4',mimeType:'video/mp4',buffer}]);
   await expect(page.locator('.story-clip')).toHaveCount(3);let project=await saved(page);
   expect(project.source.assetId).toBe(original.source.assetId);expect(project.storyFlow.entryId).toBe(original.storyFlow.entryId);expect(project.storyFlow.edges).toEqual(original.storyFlow.edges);
   expect(new Set(project.storyFlow.nodes.map((n:any)=>n.source.assetId)).size).toBe(3);expect(project.storyFlow.nodes.slice(1).every((n:any)=>n.kind==='source'&&n.source.duration===4)).toBe(true);
@@ -211,7 +211,7 @@ test('dropping a video on an existing arrow imports a separate clip and a failed
   const dataTransfer=await page.evaluateHandle(bytes=>{const data=new DataTransfer();data.items.add(new File([Uint8Array.from(bytes)],'Dropped video.mp4',{type:'video/mp4'}));return data;},bytes);
   await page.locator('.story-edge-hit').first().dispatchEvent('drop',{dataTransfer,clientX:300,clientY:800});await expect(page.locator('.story-clip')).toHaveCount(3);
   const imported=await saved(page);expect(imported.storyFlow.edges).toEqual(before.storyFlow.edges);expect(imported.storyFlow.nodes.at(-1).name).toBe('Dropped video.mp4');
-  const toolbar=await page.locator('.story-toolbar').boundingBox();await page.getByLabel('Import videos as clips',{exact:true}).setInputFiles([{name:'Valid.mp4',mimeType:'video/mp4',buffer:Buffer.from(bytes)},{name:'Invalid.mp4',mimeType:'video/mp4',buffer:Buffer.from('not video data')}]);
+  const toolbar=await page.locator('.story-toolbar').boundingBox();await page.getByLabel('Import videos onto timeline',{exact:true}).setInputFiles([{name:'Valid.mp4',mimeType:'video/mp4',buffer:Buffer.from(bytes)},{name:'Invalid.mp4',mimeType:'video/mp4',buffer:Buffer.from('not video data')}]);
   await expect(page.locator('.error-banner')).toBeVisible();expect((await saved(page)).storyFlow).toEqual(imported.storyFlow);expect((await page.locator('.story-toolbar').boundingBox())?.y).toBe(toolbar?.y);
 });
 

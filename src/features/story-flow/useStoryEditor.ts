@@ -9,18 +9,24 @@ import { groupClips, copyGroups, setGroupMembers } from './groups';
 import { conditionsFor, normalizeConditions, setBehavior } from './behaviors';
 import type { StoryCondition } from './model';
 import { TIMELINE_FPS } from '../../../shared/constants';
+import { AssetGenerationController } from '../project/AssetGenerationController';
+export type LibrarySelection = { type: 'asset' | 'generation' | 'job'; id: string };
 
 export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],projects:ProjectController,jobs:InterstitialController,player:VideoPlayerController) {
+  const [librarySelection, setLibrarySelection] = useState<LibrarySelection | null>(null);
+  const [assetJobs] = useState(() => new AssetGenerationController(projects));
+  useEffect(() => assetJobs.watch(), [assetJobs]);
   const [selected,setSelection]=useState<string[]>([]),[selectedGroupId,setSelectedGroupId]=useState<string|null>(null),[selectedEdge,setSelectedEdge]=useState<string|null>(null),[connecting,setConnecting]=useState<{from:string;edgeId?:string}|null>(null);
   const [notice,setNotice]=useState(''),[focusRevision,setFocusRevision]=useState(0),[inspectorRevision,setInspectorRevision]=useState(0);
   const activationRevision=projects.getSnapshot().activationRevision;
   const selectedGroup=graph?.groups?.find(g=>g.id===selectedGroupId);
-  const setSelected=(value:string[]|((ids:string[])=>string[]))=>{setSelectedGroupId(null);setSelection(value);};
+  const setSelected=(value:string[]|((ids:string[])=>string[]))=>{setLibrarySelection(null);setSelectedGroupId(null);setSelection(value);};
+  const selectLibrary = (selection: LibrarySelection) => { setLibrarySelection(selection); setSelection([]); setSelectedGroupId(null); setSelectedEdge(null); jobs.select(null); setInspectorRevision(n => n + 1); };
   useEffect(()=>{setSelected([]);setSelectedEdge(null);setConnecting(null);setNotice('');},[activationRevision]);
   const selectConnection=(id:string)=>{setSelectedEdge(id);setSelected([]);jobs.select(null);setInspectorRevision(n=>n+1);};
   useEffect(()=>{setSelection(ids=>ids.filter(id=>graph?.nodes.some(n=>n.id===id)));setSelectedGroupId(id=>graph?.groups?.some(g=>g.id===id)?id:null);setSelectedEdge(id=>graph?.edges.some(e=>e.id===id)?id:null);setConnecting(null);},[graph?.entryId,graph?.nodes.length,graph?.groups?.length,projects.getSnapshot().historyRevision]);
   const change=(next:StoryGraph,added:Interstitial[]=[])=>{player.pause();projects.updateStoryFlow(next,added);};
-  const selectGroup=(id:string,next=graph)=>{const group=next?.groups?.find(g=>g.id===id);if(!group)return;setSelectedGroupId(id);setSelection(group.nodeIds);setSelectedEdge(null);jobs.select(null);setInspectorRevision(n=>n+1);};
+  const selectGroup=(id:string,next=graph)=>{const group=next?.groups?.find(g=>g.id===id);if(!group)return;setLibrarySelection(null);setSelectedGroupId(id);setSelection(group.nodeIds);setSelectedEdge(null);jobs.select(null);setInspectorRevision(n=>n+1);};
   const patchGroup=(id:string,patch:Partial<Pick<StoryGroup,'name'|'color'|'bounds'>>)=>{if(graph)change({...graph,groups:graph.groups?.map(g=>g.id===id?{...g,...patch,name:patch.name?.trim().slice(0,200)||g.name}:g)});};
   const createGroup=(ids:string[],bounds?:GroupBounds,name=`Group ${(graph?.groups?.length??0)+1}`)=>{if(!graph)return;const result=groupClips(graph,ids,name,'blue',bounds);if(!result.group)return;change(result.graph);selectGroup(result.group.id,result.graph);setNotice('Group created. Drag its header to move it. Right-click for group actions.');};
   const groupSelection=(name?:string)=>createGroup(selected,undefined,name);
@@ -48,7 +54,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(connection)edges=[...edges,withReferenceFade({...connection,to:node.id,points:undefined},nodes),withReferenceFade(edge(node.id,connection.to),nodes)];
     let next=normalizeConditions({...graph,entryId:graph.entryId||node.id,nodes,edges});if(fromId&&!connection)next=connect(next,fromId,node.id);
     change(!placement&&(connection||fromId)?autoLayout(next,[...items,item]):next,[item]);selectNew(node.id,!placement);jobs.select(item.id);
-    if(placement)setNotice(connection?'Interstitial inserted into the connection.':fromId?'Interstitial attached to the clip.':'Interstitial placed. Drag its sockets to connect it.');
+    if(placement)setNotice(connection?'Video inserted into the connection.':fromId?'Video attached to the clip.':'Video placed. Drag its sockets to connect it.');
   };
   const patch=(id:string,patch:Partial<StoryNode>)=>{if(graph)change({...graph,nodes:graph.nodes.map(n=>n.id===id?{...n,...patch}:n)});};
   const toggleBehavior=(id:string,behavior:'loop'|'conditional',enabled:boolean)=>{if(graph)change(setBehavior(graph,id,behavior,enabled));};
@@ -105,6 +111,6 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice('Added clip from the library.');}
   };
   return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
-    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player};
+    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,selectLibrary,assetJobs};
 }
 export type StoryEditor=ReturnType<typeof useStoryEditor>;

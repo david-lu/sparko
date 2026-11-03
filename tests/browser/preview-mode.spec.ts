@@ -7,12 +7,12 @@ const geometry = (page: Page) => page.locator('.menubar,.video-stage,.transport,
   const { x, y, width, height } = el.getBoundingClientRect(); return { x, y, width, height };
 }));
 
-test('preview is read-only, preserves the workspace, and seeks through colored interstitials', async ({ page }) => {
+test('preview is read-only, preserves the workspace, and seeks through colored videos', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await openVideo(page); await addBridge(page);
   await page.getByLabel('Clip name', { exact: true }).fill('Preview scene');
-  await page.getByLabel('Interstitial prompt').fill('Keep this prompt');
-  await page.getByLabel('Interstitial prompt').press('Tab');
+  await page.getByLabel('Video prompt').fill('Keep this prompt');
+  await page.getByLabel('Video prompt').press('Tab');
   const before = await readProject(page);
   const camera = await page.locator('.story-scroll').getAttribute('style');
   await preview(page).click();
@@ -39,7 +39,7 @@ test('preview is read-only, preserves the workspace, and seeks through colored i
   expect((await readProject(page)).interstitials).toEqual(before.interstitials);
   await edit(page).click();
   await expect(page.locator('.story-canvas')).toBeVisible();
-  await expect(page.getByLabel('Interstitial prompt')).toHaveValue('Keep this prompt');
+  await expect(page.getByLabel('Video prompt')).toHaveValue('Keep this prompt');
   await expect(page.locator('.story-scroll')).toHaveAttribute('style', camera!);
   await expect(page.locator('.story-clip.selected')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();

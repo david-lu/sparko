@@ -29,8 +29,8 @@ test('library dragging previews the exact zoomed position, preserves the view, a
   const canvas=page.locator('.story-scroll'),source=page.locator('.story-clip.type-source');
   await page.getByRole('button',{name:'Zoom out story',exact:true}).click();await canvas.hover();await page.mouse.wheel(-380,-110);
   const initial=await saved(page),view=await camera(page),sourceRect=await source.boundingBox(),toolbar=await page.locator('.story-toolbar').boundingBox();
-  const simple=page.getByRole('button',{name:'Add interstitial',exact:true});
-  await simple.click();await expect(page.locator('.story-clip')).toHaveCount(1);await expect(page.locator('.story-status')).toContainText('Drag an interstitial');
+  const simple=page.getByRole('button',{name:'Add video',exact:true});
+  await simple.click();await expect(page.locator('.story-clip')).toHaveCount(1);await expect(page.locator('.story-status')).toContainText('Drag a video');
   const bounds=(await canvas.boundingBox())!,x=bounds.x+100,y=bounds.y+45;
   await begin(page,simple,x,y);const ghost=page.locator('.story-drop-preview');await expect(ghost).toHaveCount(1);await centeredAt(ghost,x,y);
   expect(await page.evaluate(()=>(window as any).__nativeDragImage)).toEqual({ready:true,alpha:0});
@@ -50,7 +50,7 @@ test('wire drops attach at the pointer and template drops preserve existing posi
   await open(page);const film=page.locator('.story-filmstrip').first();await film.focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
   await fitAll(page);const initial=await saved(page),view=await camera(page);
   const wire=page.locator('.story-crossfade').first(),rect=(await wire.boundingBox())!,x=rect.x+rect.width/2,y=rect.y-8;
-  await begin(page,page.getByRole('button',{name:'Add interstitial',exact:true}),x,y);await expect(page.locator('.story-status')).toContainText('replace transition and connect both sides');
+  await begin(page,page.getByRole('button',{name:'Add video',exact:true}),x,y);await expect(page.locator('.story-status')).toContainText('replace transition and connect both sides');
   await expect(page.locator('.story-edge.drop-target')).toHaveAttribute('data-edge-id',initial.storyFlow.edges[0].id);
   await expect(page.locator('.story-transition-drop-label')).toHaveText('Replace transition');
   await centeredAt(page.locator('.story-drop-preview'),x,y);await page.mouse.up();const loop=page.locator('.story-clip.type-simple');await expect(loop).toHaveCount(1);await centeredAt(loop,x,y);
@@ -104,7 +104,7 @@ for(const width of [1440,390])test(`template drops replace a highlighted transit
 test('cancelled transition replacements and media drops leave the original connection intact',async({page})=>{
   await open(page);await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');await fitAll(page);
   const initial=await saved(page),rect=(await page.locator('.story-crossfade').first().boundingBox())!,x=rect.x+rect.width/2,y=rect.y+rect.height/2;
-  await begin(page,page.getByRole('button',{name:'Add interstitial',exact:true}),x,y);await expect(page.locator('.story-edge.drop-target')).toHaveCount(1);
+  await begin(page,page.getByRole('button',{name:'Add video',exact:true}),x,y);await expect(page.locator('.story-edge.drop-target')).toHaveCount(1);
   await page.keyboard.press('Escape');await page.mouse.up();await expect(page.locator('.story-edge.drop-target,.story-transition-drop-label,.story-drop-preview')).toHaveCount(0);
   expect((await saved(page)).storyFlow).toEqual(initial.storyFlow);
   await begin(page,page.locator('.library-media button').first(),x,y);await expect(page.locator('.story-status')).toContainText('add a separate clip');
@@ -113,8 +113,8 @@ test('cancelled transition replacements and media drops leave the original conne
 });
 
 test('narrow library drops and saved templates use the same drag placement',async({page})=>{
-  await page.setViewportSize({width:390,height:844});await open(page);await page.getByRole('button',{name:'Collapse Library panel',exact:true}).click();await page.getByRole('button',{name:'Add interstitial',exact:true}).scrollIntoViewIfNeeded();const canvas=page.locator('.story-scroll'),toolbar=await page.locator('.story-toolbar').boundingBox();
-  const bounds=(await canvas.boundingBox())!;await begin(page,page.getByRole('button',{name:'Add interstitial',exact:true}),bounds.x+200,bounds.y+30);await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.setViewportSize({width:390,height:844});await open(page);await page.getByRole('button',{name:'Collapse Library panel',exact:true}).click();await page.getByRole('button',{name:'Add video',exact:true}).scrollIntoViewIfNeeded();const canvas=page.locator('.story-scroll'),toolbar=await page.locator('.story-toolbar').boundingBox();
+  const bounds=(await canvas.boundingBox())!;await begin(page,page.getByRole('button',{name:'Add video',exact:true}),bounds.x+200,bounds.y+30);await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(2);
   await centeredAt(page.locator('.story-clip.type-simple'),bounds.x+200,bounds.y+30);
   expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);
   await saveSelectionAsTemplate(page);await page.getByLabel('Template name',{exact:true}).fill('Saved scene');await page.getByRole('button',{name:'Save template',exact:true}).click();

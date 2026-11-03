@@ -98,7 +98,7 @@ describe('call-response example playback', () => {
     expect(removeAnswer(one, 'incorrect')).toBe(one);
     expect(answerSession(one, previewScene(one, 'wait'), 'B').outcome).toBe('incorrect');
   });
-  it('owns all non-video clips in one stable interstitial as clip types change', () => {
+  it('owns all non-video clips in one stable video as clip types change', () => {
     const { flow } = createTimelineExample('source-asset', 8);
     expect(flow.interstitial).toMatchObject({ kind: 'call-response', label: 'Untitled', time: 3 });
     expect(interstitialScenes(flow).map(scene => scene.id)).toEqual(['call', 'wait', 'correct', 'incorrect']);
@@ -144,7 +144,7 @@ describe('call-response example playback', () => {
     state = advanceSession(flow, state, 47); expect(state.sceneId).toBe('wait');
     state = advanceSession(flow, state, 1); expect(state.sceneId).toBe('incorrect');
   });
-  it('the timeline example uses real asset ranges and linked interstitials', () => {
+  it('the timeline example uses real asset ranges and linked videos', () => {
     const assetId = crypto.randomUUID(), { flow, interstitials } = createTimelineExample(assetId, 8);
     expect(flow.scenes.every(scene => scene.clip.assetId === assetId && scene.clip.outFrame <= 8 * 24)).toBe(true);
     expect(getScene(flow, 'correct').clip.inFrame).not.toBe(getScene(flow, 'incorrect').clip.inFrame);

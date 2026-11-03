@@ -10,8 +10,11 @@ import { addAnalysisRoutes } from './features/video-analysis/routes.js';
 import { addVoiceRoutes } from './features/voice-input/routes.js';
 import { addComfyRoutes } from './features/comfy/routes.js';
 import { addPromptEnhancementRoutes } from './features/interstitials/prompt-enhancement.js';
+import { addAssetGenerationRoutes } from './features/asset-generation/routes.js';
+import { createFalClient, type FalClient } from './features/asset-generation/fal.js';
+import { addImagePromptEnhancementRoutes } from './features/asset-generation/prompt-enhancement.js';
 
-export async function createApp(options: { root?: string; providers?: Providers } = {}) {
+export async function createApp(options: { root?: string; providers?: Providers; fal?: FalClient } = {}) {
   const root = options.root || process.cwd();
   const providers = options.providers || createProviders(process.env);
   const uploadDir = hosted ? path.join(os.tmpdir(), 'sparko-uploads') : path.join(root, '.data', 'uploads');
@@ -19,6 +22,8 @@ export async function createApp(options: { root?: string; providers?: Providers 
   const app = express();
   app.disable('x-powered-by');
   app.use(protectRequests);
+  const fal = options.fal ?? (process.env.SPARKO_TEST_MODE !== '1' && process.env.FAL_KEY ? createFalClient(process.env.FAL_KEY) : undefined);
+  addAssetGenerationRoutes(app, fal);
   app.use(express.json({ limit: '1mb' }));
   addHostingRoutes(app);
   const receive = createUploadReceiver(uploadDir);
@@ -30,7 +35,7 @@ export async function createApp(options: { root?: string; providers?: Providers 
     const info = await stat(defaultPath).catch(() => null);
     const sampleProject = await stat(sampleProjectPath).catch(() => null);
     res.json({ uploadMode: hosted ? 'blob' : 'local', requiresPassword: !!process.env.APP_PASSWORD,
-      providers: providers.configured, models: providers.models,
+      providers: { ...providers.configured, fal: !!fal }, models: providers.models,
       defaultVideo: { name: 'sample.mp4', url: hosted ? remoteDefault || '' : info ? '/media/sample.mp4' : remoteDefault || '', size: info?.size || 0 },
       defaultProject: hosted ? remoteProject ? { url: remoteProject } : null : sampleProject ? { url: '/media/sample.sparko' } : remoteProject ? { url: remoteProject } : null });
   });
@@ -47,6 +52,7 @@ export async function createApp(options: { root?: string; providers?: Providers 
   addAnalysisRoutes(app, providers, receive);
   addVoiceRoutes(app, providers);
   addPromptEnhancementRoutes(app, providers);
+  addImagePromptEnhancementRoutes(app, providers);
   addComfyRoutes(app, providers, receive);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Unknown API route.' }));
   return app;

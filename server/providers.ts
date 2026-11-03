@@ -5,6 +5,7 @@ import { createAnalysisProviders, type AnalysisProviders } from './features/vide
 import { createVoiceProvider, type VoiceProvider } from './features/voice-input/provider.js';
 import { createComfyProvider, type ComfyProvider } from './features/comfy/provider.js';
 import { createPromptEnhancer, type PromptEnhancementProvider } from './features/interstitials/prompt-enhancement.js';
+import { createImagePromptEnhancer, type ImagePromptEnhancementProvider } from './features/asset-generation/prompt-enhancement.js';
 
 export interface Providers extends AnalysisProviders {
   configured: AppStatus['providers'];
@@ -12,6 +13,7 @@ export interface Providers extends AnalysisProviders {
   voice: VoiceProvider;
   comfy?: ComfyProvider;
   enhancePrompt: PromptEnhancementProvider;
+  enhanceImagePrompt: ImagePromptEnhancementProvider;
 }
 
 export function createProviders(env: NodeJS.ProcessEnv): Providers {
@@ -23,5 +25,6 @@ export function createProviders(env: NodeJS.ProcessEnv): Providers {
     voice: createVoiceProvider(clients),
     comfy: createComfyProvider(env),
     enhancePrompt: createPromptEnhancer(clients),
+    enhanceImagePrompt: createImagePromptEnhancer(clients),
   };
 }

@@ -1,3 +1,4 @@
+import { videoAssetReferenceSchema } from '../../../shared/video-references';
 import { INTERSTITIAL } from '../../../shared/constants';
 import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
 import { maskCurveSchema } from '../../../shared/mask-curves';
@@ -45,8 +46,12 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
       ids.add(item.id);
       const phase = ['draft', 'queued', 'rendering', 'loading', 'ready', 'error', 'cancelled'].includes(item.phase) ? item.phase : 'draft';
       const result = readResult(item.result);
-      return [{ id: item.id, label: typeof item.label === 'string' ? item.label.replace(/^Pin (\d+)$/, 'Interstitial $1') : 'Interstitial', time: item.time, kind: item.kind === 'call-response' ? 'call-response' : item.kind === 'regular' ? 'regular' : undefined, groupId: typeof item.groupId === 'string' ? item.groupId : undefined,
+      return [{ id: item.id, label: typeof item.label === 'string' ? item.label.replace(/^Pin (\d+)$/, 'Interstitial $1') : 'Video', time: item.time, kind: item.kind === 'call-response' ? 'call-response' : item.kind === 'regular' ? 'regular' : undefined, groupId: typeof item.groupId === 'string' ? item.groupId : undefined,
         continuity: typeof item.continuity === 'string' ? item.continuity : undefined, dialogue: typeof item.dialogue === 'string' ? item.dialogue : undefined, loopAudio: typeof item.loopAudio === 'boolean' ? item.loopAudio : undefined,
+        useStartVideoAsset: typeof item.useStartVideoAsset === 'boolean' ? item.useStartVideoAsset : undefined,
+        useEndVideoAsset: typeof item.useEndVideoAsset === 'boolean' ? item.useEndVideoAsset : undefined,
+        startVideoAsset: videoAssetReferenceSchema.safeParse(item.startVideoAsset).data,
+        endVideoAsset: videoAssetReferenceSchema.safeParse(item.endVideoAsset).data,
         startReferenceType: referenceTypes.includes(item.startReferenceType) ? item.startReferenceType : undefined,
         endReferenceType: referenceTypes.includes(item.endReferenceType) ? item.endReferenceType : undefined,
         useInputReference: typeof item.useInputReference === 'boolean' ? item.useInputReference : undefined,
