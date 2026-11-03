@@ -7,8 +7,7 @@ import { comfyBridgePlan, validateComfyResolution } from '../../../shared/comfy.
 import { HttpError } from '../../shared/http.js';
 import { ComfyClient } from './client.js';
 import { bridgeWorkflow, type BridgeInput } from './workflow.js';
-import { normalizeMaskInjection, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
-import { vignetteGradientPng } from './vignette.js';
+import { type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { generationProgress, progressSchema } from './progress.js';
 import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 
@@ -32,18 +31,17 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
   const client = new ComfyClient(env, transport);
   const partnerKey = env.COMFY_CLOUD_API_KEY || env.COMFY_API_KEY || '';
   const checks = new Map<string, { promise: Promise<ComfyReadiness>; at: number }>();
-  const check = (maskInjection: MaskInjection = 'standard', resolution: GenerationResolution = 'native', imageReferences = false, imageGuides = false) => {
+  const check = (_legacyMaskInjection: MaskInjection = 'standard', resolution: GenerationResolution = 'native', imageReferences = false, imageGuides = false) => {
     if (!client.configured) return Promise.resolve({ ready: false, message: 'Add COMFY_CLOUD_API_KEY to .env and restart the server.' });
-    const key = `${maskInjection}:${resolution}:${imageReferences}:${imageGuides}`, cached = checks.get(key);
+    const key = `${resolution}:${imageReferences}:${imageGuides}`, cached = checks.get(key);
     if (cached && Date.now() - cached.at < 60_000) return cached.promise;
     const promise = (async () => {
       const nodes = await client.call<Record<string, { input?: { required?: Record<string, unknown[]> } }>>('/api/object_info', { signal: AbortSignal.timeout(15_000) });
-      const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, mode: 'bridge', duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, maskInjection, resolution }, 0, 'preflight-mask', imageReferences || imageGuides ? ['preflight-image'] : []);
+      const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, mode: 'bridge', duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, resolution }, 0, undefined, imageReferences || imageGuides ? ['preflight-image'] : []);
       // The hard mask is also used when transitions or both references are off.
       const missing = [...new Set([...Object.values(graph).map(node => node.class_type), 'MVEx_FrameRangeMask', ...(imageGuides ? ['MiniMaxH3AddGuide'] : [])])].filter(name => !nodes[name]);
       if (missing.length) return { ready: false, message: `Comfy is missing required nodes: ${missing.join(', ')}.` };
       const models = [['UNETLoader', 'unet_name', COMFY_MODELS.diffusion], ['CLIPLoader', 'clip_name', COMFY_MODELS.textEncoder], ['VAELoader', 'vae_name', COMFY_MODELS.videoVae], ['VAELoader', 'vae_name', COMFY_MODELS.audioVae]];
-      if (maskInjection !== 'standard') models.push(['FrameInterpolationModelLoader', 'model_name', COMFY_MODELS.frameInterpolation]);
       if (resolution === '2k') models.push(['MinimaxHailuo03RegenerateNode', 'model', COMFY_MODELS.regeneration]);
       for (const [node, field, model] of models) {
         const definition = nodes[node].input?.required?.[field];
@@ -93,11 +91,10 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
     async submit(file, input, images = []) {
       if (images.length > IMAGE_REFERENCE.maxCount || images.some(image => image.type !== 'image/jpeg' || !image.size || image.size > IMAGE_REFERENCE.maxBytes)) throw new HttpError(400, 'Use up to 9 prepared JPEG image references, each smaller than 1 MB.');
       const imageLoop = input.mode === 'loop' && !input.before && !input.after && input.loopImageGuide !== false && images.length > 0;
-      const maskInjection = !input.before || !input.after ? 'standard' : normalizeMaskInjection(input.maskInjection, input.interpolateMiddle);
       const imageGuides = imageLoop || input.startImageIndex !== undefined || input.endImageIndex !== undefined;
       // Validate image guides before uploading assets or submitting a paid job.
-      bridgeWorkflow('validation-video', input, 0, 'validation-mask', images.map((_, index) => `validation-image-${index}`));
-      const readiness = await check(maskInjection, input.resolution, images.length > 0, imageGuides);
+      bridgeWorkflow('validation-video', input, 0, undefined, images.map((_, index) => `validation-image-${index}`));
+      const readiness = await check('standard', input.resolution, images.length > 0, imageGuides);
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
       const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
       validateComfyResolution(plan,input.resolution);
@@ -108,18 +105,12 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
         const body = new FormData(); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`); body.set('file', file, 'reference.mp4');
         referenceAssetId = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body })).id;
       }
-      let vignetteAssetId: string | undefined;
-      if (maskInjection === 'vignette') {
-        const maskBody = new FormData(); maskBody.set('content_type', 'image/png'); maskBody.set('file_path', `sparko-vignette-${randomUUID()}.png`);
-        maskBody.set('file', new Blob([vignetteGradientPng(input.width, input.height)], { type: 'image/png' }), 'vignette.png');
-        vignetteAssetId = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body: maskBody })).id;
-      }
       const imageAssetIds: string[] = [];
       for (const image of images) {
         const body = new FormData(); body.set('content_type', 'image/jpeg'); body.set('file_path', `sparko-image-${randomUUID()}.jpg`); body.set('file', image, 'reference.jpg');
         imageAssetIds.push(z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body })).id);
       }
-      const workflow = bridgeWorkflow(referenceAssetId, { ...input, maskInjection }, randomInt(0, 2 ** 48 - 1), vignetteAssetId, imageAssetIds);
+      const workflow = bridgeWorkflow(referenceAssetId, input, randomInt(0, 2 ** 48 - 1), undefined, imageAssetIds);
       // Never automatically retry a paid submission after an ambiguous network error.
       const job = jobSchema.parse(await client.call('/api/v2/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },
         // Partner credentials belong in per-job extra_data, never in the saved graph.

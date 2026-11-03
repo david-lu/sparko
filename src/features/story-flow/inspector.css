@@ -74,10 +74,6 @@
 .inspector-status-popover p{margin-top:10px;line-height:1.5;overflow-wrap:anywhere}
 .inspector-status-popover::backdrop{background:#0003}
 .reference-plan{height:18px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.inspector-references-panel .mask-injection-field{display:grid;grid-template-columns:var(--property-label) minmax(0,1fr);align-items:center;gap:4px 6px;margin:4px 0 8px}
-.inspector-references-panel .mask-injection-field>label{margin:0;font-size:11px}
-.inspector-references-panel .mask-injection-trigger{min-height:24px;height:24px;padding:2px 5px;border-radius:3px;font-size:10px}
-.inspector-references-panel .mask-injection-field>.hint{grid-column:1/-1;margin:0;font-size:10px;line-height:1.5}
 .inspector-references-panel .interstitial-prompt-details{margin:8px 0 0}
 .inspector-references-panel .interstitial-option{margin:6px 0;font-size:11px}
 .inspector-source-range{margin:6px 0}

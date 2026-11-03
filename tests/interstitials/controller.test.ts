@@ -58,7 +58,7 @@ describe('interstitial lifecycle', () => {
       generationSettings: { ...submitted, interpolateMiddle: true } }]));
     controller.load('source');
     const restored = controller.getSnapshot().items[0];
-    expect(restored).toMatchObject({ maskInjection: 'uniform', generationSettings: { maskInjection: 'uniform' } });
+    expect(restored).toMatchObject({ maskInjection: 'standard', generationSettings: { maskInjection: 'standard' } });
     expect(restored.interpolateMiddle).toBeUndefined();
     expect(hasUnsubmittedChanges(restored)).toBe(false);
   });
@@ -90,26 +90,24 @@ describe('interstitial lifecycle', () => {
     controller.load('source', [{ ...item, audioMaskTransitionMs: 0 }]);
     expect(controller.getSnapshot().items[0]).toMatchObject({ audioMaskTransitionMs: 0, videoMaskTransitionMs: 750 });
   });
-  it('persists mask edits separately from the last render and other clips', async () => {
+  it.each(['uniform', 'vignette'] as const)('migrates saved %s masks without marking renders as edited or changing other clips', async maskInjection => {
     const item = await readyScene();
     const otherId = controller.add(10, 20).id;
-    controller.edit(item.id, { maskInjection: 'vignette' });
+    controller.edit(item.id, { maskInjection });
     const saved = loadInterstitials('source');
-    expect(saved.find(clip => clip.id === item.id)).toMatchObject({ maskInjection: 'vignette', generationSettings: { maskInjection: 'standard' } });
+    expect(saved.find(clip => clip.id === item.id)).toMatchObject({ maskInjection: 'standard', generationSettings: { maskInjection: 'standard' } });
     expect(saved.find(clip => clip.id === otherId)?.maskInjection).toBe('standard');
     controller.load('source');
-    expect(hasUnsubmittedChanges(controller.getSnapshot().items.find(clip => clip.id === item.id)!)).toBe(true);
-    controller.edit(item.id, { maskInjection: 'standard' });
     expect(hasUnsubmittedChanges(controller.getSnapshot().items.find(clip => clip.id === item.id)!)).toBe(false);
   });
-  it('retains a FILM mask after an extension clip enables both graph references', () => {
+  it('migrates retired masks while retaining an extension clip’s reference choices', () => {
     const id = add();
     controller.edit(id, { method: 'comfy-extend', useInputReference: true, useOutputReference: true, maskInjection: 'vignette' });
     controller.load('source');
-    expect(controller.getSnapshot().items.find(item => item.id === id)).toMatchObject({ maskInjection: 'vignette', useOutputReference: true });
+    expect(controller.getSnapshot().items.find(item => item.id === id)).toMatchObject({ maskInjection: 'standard', useOutputReference: true });
     controller.edit(id, { useOutputReference: false });
     controller.load('source');
-    expect(controller.getSnapshot().items.find(item => item.id === id)?.maskInjection).toBe('standard');
+    expect(controller.getSnapshot().items.find(item => item.id === id)).toMatchObject({ maskInjection: 'standard', useOutputReference: false });
   });
   it('retains the full idle generation while using the finished loop for playback', async () => {
     const id = add(), raw = new Blob(['reference, generated middle, reference'], { type: 'video/mp4' });

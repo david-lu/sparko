@@ -15,16 +15,22 @@ import type { UploadReceiver } from '../../shared/uploads.js';
 import { comfyRequestError } from './errors.js';
 import { parseImageReferences } from './image-references.js';
 import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
+import { maskCurveSchema } from '../../../shared/mask-curves.js';
 
 const frameRange = z.coerce.number().finite().min(COMFY.minContextFrames / TIMELINE_FPS).max(4)
   .refine(value => Math.abs(value * TIMELINE_FPS - Math.round(value * TIMELINE_FPS)) < 1e-6, 'Reference ranges must use whole 24 fps frames.');
 const optionalRange = z.union([frameRange, z.coerce.number().refine(value => value === 0)]);
 const maskTransition = z.coerce.number().int().min(0).max(MASK_TRANSITION.maxMs).optional();
+const maskCurve = z.preprocess(value => {
+  if (typeof value !== 'string' || value.length > 10000) return value;
+  try { return JSON.parse(value); } catch { return value; }
+}, maskCurveSchema.optional());
 const schema = z.object({ before: optionalRange, after: optionalRange,
   mode: z.enum(['bridge', 'extend', 'loop', 'custom']).default('bridge'),
   width: z.coerce.number().int().min(32).max(8192).optional(), height: z.coerce.number().int().min(32).max(8192).optional(),
   maskInjection: z.enum(maskInjections).optional(),
   audioMaskTransitionMs: maskTransition, videoMaskTransitionMs: maskTransition,
+  audioMaskCurve: maskCurve, videoMaskCurve: maskCurve,
   maskTransitionMs: maskTransition, // Accept older clients' shared duration.
   resolution: z.enum(generationResolutions).optional(),
   startImageIndex: z.coerce.number().int().min(0).max(IMAGE_REFERENCE.maxCount - 1).optional(),
@@ -35,8 +41,7 @@ const schema = z.object({ before: optionalRange, after: optionalRange,
   .transform(({ interpolateMiddle, maskTransitionMs, ...value }) => ({ ...value,
     audioMaskTransitionMs: value.audioMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
     videoMaskTransitionMs: value.videoMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
-    maskInjection: normalizeMaskInjection(value.maskInjection, interpolateMiddle === 'true') }))
-  .refine(value => value.maskInjection === 'standard' || value.before > 0 && value.after > 0, 'Interpolation requires both start and end references.');
+    maskInjection: normalizeMaskInjection(value.maskInjection, interpolateMiddle === 'true') }));
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 
 export function addComfyRoutes(app: Express, providers: Providers, receive: UploadReceiver) {

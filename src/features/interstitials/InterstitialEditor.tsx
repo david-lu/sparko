@@ -3,7 +3,7 @@ import { Clapperboard, RotateCcw } from 'lucide-react';
 import { COMFY, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
 import { comfyReferenceRange } from '../../../shared/comfy';
 import type { AppStatus } from '../../../shared/contracts';
-import { clipMaskInjection, minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
+import { minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import type { InterstitialController } from './InterstitialController';
@@ -16,10 +16,11 @@ import { enhancePrompt } from './enhance-prompt';
 import EnhancePromptActions from './EnhancePromptActions';
 import TaskStatus from '../../shared/TaskStatus';
 import { sequenceActive } from '../call-response/sequence';
-import MaskInjectionField from './MaskInjectionField';
 import GenerationFeedback from './GenerationFeedback';
 import ImageReferences from './ImageReferences';
 import { hasNoVideoInput } from './api';
+import MaskCurveEditor from './MaskCurveEditor';
+import { maskCurveSchema } from '../../../shared/mask-curves';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -82,6 +83,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     validateInterstitialDuration(selected.duration, compact ? 'comfy-loop' : method);
     validateMaskTransitionMs(selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Audio mask transition');
     validateMaskTransitionMs(selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Video mask transition');
+    for (const curve of [selected.videoMaskCurve, selected.audioMaskCurve]) if (curve) maskCurveSchema.parse(curve);
     if (selected.prompt.length > 8000) throw new Error('Shorten the prompt to fit this model.');
     if ((hasSource || noVideo) && !dependency?.blocked) {
       const timing = dependency?.reference && referenceTiming(selected, dependency.reference);
@@ -118,13 +120,18 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   </details>;
   const referenceSettings = <>
     {!noVideo && <>
-    <MaskInjectionField key={`mask:${selected.id}`} value={clipMaskInjection(selected)} hasEndReference={method !== 'comfy-extend' && selected.useInputReference !== false}
-      onChange={maskInjection => controller.edit(selected.id, { maskInjection })} />
+    <MaskCurveEditor key={`curves:${selected.id}`} before={comfyPlan?comfyPlan.prefixFrames/TIMELINE_FPS:selected.useInputReference===false?0:selected.start_range}
+      after={comfyPlan?comfyPlan.suffixFrames/TIMELINE_FPS:method==='comfy-extend'||selected.useOutputReference===false?0:selected.end_range}
+      duration={comfyPlan?.insertion.duration??selected.duration} video={selected.videoMaskCurve} audio={selected.audioMaskCurve}
+      videoMs={selected.videoMaskTransitionMs??selected.maskTransitionMs??MASK_TRANSITION.defaultMs}
+      audioMs={selected.audioMaskTransitionMs??selected.maskTransitionMs??MASK_TRANSITION.defaultMs}
+      onChange={patch=>controller.edit(selected.id,patch)}/>
+    <details className="mask-simple-transitions"><summary>Simple transition durations</summary>
     <InterstitialTimeField name="Audio mask transition duration" label="Audio mask transition" unit="ms" value={selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs}
-      min={0} max={MASK_TRANSITION.maxMs} step={50} onChange={audioMaskTransitionMs => controller.edit(selected.id, { audioMaskTransitionMs })} />
+      min={0} max={MASK_TRANSITION.maxMs} step={50} onChange={audioMaskTransitionMs => controller.edit(selected.id, { audioMaskTransitionMs, audioMaskCurve: undefined })} />
     <InterstitialTimeField name="Video mask transition duration" label="Video mask transition" unit="ms" value={selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs}
-      min={0} max={MASK_TRANSITION.maxMs} step={50} onChange={videoMaskTransitionMs => controller.edit(selected.id, { videoMaskTransitionMs })} />
-    <p className="hint">Soft masks stay entirely inside each reference, limited to the available footage. Set either duration to 0 to disable that transition independently.</p>
+      min={0} max={MASK_TRANSITION.maxMs} step={50} onChange={videoMaskTransitionMs => controller.edit(selected.id, { videoMaskTransitionMs, videoMaskCurve: undefined })} />
+    <p className="hint">Changing a duration resets that mask to a simple ramp. Set it to 0 for a hard boundary.</p></details>
     </>}
     {kind === 'idle' && <label className="interstitial-option"><input type="checkbox" checked={!!selected.loopAudio}
       disabled={!!currentResult && !currentResult.fullAssetId && currentResult.reference?.mode === 'loop'}

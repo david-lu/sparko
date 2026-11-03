@@ -7,6 +7,7 @@ import type { MediaInfo } from '../../media/media';
 import { request, sendForm } from '../../shared/api';
 import { referenceImageData } from './image-references';
 import { assets } from '../project/assets';
+import { maskCurveSchema } from '../../../shared/mask-curves';
 
 export const hasNoVideoInput = (item: Interstitial) => item.useInputReference === false && item.useOutputReference === false;
 
@@ -16,6 +17,7 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   const videoMaskTransitionMs = item.videoMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;
   validateMaskTransitionMs(audioMaskTransitionMs, 'Audio mask transition');
   validateMaskTransitionMs(videoMaskTransitionMs, 'Video mask transition');
+  for (const curve of [item.audioMaskCurve, item.videoMaskCurve]) if (curve) maskCurveSchema.parse(curve);
   const query = new URLSearchParams();
   if (item.resolution === '2k') query.set('resolution', '2k');
   if (item.imageReferences?.length) query.set('imageReferences', 'true');
@@ -59,6 +61,8 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   body.set('maskInjection', clipMaskInjection(item));
   body.set('audioMaskTransitionMs', String(audioMaskTransitionMs));
   body.set('videoMaskTransitionMs', String(videoMaskTransitionMs));
+  if (item.audioMaskCurve) body.set('audioMaskCurve', JSON.stringify(item.audioMaskCurve));
+  if (item.videoMaskCurve) body.set('videoMaskCurve', JSON.stringify(item.videoMaskCurve));
   body.set('resolution', item.resolution ?? 'native');
   onProgress('uploading');
   return sendForm<GenerationJob>('/api/comfy/interstitials', body, signal);

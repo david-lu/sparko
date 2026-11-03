@@ -1,5 +1,6 @@
 import { INTERSTITIAL } from '../../../shared/constants';
 import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
+import { maskCurveSchema } from '../../../shared/mask-curves';
 import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
 import { clipMaskInjection, referenceTypes, generationMethods, interstitialSettings, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
 
@@ -17,7 +18,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
   if (method !== undefined && method !== 'fal' && !generationMethods.includes(method as InterstitialSettings['method'] & string)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
-  return interstitialSettings({ ...settings, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
+  return interstitialSettings({ ...settings, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
 }
 
 function readResult(value: unknown): InterstitialResult | undefined {
@@ -53,6 +54,8 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         maskInjection: clipMaskInjection(item),
         audioMaskTransitionMs: normalizeMaskTransitionMs(item.audioMaskTransitionMs ?? item.maskTransitionMs),
         videoMaskTransitionMs: normalizeMaskTransitionMs(item.videoMaskTransitionMs ?? item.maskTransitionMs),
+        audioMaskCurve: maskCurveSchema.safeParse(item.audioMaskCurve).data,
+        videoMaskCurve: maskCurveSchema.safeParse(item.videoMaskCurve).data,
         resolution: normalizeGenerationResolution(item.resolution),
         imageReferences: imageReferencesSchema.safeParse(item.imageReferences).data,
         startImageIndex: imageReferenceIndexSchema.safeParse(item.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(item.endImageIndex).data,

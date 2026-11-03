@@ -7,6 +7,7 @@ import { callResponseSchema } from '../call-response/schema';
 import { storyGraphSchema } from '../story-flow/schema';
 import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
 import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
+import { maskCurveSchema } from '../../../shared/mask-curves';
 
 const MAX_BYTES = 8 * 1024 ** 3;
 const MAX_MANIFEST = 8 * 1024 ** 2;
@@ -31,6 +32,7 @@ const settingsSchema = z.object({
   maskInjection: z.enum(maskInjections).optional(),
   audioMaskTransitionMs: number.int().max(MASK_TRANSITION.maxMs).optional(),
   videoMaskTransitionMs: number.int().max(MASK_TRANSITION.maxMs).optional(),
+  audioMaskCurve: maskCurveSchema.optional(), videoMaskCurve: maskCurveSchema.optional(),
   maskTransitionMs: number.int().max(MASK_TRANSITION.maxMs).optional(),
   start_range: number.max(4), end_range: number.max(4), prompt: text,
   duration: number.min(1).max(INTERSTITIAL.maxDuration).default(INTERSTITIAL.defaultDuration),

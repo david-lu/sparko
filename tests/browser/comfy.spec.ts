@@ -17,7 +17,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
     const form = await new Response(Uint8Array.from(route.request().postDataBuffer()!), { headers: { 'Content-Type': route.request().headers()['content-type'] } }).formData();
     expect(form.get('before')).toBe('1.625'); expect(form.get('after')).toBe('1.625'); expect(form.get('duration')).toBe('6');
     expect(form.get('prompt')).toBe('Continue the motion'); expect((form.get('video') as File).size).toBeGreaterThan(1000);
-    expect(form.get('maskInjection')).toBe(comfySubmissions === 1 ? 'vignette' : 'standard');
+    expect(form.get('maskInjection')).toBe('standard');
     expect(form.get('audioMaskTransitionMs')).toBe(comfySubmissions === 1 ? '250' : '0');
     expect(form.get('videoMaskTransitionMs')).toBe('1000');
     expect(form.has('maskTransitionMs')).toBe(false);
@@ -52,6 +52,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion' })).toHaveCount(0);
   await page.getByLabel('Interstitial prompt').fill('Continue the motion');
   await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
+  await page.getByText('Simple transition durations',{exact:true}).click();
   const audioTransition = page.getByRole('spinbutton', { name: 'Audio mask transition duration', exact: true });
   const videoTransition = page.getByRole('spinbutton', { name: 'Video mask transition duration', exact: true });
   await expect(audioTransition).toHaveValue('500');
@@ -60,11 +61,10 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(videoTransition).toHaveValue('500');
   await videoTransition.fill('1000');
   await expect(audioTransition).toHaveValue('250');
-  const mask = page.getByRole('button', { name: /^Mask injection:/ });
-  await expect(mask).toContainText('Standard generation');
-  await mask.click();
-  await page.getByRole('radio', { name: /FILM \+ vignette mask/ }).click();
-  await expect(mask).toContainText('FILM + vignette');
+  const mask = page.getByRole('button', { name: 'Edit video mask', exact: true });
+  await expect(mask).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Mask injection:/ })).toHaveCount(0);
+  await expect(page.getByText(/FILM \+/)).toHaveCount(0);
   const controls = () => page.locator('.interstitial-editor').evaluate(form => {
     const top=form.getBoundingClientRect().top;
     return ['textarea','.interstitial-time-fields','button[type=submit]','.task-status','input[aria-label="Audio mask transition duration"]','input[aria-label="Video mask transition duration"]'].map(selector=>{
@@ -112,7 +112,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);
   expect((await saved()).requestMethod).toBe('comfy');
-  expect((await saved()).generationSettings.maskInjection).toBe('vignette');
+  expect((await saved()).generationSettings.maskInjection).toBe('standard');
   expect((await saved()).generationSettings).toMatchObject({ audioMaskTransitionMs: 250, videoMaskTransitionMs: 1000 });
   expect(await optionPosition()).toBeCloseTo(optionTop, 0);
   expect(await controls()).toEqual(idleControls);
@@ -121,8 +121,6 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await page.locator('.inspector-output > summary').click();
   const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click(); await download;
   await page.screenshot({ path: `test-results/comfy-interstitial-${detailed ? 'detailed' : 'aggregate'}-${width}.png` });
-  await mask.click();
-  await page.getByRole('radio', { name: /Standard generation/ }).click();
   await audioTransition.fill('0');
   await expect(videoTransition).toHaveValue('1000');
   await expect(page.locator('.interstitial-edited')).toHaveText('Edited');
@@ -138,6 +136,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await fitAll(page);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
   await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
+  await page.getByText('Simple transition durations', { exact: true }).click();
   await expect(audioTransition).toHaveValue('0');
   await expect(videoTransition).toHaveValue('1000');
 });
