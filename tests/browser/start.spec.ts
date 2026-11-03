@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, test, readProject } from './fixtures';
 
 test('starts with an empty project and keeps the player above its timeline', async ({ page }) => {
   let sampleRequests = 0;
@@ -42,13 +42,11 @@ test('opens the bundled sample project with its saved interstitials', async ({ p
   await page.goto('/');
   await page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ }).click();
   await expect(page.locator('.menu-document')).toBeVisible({ timeout: 180_000 });
-  const project = await page.evaluate(async () => {
-    const { readActiveProject } = await import('/src/features/project/database.ts' as string);
-    return readActiveProject();
-  });
+  const project = await readProject(page);
   await expect(page.locator('.menu-document')).toHaveText(project.name);
   expect(project.source.name).toMatch(/\.mp4$/);
-  expect(project.interstitials.filter((item: { phase: string }) => item.phase === 'ready').length).toBeGreaterThan(0);
+  await expect.poll(async () => (await readProject(page))?.interstitials.filter((item: { phase: string }) => item.phase === 'ready').length ?? 0,
+    { timeout: 60_000 }).toBeGreaterThan(0);
 });
 
 test('asks before closing a project with unsaved changes', async ({ page }) => {
