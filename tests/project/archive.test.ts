@@ -56,6 +56,36 @@ describe('portable project archives', () => {
     delete saved.generationSettings!.maskInjection;
     expect(hasUnsubmittedChanges(saved)).toBe(false);
   });
+  it.each([[0, 1000], [250, 0], [1000, 250], [4000, 500]])('preserves audio %i / video %i ms separately from submitted settings', async (audioMaskTransitionMs, videoMaskTransitionMs) => {
+    const snapshot = structuredClone(project), item = snapshot.interstitials[1];
+    item.generationSettings = interstitialSettings(item);
+    Object.assign(item, { audioMaskTransitionMs, videoMaskTransitionMs });
+    const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
+    const saved = restored.project.interstitials[1];
+    expect(saved).toMatchObject({ audioMaskTransitionMs, videoMaskTransitionMs, generationSettings: { audioMaskTransitionMs: 500, videoMaskTransitionMs: 500 } });
+    expect(hasUnsubmittedChanges(saved)).toBe(true);
+    expect(restored.project.interstitials[0]).toMatchObject({ audioMaskTransitionMs: 500, videoMaskTransitionMs: 500 });
+    saved.audioMaskTransitionMs = 500;
+    expect(hasUnsubmittedChanges(saved)).toBe(videoMaskTransitionMs !== 500);
+    saved.videoMaskTransitionMs = 500;
+    expect(hasUnsubmittedChanges(saved)).toBe(false);
+  });
+  it.each([0, 750])('migrates a legacy shared %i ms duration in editable and submitted settings', async maskTransitionMs => {
+    const blob = await packProject(project, media, signal(), progress);
+    const legacy = await rewrite(blob, value => {
+      const item = value.project.interstitials[1];
+      delete item.audioMaskTransitionMs; delete item.videoMaskTransitionMs;
+      item.maskTransitionMs = maskTransitionMs;
+      item.generationSettings = { ...item };
+    });
+    const restored = await unpackProject(legacy, signal(), progress);
+    const item = restored.project.interstitials[1];
+    expect(item).toMatchObject({ audioMaskTransitionMs: maskTransitionMs, videoMaskTransitionMs: maskTransitionMs,
+      generationSettings: { audioMaskTransitionMs: maskTransitionMs, videoMaskTransitionMs: maskTransitionMs } });
+    expect(item.maskTransitionMs).toBeUndefined();
+    expect(item.generationSettings!.maskTransitionMs).toBeUndefined();
+    expect(hasUnsubmittedChanges(item)).toBe(false);
+  });
   it('migrates the old interpolation toggle in editable and submitted archive settings', async () => {
     const blob = await packProject(project, media, signal(), progress);
     const legacy = await rewrite(blob, value => {

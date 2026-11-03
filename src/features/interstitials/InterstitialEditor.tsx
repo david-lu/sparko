@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Clapperboard, RotateCcw } from 'lucide-react';
-import { COMFY, INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
+import { COMFY, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
 import { comfyReferenceRange } from '../../../shared/comfy';
 import type { AppStatus } from '../../../shared/contracts';
-import { clipMaskInjection, minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, type Interstitial } from '../../../shared/interstitials';
+import { clipMaskInjection, minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import type { InterstitialController } from './InterstitialController';
@@ -72,6 +72,8 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   let comfyPlan: ReturnType<typeof comfyReferenceRange>['plan'] | undefined;
   try {
     validateInterstitialDuration(selected.duration, compact ? 'comfy-loop' : method);
+    validateMaskTransitionMs(selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Audio mask transition');
+    validateMaskTransitionMs(selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Video mask transition');
     if (selected.prompt.length > 8000) throw new Error('Shorten the prompt to fit this model.');
     if (info && !dependency?.blocked) {
       const timing = dependency?.reference && referenceTiming(selected, dependency.reference);
@@ -107,6 +109,11 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const advanced = <>
     <MaskInjectionField key={`mask:${selected.id}`} value={clipMaskInjection(selected)} hasEndReference={method !== 'comfy-extend' && selected.useInputReference !== false}
       onChange={maskInjection => controller.edit(selected.id, { maskInjection })} />
+    <InterstitialTimeField name="Audio mask transition duration" label="Audio mask transition" unit="ms" value={selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs}
+      min={0} max={MASK_TRANSITION.maxMs} step={50} onChange={audioMaskTransitionMs => controller.edit(selected.id, { audioMaskTransitionMs })} />
+    <InterstitialTimeField name="Video mask transition duration" label="Video mask transition" unit="ms" value={selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs}
+      min={0} max={MASK_TRANSITION.maxMs} step={50} onChange={videoMaskTransitionMs => controller.edit(selected.id, { videoMaskTransitionMs })} />
+    <p className="hint">Soft masks stay entirely inside each reference, limited to the available footage. Set either duration to 0 to disable that transition independently.</p>
     {kind === 'idle' && <label className="interstitial-option"><input type="checkbox" checked={!!selected.loopAudio}
       disabled={!!currentResult && !currentResult.fullAssetId && currentResult.reference?.mode === 'loop'}
       onChange={event => controller.edit(selected.id, { loopAudio: event.target.checked })} /> Play generated clip audio</label>}

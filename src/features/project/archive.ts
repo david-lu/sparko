@@ -1,7 +1,7 @@
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { z } from 'zod';
 import { generationMethods, generationResolutions, interstitialSettings, maskInjections } from '../../../shared/interstitials';
-import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
+import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
 import { assetIds, type Asset, type Project } from './types';
 import { callResponseSchema } from '../call-response/schema';
 import { storyGraphSchema } from '../story-flow/schema';
@@ -24,6 +24,9 @@ const settingsSchema = z.object({
   continuity: text.optional(), dialogue: text.optional(), loopAudio: z.boolean().optional(),
   interpolateMiddle: z.boolean().optional(),
   maskInjection: z.enum(maskInjections).optional(),
+  audioMaskTransitionMs: number.int().max(MASK_TRANSITION.maxMs).optional(),
+  videoMaskTransitionMs: number.int().max(MASK_TRANSITION.maxMs).optional(),
+  maskTransitionMs: number.int().max(MASK_TRANSITION.maxMs).optional(),
   start_range: number.max(4), end_range: number.max(4), prompt: text,
   duration: number.min(1).max(INTERSTITIAL.maxDuration).default(INTERSTITIAL.defaultDuration),
   enable_prompt_expansion: z.boolean().default(INTERSTITIAL.enablePromptExpansion),
@@ -72,7 +75,7 @@ type Progress = (message: string, fraction: number) => void;
 
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
   const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
-    ...project, interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined,
+    ...project, interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
       generationSettings: item.generationSettings ? interstitialSettings(item.generationSettings) : undefined,
       result: item.result ? { ...item.result, url: `asset:${item.result.assetId}` } : undefined,
       previousResult: item.previousResult ? { ...item.previousResult, url: `asset:${item.previousResult.assetId}` } : undefined,
@@ -144,7 +147,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
       callResponses: project.callResponses?.map(flow => ({ ...flow, scenes: flow.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) })),
       source: { ...project.source, assetId: project.source.assetId?remap.get(project.source.assetId)!:undefined, originalAssetId: project.source.originalAssetId ? remap.get(project.source.originalAssetId)! : undefined },
       subtitle: project.subtitle ? { ...project.subtitle, assetId: remap.get(project.subtitle.assetId)! } : null,
-      interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined,
+      interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
         generationSettings: item.generationSettings ? interstitialSettings(item.generationSettings) : undefined,
         requestReference: remapReference(item.requestReference),
         phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase,

@@ -1,6 +1,6 @@
-import { INTERSTITIAL } from '../../../shared/constants';
+import { INTERSTITIAL, MASK_TRANSITION } from '../../../shared/constants';
 import type { GenerationJob } from '../../../shared/contracts';
-import { clipMaskInjection, type Interstitial } from '../../../shared/interstitials';
+import { clipMaskInjection, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
 import { comfyDimensions, comfyReferenceRange } from '../../../shared/comfy';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
@@ -8,6 +8,10 @@ import { request, sendForm } from '../../shared/api';
 
 export async function generateInterstitial(item: Interstitial, engine: Pick<MediaEngine, 'exportMp4'>, info: MediaInfo, signal: AbortSignal,
   onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void): Promise<GenerationJob> {
+  const audioMaskTransitionMs = item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;
+  const videoMaskTransitionMs = item.videoMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;
+  validateMaskTransitionMs(audioMaskTransitionMs, 'Audio mask transition');
+  validateMaskTransitionMs(videoMaskTransitionMs, 'Video mask transition');
   const readiness = await request<{ ready: boolean; message?: string }>(`/api/comfy/status${item.resolution === '2k' ? '?resolution=2k' : ''}`, { signal });
   if (!readiness.ready) throw new Error(readiness.message || 'Comfy Cloud is not ready.');
   const range = comfyReferenceRange(item, info.duration);
@@ -25,6 +29,8 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   body.set('duration', String(item.duration)); body.set('prompt', item.prompt);
   body.set('mode', range.mode);
   body.set('maskInjection', clipMaskInjection(item));
+  body.set('audioMaskTransitionMs', String(audioMaskTransitionMs));
+  body.set('videoMaskTransitionMs', String(videoMaskTransitionMs));
   body.set('resolution', item.resolution ?? 'native');
   onProgress('uploading');
   return sendForm<GenerationJob>('/api/comfy/interstitials', body, signal);

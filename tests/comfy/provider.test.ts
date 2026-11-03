@@ -3,9 +3,10 @@ import { createComfyProvider } from '../../server/features/comfy/provider';
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
 
 const input = { before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge the scene', width: 960, height: 544, hasAudio: true };
-const catalog = Object.fromEntries(Object.values(bridgeWorkflow('input-asset', input, 0)).map(node => [node.class_type, {}]));
-const interpolationCatalog = Object.fromEntries(Object.values(bridgeWorkflow('input-asset', { ...input, interpolateMiddle: true }, 0)).map(node => [node.class_type, {}]));
-const vignetteCatalog = Object.fromEntries(Object.values(bridgeWorkflow('input-asset', { ...input, maskInjection: 'vignette' }, 0, 'mask-asset')).map(node => [node.class_type, {}]));
+const catalogFor = (graph: ReturnType<typeof bridgeWorkflow>): Record<string, object> => ({ ...Object.fromEntries(Object.values(graph).map(node => [node.class_type, {}])), MVEx_FrameRangeMask: {} });
+const catalog = catalogFor(bridgeWorkflow('input-asset', input, 0));
+const interpolationCatalog = catalogFor(bridgeWorkflow('input-asset', { ...input, interpolateMiddle: true }, 0));
+const vignetteCatalog = catalogFor(bridgeWorkflow('input-asset', { ...input, maskInjection: 'vignette' }, 0, 'mask-asset'));
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const collect = async <T>(stream: AsyncIterable<T>) => { const items: T[] = []; for await (const item of stream) items.push(item); return items; };
 
@@ -18,7 +19,7 @@ describe('Comfy Cloud v2 adapter', () => {
     expect(transport.mock.calls.every(([url])=>String(url).endsWith('/api/object_info'))).toBe(true);
   });
   it('requires the official MiniMax H3 API model and submits regeneration without a community upscaler',async()=>{
-    const highCatalog=Object.fromEntries(Object.values(bridgeWorkflow('asset',{...input,resolution:'2k'},0)).map(node=>[node.class_type,{}]));
+    const highCatalog=catalogFor(bridgeWorkflow('asset',{...input,resolution:'2k'},0));
     const missingModel={...highCatalog,MinimaxHailuo03RegenerateNode:{input:{required:{model:['COMFY_DYNAMICCOMBO_V3',{options:[{key:'Other model',inputs:[]}]}]}}}};
     const missingTransport=vi.fn<typeof fetch>().mockResolvedValue(reply(missingModel));
     await expect(createComfyProvider({COMFY_CLOUD_API_KEY:'secret'},missingTransport).submit(new Blob(),{...input,resolution:'2k'})).rejects.toThrow('MiniMax H3');expect(missingTransport).toHaveBeenCalledTimes(1);
@@ -98,7 +99,7 @@ describe('Comfy Cloud v2 adapter', () => {
     await expect(createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret' }, transport).submit(new Blob(), input)).rejects.toThrow('MVEx_MaskToLatentSpace');
     expect(transport).toHaveBeenCalledTimes(1);
   });
-  it.each(['VHS_LoadVideoFFmpeg', 'GetAudioLatentSize', 'FeatherMask'])('requires %s before uploading or submitting a job', async node => {
+  it.each(['VHS_LoadVideoFFmpeg', 'GetAudioLatentSize', 'FeatherMask', 'CreateFadeMaskAdvanced'])('requires %s before uploading or submitting a job', async node => {
     const legacyCatalog: typeof catalog = { ...catalog, VHS_LoadVideo: {} };
     delete legacyCatalog[node];
     const transport = vi.fn<typeof fetch>().mockResolvedValue(reply(legacyCatalog));

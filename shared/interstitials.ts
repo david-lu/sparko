@@ -1,4 +1,4 @@
-import { INTERSTITIAL } from './constants.js';
+import { INTERSTITIAL, MASK_TRANSITION } from './constants.js';
 import type { GenerationProgress, InsertionRange } from './contracts.js';
 
 export type GenerationMethod = 'comfy' | 'comfy-extend' | 'comfy-loop';
@@ -7,6 +7,10 @@ export const generationResolutions = ['native', '2k'] as const;
 export type GenerationResolution = typeof generationResolutions[number];
 export const normalizeGenerationResolution = (value: unknown): GenerationResolution => value === '2k' ? '2k' : 'native';
 export const normalizeGenerationMethod = (method: unknown): GenerationMethod => generationMethods.includes(method as GenerationMethod) ? method as GenerationMethod : 'comfy';
+export const normalizeMaskTransitionMs = (value: unknown): number => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MASK_TRANSITION.maxMs ? value : MASK_TRANSITION.defaultMs;
+export function validateMaskTransitionMs(value: number, label = 'Mask transition') {
+  if (!Number.isInteger(value) || value < 0 || value > MASK_TRANSITION.maxMs) throw new Error(`${label} must be between 0 and ${MASK_TRANSITION.maxMs} milliseconds.`);
+}
 export const maskInjections = ['standard', 'uniform', 'vignette'] as const;
 export type MaskInjection = typeof maskInjections[number];
 export const normalizeMaskInjection = (value: unknown, legacyInterpolation?: unknown): MaskInjection =>
@@ -43,6 +47,11 @@ export type InterstitialSettings = {
   loopAudio?: boolean;
   /** How the interpolated reference is injected into the next generation. */
   maskInjection?: MaskInjection;
+  /** Independent soft masks inside each connected reference; 0 disables that media's ramp. */
+  audioMaskTransitionMs?: number;
+  videoMaskTransitionMs?: number;
+  /** Read-only migration for projects saved with one shared audio/video duration. */
+  maskTransitionMs?: number;
   /** Read-only migration for projects saved with the original interpolation toggle. */
   interpolateMiddle?: boolean;
 };
@@ -70,8 +79,10 @@ export type Interstitial = InterstitialSettings & {
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
-export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, interpolateMiddle, useInputReference, useOutputReference }: InterstitialSettings): InterstitialSettings =>
+export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference }: InterstitialSettings): InterstitialSettings =>
   ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
+    audioMaskTransitionMs: normalizeMaskTransitionMs(audioMaskTransitionMs ?? maskTransitionMs),
+    videoMaskTransitionMs: normalizeMaskTransitionMs(videoMaskTransitionMs ?? maskTransitionMs),
     ...(useInputReference !== undefined ? { useInputReference } : {}), ...(useOutputReference !== undefined ? { useOutputReference } : {}),
     ...(continuity !== undefined ? { continuity } : {}), ...(dialogue !== undefined ? { dialogue } : {}), ...(loopAudio !== undefined ? { loopAudio } : {}) });
 export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&

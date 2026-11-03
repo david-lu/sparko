@@ -38,7 +38,8 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
     const promise = (async () => {
       const nodes = await client.call<Record<string, { input?: { required?: Record<string, unknown[]> } }>>('/api/object_info', { signal: AbortSignal.timeout(15_000) });
       const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, maskInjection, resolution }, 0, 'preflight-mask');
-      const missing = [...new Set(Object.values(graph).map(node => node.class_type))].filter(name => !nodes[name]);
+      // The hard mask is also used when transitions or both references are off.
+      const missing = [...new Set([...Object.values(graph).map(node => node.class_type), 'MVEx_FrameRangeMask'])].filter(name => !nodes[name]);
       if (missing.length) return { ready: false, message: `Comfy is missing required nodes: ${missing.join(', ')}.` };
       const models = [['UNETLoader', 'unet_name', COMFY_MODELS.diffusion], ['CLIPLoader', 'clip_name', COMFY_MODELS.textEncoder], ['VAELoader', 'vae_name', COMFY_MODELS.videoVae], ['VAELoader', 'vae_name', COMFY_MODELS.audioVae]];
       if (maskInjection !== 'standard') models.push(['FrameInterpolationModelLoader', 'model_name', COMFY_MODELS.frameInterpolation]);
