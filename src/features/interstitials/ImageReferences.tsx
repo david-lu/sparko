@@ -41,7 +41,7 @@ export default function ImageReferences({ value = [], onChange, onBusyChange }: 
       </button>
     </div>
     <input ref={input} type="file" hidden multiple accept="image/png,image/jpeg,image/webp" aria-label="Choose image references" onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void add(files); }} />
-    <p className="hint">Use {'<Picture 1>'}, {'<Picture 2>'}, etc. in your prompt to guide subjects or style. PNG, JPEG or WebP, up to 20 MB each.</p>
+    <p className="hint">Choose a picture for Start or End, or use {'<Picture 1>'}, {'<Picture 2>'}, etc. in your prompt for subjects or style. PNG, JPEG or WebP, up to 20 MB each.</p>
     <ul className="image-reference-list">{value.map((reference, index) => <Thumbnail key={`${reference.assetId}:${index}`} reference={reference} index={index} disabled={busy} onRemove={() => { setError(''); onChange(value.filter((_, i) => i !== index)); }} />)}</ul>
     <div className="image-reference-feedback" role="status" title={error}>{error}</div>
   </div>;

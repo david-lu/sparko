@@ -5,9 +5,33 @@ import { COMFY } from '../../shared/constants';
 import { videoTransitionPoints } from '../../server/features/comfy/mask-transition';
 
 describe('H3 two-sided temporal bridge', () => {
+  it.each(['custom', 'loop'] as const)('generates a %s clip with no video or image references', mode => {
+    const graph = bridgeWorkflow(undefined, { mode, before: 0, after: 0, duration: 6, prompt: 'A drifting cloud', width: 1280, height: 736, hasAudio: false }, 1);
+    expect(graph.conditioning.class_type).toBe('MiniMaxH3ImageToVideo');
+    expect(Object.values(graph).some(node => ['VHS_LoadVideoFFmpeg', 'LoadImage', 'MiniMaxH3AddGuide'].includes(node.class_type))).toBe(false);
+    expect(graph.output).toBeDefined();
+  });
+  it('guides independent endpoints with chosen pictures and supports mixed footage', () => {
+    const input = { mode: 'custom' as const, before: 0, after: 0, duration: 6, prompt: 'Move between poses', width: 960, height: 544, hasAudio: false, startImageIndex: 1, endImageIndex: 0 };
+    const graph = bridgeWorkflow(undefined, input, 1, undefined, ['end', 'start']);
+    expect(graph.guide_start.inputs).toMatchObject({ image: ['reference_image_1', 0], frame_idx: 0 });
+    expect(graph.guide_end.inputs).toMatchObject({ image: ['reference_image_0', 0], frame_idx: -1, positive: ['guide_start', 0] });
+    expect(graph.guider.inputs.conditioning).toEqual(['guide_end', 0]);
+    const mixed = bridgeWorkflow('footage', { ...input, before: 1.625, startImageIndex: undefined }, 1, undefined, ['end']);
+    expect(mixed.before).toBeDefined(); expect(mixed.guide_start).toBeUndefined(); expect(mixed.guide_end).toBeDefined();
+    expect(() => bridgeWorkflow('footage', { ...input, before: 1.625 }, 1, undefined, ['end', 'start'])).toThrow('each endpoint');
+    expect(() => bridgeWorkflow(undefined, input, 1, undefined, ['end'])).toThrow('each endpoint');
+  });
+  it('keeps optional subject images separate from loop endpoint guides', () => {
+    const input = { mode: 'loop' as const, before: 0, after: 0, duration: 6, prompt: 'A drifting cloud', width: 960, height: 544, hasAudio: false, loopImageGuide: false };
+    const free = bridgeWorkflow(undefined, input, 1, undefined, ['style', 'pose']);
+    expect(free.conditioning.class_type).toBe('MiniMaxH3ReferenceToVideo'); expect(free.loop_start).toBeUndefined();
+    const guided = bridgeWorkflow(undefined, { ...input, loopImageGuide: true, startImageIndex: 1, endImageIndex: 1 }, 1, undefined, ['style', 'pose']);
+    expect(guided.loop_start.inputs.image).toEqual(['reference_image_1', 0]); expect(guided.loop_end.inputs.image).toEqual(['reference_image_1', 0]);
+  });
   it('anchors both ends of an image-only loop to Picture 1, keeping other images as references', () => {
     const input = { mode: 'loop' as const, before: 0, after: 0, duration: 6, prompt: 'A gentle looping motion', width: 960, height: 544, hasAudio: false };
-    expect(() => bridgeWorkflow(undefined, input, 1)).toThrow('needs an image reference');
+    expect(bridgeWorkflow(undefined, input, 1).loop_start).toBeUndefined();
     const graph = bridgeWorkflow(undefined, input, 1, undefined, ['pose', 'style']);
     expect(graph.loop_start).toMatchObject({ class_type: 'MiniMaxH3AddGuide', inputs: { image: ['reference_image_0', 0], frame_idx: 0 } });
     expect(graph.loop_end).toMatchObject({ class_type: 'MiniMaxH3AddGuide', inputs: { image: ['reference_image_0', 0], frame_idx: -1, positive: ['loop_start', 0] } });
@@ -73,22 +97,14 @@ describe('H3 two-sided temporal bridge', () => {
       if (Array.isArray(value) && typeof value[0] === 'string') expect(graph[value[0]]).toBeDefined();
     }
   });
-  it.each(['bridge', 'loop'] as const)('combines the vignette with the soft reference transitions for %s', mode => {
-    const input = { mode, before: 1.625, after: 1.625, duration: 7, width: 960, height: 544, prompt: 'Exact prompt', hasAudio: true, maskInjection: 'vignette' as const };
-    expect(() => bridgeWorkflow('asset', input, 123)).toThrow('uploaded gradient');
-    const graph = bridgeWorkflow('asset', input, 123, 'mask-asset');
-    expect(graph.vignette_image.inputs.image).toEqual({ __type: 'core/ASSET', info: { id: 'mask-asset' } });
-    expect(graph.vignette_amplitude.inputs.value).toBe(.05); expect(graph.vignette_floor.inputs.value).toBe(.95);
-    expect(graph.vignette_scaled.inputs).toMatchObject({ destination: ['vignette_gradient', 0], source: ['vignette_amplitude', 0], operation: 'multiply' });
-    expect(graph.vignette_mask.inputs).toMatchObject({ destination: ['vignette_scaled', 0], source: ['vignette_floor', 0], operation: 'add' });
-    expect(graph.middle_mask.inputs).toMatchObject({ width: 960, height: 544, frames: 260, points_string: '0:(0),27:(0),39:(1),221:(1),233:(0),259:(0)' });
-    expect(graph.scale_middle_mask.inputs).toMatchObject({ destination: ['middle_mask', 0], source: ['vignette_mask', 0], operation: 'multiply' });
-    expect(graph.latent_mask.inputs).toMatchObject({ masks: ['scale_middle_mask', 0], spatial_method: 'max', temporal_method: 'max', grow_spatial: 0, grow_temporal: 0 });
-    expect(graph.freeze_video.inputs.mask).toEqual(['latent_mask', 0]);
-    expect(graph.encode_target.inputs.pixels).toEqual(['interpolated_target', 0]);
-    expect(graph.freeze_audio.inputs.start_time).toBe(39 / 24);
-    expect(graph.freeze_audio.inputs.end_time).toBeCloseTo(221 / 24, 10);
-    expect(graph.conditioning.inputs.prompt).toBe('Exact prompt');
+  it.each(['uniform', 'vignette'] as const)('ignores retired %s masks and uses native H3 generation', maskInjection => {
+    const input = { mode: 'bridge' as const, before: 1.625, after: 1.625, duration: 7, width: 960, height: 544, prompt: 'Exact prompt', hasAudio: true };
+    const standard = bridgeWorkflow('asset', input, 123);
+    expect(bridgeWorkflow('asset', { ...input, maskInjection }, 123)).toEqual(standard);
+    expect(bridgeWorkflow('asset', { ...input, interpolateMiddle: true }, 123)).toEqual(standard);
+    expect(standard.place_before.inputs.destination).toEqual(['empty_streams', 0]);
+    expect(standard.latent_mask.inputs.masks).toEqual(['middle_mask', 0]);
+    expect(Object.values(standard).some(node => /Interpolate|Interpolation/.test(node.class_type))).toBe(false);
   });
   it('extends a Call with a soft preceding reference and generates the entire tail', () => {
     const range = comfyReferenceRange({ method: 'comfy-extend', time: 2, start_range: 2, end_range: 2, duration: 6 }, 2);
@@ -205,42 +221,5 @@ describe('H3 two-sided temporal bridge', () => {
     else expect(right).toBe(0);
     if (input.before) expect(left).toBeGreaterThan(0);
     else expect(left).toBe(0);
-  });
-  it.each(['bridge', 'loop'] as const)('seeds %s with motion interpolation at 0.97 while keeping the references and audio masks independent', mode => {
-    const plan = comfyBridgePlan(2, 3, 6, mode);
-    const graph = bridgeWorkflow('asset', { mode, before: 2, after: 3, duration: 6, width: 960, height: 544, prompt: 'Exact prompt', hasAudio: true, interpolateMiddle: true }, 123);
-    expect(graph.last_before.inputs).toEqual({ image: ['before', 0], batch_index: plan.prefixFrames - 1, length: 1 });
-    expect(graph.first_after.inputs).toEqual({ image: ['after', 0], batch_index: 0, length: 1 });
-    expect(graph.boundary_frames.inputs).toEqual({ image1: ['last_before', 0], image2: ['first_after', 0] });
-    expect(graph.interpolation_model.inputs.model_name).toBe('film_net_fp16.safetensors');
-    expect(Object.values(graph).some(node => node.class_type === 'TransitionImagesMulti')).toBe(false);
-    expect(graph.target_prefix.inputs).toEqual({ image1: ['before', 0], image2: ['interpolate_middle', 0] });
-    expect(graph.interpolated_target.inputs).toEqual({ image1: ['target_prefix', 0], image2: ['after', 0] });
-    expect(plan.prefixFrames + plan.middleFrames + plan.suffixFrames).toBe(plan.totalFrames);
-    expect(graph.encode_target.inputs).toEqual({ pixels: ['interpolated_target', 0], vae: ['video_vae', 0] });
-    expect(graph.place_before.inputs.destination).toEqual(['encode_target', 0]);
-    expect(graph.middle_strength.inputs.value).toBe(0.97);
-    expect(graph.scale_middle_mask.inputs).toMatchObject({ destination: ['middle_mask', 0], source: ['middle_strength', 0], operation: 'multiply' });
-    expect(graph.latent_mask.inputs.masks).toEqual(['scale_middle_mask', 0]);
-    expect(graph.freeze_audio.inputs).toMatchObject({ start_time: plan.insertion.start, end_time: plan.insertion.start + plan.insertion.duration, existing_mask: 'replace' });
-    expect(graph.conditioning.inputs.prompt).toBe('Exact prompt');
-  });
-  it.each([2, 7, 11.5])('fits motion interpolation to the exact interior frame count for %s seconds', duration => {
-    const mode = duration < 5 ? 'loop' : 'bridge';
-    const plan = comfyBridgePlan(1.625, 1.625, duration, mode);
-    const graph = bridgeWorkflow('asset', { mode, before: 1.625, after: 1.625, duration, width: 960, height: 544, prompt: 'Exact', hasAudio: false, interpolateMiddle: true }, 123);
-    let intervals = 1, previous = ['boundary_frames', 0];
-    for (const [id, node] of Object.entries(graph).filter(([, node]) => node.class_type === 'FrameInterpolate')) {
-      const multiplier = Number(node.inputs.multiplier);
-      expect(multiplier).toBeGreaterThanOrEqual(2); expect(multiplier).toBeLessThanOrEqual(16);
-      expect(node.inputs.images).toEqual(previous);
-      intervals *= multiplier; previous = [id, 0];
-    }
-    expect(graph.interpolate_middle.inputs.image).toEqual(previous);
-    const indexes = String(graph.interpolate_middle.inputs.indexes).split(',').map(Number);
-    expect(indexes).toHaveLength(plan.middleFrames);
-    expect(new Set(indexes).size).toBe(plan.middleFrames);
-    expect(indexes[0]).toBeGreaterThan(0); expect(indexes.at(-1)).toBeLessThan(intervals);
-    indexes.forEach((index, i) => expect(Math.abs(index / intervals - (i + 1) / (plan.middleFrames + 1))).toBeLessThanOrEqual(.5 / intervals + 1e-9));
   });
 });

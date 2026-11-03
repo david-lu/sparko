@@ -45,7 +45,7 @@ test('unavailable 2K capability fails before submission and keeps the draft edit
 
 test('short clips explain the official 2K minimum before generation and remain available in Native',{tag:'@generation'},async({page})=>{
   let submitted=0;await page.route('**/api/comfy/interstitials',route=>{submitted++;return route.abort();});await open(page);
-  await page.getByRole('checkbox',{name:/^Use (start|input) reference$/}).uncheck();await page.getByLabel('Duration',{exact:true}).fill('2');await page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true}).check();
+  for(const name of ['Start reference','End reference']) await page.getByRole('group',{name,exact:true}).getByRole('button',{name:'None',exact:true}).click();await page.getByLabel('Duration',{exact:true}).fill('2');await page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true}).check();
   await expect(page.getByRole('button',{name:'Generate',exact:true})).toBeDisabled();await expect(page.locator('.task-status')).toContainText('4.46 seconds');expect(submitted).toBe(0);
   await page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true}).uncheck();await expect(page.getByRole('button',{name:'Generate',exact:true})).toBeEnabled();
 });

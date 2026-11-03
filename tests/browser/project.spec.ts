@@ -27,7 +27,8 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect.poll(async () => (await activeProject(page)).interstitials.filter((item: any) => item.phase === 'ready').length, { timeout: 60_000 }).toBe(1);
   await addDraft(page);
-  await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).check();
+  await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
   await page.getByLabel('Interstitial prompt').fill('Unfinished draft');
   await page.getByRole('textbox', { name: 'Clip name', exact: true }).fill('Unfinished draft');
   await page.getByRole('textbox', { name: 'Clip name', exact: true }).press('Enter');
@@ -77,13 +78,16 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
       scene: [...new Uint8Array(await (await readAsset(result.assetId)).blob.arrayBuffer())],
       subtitle: await (await readAsset(project.subtitle.assetId)).blob.text() };
   }, project);
-  const sourceBytes = await page.evaluate(async () => {
+  const originalBytes = await page.evaluate(async () => {
     const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
-    return [...new Uint8Array(await (await readAsset((await readActiveProject()).source.assetId)).blob.arrayBuffer())];
+    const project = await readActiveProject(), result = project.interstitials.find((item: any) => item.result).result;
+    return { source: [...new Uint8Array(await (await readAsset(project.source.assetId)).blob.arrayBuffer())],
+      scene: [...new Uint8Array(await (await readAsset(result.assetId)).blob.arrayBuffer())] };
   });
-  expect(stored.source).toEqual(sourceBytes);
+  expect(stored.source).toEqual(originalBytes.source);
   expect(Buffer.from(stored.source)).toEqual(videoBytes);
-  expect(stored.originalAssetId).toBeUndefined(); expect(Buffer.from(stored.scene)).toEqual(videoBytes);
+  // Generated assets include provenance metadata; archives preserve those exact bytes.
+  expect(stored.originalAssetId).toBeUndefined(); expect(stored.scene).toEqual(originalBytes.scene);
   expect(stored.subtitle).toContain('Embedded dialogue');
   expect(project.analysis).toMatchObject({ provider: 'gemini', instructions: 'Saved focus', result: { description: 'Saved description' } });
   await restored.evaluate(() => {
@@ -114,7 +118,7 @@ test('chooses a video, then opens and deletes an explicitly saved project', asyn
       (await navigator.storage.getDirectory()).getFileHandle(suggestedName, { create: true }) });
   });
   await addDraft(page);
-  await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).check();
+  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
   await page.getByLabel('Interstitial prompt').fill('Saved draft');
   await page.getByText('File', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Save project' }).click();

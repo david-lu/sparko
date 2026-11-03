@@ -1,0 +1,76 @@
+.mask-curve-control{display:grid;gap:8px;margin:10px 0}
+.mask-curve-preview{display:block;width:100%;min-width:0;padding:9px 10px 7px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--text);text-align:left;cursor:pointer}
+.mask-curve-preview:hover{border-color:var(--line-strong);background:var(--hover)}
+.mask-curve-preview-heading{display:flex;align-items:center;gap:6px;font-size:11px}
+.mask-curve-preview-heading>span{margin-left:auto;color:var(--muted);font-size:10px}
+.mask-curve-preview svg{display:block;width:100%;height:48px;margin:6px 0;overflow:visible}
+.mask-curve-preview-heading svg{display:inline-block;width:13px;height:13px;margin:0}
+.mask-curve-legend{display:flex;justify-content:space-between;gap:8px;font-size:9px;color:var(--muted)}
+.mask-simple-transitions{font-size:10px;margin:8px 0}
+.mask-simple-transitions>summary{padding:5px 0;color:var(--text-secondary);cursor:pointer}
+.mask-simple-transitions>.hint{font-size:10px}
+.mask-graph-editor{width:min(880px,100%);max-height:calc(100dvh - 32px);overflow:auto;border:1px solid #55524d;border-radius:9px;background:#252422;color:#e7e5e1;box-shadow:0 24px 80px #0008;isolation:isolate}
+.mask-editor-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:19px 22px 15px;border-bottom:1px solid #ffffff12}
+.mask-editor-header .eyebrow{font-size:9px;letter-spacing:.14em;color:#aaa7a1}
+.mask-editor-header h2{margin:6px 0 0;font-size:18px;line-height:1.3;font-weight:600}
+.mask-editor-header .icon-button{flex:none;color:#aaa7a1}
+.mask-editor-toolbar{display:flex;align-items:center;gap:12px;min-height:48px;padding:8px 14px;background:#2b2a28;border-bottom:1px solid #ffffff12}
+.mask-editor-history{display:flex;gap:2px}
+.mask-editor-toolbar .icon-button{width:27px;height:26px;min-height:26px;padding:5px;color:#d1cec8}
+.mask-graph-editor button:disabled{opacity:.35;cursor:default}
+.mask-add-key{display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid #ffffff20;border-radius:4px;background:#353431;color:#e7e5e1;font-size:11px;white-space:nowrap}
+.mask-editor-time{margin-left:auto;font:12px var(--mono);font-variant-numeric:tabular-nums;color:#f1eee9;white-space:nowrap}
+.mask-editor-time small{margin-left:8px;font:9px var(--mono);color:#99958e}
+.mask-editor-views{display:flex;margin-left:6px;border:1px solid #ffffff20;border-radius:4px;overflow:hidden}
+.mask-editor-views button{padding:5px 10px;background:transparent;color:#a9a59e;font-size:10px}
+.mask-editor-views button+button{border-left:1px solid #ffffff15}
+.mask-editor-views button[aria-pressed=true]{background:#494641;color:#fff}
+.mask-editor-workspace{background:#1c1c1b;padding:6px 12px 4px 4px}
+.mask-editor-graph{min-width:0}
+.mask-editor-graph svg{display:block;width:100%;height:290px;touch-action:none;user-select:none}
+.mask-plot-background{fill:#212120}
+.mask-generated-region{fill:#ffffff06}
+.mask-grid-line{stroke:#ffffff0c;stroke-width:1;vector-effect:non-scaling-stroke;pointer-events:none}
+.mask-reference-boundary{stroke:#ffffff24;stroke-dasharray:3 4;pointer-events:none}
+.mask-curve-line{fill:none;stroke:#d2cfca;stroke-width:1.7;vector-effect:non-scaling-stroke;pointer-events:none}
+.mask-time-indicator{stroke:#b5b1aa;stroke-width:1;stroke-dasharray:2 4;opacity:.6;pointer-events:none}
+.mask-axis-label{fill:#92908b;font:10px var(--mono);pointer-events:none}
+.mask-region-label{fill:#9f9b94;font:9px var(--sans, sans-serif);letter-spacing:.12em;pointer-events:none}
+.mask-keyframe-hit,.mask-tangent-hit{fill:transparent;stroke:none;cursor:grab;outline:none}
+.mask-keyframe-diamond{fill:#353431;stroke:#d2cfca;stroke-width:1.2;pointer-events:none}
+.mask-keyframe[data-selected=true] .mask-keyframe-diamond{fill:#fff;stroke:#fff}
+.mask-keyframe:has(.mask-keyframe-hit:focus-visible) .mask-keyframe-diamond{stroke-width:3}
+.mask-tangent{stroke:#a8a49d;stroke-width:1;pointer-events:none}
+.mask-tangent-dot{fill:#1c1c1b;stroke:#d2cfca;pointer-events:none}
+.mask-keyframe-properties{display:grid;grid-template-columns:minmax(160px,1fr) 110px 125px auto;align-items:center;gap:16px;min-height:80px;padding:14px 22px;border-top:1px solid #ffffff12;border-bottom:1px solid #ffffff12}
+.mask-selection-label{display:flex;flex-direction:column;gap:6px;min-width:0}
+.mask-selection-label>span{font-size:8px;letter-spacing:.12em;color:#99958e}
+.mask-selection-label strong{font-size:11px;font-weight:500}
+.mask-keyframe-properties label{display:flex;flex-direction:column;gap:5px;font-size:10px;color:#aaa7a1}
+.mask-keyframe-properties label>span{display:flex;align-items:center;gap:6px;font-size:10px;color:#aaa7a1}
+.mask-keyframe-properties input{width:100%;min-width:0;height:28px;padding:4px 6px;border:1px solid #ffffff18;border-radius:3px;background:#1b1b1a;color:#eeeae3;font:11px var(--mono)}
+.mask-keyframe-properties input:disabled{opacity:.4}
+.mask-delete-key{padding:7px 0;background:transparent;color:#c7c2b9;font-size:10px;white-space:nowrap}
+.mask-curve-options{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 22px}
+.mask-curve-options label{display:flex;align-items:center;gap:12px;color:#aaa7a1;font-size:11px}
+.mask-curve-options select{padding:5px 28px 5px 8px;border:1px solid #ffffff20;border-radius:4px;background:#30302d;color:#eeeae3;font-size:11px}
+.mask-curve-options>button{display:flex;align-items:center;gap:6px;background:transparent;color:#aaa7a1;font-size:10px}
+.mask-editor-help{margin:0;padding:0 22px 16px;font-size:10px;line-height:1.6;color:#96928b}
+.mask-editor-footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:13px 22px;border-top:1px solid #ffffff12;background:#2b2a28}
+.mask-editor-footer>span{margin-right:auto;font-size:10px;color:#99958e}
+.mask-editor-footer .button{min-height:29px;font-size:11px;padding:6px 12px}
+@media(max-width:620px){
+  .mask-editor-header{padding:15px}
+  .mask-editor-toolbar{flex-wrap:wrap;gap:8px;padding:8px 12px}
+  .mask-editor-time{font-size:11px}
+  .mask-editor-time small{display:none}
+  .mask-editor-views{margin-left:auto}
+  .mask-keyframe-properties{grid-template-columns:1fr 1fr;gap:12px;padding:14px 15px;min-height:140px}
+  .mask-selection-label{grid-column:1;grid-row:1}
+  .mask-delete-key{grid-column:2;grid-row:1;text-align:right}
+  .mask-editor-footer{flex-wrap:wrap;padding:12px 15px}
+  .mask-editor-footer>span{width:100%;margin:0 0 3px}
+  .mask-curve-options{padding:12px 15px;gap:8px}
+  .mask-curve-options label{gap:8px}
+  .mask-editor-help{padding:0 15px 12px}
+}

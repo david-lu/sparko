@@ -34,6 +34,7 @@ const classes: Record<string, string> = {
   FrameInterpolate: 'Interpolating reference motion',
 };
 export const comfyStage = (node?: string | null, nodeClass?: string | null) => node?.startsWith('reference_image_') ? 'Reading image references'
+  : node?.startsWith('audio_curve_') ? 'Preparing audio mask'
   : nodeClass === 'MiniMaxH3ReferenceToVideo' ? 'Encoding prompt and image references' : stages[node ?? ''] || classes[nodeClass ?? ''] || 'Generating scene';
 
 /** Progress within the current stage, not completion of the whole render.

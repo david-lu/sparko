@@ -14,13 +14,14 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
     const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: true, comfy: true, gemini: false } } });
   });
   await page.goto('/'); await page.getByRole('button', { name: /^New project/ }).click(); await addDraft(page);
-  await page.getByRole('checkbox', { name: 'Use start reference', exact: true }).uncheck();
-  await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).uncheck();
+  await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'None', exact: true }).click();
+  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'None', exact: true }).click();
   if (loop) {
     await page.getByRole('checkbox', { name: 'Loop', exact: true }).check();
-    await expect(page.getByLabel('Loop reference source')).toHaveValue('image');
-    await expect(page.getByRole('checkbox', { name: 'Use start reference', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('checkbox', { name: 'Use end reference', exact: true })).toHaveCount(0);
+    await page.getByRole('group', { name: 'Loop reference', exact: true }).getByRole('button', { name: 'Image', exact: true }).click();
+    await expect(page.getByRole('group', { name: 'Loop reference', exact: true }).getByRole('button', { name: 'Image', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('group', { name: 'Start reference', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('group', { name: 'End reference', exact: true })).toHaveCount(0);
     const beforeHelp = await controls(page);
     await page.getByRole('button', { name: 'About loop references', exact: true }).click();
     const help = page.getByRole('dialog', { name: 'Loop reference help' });
@@ -29,6 +30,7 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
     const box = await help.boundingBox(); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x + box!.width).toBeLessThanOrEqual(width);
     await page.keyboard.press('Escape'); await expect(help).toBeHidden(); expect(await controls(page)).toEqual(beforeHelp);
   }
+  if (!loop) for (const side of ['Start', 'End']) await page.getByRole('group', { name: `${side} reference`, exact: true }).getByRole('button', { name: 'Image', exact: true }).click();
   const prompt = page.getByLabel('Interstitial prompt', { exact: true }); await prompt.fill('Animate the subject in <Picture 1> using the colors of <Picture 2>.');
   const pngs = await page.evaluate(() => ['red', 'blue'].map(color => {
     const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 192;
@@ -46,6 +48,7 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
   await expect(page.locator('.image-reference-list img')).toHaveCount(2); expect(await controls(page)).toEqual(before);
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(page.locator('.image-reference-list img')).toHaveCount(0);
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(page.locator('.image-reference-list img')).toHaveCount(2);
+  if (!loop) await page.getByLabel('End reference image', { exact: true }).selectOption('1');
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
 
   let finishEnhancement!: () => void, enhancedRequests = 0;
@@ -54,7 +57,7 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
   await page.route('**/api/interstitials/enhance-prompt', async route => {
     const body = route.request().postDataJSON(); enhancedRequests++;
     if (loop) expect(body.kind).toBe('idle');
-    expect(body.referenceFrames).toEqual([]); expect(body.imageReferences).toHaveLength(2);
+    expect(body.imageGuides).toEqual({ start: 0, end: loop ? 0 : 1 }); expect(body.referenceFrames).toEqual([]); expect(body.imageReferences).toHaveLength(2);
     expect(body.imageReferences[0]).not.toBe(body.imageReferences[1]);
     for (const image of body.imageReferences) { expect(image).toMatch(/^data:image\/jpeg;base64,/); expect(image.length).toBeLessThanOrEqual(32_000); }
     await enhancing; await route.fulfill({ json: { prompt: enhanced, model: 'test' } });
@@ -72,6 +75,7 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
     const body = await new Response(Uint8Array.from(route.request().postDataBuffer()!), { headers: { 'Content-Type': route.request().headers()['content-type'] } }).formData();
     expect(JSON.parse(String(body.get('imageReferences')))).toHaveLength(2); expect(body.has('video')).toBe(false);
     expect(body.get('width')).toBe('320'); expect(body.get('height')).toBe('192'); expect(body.get('before')).toBe('0'); expect(body.get('after')).toBe('0');
+    expect(body.get('startImageIndex')).toBe('0'); expect(body.get('endImageIndex')).toBe(loop ? '0' : '1');
     expect(body.get('prompt')).toBe(enhanced); submitted++;
     expect(body.get('mode')).toBe(loop ? 'loop' : 'custom');
     await route.fulfill({ status: 202, json: { requestId: 'image-reference-job', status: 'IN_QUEUE', insertion: { start: 0, duration: 4, totalDuration: 4 } } });
@@ -98,9 +102,9 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
   expect((await readProject(page))!.interstitials[0].generationSettings!.imageReferences).toHaveLength(2);
   if (loop) {
     expect((await readProject(page))!.interstitials[0].result.reference).toEqual({ mode: 'loop' });
-    await expect(page.getByLabel('Loop reference source')).toHaveValue('image');
+    await expect(page.getByRole('group', { name: 'Loop reference', exact: true }).getByRole('button', { name: 'Image', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await page.getByRole('checkbox', { name: 'Loop', exact: true }).uncheck();
-    await expect(page.getByRole('checkbox', { name: 'Use end reference', exact: true })).not.toBeChecked();
+    await expect(page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'None', exact: true })).toHaveAttribute('aria-pressed', 'true');
   }
   expect(errors).toEqual([]);
 });
@@ -109,7 +113,7 @@ test('changing images cancels enhancement and ignores its late response', async 
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: true, comfy: true, gemini: false } } }); });
   await page.goto('/'); await page.getByRole('button', { name: /^New project/ }).click(); await addDraft(page);
   const prompt = page.getByLabel('Interstitial prompt', { exact: true }); await prompt.fill('Use <Picture 1> for the subject.');
-  await page.getByRole('checkbox', { name: 'Use start reference', exact: true }).uncheck();
+  await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'None', exact: true }).click();
   await page.getByLabel('Choose image references', { exact: true }).setInputFiles('src/app/tutorial/images/save.png');
   await expect(page.locator('.image-reference-list img')).toHaveCount(1);
   let finish!: () => void, requests = 0; const gate = new Promise<void>(resolve => { finish = resolve; });

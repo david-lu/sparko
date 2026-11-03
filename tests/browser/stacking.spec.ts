@@ -101,9 +101,15 @@ for (const width of [1440, 390]) {
     await page.getByRole('button', { name: 'Add interstitial', exact: true }).dragTo(page.locator('.story-scroll'), { targetPosition: { x: 90, y: 60 } });
     await page.getByRole('spinbutton', { name: 'Duration', exact: true }).click();
     await expectOnTop(page.locator('.interstitial-time-popover')); await page.keyboard.press('Escape');
-    await page.locator('.inspector-advanced>summary').click();
-    await page.getByRole('button', { name: /^Mask injection:/ }).click();
-    await expectOnTop(page.locator('.mask-injection-popover')); await page.keyboard.press('Escape');
+    await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
+    await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
+    for (const channel of ['video', 'audio']) {
+      await page.getByRole('button', { name: `Edit ${channel} mask`, exact: true }).click();
+      const editor = page.getByRole('dialog', { name: `${channel === 'video' ? 'Video' : 'Audio'} mask editor`, exact: true });
+      await expectOnTop(editor.locator('.mask-graph-editor'));
+      expect(await editor.evaluate(el => el.matches(':modal'))).toBe(true);
+      await page.keyboard.press('Escape'); await expect(editor).toHaveCount(0);
+    }
     await page.getByRole('button', { name: 'Generation details', exact: true }).click();
     await expectOnTop(page.locator('.inspector-status-popover:popover-open')); await page.keyboard.press('Escape');
     await saveSelectionAsTemplate(page);

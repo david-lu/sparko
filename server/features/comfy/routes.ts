@@ -14,25 +14,34 @@ import type { Providers } from '../../providers.js';
 import type { UploadReceiver } from '../../shared/uploads.js';
 import { comfyRequestError } from './errors.js';
 import { parseImageReferences } from './image-references.js';
+import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
+import { maskCurveSchema } from '../../../shared/mask-curves.js';
 
 const frameRange = z.coerce.number().finite().min(COMFY.minContextFrames / TIMELINE_FPS).max(4)
   .refine(value => Math.abs(value * TIMELINE_FPS - Math.round(value * TIMELINE_FPS)) < 1e-6, 'Reference ranges must use whole 24 fps frames.');
 const optionalRange = z.union([frameRange, z.coerce.number().refine(value => value === 0)]);
 const maskTransition = z.coerce.number().int().min(0).max(MASK_TRANSITION.maxMs).optional();
+const maskCurve = z.preprocess(value => {
+  if (typeof value !== 'string' || value.length > 10000) return value;
+  try { return JSON.parse(value); } catch { return value; }
+}, maskCurveSchema.optional());
 const schema = z.object({ before: optionalRange, after: optionalRange,
   mode: z.enum(['bridge', 'extend', 'loop', 'custom']).default('bridge'),
   width: z.coerce.number().int().min(32).max(8192).optional(), height: z.coerce.number().int().min(32).max(8192).optional(),
   maskInjection: z.enum(maskInjections).optional(),
   audioMaskTransitionMs: maskTransition, videoMaskTransitionMs: maskTransition,
+  audioMaskCurve: maskCurve, videoMaskCurve: maskCurve,
   maskTransitionMs: maskTransition, // Accept older clients' shared duration.
   resolution: z.enum(generationResolutions).optional(),
+  startImageIndex: z.coerce.number().int().min(0).max(IMAGE_REFERENCE.maxCount - 1).optional(),
+  endImageIndex: z.coerce.number().int().min(0).max(IMAGE_REFERENCE.maxCount - 1).optional(),
+  loopImageGuide: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
   interpolateMiddle: z.enum(['true', 'false']).optional(),
   duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().min(1).max(8000).refine(value => !!value.trim(), 'Add a prompt before generating.') })
   .transform(({ interpolateMiddle, maskTransitionMs, ...value }) => ({ ...value,
     audioMaskTransitionMs: value.audioMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
     videoMaskTransitionMs: value.videoMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
-    maskInjection: normalizeMaskInjection(value.maskInjection, interpolateMiddle === 'true') }))
-  .refine(value => value.maskInjection === 'standard' || value.before > 0 && value.after > 0, 'Interpolation requires both start and end references.');
+    maskInjection: normalizeMaskInjection(value.maskInjection, interpolateMiddle === 'true') }));
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 
 export function addComfyRoutes(app: Express, providers: Providers, receive: UploadReceiver) {
@@ -42,13 +51,18 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     const resolution = z.enum(generationResolutions).optional().parse(req.query.resolution);
     const images = z.enum(['true', 'false']).optional().parse(req.query.imageReferences) === 'true';
     const imageLoop = z.enum(['true', 'false']).optional().parse(req.query.imageLoop) === 'true';
-    res.json(await provider().check('standard', resolution, ...(imageLoop ? [true, true] as const : images ? [true] as const : [])));
+    const imageGuides = imageLoop || z.enum(['true', 'false']).optional().parse(req.query.imageGuides) === 'true';
+    res.json(await provider().check('standard', resolution, ...(imageGuides ? [true, true] as const : images ? [true] as const : [])));
   });
   app.post('/api/comfy/interstitials', authenticate, requireComfy, ...receive('video'), async (req, res) => {
     const parsed = schema.parse(req.body);
     const images = parseImageReferences(req.body.imageReferences);
     const settings = parsed;
-    if (settings.mode === 'loop' && !settings.before && !settings.after && !images.length) throw new HttpError(400, 'Choose an image as the shared loop reference.');
+    for (const [index, footage] of [[settings.startImageIndex, settings.before], [settings.endImageIndex, settings.after]]) {
+      if (index !== undefined && (!images[index] || footage)) throw new HttpError(400, 'Choose an uploaded image or video footage for each endpoint.');
+    }
+    if (settings.mode === 'loop' && settings.startImageIndex !== undefined && settings.endImageIndex !== undefined && settings.startImageIndex !== settings.endImageIndex) throw new HttpError(400, 'A loop uses the same image at both ends.');
+    if (settings.loopImageGuide && !images.length) throw new HttpError(400, 'Choose an image as the shared loop reference.');
     let plan;
     try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); validateComfyResolution(plan,settings.resolution); }
     catch (error) { throw new HttpError(400, (error as Error).message); }

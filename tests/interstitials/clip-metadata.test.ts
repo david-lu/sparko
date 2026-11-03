@@ -17,7 +17,7 @@ describe('restoring generated clips', () => {
   it('restores editable settings and body boundaries, allocates fresh IDs, and reconnects matching source ranges', () => {
     const a = restoreClip(clipMetadata, assetId, 4)!, b = restoreClip(clipMetadata, assetId, 4)!;
     expect(a.node.id).not.toBe(b.node.id); expect(a.item.id).not.toBe(b.item.id);
-    expect(a.item).toMatchObject({ phase: 'ready', prompt: clipMetadata.settings.prompt, generationSettings: clipMetadata.settings, result: { start: 1, duration: 2, totalDuration: 4 } });
+    expect(a.item).toMatchObject({ phase: 'ready', prompt: clipMetadata.settings.prompt, generationSettings: { ...clipMetadata.settings, maskInjection: 'standard' }, result: { start: 1, duration: 2, totalDuration: 4 } });
     expect(a.item.requestId).toBeUndefined();
     const next = reconnectClipReferences(graph([source('before'), source('after'), a.node]), [a.item], [a.item]);
     expect(next.edges.map(e => [e.from, e.to])).toEqual([['opening', a.node.id], [a.node.id, 'ending']]);

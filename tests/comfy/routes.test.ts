@@ -4,6 +4,7 @@ import type { Express } from 'express';
 import { createApp } from '../../server/app';
 import { errorHandler } from '../../server/shared/http';
 import type { Providers } from '../../server/providers';
+import { defaultMaskCurve } from '../../shared/mask-curves';
 
 let mediaDuration = 3.25;
 vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: class {
@@ -26,6 +27,31 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it('validates separate pin curves before submitting a job',async()=>{
+    const video=defaultMaskCurve(1.625,1.625,500),audio={...video,interpolation:'smooth'};
+    await submit('1.625','1.625','With curves',{videoMaskCurve:JSON.stringify(video),audioMaskCurve:JSON.stringify(audio)}).expect(202);
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({videoMaskCurve:video,audioMaskCurve:audio});
+    for(const videoMaskCurve of ['{broken',JSON.stringify({...video,start:[]}),JSON.stringify({...video,end:[]}),JSON.stringify({...video,start:[{position:0,strength:0},{position:1,strength:.5}]}),JSON.stringify({...video,interpolation:'unknown'})]){
+      await submit('1.625','1.625','Bad curve',{videoMaskCurve}).expect(400);
+    }
+    expect(comfy.submit).toHaveBeenCalledTimes(1);
+  });
+  it('accepts prompt-only loops and validates independent image endpoints before submission', async () => {
+    const send = (fields: Record<string, string>) => request(app).post('/api/comfy/interstitials').set('x-sparko-request', '1')
+      .field({ before: '0', after: '0', duration: '6', mode: 'custom', prompt: 'A new scene', width: '960', height: '544', ...fields });
+    await send({ mode: 'loop', loopImageGuide: 'false' }).expect(202);
+    expect(comfy.submit.mock.calls[0][0]).toBeUndefined();
+    const image = 'data:image/jpeg;base64,/9j/4AH/2Q==';
+    await send({ imageReferences: JSON.stringify([image, image]), startImageIndex: '1', endImageIndex: '0' }).expect(202);
+    expect(comfy.submit.mock.calls[1][1]).toMatchObject({ startImageIndex: 1, endImageIndex: 0 });
+    await send({ startImageIndex: '0' }).expect(400);
+    await send({ imageReferences: JSON.stringify([image]), endImageIndex: '1' }).expect(400);
+    await send({ imageReferences: JSON.stringify([image, image]), startImageIndex: '1', endImageIndex: '0', mode: 'loop' }).expect(400);
+    expect(comfy.submit).toHaveBeenCalledTimes(2);
+    comfy.check.mockResolvedValue({ ready: true });
+    await request(app).get('/api/comfy/status?imageGuides=true').expect(200);
+    expect(comfy.check).toHaveBeenCalledWith('standard', undefined, true, true);
+  });
   it('passes ordered images alongside footage and requests image-reference preflight', async () => {
     const image = `data:image/jpeg;base64,${Buffer.from([255, 216, 255, 224, 1, 255, 217]).toString('base64')}`;
     comfy.check.mockResolvedValue({ ready: true });
@@ -84,17 +110,15 @@ describe('Comfy API boundaries', () => {
   });
   it.each(['true', 'false'])('migrates the legacy interpolation switch: %s', async interpolateMiddle => {
     await submit('1.625', '1.625', 'Exact prompt', { interpolateMiddle }).expect(202);
-    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ maskInjection: interpolateMiddle === 'true' ? 'uniform' : 'standard', prompt: 'Exact prompt' });
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ maskInjection: 'standard', prompt: 'Exact prompt' });
   });
-  it.each(['standard', 'uniform', 'vignette'])('passes the selected mask mode unchanged: %s', async maskInjection => {
+  it.each(['standard', 'uniform', 'vignette'])('normalizes retired masks to native generation: %s', async maskInjection => {
     await submit('1.625', '1.625', 'Exact prompt', { maskInjection }).expect(202);
-    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ maskInjection, prompt: 'Exact prompt' });
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ maskInjection: 'standard', prompt: 'Exact prompt' });
   });
-  it('rejects invalid interpolation settings and extensions without an end reference', async () => {
+  it('rejects malformed legacy mask settings', async () => {
     await submit('1.625', '1.625', 'Exact', { interpolateMiddle: 'yes' }).expect(400);
-    await submit('1.625', '0', 'Exact', { mode: 'extend', interpolateMiddle: 'true' }).expect(400);
     await submit('1.625', '1.625', 'Exact', { maskInjection: 'unknown' }).expect(400);
-    await submit('1.625', '0', 'Exact', { mode: 'extend', maskInjection: 'vignette' }).expect(400);
     expect(comfy.submit).not.toHaveBeenCalled();
   });
   it('passes the entered prompt through to Comfy without rewriting it', async () => {

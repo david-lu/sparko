@@ -21,7 +21,11 @@ export type StoryNode = {
   loopCount: number;
   loop?: boolean; conditional?: boolean; conditions?: StoryCondition[]; defaultConditionId?: string;
 };
-export type StoryEdge = { id: string; from: string; to: string; event: 'next' | 'answer' | 'fallback'; conditionId?: string; label: string; values: string[]; crossfade?: number; crossfadeReferenceRatio?: number; points?: {id:string;x:number;y:number}[] };
+export type FadeChannel = 'video' | 'audio';
+export type StoryEdge = { id: string; from: string; to: string; event: 'next' | 'answer' | 'fallback'; conditionId?: string; label: string; values: string[];
+  /** Shared defaults from older projects; individual edits override only their channel. */
+  crossfade?: number; crossfadeReferenceRatio?: number; videoCrossfade?: number; audioCrossfade?: number;
+  points?: {id:string;x:number;y:number}[] };
 export const groupColors = { blue: '#82a5bd', purple: '#a391c2', green: '#80a69a', amber: '#c4a779', rose: '#c58d99' } as const;
 export type GroupBounds = { x: number; y: number; width: number; height: number };
 export type StoryGroup = { id: string; name: string; nodeIds: string[]; color: keyof typeof groupColors; bounds?: GroupBounds };
@@ -34,7 +38,7 @@ export const edge = (from: string, to: string, event: StoryEdge['event'] = 'next
 /** New interstitial attachments follow their references until explicitly edited. */
 export function withReferenceFade(connection: StoryEdge, nodes: StoryNode[]): StoryEdge {
   if (connection.from === connection.to || !nodes.some(n => n.interstitialId && (n.id === connection.from || n.id === connection.to))) return connection;
-  return { ...connection, crossfade: undefined, crossfadeReferenceRatio: .75 };
+  return { ...connection, crossfade: undefined, crossfadeReferenceRatio: .75, videoCrossfade: undefined, audioCrossfade: undefined };
 }
 function referenceFadeLength(node: StoryNode | undefined, neighbor: StoryNode | undefined, items: Interstitial[], side: 'before' | 'after'): number | undefined {
   const item = items.find(item => item.id === node?.interstitialId);
@@ -52,7 +56,9 @@ function referenceFadeLength(node: StoryNode | undefined, neighbor: StoryNode | 
   const length = side === 'before' ? settings.start_range : settings.end_range;
   return Math.max(0, Math.min(length, neighbor ? nodeDuration(neighbor, items) : 0));
 }
-export function connectionFade(connection: StoryEdge, nodes: StoryNode[], items: Interstitial[] = []) {
+export function connectionFade(connection: StoryEdge, nodes: StoryNode[], items: Interstitial[] = [], channel: FadeChannel = 'video') {
+  const override = connection[`${channel}Crossfade`];
+  if (override !== undefined) return override;
   if (connection.crossfade !== undefined) return connection.crossfade;
   const before = nodes.find(n => n.id === connection.from), after = nodes.find(n => n.id === connection.to);
   if (connection.crossfadeReferenceRatio !== undefined) {
@@ -66,9 +72,11 @@ export function connectionFade(connection: StoryEdge, nodes: StoryNode[], items:
 }
 export function migrateFades(graph: StoryGraph): StoryGraph {
   graph=normalizeConditions({...graph,templates:graph.templates.map(normalizeConditions)});
-  return { ...graph, edges: graph.edges.map(e => e.crossfadeReferenceRatio !== undefined ? e : ({ ...e, crossfade: connectionFade(e, graph.nodes) })),
+  const migrate = (e: StoryEdge, nodes: StoryNode[]) => e.crossfadeReferenceRatio !== undefined ? e
+    : { ...e, crossfade: e.crossfade ?? connectionFade({ ...e, videoCrossfade: undefined }, nodes) };
+  return { ...graph, edges: graph.edges.map(e => migrate(e, graph.nodes)),
     nodes: graph.nodes.map(({crossfadeStart, crossfadeEnd, ...node}) => node),
-    templates: graph.templates.map(t => ({ ...t, edges: t.edges.map(e => e.crossfadeReferenceRatio !== undefined ? e : ({...e,crossfade:connectionFade(e,t.nodes)})),
+    templates: graph.templates.map(t => ({ ...t, edges: t.edges.map(e => migrate(e, t.nodes)),
       nodes:t.nodes.map(({crossfadeStart,crossfadeEnd,...node})=>node) })) };
 }
 export function nodeDuration(node: StoryNode, items: Interstitial[]): number {
@@ -229,7 +237,9 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
     else scene.clip = { ...scene.clip,assetId:sourceAssetId,inFrame:0,outFrame:Math.min(1,total) };
   };
   scenes.forEach(s => resolveDraft(s));
-  const edges: CallResponseFlow['edges'] = graph.edges.map(e => ({ ...e, when:e.event === 'answer' ? e.id : e.event === 'fallback' ? 'pending' : 'ended', transitionFrames:Math.round(connectionFade(e,graph.nodes,items)*fps) }));
+  const fadeFrames = (e: StoryEdge) => ({ transitionFrames: Math.round(connectionFade(e, graph.nodes, items, 'video') * fps),
+    audioTransitionFrames: Math.round(connectionFade(e, graph.nodes, items, 'audio') * fps) });
+  const edges: CallResponseFlow['edges'] = graph.edges.map(e => ({ ...e, when:e.event === 'answer' ? e.id : e.event === 'fallback' ? 'pending' : 'ended', ...fadeFrames(e) }));
   const interactions: NonNullable<CallResponseFlow['storyInteractions']> = {};
   for (const node of graph.nodes) {
     const behavior=behaviors(node);
@@ -237,7 +247,7 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
       answers:conditionsFor(graph,node).flatMap(c=>{const e=graph.edges.find(e=>e.from===node.id&&e.event==='answer'&&(e.conditionId??e.id)===c.id);return e?[{id:e.id,label:c.label,values:c.values,sceneId:e.to}]:[]}) };
     else if (behavior.loop) {
       const next = graph.edges.find(e => e.from === node.id && e.event === 'next');
-      if (next) edges.push({ id:`${node.id}:exit`,from:node.id,to:next.to,when:`${node.id}:continue`,label:'Continue',transitionFrames:Math.round(connectionFade(next,graph.nodes,items)*fps) });
+      if (next) edges.push({ id:`${node.id}:exit`,from:node.id,to:next.to,when:`${node.id}:continue`,label:'Continue',...fadeFrames(next) });
       interactions[node.id] = { question:'',waitSceneId:node.id,fallbackAnswerId:null,answers:next ? [{id:`${node.id}:continue`,label:'Continue',values:['continue'],sceneId:next.to}] : [] };
     }
     if(behavior.loop) edges.push({id:`${node.id}:repeat`,from:node.id,to:node.id,when:'repeat',label:'Repeat',transitionFrames:0});

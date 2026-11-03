@@ -20,6 +20,18 @@ beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
 
 describe('interstitial prompt enhancement', () => {
+  it('respects selected endpoint pictures and leaves optional images unanchored for prompt-only loops', async () => {
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('A gentle movement.') }) });
+    const enhance = createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt;
+    const images = ['data:image/jpeg;base64,YQ==', 'data:image/jpeg;base64,Yg=='];
+    await enhance({ ...input, imageReferences: images, imageGuides: { start: 1, end: 0 } });
+    expect(respond.mock.calls[0][0].instructions).toContain('<Picture 2> anchors the first frame');
+    expect(respond.mock.calls[0][0].instructions).toContain('<Picture 1> anchors the last frame');
+    await enhance({ ...input, kind: 'idle', referenceFrames: [], imageReferences: images, imageGuides: {} });
+    expect(respond.mock.calls[1][0].instructions).not.toContain('shared first-frame');
+    await enhance({ ...input, kind: 'idle', referenceFrames: [], imageReferences: images, imageGuides: { start: 1, end: 1 } });
+    expect(respond.mock.calls[2][0].instructions).toContain('<Picture 2> is the shared first-frame');
+  });
   it('uses the first picture as both boundaries when enhancing an image-only loop', async () => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('The subject in <Picture 1> moves gently and returns to the same pose.') }) });
     await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: 'A subtle loop', kind: 'idle', referenceFrames: [], imageReferences: ['data:image/jpeg;base64,YQ=='] });

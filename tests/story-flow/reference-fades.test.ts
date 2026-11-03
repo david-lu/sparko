@@ -24,6 +24,53 @@ function render(item: Interstitial, graph: StoryGraph, assetId: string) {
 }
 
 describe('reference-based interstitial fades', () => {
+  it('keeps video and audio edits independent of each other and of automatic reference lengths', () => {
+    const { graph, item, assetId } = fixture(), connection = graph.edges[0];
+    connection.videoCrossfade = 0;
+    expect(connectionFade(connection, graph.nodes, [item], 'video')).toBe(0);
+    expect(connectionFade(connection, graph.nodes, [item], 'audio')).toBe(1.5);
+    item.start_range = 1;
+    expect(connectionFade(connection, graph.nodes, [item], 'audio')).toBe(.75);
+    connection.audioCrossfade = .5;
+    render(item, graph, assetId);
+    const flow = runtimeFlow(graph, [item], assetId, 4);
+    expect(flow.edges[0]).toMatchObject({ transitionFrames: 0, audioTransitionFrames: 12 });
+    expect(flowTransition(flow, flow.edges[0])).toBeUndefined();
+    expect(flowTransition(flow, flow.edges[0], undefined, 'audio')).toMatchObject({ startFrame: -12, frames: 12 });
+  });
+
+  it('retains legacy shared defaults and independent overrides through migration and template saving', () => {
+    const { graph, item } = fixture();
+    graph.edges[0] = { ...graph.edges[0], crossfade: .5, crossfadeReferenceRatio: undefined, videoCrossfade: 0 };
+    graph.edges[1].audioCrossfade = 0;
+    const template = makePreset('question');
+    template.edges[0] = { ...template.edges[0], videoCrossfade: .25, audioCrossfade: .75 };
+    graph.templates.push(template);
+    const restored = migrateFades(storyGraphSchema.parse(JSON.parse(JSON.stringify(graph))));
+    expect(restored.edges[0]).toMatchObject({ crossfade: .5, videoCrossfade: 0 });
+    expect(restored.edges.map(e => connectionFade(e, restored.nodes, [item], 'video'))).toEqual([0, .75]);
+    expect(restored.edges.map(e => connectionFade(e, restored.nodes, [item], 'audio'))).toEqual([.5, 0]);
+    const instance = instantiateTemplate(restored, restored.templates[0], [item]);
+    expect(instance.graph.edges.find(e => e.videoCrossfade === .25)).toMatchObject({ audioCrossfade: .75 });
+    // A graph with only a video override must not acquire that value as its audio default on migration.
+    restored.edges[0].crossfade = undefined;
+    expect(connectionFade(migrateFades(restored).edges[0], restored.nodes, [item], 'audio')).toBe(.25);
+  });
+
+  it('preserves independent outgoing fades for loop exits and cuts on internal splits', () => {
+    const { graph, node, item, assetId } = fixture();
+    render(item, graph, assetId);
+    node.loop = true;
+    graph.edges[1].videoCrossfade = .25; graph.edges[1].audioCrossfade = .5;
+    const flow = runtimeFlow(graph, [item], assetId, 4);
+    expect(flow.edges.find(e => e.when === `${node.id}:continue`)).toMatchObject({ transitionFrames: 6, audioTransitionFrames: 12 });
+    const repeat = flow.edges.find(e => e.when === 'repeat')!;
+    expect(flowTransition(flow, repeat, undefined, 'audio')).toBeUndefined();
+    const split = splitClip(graph, [item], node.id, 24);
+    expect(split.graph.edges.find(e => e.to === 'after')).toMatchObject({ videoCrossfade: .25, audioCrossfade: .5 });
+    expect(connectionFade(split.graph.edges.at(-1)!, split.graph.nodes, [item, ...split.items], 'audio')).toBe(0);
+  });
+
   it('defaults new attachments to 75% of each enabled reference, bounded by the neighboring clip', () => {
     const { graph, item } = fixture();
     expect(fades(graph, [item])).toEqual([1.5, .75]);

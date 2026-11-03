@@ -36,6 +36,10 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   const add=(kind:Exclude<NodeKind,'source'>,edgeId?:string,placement?:{x:number;y:number},fromId?:string)=>{
     if(!graph)return;const connection=graph.edges.find(e=>e.id===edgeId),before=graph.nodes.find(n=>n.id===(connection?.from??fromId??selected[0]));
     const {node,item}=createNode(kind,connection?.from??fromId);
+    item.useInputReference=!!(connection||fromId);
+    item.useOutputReference=!!connection;
+    item.startReferenceType=item.useInputReference?'video':'none';
+    item.endReferenceType=item.useOutputReference?'video':'none';
     node.x=before?before.x+nodeDuration(before,items)*32+104:40;
     node.y=connection?before?.y??90:Math.max(90,...graph.nodes.map(n=>n.y))+145;
     if(placement){node.x=placement.x;node.y=placement.y;}
@@ -78,7 +82,13 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     change(autoLayout(result.graph,[...items,...result.items]),result.items);setSelected([id]);setNotice('Clip split. Media is preserved; outgoing connections follow the second half.');return true;};
   const insertTemplate=(template:string|StoryTemplate,connectionId?:string,placement?:{x:number;y:number},fromId?:string)=>{if(!graph)return;const t=typeof template==='string'?makePreset(template):template;
     const result=instantiateTemplate(graph,t,items,connectionId,placement);
-    if(fromId&&!connectionId){result.graph=connect(result.graph,fromId,result.selectedId);if(!placement)result.graph=autoLayout(result.graph,[...items,...result.items]);}
+    if(fromId&&!connectionId){
+      if(typeof template==='string'){
+        const entry=result.graph.nodes.find(node=>node.id===result.selectedId),item=result.items.find(item=>item.id===entry?.interstitialId);
+        if(item){item.useInputReference=true;item.startReferenceType='video';}
+      }
+      result.graph=connect(result.graph,fromId,result.selectedId);if(!placement)result.graph=autoLayout(result.graph,[...items,...result.items]);
+    }
     change(result.graph,result.items);selectGroup(result.groupId,result.graph);if(!placement)setFocusRevision(n=>n+1);setNotice(`${t.name} added as a group. Drag its header to move it.`);};
   const saveTemplate=(name:string)=>{if(!graph)return;const template=captureTemplate(graph,selected,items,name);if(!template){setNotice('Select clips or a group to save a template.');return;}
     const grouped=selectedGroup?{graph,group:selectedGroup}:groupClips(graph,selected,template.name,template.color);

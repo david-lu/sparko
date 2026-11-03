@@ -1,4 +1,4 @@
-import type { Interstitial } from '../../../shared/interstitials';
+import type { Interstitial, ReferenceType } from '../../../shared/interstitials';
 import type { StoryGraph, StoryNode } from './model';
 import { behaviors } from './behaviors';
 
@@ -10,12 +10,23 @@ export function connectedReferences(graph: StoryGraph, nodeId: string) {
   };
 }
 
-/** Loop behavior links the two boundaries; other clips retain independent switches. */
+export function referenceType(item: Interstitial, side: 'start' | 'end'): ReferenceType {
+  const explicit = side === 'start' ? item.startReferenceType : item.endReferenceType;
+  if (explicit) return explicit;
+  const video = side === 'start' ? item.useInputReference ?? true : item.useOutputReference ?? item.method === 'comfy';
+  if (video) return 'video';
+  const index = side === 'start' ? item.startImageIndex : item.endImageIndex;
+  return index !== undefined || item.method === 'comfy-loop' && !!item.imageReferences?.length ? 'image' : 'none';
+}
+
+/** Loop behavior links the two boundaries; other clips retain independent references. */
 export function storyGenerationItem(item: Interstitial, node?: StoryNode): Interstitial {
-  const useInputReference = item.useInputReference ?? true;
-  if (node ? behaviors(node).loop : item.method === 'comfy-loop') return {
-    ...item, method: 'comfy-loop', useInputReference, useOutputReference: useInputReference, end_range: item.start_range,
-  };
-  const useOutputReference = item.useOutputReference ?? item.method === 'comfy';
-  return { ...item, useInputReference, useOutputReference, method: useOutputReference ? 'comfy' : 'comfy-extend' };
+  const loop = node ? behaviors(node).loop : item.method === 'comfy-loop';
+  const start = referenceType(loop ? { ...item, method: 'comfy-loop' } : item, 'start');
+  const end = loop ? start : referenceType(item, 'end');
+  const useInputReference = start === 'video', useOutputReference = end === 'video';
+  const startImageIndex = start === 'image' ? item.startImageIndex ?? 0 : undefined;
+  const endImageIndex = end === 'image' ? loop ? startImageIndex : item.endImageIndex ?? 0 : undefined;
+  return { ...item, useInputReference, useOutputReference, startImageIndex, endImageIndex,
+    method: loop ? 'comfy-loop' : useOutputReference ? 'comfy' : 'comfy-extend', ...(loop ? { end_range: item.start_range } : {}) };
 }

@@ -19,6 +19,22 @@ const setup = () => {
 };
 
 describe('connected reference switches', () => {
+  it.each(['simple', 'looped', 'conditional'] as const)('supports %s clips from scratch with explicit reference types', kind => {
+    const { node, item } = createNode(kind);
+    Object.assign(item, { startReferenceType: 'none', endReferenceType: 'none' });
+    const graph: StoryGraph = { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [] };
+    expect(storyDependency(graph, [item], '', 0, item.id).blocked).toBeUndefined();
+    expect(storyGenerationItem(item, node)).toMatchObject({ useInputReference: false, useOutputReference: false });
+    item.startReferenceType = 'image';
+    expect(storyDependency(graph, [item], '', 0, item.id).blocked).toContain('Add an image');
+    item.imageReferences = [{ assetId: crypto.randomUUID(), name: 'pose.jpg' }];
+    expect(storyDependency(graph, [item], '', 0, item.id).blocked).toBeUndefined();
+    const prepared = storyGenerationItem(item, node);
+    expect(prepared.startImageIndex).toBe(0);
+    expect(prepared.endImageIndex).toBe(kind === 'looped' ? 0 : undefined);
+    item.startReferenceType = 'none';
+    expect(storyGenerationItem(item, node).startImageIndex).toBeUndefined();
+  });
   it('reuses the incoming reference for a loop regardless of outgoing destinations or an old end range', () => {
     const { graph, node, item, other, dependency } = setup();
     node.loop = true; item.start_range = 2; item.end_range = 4; item.useOutputReference = false;
@@ -34,9 +50,9 @@ describe('connected reference switches', () => {
     node.loop = false;
     expect(storyGenerationItem(item, node)).toMatchObject({ useOutputReference: false, end_range: 4, method: 'comfy-extend' });
   });
-  it('requires an image for an image-only loop and keeps its saved provenance', () => {
+  it('allows a prompt-only loop and keeps image-only loop provenance', () => {
     const { node, item, dependency } = setup(); node.loop = true; item.useInputReference = false;
-    expect(dependency().blocked).toContain('Choose a loop reference');
+    expect(dependency().blocked).toBeUndefined();
     item.imageReferences = [{ assetId: crypto.randomUUID(), name: 'pose.jpg' }];
     expect(dependency()).toMatchObject({ blocked: undefined, reference: { mode: 'loop' } });
     const prepared = storyGenerationItem(item, node), reference = dependency().reference!;

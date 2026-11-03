@@ -3,6 +3,7 @@ import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } 
 import { packProject, unpackProject } from '../../src/features/project/archive';
 import { assetIds, emptyAnalysis, type Asset, type Project } from '../../src/features/project/types';
 import { hasUnsubmittedChanges, interstitialSettings } from '../../shared/interstitials';
+import { defaultMaskCurve } from '../../shared/mask-curves';
 
 const sourceId = crypto.randomUUID(), sceneId = crypto.randomUUID(), subtitleId = crypto.randomUUID();
 const project: Project = { id: 'old-project', name: 'A project', updatedAt: 123, source: { name: 'source.mp4', assetId: sourceId, url: 'https://example.com/source.mp4' },
@@ -30,11 +31,26 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('retains mask pins and Bézier handles in drafts, submitted settings, and templates',async()=>{
+    const snapshot=structuredClone(project),item=snapshot.interstitials[0];
+    item.videoMaskCurve=defaultMaskCurve(2,2,500);item.videoMaskCurve.interpolation='bezier';
+    item.videoMaskCurve.start[0].out={influence:.4,strength:.25};
+    item.audioMaskCurve={...defaultMaskCurve(2,2,1000),interpolation:'smooth'};
+    item.generationSettings=interstitialSettings(item);
+    const node={id:'mask-node',name:'Mask clip',kind:'simple' as const,interstitialId:item.id,x:0,y:0,loopCount:0};
+    snapshot.storyFlow={version:1,entryId:node.id,nodes:[node],edges:[],templates:[{id:'mask-template',name:'Masks',entryId:node.id,nodes:[node],edges:[],settings:{[node.id]:interstitialSettings(item)}}]};
+    const restored=await unpackProject(await packProject(snapshot,media,signal(),progress),signal(),progress);
+    for(const settings of [restored.project.interstitials[0],restored.project.interstitials[0].generationSettings,restored.project.storyFlow!.templates[0].settings[node.id]]){
+      expect(settings?.videoMaskCurve).toEqual(item.videoMaskCurve);expect(settings?.audioMaskCurve).toEqual(item.audioMaskCurve);
+    }
+    expect(hasUnsubmittedChanges(restored.project.interstitials[0])).toBe(false);
+  });
   it('retains images used only by submitted settings or templates and remaps their IDs on import', async () => {
     const images = ['character.jpg', 'style.jpg', 'template.jpg'].map(name => ({ id: crypto.randomUUID(), name, blob: new Blob([name], { type: 'image/jpeg' }) }));
     const refs = images.map(image => ({ assetId: image.id, name: image.name }));
     const snapshot = structuredClone(project), item = snapshot.interstitials[0];
-    item.imageReferences = [refs[0]]; item.generationSettings = interstitialSettings(item);
+    item.imageReferences = [refs[0]]; item.startReferenceType = 'image'; item.endReferenceType = 'none'; item.startImageIndex = 0;
+    item.generationSettings = interstitialSettings(item);
     expect(hasUnsubmittedChanges(item)).toBe(false);
     item.imageReferences = [refs[1]];
     expect(hasUnsubmittedChanges(item)).toBe(true);
@@ -48,6 +64,9 @@ describe('portable project archives', () => {
     expect(restored.project.interstitials[0].imageReferences).toEqual([{ name: 'style.jpg', assetId: idFor('style.jpg') }]);
     expect(restored.project.interstitials[0].generationSettings!.imageReferences).toEqual([{ name: 'character.jpg', assetId: idFor('character.jpg') }]);
     expect(restored.project.storyFlow!.templates[0].settings.node.imageReferences).toEqual([{ name: 'template.jpg', assetId: idFor('template.jpg') }]);
+    for (const settings of [restored.project.interstitials[0], restored.project.interstitials[0].generationSettings, restored.project.storyFlow!.templates[0].settings.node]) {
+      expect(settings).toMatchObject({ startReferenceType: 'image', endReferenceType: 'none', startImageIndex: 0 });
+    }
     expect(idFor('style.jpg')).not.toBe(images[1].id);
     expect(hasUnsubmittedChanges(restored.project.interstitials[0])).toBe(true);
   });
@@ -62,15 +81,15 @@ describe('portable project archives', () => {
     const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
     expect(restored.project.crossfadeFrames).toBe(14);
   });
-  it.each(['uniform', 'vignette'] as const)('preserves per-clip %s masks and the settings used by the saved render', async maskInjection => {
+  it.each(['uniform', 'vignette'] as const)('opens archives with retired %s masks using native generation', async maskInjection => {
     const snapshot = structuredClone(project);
     const item = snapshot.interstitials[1];
     item.generationSettings = interstitialSettings(item);
     item.maskInjection = maskInjection;
     const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
     const saved = restored.project.interstitials[1];
-    expect(saved).toMatchObject({ maskInjection, generationSettings: { maskInjection: 'standard' } });
-    expect(hasUnsubmittedChanges(saved)).toBe(true);
+    expect(saved).toMatchObject({ maskInjection: 'standard', generationSettings: { maskInjection: 'standard' } });
+    expect(hasUnsubmittedChanges(saved)).toBe(false);
     expect(interstitialSettings(restored.project.interstitials[0]).maskInjection).toBe('standard');
     saved.maskInjection = 'standard';
     expect(hasUnsubmittedChanges(saved)).toBe(false);
@@ -116,7 +135,7 @@ describe('portable project archives', () => {
     });
     const restored = await unpackProject(legacy, signal(), progress);
     const item = restored.project.interstitials[1];
-    expect(item).toMatchObject({ maskInjection: 'uniform', generationSettings: { maskInjection: 'uniform' } });
+    expect(item).toMatchObject({ maskInjection: 'standard', generationSettings: { maskInjection: 'standard' } });
     expect(hasUnsubmittedChanges(item)).toBe(false);
     expect(item.interpolateMiddle).toBeUndefined();
   });

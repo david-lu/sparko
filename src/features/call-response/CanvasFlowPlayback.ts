@@ -6,6 +6,7 @@ import { advanceSession, answerSession, branchSession, playbackPath, flowLayout,
   type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
 import { flowTransition } from './transitions';
 import { sceneMediaRange } from '../story-flow/mediaRange';
+import type { FadeChannel } from '../story-flow/model';
 import idleMusicUrl from '../../../assets/working-something-out-loop.wav?url';
 
 /** Scene playback through the shared Mediabunny/GPU renderer and audio clock. */
@@ -70,6 +71,17 @@ export class CanvasFlowPlayback {
         : (scene.clip.inFrame + frame) / this.flow.fps, still: scene.draft };
   }
   private layers(): PlaybackLayer[] {
+    // Each channel can span a different connection on a short clip. Merge by
+    // decoder key so an audio overlap never changes the visible dissolve.
+    const video = this.channelLayers('video'), audio = this.channelLayers('audio');
+    const layers = video.map(layer => {
+      const sound = audio.find(candidate => candidate.key === layer.key);
+      return { ...layer, muted: sound?.muted ?? true, gain: sound?.gain ?? 0,
+        gainRate: sound?.gainRate ?? 0, musicGain: sound?.musicGain ?? 0 };
+    });
+    return [...layers, ...audio.filter(layer => !video.some(candidate => candidate.key === layer.key)).map(layer => ({ ...layer, opacity: 0 }))];
+  }
+  private channelLayers(channel: FadeChannel): PlaybackLayer[] {
     const current = this.session, frame = current.frame + this.remainder;
     const currentClip = this.clip(current);
     const single = [{ ...currentClip, opacity: 1, gain: currentClip.muted ? 0 : 1,
@@ -81,7 +93,7 @@ export class CanvasFlowPlayback {
       ?? this.flow.edges.find(edge => edge.to === current.sceneId && edge.from !== edge.to);
     const outgoing = nextEdge(this.flow, current);
     for (const [edge, entering] of [[incoming, true], [outgoing, false]] as const) {
-      const transition = edge && flowTransition(this.flow, edge, this.crossfadeFrames);
+      const transition = edge && flowTransition(this.flow, edge, this.crossfadeFrames, channel);
       if (!transition) continue;
       const offset = entering ? frame : frame - sceneFrames(transition.before);
       // An answer chosen during the fade window only uses the Idle frames that remain.
@@ -116,7 +128,10 @@ export class CanvasFlowPlayback {
       if (!this.session.finished) {
         const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame);
         if (!next.finished) {
-          const edge = nextEdge(this.flow, this.session), transition = this.crossfade && edge ? flowTransition(this.flow, edge, this.crossfadeFrames) : undefined;
+          const edge = nextEdge(this.flow, this.session);
+          const transition = this.crossfade && edge ? (['video', 'audio'] as const)
+            .map(channel => flowTransition(this.flow, edge, this.crossfadeFrames, channel))
+            .filter(t => !!t).sort((a, b) => a.startFrame - b.startFrame)[0] : undefined;
           const prepareFrame = transition?.after.clip.kind === 'idle' ? transition.after.generated?.fullRange ? transition.startFrame : 0 : transition?.before.clip.kind === 'idle'
             ? Math.max(transition.startFrame, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6))
             : transition?.startFrame ?? 0;
