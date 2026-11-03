@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
-import { Download, FolderOpen, Redo2, Save, Undo2, X } from 'lucide-react';
+import { Activity, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { Download, Eye, FolderOpen, Pencil, Redo2, Save, Undo2, X } from 'lucide-react';
 import CallResponseControls from '../features/call-response/CallResponseControls';
 import { addAnswer, branchScenes, interstitialScenes, resolveFlow, type SceneId } from '../features/call-response/model';
 import type { FlowTimeline } from '../features/timeline/FlowTracks';
@@ -78,6 +78,8 @@ export default function App() {
   const [shortcuts, setShortcuts] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [preview, setPreview] = useState(false);
+  useEffect(() => { setPreview(false); }, [projectState.activationRevision]);
   const [pinchZoomSensitivity, setPinchZoomSensitivity] = useState(savedPinchZoomSensitivity);
   useEffect(() => { try { localStorage.setItem(pinchZoomPreference, String(pinchZoomSensitivity)); } catch { /* Apply without persistence. */ } }, [pinchZoomSensitivity]);
   const keys=useShortcuts();
@@ -128,6 +130,7 @@ export default function App() {
   }, [controller, projectState.historyRevision]);
   useEffect(() => {
     const historyKey = (event: KeyboardEvent) => {
+      if (preview) return;
       if (event.defaultPrevented || event.isComposing) return;
       const action=keys.action(event);
       if(action!=='undo'&&action!=='redo')return;
@@ -142,7 +145,7 @@ export default function App() {
     };
     window.addEventListener('keydown', historyKey);
     return () => window.removeEventListener('keydown', historyKey);
-  }, [controller, projects, keys.bindings]);
+  }, [controller, projects, keys.bindings, preview]);
   useEffect(() => () => { interstitials.dispose(); projects.dispose(); }, [interstitials, projects]);
   useEffect(() => { let active = true; void getStatus().then(data => {
     if (!active) return;
@@ -306,7 +309,7 @@ export default function App() {
   const clipControls = (id: SceneId) => panelTimeline && <CallResponseControls flow={panelTimeline.flow}
     selectedSceneId={id} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)}
     onSelectEdge={panelTimeline.onSelectEdge} />;
-  return <div className="app-shell" onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const files=Array.from(event.dataTransfer.files);if(!files.length)return;if(storyGraph&&files.every(file=>!/\.sparko$/i.test(file.name)))void storyEditor.importVideos(files);else openFile(files[0]); }}>
+  return <div className={`app-shell${preview ? ' preview-mode' : ''}`} onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => { event.preventDefault(); if (preview) event.dataTransfer.dropEffect = 'none'; }} onDrop={event => { event.preventDefault(); if (preview) return; const files=Array.from(event.dataTransfer.files);if(!files.length)return;if(storyGraph&&files.every(file=>!/\.sparko$/i.test(file.name)))void storyEditor.importVideos(files);else openFile(files[0]); }}>
     {!projectState.project ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasSampleProject={!!status?.defaultProject}
       onNewProject={() => void projects.newProject()} onOpenProject={() => void openProjectFile()}
       onOpenSampleProject={() => { if (status?.defaultProject) void projects.openSampleProject(status.defaultProject.url); }}
@@ -318,7 +321,7 @@ export default function App() {
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void saveAsFile(); }}><Save size={14} />Save as new file</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></DropdownMenu>
-      <PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} onPreferences={()=>setPreferencesOpen(true)} />
+      {!preview && <><PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} onPreferences={()=>setPreferencesOpen(true)} />
       <WindowMenu workspace={workspace} panelsAvailable={!!storyGraph} timelineVisible={!timelineCollapsed} onTimeline={()=>{if(!workspace.locked)setTimelineCollapsed(value=>!value);}} onReset={resetWorkspace} onHelp={()=>{controller.pause();setHelpOpen(true);}}/>
       <div className="history-controls" role="group" aria-label="Edit history">
         <button className="icon-button small" aria-label="Undo" aria-keyshortcuts={keys.aria('undo')} title={keys.title('undo',projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo')}
@@ -326,31 +329,36 @@ export default function App() {
         <button className="icon-button small" aria-label="Redo" aria-keyshortcuts={keys.aria('redo')} title={keys.title('redo',projectState.redoLabel ? `Redo: ${projectState.redoLabel}` : 'Redo')}
           disabled={projectState.busy || !projectState.redoLabel} onClick={() => { controller.pause(); void projects.redo(); }}><Redo2 size={14} /></button>
       </div>
-      <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-haspopup="dialog" aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button>
-      <span className="menu-document">{projectState.fileName || (savedFlow || projectState.project?.name!==source.name.replace(/\.[^.]+$/,'') ? projectState.project?.name : source.name)}</span><span className="menu-app-name">SPARKO</span>
+      <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-haspopup="dialog" aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button></>}
+      <span className="menu-document">{projectState.fileName || (savedFlow || projectState.project?.name!==source.name.replace(/\.[^.]+$/,'') ? projectState.project?.name : source.name)}</span>
+      <div className="mode-toggle" role="group" aria-label="Workspace mode">
+        <button aria-pressed={!preview} disabled={projectState.busy} onClick={() => setPreview(false)}><Pencil size={13} />Edit</button>
+        <button aria-pressed={preview} disabled={projectState.busy} onClick={() => { projects.endHistoryGroup(); setShortcuts(false); setPreferencesOpen(false); setHelpOpen(false); setPreview(true); }}><Eye size={14} />Preview</button>
+      </div><span className="menu-app-name">SPARKO</span>
     </header>
     <main className="workspace">
       {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }}><X size={16} /></button></div>}
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
       <WorkspaceLockContext.Provider value={workspace.locked}><div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
         <Player source={source} empty={!projectState.source||storyGraph?.nodes.length===0} info={info} thumbnails={thumbnails} thumbnailsFailed={thumbnailsFailed} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
+          preview={preview}
           callResponse={flowTimeline}
           storyCanvas={storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight} collapsed={timelineCollapsed} onCollapsed={setTimelineCollapsed} pinchZoomSensitivity={pinchZoomSensitivity}/>:undefined}
           subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
           controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
           onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
           timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} />
-      </section><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Workspace panels">
+      </section><Activity mode={preview ? 'hidden' : 'visible'}><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Workspace panels">
         {storyGraph?<WorkspacePanels workspace={workspace} inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} create={<StoryAddClips editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={resetWorkspace}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
         <InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
           callResponse={panelTimeline} groups={groupTimelines}
           renderClipControls={clipControls}
           connectedIds={groupTimelines.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []))}
           engine={engine} info={info} status={status} active onAddRegular={addInterstitial} onAddCallResponse={addCallResponse} onSelect={selectInterstitial} onRemove={removeInterstitial} onPreviewPlay={() => controller.pause()} /></>}
-      </aside></div></WorkspaceLockContext.Provider>
+      </aside></Activity></div></WorkspaceLockContext.Provider>
     </main></>}
-    <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" onChange={event => { const file = event.target.files?.[0]; if (file) openFile(file); event.target.value = ''; }} />
-    <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" onChange={event => { const file = event.target.files?.[0]; if (file) void projects.importProject(file); event.target.value = ''; }} />
+    <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) openFile(file); event.target.value = ''; }} />
+    <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) void projects.importProject(file); event.target.value = ''; }} />
     {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
     {helpOpen && <HelpTutorial onClose={()=>setHelpOpen(false)}/>}
     {preferencesOpen && <Preferences pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} onClose={()=>setPreferencesOpen(false)}/>}

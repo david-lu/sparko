@@ -45,6 +45,20 @@ const makePlayer = (flow = flowWithReferences()) => new FlowPlayback(flow, { vol
   { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, vi.fn(), undefined, false, true, 4);
 
 describe('canvas flow playback', () => {
+  it('viewer seeks retain the chosen route and playback state while allowing a new answer', () => {
+    const player = makePlayer();
+    player.seekScene('wait', sceneFrames(getScene(player.flow, 'wait')) - 1);
+    player.branch('wait', 'correct'); advance();
+    expect(player.session.sceneId).toBe('correct');
+    player.seekScene('continue', 12, true, true);
+    expect(player.session).toMatchObject({ sceneId: 'continue', frame: 12, playing: true, outcome: 'correct', traversedEdgeIds: ['wait-correct'] });
+    player.seekScene('wait', 0, false, true);
+    expect(player.session.outcome).toBeNull();
+    player.branch('wait', 'incorrect'); expect(player.session.outcome).toBe('incorrect');
+    player.seekScene('intro');
+    expect(player.session).toMatchObject({ playing: false, outcome: null, traversedEdgeIds: [] });
+    player.dispose();
+  });
   it('matches every fade window and video timestamp in the original saved Sparko example',async()=>{
     const zip=new ZipReader(new Uint8ArrayReader(await readFile('examples/sample.sparko')));
     const manifest=(await zip.getEntries()).find(e=>e.filename==='project.json')!;
