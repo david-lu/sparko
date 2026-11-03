@@ -1,7 +1,7 @@
 import { INTERSTITIAL } from '../../../shared/constants';
-import { imageReferencesSchema } from '../../../shared/image-references';
+import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
 import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
-import { clipMaskInjection, generationMethods, interstitialSettings, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
+import { clipMaskInjection, referenceTypes, generationMethods, interstitialSettings, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
 
 function readReference(value: unknown): GenerationReference | undefined {
   const validClip = (clip: ClipReference | undefined) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
@@ -17,7 +17,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
   if (method !== undefined && method !== 'fal' && !generationMethods.includes(method as InterstitialSettings['method'] & string)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
-  return interstitialSettings({ ...settings, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, method: normalizeGenerationMethod(method) });
+  return interstitialSettings({ ...settings, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
 }
 
 function readResult(value: unknown): InterstitialResult | undefined {
@@ -46,6 +46,8 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
       const result = readResult(item.result);
       return [{ id: item.id, label: typeof item.label === 'string' ? item.label.replace(/^Pin (\d+)$/, 'Interstitial $1') : 'Interstitial', time: item.time, kind: item.kind === 'call-response' ? 'call-response' : item.kind === 'regular' ? 'regular' : undefined, groupId: typeof item.groupId === 'string' ? item.groupId : undefined,
         continuity: typeof item.continuity === 'string' ? item.continuity : undefined, dialogue: typeof item.dialogue === 'string' ? item.dialogue : undefined, loopAudio: typeof item.loopAudio === 'boolean' ? item.loopAudio : undefined,
+        startReferenceType: referenceTypes.includes(item.startReferenceType) ? item.startReferenceType : undefined,
+        endReferenceType: referenceTypes.includes(item.endReferenceType) ? item.endReferenceType : undefined,
         useInputReference: typeof item.useInputReference === 'boolean' ? item.useInputReference : undefined,
         useOutputReference: typeof item.useOutputReference === 'boolean' ? item.useOutputReference : undefined,
         maskInjection: clipMaskInjection(item),
@@ -53,6 +55,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         videoMaskTransitionMs: normalizeMaskTransitionMs(item.videoMaskTransitionMs ?? item.maskTransitionMs),
         resolution: normalizeGenerationResolution(item.resolution),
         imageReferences: imageReferencesSchema.safeParse(item.imageReferences).data,
+        startImageIndex: imageReferenceIndexSchema.safeParse(item.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(item.endImageIndex).data,
         start_range: Number.isFinite(item.start_range) ? item.start_range : INTERSTITIAL.defaultRange,
         end_range: Number.isFinite(item.end_range) ? item.end_range : INTERSTITIAL.defaultRange,
         duration: Number.isFinite(item.duration) ? item.duration : INTERSTITIAL.defaultDuration,

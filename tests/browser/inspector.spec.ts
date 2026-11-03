@@ -26,17 +26,19 @@ test('compact inspector uses connected references, supports all switch combinati
       const r = root.querySelector(s)!.getBoundingClientRect(); return { y: r.top - top, height: r.height };
     });
   });
+  await page.locator('.inspector-references-panel>summary').click();
   const button = await inspector.locator('button[type=submit]').boundingBox(), panel = await inspector.boundingBox();
   expect(button!.y + button!.height - panel!.y).toBeLessThan(460); // Behavior headers, resolution, and guidance controls remain compact.
+  await page.locator('.inspector-references-panel>summary').click();
   await page.screenshot({ path: 'test-results/inspector-compact-desktop.png', fullPage: true });
   const settings = [[true, false], [true, true], [false, true], [false, false]];
   for (const [index, [input, output]] of settings.entries()) {
     if (index === 2) await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole('checkbox', { name: 'Use start reference' }).setChecked(input);
-    await page.getByRole('checkbox', { name: 'Use end reference' }).setChecked(output);
+    await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: input ? 'Video' : 'None', exact: true }).click();
+    await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: output ? 'Video' : 'None', exact: true }).click();
     const inputRow = page.getByRole('group', { name: 'Start reference', exact: true }), outputRow = page.getByRole('group', { name: 'End reference', exact: true });
-    expect(await inputRow.getByRole('spinbutton', { name: 'start_range' }).isEnabled()).toBe(input);
-    expect(await outputRow.getByRole('spinbutton', { name: 'end_range' }).isEnabled()).toBe(output);
+    await expect(inputRow.getByRole('spinbutton', { name: 'start_range' })).toHaveCount(input ? 1 : 0);
+    await expect(outputRow.getByRole('spinbutton', { name: 'end_range' })).toHaveCount(output ? 1 : 0);
     const before = await bounds();
     await inspector.locator('button[type=submit]').click(); await expect.poll(() => submitted.length, { timeout: 60000 }).toBe(index + 1);
     expect(submitted[index]).toEqual({ before: input ? 1.625 : 0, after: output ? 1.625 : 0, uploaded: input || output });
@@ -47,7 +49,7 @@ test('compact inspector uses connected references, supports all switch combinati
     await expect(inspector.locator('button[type=submit]')).toHaveText('Retry'); expect(await bounds()).toEqual(before);
   }
   await page.screenshot({ path: 'test-results/inspector-compact-mobile.png', fullPage: true });
-  await page.locator('.inspector-advanced>summary').click(); await expect(page.getByRole('button', { name: /^Mask injection:/ })).toBeVisible();
+  await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', ''); await expect(page.getByRole('button', { name: /^Mask injection:/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Generation details', exact: true }).click(); await expect(page.locator('.inspector-status-popover:popover-open')).toContainText('without reference footage'); await page.keyboard.press('Escape');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(errors).toEqual([]);

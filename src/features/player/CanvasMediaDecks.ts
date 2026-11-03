@@ -82,7 +82,10 @@ export class CanvasMediaDecks {
     const signature = JSON.stringify([this.matchFraming, assigned.map(({ layer, sample }) =>
       [layer.key, layer.source.url, layer.sourceFootage, sample!.timestamp, layer.opacity])]);
     if (signature !== this.signature) {
-      this.renderer.draw(assigned.map(({ layer, sample }) => ({ sample: sample!, opacity: layer.opacity, sourceFootage: layer.sourceFootage })), this.matchFraming);
+      // Independent audio fades may add an invisible third clip. Only the
+      // visible video layers need GPU textures and dissolve uniforms.
+      this.renderer.draw(assigned.filter(({ layer }) => layer.opacity > 0)
+        .map(({ layer, sample }) => ({ sample: sample!, opacity: layer.opacity, sourceFootage: layer.sourceFootage })), this.matchFraming);
       this.signature = signature;
     }
     this.audio.retain(playing ? new Set(assigned.filter(({ layer }) => !layer.still && !layer.muted).map(({ audioKey }) => audioKey)) : new Set());

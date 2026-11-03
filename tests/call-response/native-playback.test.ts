@@ -45,6 +45,52 @@ const makePlayer = (flow = flowWithReferences()) => new FlowPlayback(flow, { vol
   { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, vi.fn(), undefined, false, true, 4);
 
 describe('canvas flow playback', () => {
+  it.each([
+    { video: 1, audio: .5, frame: 126, opacity: .25, gain: 0, rate: 0 },
+    { video: 1, audio: .5, frame: 138, opacity: .75, gain: .5, rate: 2 },
+    { video: .5, audio: 1, frame: 126, opacity: 0, gain: .25, rate: 1 },
+    { video: 0, audio: 1, frame: 138, opacity: 0, gain: .75, rate: 1 },
+    { video: 1, audio: 0, frame: 138, opacity: .75, gain: 0, rate: 0 },
+  ])('plays video=$video and audio=$audio independently at frame $frame', ({ video, audio, frame, opacity, gain, rate }) => {
+    const a = createNode('simple'), b = createNode('simple');
+    const items = [a,b].map(p => ({ ...p.item, phase: 'ready' as const,
+      result: { assetId: `mock:${p.node.id}`, url: 'blob:generated', start: 2, duration: 6, totalDuration: 10 } }));
+    const graph: StoryGraph = { version: 1, entryId: a.node.id, nodes: [a.node,b.node], templates: [],
+      edges: [{ ...edge(a.node.id,b.node.id), videoCrossfade: video, audioCrossfade: audio }] };
+    const player = makePlayer(runtimeFlow(graph, items, 'mock:original', 20));
+    player.seekScene(a.node.id, frame);
+    const before = layers().find(l => l.source.assetId === items[0].result.assetId)!;
+    const after = layers().find(l => l.source.assetId === items[1].result.assetId)!;
+    expect(after.opacity).toBeCloseTo(opacity);
+    expect(after.gain).toBeCloseTo(gain); expect(after.gainRate).toBeCloseTo(rate);
+    expect(before.gain).toBeCloseTo(1-gain);
+    expect(after.time).toBeCloseTo(2+(frame-144)/24);
+    expect(player.session.frame).toBe(frame);
+    player.seekScene(b.node.id, 0);
+    expect(layers()).toHaveLength(1); expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1, time: 2 });
+    player.dispose();
+  });
+
+  it('supports an incoming video dissolve and an outgoing audio fade at the same time', () => {
+    const a = createNode('simple'), c = createNode('simple');
+    const items = [a,c].map(p => ({ ...p.item, phase: 'ready' as const,
+      result: { assetId: `mock:${p.node.id}`, url: 'blob:generated', start: 2, duration: 6, totalDuration: 10 } }));
+    const graph: StoryGraph = { version: 1, entryId: a.node.id, templates: [],
+      nodes: [a.node, { id: 'middle', name: 'Middle', kind: 'source', x: 0, y: 0, loopCount: 0,
+        source: { assetId: 'mock:original', duration: 20, inFrame: 240, outFrame: 264 } }, c.node],
+      edges: [{ ...edge(a.node.id,'middle'), videoCrossfade: 1, audioCrossfade: 0 },
+        { ...edge('middle',c.node.id), videoCrossfade: 0, audioCrossfade: 1 }] };
+    const player = makePlayer(runtimeFlow(graph, items, 'mock:original', 20));
+    player.seekScene('middle', 12);
+    expect(layers()).toHaveLength(3);
+    expect(layers().map(l => ({ opacity: l.opacity, gain: l.gain }))).toEqual([
+      { opacity: 1, gain: 0 }, { opacity: .5, gain: .5 }, { opacity: 0, gain: .5 }]);
+    expect(layers().map(l => l.time)).toEqual([8.5, 10.5, 1.5]);
+    player.setCrossfade(false);
+    expect(layers()).toHaveLength(1); expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1, time: 10.5 });
+    player.dispose();
+  });
+
   it('viewer seeks retain the chosen route and playback state while allowing a new answer', () => {
     const player = makePlayer();
     player.seekScene('wait', sceneFrames(getScene(player.flow, 'wait')) - 1);

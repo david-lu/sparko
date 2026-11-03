@@ -26,6 +26,12 @@ export function instantiateTemplate(graph:StoryGraph,template:StoryTemplate,item
   const edges:StoryEdge[]=template.edges.map(e=>({...e,conditionId:e.event==='answer'?e.conditionId??e.id:undefined,id:freshId(),from:remap.get(e.from)!,to:remap.get(e.to)!,points:e.points?.map(p=>({...p,id:freshId(),x:p.x+offset.x,y:p.y+offset.y}))}));
   if(connection){edges.push(withReferenceFade({...connection,id:freshId(),to:remap.get(template.entryId)!,points:undefined},[...graph.nodes,...nodes]));
     for(const node of nodes.filter(n=>!edges.some(e=>e.from===n.id&&e.to!==n.id)))edges.push(withReferenceFade(edge(node.id,connection.to),[...graph.nodes,...nodes]));}
+  // Built-in entry clips can start a new project without external footage.
+  if(builtInTemplates.some(preset=>preset.id===template.id))for(const node of nodes){
+    if(edges.some(e=>e.to===node.id&&e.from!==node.id))continue;
+    const item=added.find(item=>item.id===node.interstitialId);
+    if(item){item.useInputReference=false;item.useOutputReference=false;item.startReferenceType='none';item.endReferenceType='none';}
+  }
   const group={id:freshId(),name:template.name,nodeIds:nodes.map(n=>n.id),color:template.color??'blue' as const};
   const next=normalizeConditions({...graph,entryId:graph.entryId||remap.get(template.entryId)!,nodes:[...graph.nodes,...nodes],edges:[...graph.edges.filter(e=>e.id!==connectionId),...edges],groups:[...(graph.groups??[]),group]});
   const result=placement?next:autoLayout(next,[...items,...added]);

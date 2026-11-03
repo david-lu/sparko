@@ -47,11 +47,11 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
     return route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) });
   });
   await addBridge(page);
-  await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).check();
+  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Video generation method' })).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion' })).toHaveCount(0);
   await page.getByLabel('Interstitial prompt').fill('Continue the motion');
-  await page.locator('.inspector-advanced summary').click();
+  await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
   const audioTransition = page.getByRole('spinbutton', { name: 'Audio mask transition duration', exact: true });
   const videoTransition = page.getByRole('spinbutton', { name: 'Video mask transition duration', exact: true });
   await expect(audioTransition).toHaveValue('500');
@@ -137,7 +137,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await saveAndReopen(page);
   await fitAll(page);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await page.locator('.inspector-advanced summary').click();
+  await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
   await expect(audioTransition).toHaveValue('0');
   await expect(videoTransition).toHaveValue('1000');
 });

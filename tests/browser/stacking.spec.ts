@@ -101,7 +101,8 @@ for (const width of [1440, 390]) {
     await page.getByRole('button', { name: 'Add interstitial', exact: true }).dragTo(page.locator('.story-scroll'), { targetPosition: { x: 90, y: 60 } });
     await page.getByRole('spinbutton', { name: 'Duration', exact: true }).click();
     await expectOnTop(page.locator('.interstitial-time-popover')); await page.keyboard.press('Escape');
-    await page.locator('.inspector-advanced>summary').click();
+    await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
+    await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
     await page.getByRole('button', { name: /^Mask injection:/ }).click();
     await expectOnTop(page.locator('.mask-injection-popover')); await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Generation details', exact: true }).click();

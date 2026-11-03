@@ -1,12 +1,11 @@
 import { Copy, Flag, Scissors, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AppStatus } from '../../../shared/contracts';
-import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
+import { TIMELINE_FPS } from '../../../shared/constants';
 import { playableResult } from '../../../shared/interstitials';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import InterstitialEditor from '../interstitials/InterstitialEditor';
-import InterstitialTimeField from '../interstitials/InterstitialTimeField';
 import { freshId, nodeDuration } from './model';
 import { behaviors, conditionsFor, defaultCondition } from './behaviors';
 import BehaviorSection from './BehaviorSection';
@@ -18,6 +17,7 @@ import { connectedReferences, storyGenerationItem } from './referenceInputs';
 import './inspector.css';
 import { useShortcuts } from '../../shared/shortcuts';
 import LoopReferenceHelp from './LoopReferenceHelp';
+import StoryReferences from './StoryReferences';
 
 function ClipName({ value, onSave }: { value: string; onSave: (name: string) => void }) {
   const [name, setName] = useState(value);
@@ -70,31 +70,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <p className="hint">Drag each labeled output on the clip to its destination.</p>
     </BehaviorSection>
     {item && <InterstitialEditor key={item.id} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
-      generationSettings={<div className="inspector-references">
-        {behavior.loop ? <>
-          <div className="inspector-reference inspector-loop-reference" role="group" aria-label="Loop reference">
-            <div className="loop-reference-label"><span>Loop ref</span><LoopReferenceHelp /></div>
-            <select aria-label="Loop reference source" value={item.useInputReference ? 'video' : 'image'} onChange={event => editor.jobs.edit(item.id, { useInputReference: event.target.value === 'video' })}>
-              <option value="video">Connected video</option><option value="image">Picture 1{item.imageReferences?.length ? '' : ' (add image)'}</option>
-            </select>
-            <InterstitialTimeField name="Loop footage" label="Loop footage" value={item.start_range} disabled={!item.useInputReference} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025}
-              onChange={start_range => editor.jobs.edit(item.id, { start_range })} />
-          </div>
-          <p className="loop-reference-source" title={item.useInputReference ? referenceLabel(refs.input) : item.imageReferences?.[0]?.name}>{item.useInputReference ? referenceLabel(refs.input) : item.imageReferences?.[0]?.name ?? 'Add an image below'} · same reference at both ends</p>
-        </> : (['input', 'output'] as const).map(side => {
-          const field = side === 'input' ? 'useInputReference' : 'useOutputReference', ids = refs[side];
-          const range = side === 'input' ? 'start_range' : 'end_range';
-          return <div className="inspector-reference" role="group" aria-label={`${side === 'input' ? 'Start' : 'End'} reference`} key={side}>
-            <label title={`${side === 'input' ? 'Ending of the incoming' : 'Beginning of the outgoing'} connected clip. Reconnecting the wire updates this reference automatically.`}>
-              <input type="checkbox" aria-label={`Use ${side === 'input' ? 'start' : 'end'} reference`} checked={!!item[field]} onChange={e => editor.jobs.edit(item.id, { [field]: e.target.checked })} />
-              <span>{side === 'input' ? 'Start' : 'End'}</span>
-            </label>
-            <span className="inspector-reference-name" title={referenceLabel(ids)}>{referenceLabel(ids)}</span>
-            <InterstitialTimeField name={range} label={`${side === 'input' ? 'Start' : 'End'} footage`} value={item[range]} disabled={!item[field]} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025}
-              onChange={value => editor.jobs.edit(item.id, { [range]: value })} />
-          </div>;
-        })}
-      </div>}
+      generationSettings={<StoryReferences item={item} loop={behavior.loop} labels={{ start: referenceLabel(refs.input), end: referenceLabel(refs.output) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
       resultDetails={<GeneratedVideoInfo item={item} node={node} nodes={graph.nodes} items={items} />} />}
     {node.source && <div className="inspector-source-range">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'Source in' : 'Source out'}</span><input type="number" step={1 / TIMELINE_FPS} min={field === 'inFrame' ? 0 : (node.source!.inFrame + 1) / TIMELINE_FPS} max={field === 'inFrame' ? (node.source!.outFrame - 1) / TIMELINE_FPS : node.source!.duration ?? info?.duration}
       value={Number((node.source![field] / TIMELINE_FPS).toFixed(3))} onChange={e => {

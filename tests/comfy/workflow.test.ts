@@ -5,9 +5,33 @@ import { COMFY } from '../../shared/constants';
 import { videoTransitionPoints } from '../../server/features/comfy/mask-transition';
 
 describe('H3 two-sided temporal bridge', () => {
+  it.each(['custom', 'loop'] as const)('generates a %s clip with no video or image references', mode => {
+    const graph = bridgeWorkflow(undefined, { mode, before: 0, after: 0, duration: 6, prompt: 'A drifting cloud', width: 1280, height: 736, hasAudio: false }, 1);
+    expect(graph.conditioning.class_type).toBe('MiniMaxH3ImageToVideo');
+    expect(Object.values(graph).some(node => ['VHS_LoadVideoFFmpeg', 'LoadImage', 'MiniMaxH3AddGuide'].includes(node.class_type))).toBe(false);
+    expect(graph.output).toBeDefined();
+  });
+  it('guides independent endpoints with chosen pictures and supports mixed footage', () => {
+    const input = { mode: 'custom' as const, before: 0, after: 0, duration: 6, prompt: 'Move between poses', width: 960, height: 544, hasAudio: false, startImageIndex: 1, endImageIndex: 0 };
+    const graph = bridgeWorkflow(undefined, input, 1, undefined, ['end', 'start']);
+    expect(graph.guide_start.inputs).toMatchObject({ image: ['reference_image_1', 0], frame_idx: 0 });
+    expect(graph.guide_end.inputs).toMatchObject({ image: ['reference_image_0', 0], frame_idx: -1, positive: ['guide_start', 0] });
+    expect(graph.guider.inputs.conditioning).toEqual(['guide_end', 0]);
+    const mixed = bridgeWorkflow('footage', { ...input, before: 1.625, startImageIndex: undefined }, 1, undefined, ['end']);
+    expect(mixed.before).toBeDefined(); expect(mixed.guide_start).toBeUndefined(); expect(mixed.guide_end).toBeDefined();
+    expect(() => bridgeWorkflow('footage', { ...input, before: 1.625 }, 1, undefined, ['end', 'start'])).toThrow('each endpoint');
+    expect(() => bridgeWorkflow(undefined, input, 1, undefined, ['end'])).toThrow('each endpoint');
+  });
+  it('keeps optional subject images separate from loop endpoint guides', () => {
+    const input = { mode: 'loop' as const, before: 0, after: 0, duration: 6, prompt: 'A drifting cloud', width: 960, height: 544, hasAudio: false, loopImageGuide: false };
+    const free = bridgeWorkflow(undefined, input, 1, undefined, ['style', 'pose']);
+    expect(free.conditioning.class_type).toBe('MiniMaxH3ReferenceToVideo'); expect(free.loop_start).toBeUndefined();
+    const guided = bridgeWorkflow(undefined, { ...input, loopImageGuide: true, startImageIndex: 1, endImageIndex: 1 }, 1, undefined, ['style', 'pose']);
+    expect(guided.loop_start.inputs.image).toEqual(['reference_image_1', 0]); expect(guided.loop_end.inputs.image).toEqual(['reference_image_1', 0]);
+  });
   it('anchors both ends of an image-only loop to Picture 1, keeping other images as references', () => {
     const input = { mode: 'loop' as const, before: 0, after: 0, duration: 6, prompt: 'A gentle looping motion', width: 960, height: 544, hasAudio: false };
-    expect(() => bridgeWorkflow(undefined, input, 1)).toThrow('needs an image reference');
+    expect(bridgeWorkflow(undefined, input, 1).loop_start).toBeUndefined();
     const graph = bridgeWorkflow(undefined, input, 1, undefined, ['pose', 'style']);
     expect(graph.loop_start).toMatchObject({ class_type: 'MiniMaxH3AddGuide', inputs: { image: ['reference_image_0', 0], frame_idx: 0 } });
     expect(graph.loop_end).toMatchObject({ class_type: 'MiniMaxH3AddGuide', inputs: { image: ['reference_image_0', 0], frame_idx: -1, positive: ['loop_start', 0] } });

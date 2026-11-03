@@ -82,6 +82,13 @@ describe('story clip graph',()=>{
     const empty=removeNodes(next,[next.entryId]);expect(empty.nodes).toHaveLength(0);expect(empty.entryId).toBe('');expect(storyGraphSchema.safeParse(empty).success).toBe(true);
     expect(runtimeFlow(empty,[],asset,20).scenes).toHaveLength(0);
   });
+  it.each(['scene','loop','question'])('starts the built-in %s template without source footage',id=>{
+    const graph:StoryGraph={version:1,entryId:'',nodes:[],edges:[],templates:[]};
+    const result=instantiateTemplate(graph,makePreset(id),[]),entry=result.graph.nodes.find(node=>node.id===result.graph.entryId)!;
+    const item=result.items.find(item=>item.id===entry.interstitialId)!;
+    expect(storyDependency(result.graph,result.items,'',0,item.id).blocked).toBeUndefined();
+    expect(item).toMatchObject({startReferenceType:'none',endReferenceType:'none'});
+  });
   it('inserts templates with unique IDs and reconnects every terminal response',()=>{
     let graph=initial();graph=splitSource(graph,graph.entryId,120);const link=graph.edges[0];
     const result=instantiateTemplate(graph,makePreset('question'),[],link.id);

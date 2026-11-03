@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from './constants.js';
 import { generationMethods, generationResolutions, maskInjections } from './interstitials.js';
-import { imageReferencesSchema } from './image-references.js';
+import { imageReferencesSchema, imageReferenceIndexSchema } from './image-references.js';
 
 export const CLIP_METADATA_TAG = 'sparko';
 export const MAX_CLIP_METADATA_BYTES = 256 * 1024;
@@ -11,6 +11,8 @@ const frame = z.number().int().nonnegative().max(1e10);
 const range = z.object({ inFrame: frame, outFrame: frame }).refine(v => v.outFrame > v.inFrame);
 export const clipSettingsSchema = z.object({
   imageReferences: imageReferencesSchema.optional(),
+  startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
+  startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),
   method: z.enum(generationMethods), resolution: z.enum(generationResolutions),
   start_range: seconds.max(4), end_range: seconds.max(4), duration: seconds.min(1).max(INTERSTITIAL.maxDuration),
   prompt: z.string().max(8000), enable_prompt_expansion: z.boolean(),

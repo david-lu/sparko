@@ -6,7 +6,7 @@ import { assetIds, type Asset, type Project } from './types';
 import { callResponseSchema } from '../call-response/schema';
 import { storyGraphSchema } from '../story-flow/schema';
 import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
-import { imageReferencesSchema } from '../../../shared/image-references';
+import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
 
 const MAX_BYTES = 8 * 1024 ** 3;
 const MAX_MANIFEST = 8 * 1024 ** 2;
@@ -21,6 +21,8 @@ const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uui
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid interstitial boundaries.');
 const settingsSchema = z.object({
   imageReferences: imageReferencesSchema.optional(),
+  startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
+  startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),
   resolution: z.enum(generationResolutions).optional(),
   useInputReference: z.boolean().optional(), useOutputReference: z.boolean().optional(),
   method: z.enum([...generationMethods, 'fal']).optional().transform(value => value === 'fal' || value === undefined ? 'comfy' as const : value),

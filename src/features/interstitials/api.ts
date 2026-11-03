@@ -8,7 +8,7 @@ import { request, sendForm } from '../../shared/api';
 import { referenceImageData } from './image-references';
 import { assets } from '../project/assets';
 
-export const hasImageOnlyInput = (item: Interstitial) => !!item.imageReferences?.length && item.useInputReference === false && item.useOutputReference === false;
+export const hasNoVideoInput = (item: Interstitial) => item.useInputReference === false && item.useOutputReference === false;
 
 export async function generateInterstitial(item: Interstitial, engine: Pick<MediaEngine, 'exportMp4'> | null, info: MediaInfo | null, signal: AbortSignal,
   onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void): Promise<GenerationJob> {
@@ -19,20 +19,27 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   const query = new URLSearchParams();
   if (item.resolution === '2k') query.set('resolution', '2k');
   if (item.imageReferences?.length) query.set('imageReferences', 'true');
-  if (item.method === 'comfy-loop' && hasImageOnlyInput(item)) query.set('imageLoop', 'true');
+  const startImageIndex = item.useInputReference === false ? item.startImageIndex : undefined;
+  const endImageIndex = item.useOutputReference === false ? item.endImageIndex : undefined;
+  for (const index of [startImageIndex, endImageIndex]) {
+    if (index !== undefined && !item.imageReferences?.[index]) throw new Error('Choose an image for each image reference before generating.');
+  }
+  if (startImageIndex !== undefined || endImageIndex !== undefined) query.set('imageGuides', 'true');
+  if (item.method === 'comfy-loop' && startImageIndex !== undefined) query.set('imageLoop', 'true');
   const readiness = await request<{ ready: boolean; message?: string }>(`/api/comfy/status${query.size ? `?${query}` : ''}`, { signal });
   if (!readiness.ready) throw new Error(readiness.message || 'Comfy Cloud is not ready.');
-  if ((!engine || !info) && !hasImageOnlyInput(item)) throw new Error('Load the source video or add image references and turn off Start and End references.');
+  if ((!engine || !info) && !hasNoVideoInput(item)) throw new Error('Connect reference footage or set Start and End to None or Image.');
   const range = comfyReferenceRange(item, info?.duration ?? item.duration);
   if (!item.prompt.trim()) throw new Error('Describe the interstitial before generating.');
   onProgress('preparing', 0);
   const images = await referenceImageData(item.imageReferences, signal);
   let canvas = info;
-  if (!canvas) {
+  if (!canvas && item.imageReferences?.length) {
     const { asset } = await assets.open(item.imageReferences![0].assetId), bitmap = await createImageBitmap(asset.blob);
     try { canvas = { width: bitmap.width, height: bitmap.height, duration: item.duration, fps: INTERSTITIAL.referenceFps, hasAudio: false, codec: '' }; }
     finally { bitmap.close(); }
   }
+  canvas ??= { width: 1280, height: 720, duration: item.duration, fps: INTERSTITIAL.referenceFps, hasAudio: false, codec: '' };
   signal.throwIfAborted();
   const dimensions = comfyDimensions(canvas.width, canvas.height, item.resolution);
   const clip = range.plan.prefixFrames || range.plan.suffixFrames ? await engine!.exportMp4(range, { maxDimension: Math.max(dimensions.width, dimensions.height), frameRate: INTERSTITIAL.referenceFps,
@@ -41,11 +48,14 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   signal.throwIfAborted();
   const body = new FormData();
   if (images.length) body.set('imageReferences', JSON.stringify(images));
+  if (startImageIndex !== undefined) body.set('startImageIndex', String(startImageIndex));
+  if (endImageIndex !== undefined) body.set('endImageIndex', String(endImageIndex));
   if (clip) body.set('video', clip, 'comfy-reference.mp4');
   else { body.set('width', String(dimensions.width)); body.set('height', String(dimensions.height)); }
   body.set('before', String(range.insertAt)); body.set('after', String(range.after));
   body.set('duration', String(item.duration)); body.set('prompt', item.prompt);
   body.set('mode', range.mode);
+  if (range.mode === 'loop') body.set('loopImageGuide', String(startImageIndex !== undefined));
   body.set('maskInjection', clipMaskInjection(item));
   body.set('audioMaskTransitionMs', String(audioMaskTransitionMs));
   body.set('videoMaskTransitionMs', String(videoMaskTransitionMs));

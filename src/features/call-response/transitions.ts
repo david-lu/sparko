@@ -3,10 +3,11 @@ import { referenceCrossfade } from '../../media/ReferenceCrossfade';
 import { getScene, sceneFrames, type CallResponseFlow, type FlowEdge } from './model';
 import { sceneMediaRange } from '../story-flow/mediaRange';
 import { connectionReference } from '../story-flow/references';
+import type { FadeChannel } from '../story-flow/model';
 
-function storyTransition(flow: CallResponseFlow, edge: FlowEdge) {
+function storyTransition(flow: CallResponseFlow, edge: FlowEdge, channel: FadeChannel) {
   const before = getScene(flow, edge.from), after = getScene(flow, edge.to), fps = flow.fps;
-  const requested = Math.max(0, Math.round(edge.transitionFrames));
+  const requested = Math.max(0, Math.round(channel === 'audio' ? edge.audioTransitionFrames ?? edge.transitionFrames : edge.transitionFrames));
   if (!requested || !before || !after || before.id === after.id || before.draft || after.draft) return;
   if (connectionReference(flow,edge).state==='mismatch') return;
   const left = sceneMediaRange(before, fps), right = sceneMediaRange(after, fps);
@@ -67,18 +68,19 @@ function idleTransition(flow: CallResponseFlow, edge: FlowEdge, requestedFrames:
   return frames ? { before, after, startFrame: -frames, frames } : undefined;
 }
 
-function candidateTransition(flow: CallResponseFlow, edge: FlowEdge, frames: number) {
-  if (flow.storyGraph) return storyTransition(flow, edge);
+function candidateTransition(flow: CallResponseFlow, edge: FlowEdge, frames: number, channel: FadeChannel) {
+  if (flow.storyGraph) return storyTransition(flow, edge, channel);
+  if (channel === 'audio') frames = edge.audioTransitionFrames ?? frames;
   return idleTransition(flow, edge, frames) ?? referenceTransition(flow, edge, frames);
 }
 
 /** Fade through Idle's reference sections at entry and exit; repeats stay untouched. */
-export function flowTransition(flow: CallResponseFlow, edge: FlowEdge, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES) {
-  const transition = candidateTransition(flow, edge, crossfadeFrames);
+export function flowTransition(flow: CallResponseFlow, edge: FlowEdge, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES, channel: FadeChannel = 'video') {
+  const transition = candidateTransition(flow, edge, crossfadeFrames, channel);
   if (!transition) return;
   if(flow.storyGraph){
     let pre=Math.max(0,-transition.startFrame),post=Math.max(0,transition.startFrame+transition.frames);
-    const others=flow.edges.filter(e=>e.id!==edge.id).map(e=>storyTransition(flow,e)).filter(t=>!!t);
+    const others=flow.edges.filter(e=>e.id!==edge.id).map(e=>storyTransition(flow,e,channel)).filter(t=>!!t);
     const earlier=Math.max(0,...others.filter(t=>t.after.id===transition.before.id).map(t=>Math.max(0,t.startFrame+t.frames)));
     const later=Math.max(0,...others.filter(t=>t.before.id===transition.after.id).map(t=>Math.max(0,-t.startFrame)));
     if(pre+earlier>sceneFrames(transition.before))pre=Math.min(pre,Math.ceil(sceneFrames(transition.before)/2));
@@ -87,7 +89,7 @@ export function flowTransition(flow: CallResponseFlow, edge: FlowEdge, crossfade
   }
   const entering = transition.startFrame < 0, source = entering ? transition.before : transition.after;
   const competing = Math.max(0, ...flow.edges.filter(other => other.id !== edge.id).map(other => {
-    const candidate = candidateTransition(flow, other, crossfadeFrames);
+    const candidate = candidateTransition(flow, other, crossfadeFrames, channel);
     if (!candidate || (candidate.startFrame < 0) === entering) return 0;
     return (candidate.startFrame < 0 ? candidate.before : candidate.after).id === source.id ? candidate.frames : 0;
   }));

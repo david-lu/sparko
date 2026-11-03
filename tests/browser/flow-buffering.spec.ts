@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { FlowEdge, PlaybackSession } from '../../src/features/call-response/model';
+import type { FlowEdge, PlaybackSession, TimelineScene } from '../../src/features/call-response/model';
 
 async function setup(page: Page, { retry = false, mismatch = false, native = false, references = false } = {}) {
   await page.route('**/__flow-buffering', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><div style="position:relative;width:640px;height:480px"><video muted playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain"></video></div>' }));
@@ -59,6 +59,52 @@ const activePixel = async (page: Page, x = 0, y = 48) => {
     return [...ctx.getImageData((img.width - 160 * scale) / 2 + x * scale, (img.height - 96 * scale) / 2 + y * scale, 1, 1).data];
   }, { base64: screenshot.toString('base64'), x, y });
 };
+
+test('independent story fades blend pixels and audio gains on their own timelines', async ({ page }) => {
+  await setup(page, { native: true, references: true });
+  for (const {video,audio,green,gain} of [
+    {video:12,audio:4,green:true,gain:0},
+    {video:4,audio:12,green:false,gain:.5},
+    {video:0,audio:12,green:false,gain:.5},
+    {video:12,audio:0,green:true,gain:0},
+  ]) {
+    await page.evaluate(({video,audio}) => {
+      const state = (window as any).flowBufferTest;
+      state.flow = { ...state.flow, storyGraph: true,
+        scenes: state.flow.scenes.map((scene: TimelineScene) => ({ ...scene,
+          storyNode: {id:scene.id,name:scene.label,kind:'simple',x:0,y:0,loopCount:0} })),
+        edges: state.flow.edges.map((edge: FlowEdge) => ({...edge,
+        transitionFrames: edge.id === 'intro-call' ? video : 0,
+        audioTransitionFrames: edge.id === 'intro-call' ? audio : 0 })) };
+      state.playback.setFlow(state.flow); state.playback.seekScene('intro',18);
+    }, {video,audio});
+    await expect.poll(async () => (await read(page)).buffering, fast).toBe(false);
+    const layers = await page.evaluate(() => (window as any).flowBufferTest.playback.playback.decks.layers
+      .map((layer: {key:string;opacity:number;gain:number}) => ({id:layer.key.split(':')[0],opacity:layer.opacity,gain:layer.gain})));
+    expect(layers).toEqual([{id:'intro',opacity:1,gain:1-gain},{id:'call',opacity:green ? .5 : 0,gain}]);
+    const pixel = await activePixel(page,80);
+    expect(pixel[0]).toBeGreaterThan(200);
+    if (green) { expect(pixel[1]).toBeGreaterThan(80); expect(pixel[1]).toBeLessThan(160); }
+    else expect(pixel[1]).toBeLessThan(20);
+    expect(await read(page)).toMatchObject({sceneId:'intro',frame:18,playing:false,encoded:0,error:''});
+  }
+  // A short middle clip can dissolve out of one clip while mixing audio into another.
+  await page.evaluate(() => {
+    const state = (window as any).flowBufferTest;
+    state.flow = { ...state.flow, entrySceneId:'call',
+      scenes:state.flow.scenes.map((scene:TimelineScene) => scene.id==='intro' ? {...scene,clip:{...scene.clip,outFrame:12}} : scene),
+      edges:[{id:'incoming',from:'call',to:'intro',when:'ended',label:'Next',transitionFrames:12,audioTransitionFrames:0},
+        {id:'outgoing',from:'intro',to:'correct',when:'ended',label:'Next',transitionFrames:0,audioTransitionFrames:12}] };
+    state.playback.setFlow(state.flow); state.playback.seekScene('intro',6);
+  });
+  await expect.poll(async () => (await read(page)).buffering, fast).toBe(false);
+  const layers = await page.evaluate(() => (window as any).flowBufferTest.playback.playback.decks.layers
+    .map((layer:{key:string;opacity:number;gain:number}) => ({id:layer.key.split(':')[0],opacity:layer.opacity,gain:layer.gain})));
+  expect(layers).toEqual([{id:'call',opacity:1,gain:0},{id:'intro',opacity:.5,gain:.5},{id:'correct',opacity:0,gain:.5}]);
+  const pixel = await activePixel(page,80);
+  expect(pixel[0]).toBeGreaterThan(200); expect(pixel[1]).toBeGreaterThan(80); expect(pixel[1]).toBeLessThan(160);
+  expect(await read(page)).toMatchObject({sceneId:'intro',frame:6,playing:false,encoded:0,error:''});
+});
 
 test('Call Response crossfades blend GPU video and audio gains and toggle without moving the playhead', async ({ page }) => {
   const third = await setup(page, { native: true, references: true });

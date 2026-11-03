@@ -5,7 +5,7 @@ import { videoTransitionPoints } from './mask-transition.js';
 import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown> }>;
-export type BridgeInput = { before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; interpolateMiddle?: boolean; resolution?: GenerationResolution };
+export type BridgeInput = { before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Optional FILM targets use a uniform 0.97 mask or a gradual 1.00–0.95 vignette.
@@ -18,7 +18,13 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   validateComfyResolution(plan,input.resolution);
   const { prefixFrames, suffixFrames, middleFrames, totalFrames, insertion } = plan;
   const imageLoop = input.mode === 'loop' && !prefixFrames && !suffixFrames;
-  if (imageLoop && !imageAssetIds.length) throw new Error('An image-only loop needs an image reference for both the start and end.');
+  const startImageIndex = input.startImageIndex ?? (imageLoop ? input.endImageIndex ?? (input.loopImageGuide !== false && imageAssetIds.length ? 0 : undefined) : undefined);
+  const endImageIndex = imageLoop ? startImageIndex : input.endImageIndex;
+  if (input.loopImageGuide && !imageAssetIds.length) throw new Error('Choose an image as the shared loop reference.');
+  for (const [index, footage] of [[startImageIndex, prefixFrames], [endImageIndex, suffixFrames]]) {
+    if (index !== undefined && (!Number.isInteger(index) || !imageAssetIds[index] || footage)) throw new Error('Choose an uploaded image or video footage for each endpoint.');
+  }
+  if (imageLoop && input.endImageIndex !== undefined && input.endImageIndex !== startImageIndex) throw new Error('A loop uses the same image at both ends.');
   const audioTransitionMs = input.audioMaskTransitionMs ?? MASK_TRANSITION.defaultMs;
   const videoTransitionMs = input.videoMaskTransitionMs ?? MASK_TRANSITION.defaultMs;
   validateMaskTransitionMs(audioTransitionMs, 'Audio mask transition');
@@ -46,11 +52,8 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
     clip, vae, prompt: input.prompt, width: input.width, height: input.height, length: totalFrames,
     ...(imageAssetIds.length ? { ref_image_size: 'match', ...referenceImages } : {}),
   });
-  if (imageLoop) {
-    // Picture 1 is the shared boundary pose. Other images retain their prompt roles.
-    positive = add('loop_start', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: ['reference_image_0', 0], frame_idx: 0 });
-    positive = add('loop_end', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: ['reference_image_0', 0], frame_idx: -1 });
-  }
+  if (startImageIndex !== undefined) positive = add(imageLoop ? 'loop_start' : 'guide_start', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: [`reference_image_${startImageIndex}`, 0], frame_idx: 0 });
+  if (endImageIndex !== undefined) positive = add(imageLoop ? 'loop_end' : 'guide_end', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: [`reference_image_${endImageIndex}`, 0], frame_idx: -1 });
   const empty = add('empty_streams', 'LTXVSeparateAVLatent', { av_latent: ['conditioning', 1] });
   let target = empty;
   if (before && after && maskInjection !== 'standard') {

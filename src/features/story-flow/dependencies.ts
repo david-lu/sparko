@@ -22,7 +22,9 @@ export function storyDependency(graph: StoryGraph, items: Interstitial[], assetI
   };
   const input: GenerationReference = { mode: loop ? 'loop' : 'custom' };
   let blocked: string | undefined;
-  if (loop && !item.useInputReference && !item.imageReferences?.length) blocked = 'Choose a loop reference: enable the connected video or add an image. The start and end need the same reference.';
+  for (const [label, enabled, index] of [['Start', item.useInputReference, item.startImageIndex], ['End', item.useOutputReference, item.endImageIndex]] as const) {
+    if (!enabled && index !== undefined && !item.imageReferences?.[index]) blocked ??= `Add an image for the ${label.toLowerCase()} reference, or choose a different reference type.`;
+  }
   for (const side of ['input', 'output'] as const) {
     if (loop && side === 'output') continue;
     if (!(side === 'input' ? item.useInputReference : item.useOutputReference)) continue;

@@ -2,6 +2,8 @@
 .inspector-behavior{border-top:1px solid var(--line)}.inspector-behavior-heading{display:flex;align-items:center;gap:5px;min-height:28px}.inspector-behavior-heading>label{display:flex;align-items:center;gap:7px;flex:1;cursor:pointer;font-size:11px;font-weight:600}.inspector-behavior-heading input{width:12px;height:12px;margin:0;accent-color:var(--accent)}.inspector-behavior-heading>small{padding-right:5px;color:var(--muted);font-size:10px}.behavior-disclosure{display:grid;place-items:center;width:16px;height:24px;padding:0;background:none;color:var(--muted);border-radius:3px}.behavior-disclosure[aria-expanded=true] svg{transform:rotate(90deg)}.behavior-disclosure:disabled{opacity:.3}.inspector-behavior-body{padding:0 4px 7px 21px}.inspector-behavior-hint{margin:2px 0 5px;color:var(--muted);font-size:10px}.condition-default{display:flex;align-items:center;gap:5px;margin:4px 0;font-size:10px;color:var(--muted);cursor:pointer}.condition-default input{width:11px;height:11px;margin:0;accent-color:var(--accent)}
 .story-inspector.clip-inspector{padding:8px 10px 12px;font-size:11px;--property-label:80px}
 .connection-inspector{--property-label:80px}
+.connection-fade-control>.hint{min-height:3em}
+.connection-channel-timing+.connection-channel-timing{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
 .inspector-clip-heading{display:flex;align-items:center;gap:4px;min-width:0}
 .clip-inspector .story-name{flex:1;min-width:0;margin:0;height:28px;padding:3px 4px;font-size:13px;border-radius:3px}
 .clip-inspector .story-name:hover,.clip-inspector .story-name:focus{padding-left:4px}
@@ -32,14 +34,18 @@
 .inspector-group-body{padding:0 4px 8px 10px}
 .inspector-generation>form{padding:0 3px}
 .inspector-references{margin:0 0 4px}
-.inspector-reference{display:grid;grid-template-columns:104px minmax(0,1fr) 58px;align-items:center;gap:6px;height:28px;min-width:0;font-size:11px}
-.inspector-reference>label{display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
-.inspector-reference input[type=checkbox]{margin:0;width:12px;height:12px;accent-color:var(--accent);flex:none}
-.clip-inspector .inspector-reference .interstitial-time-field{display:block;min-height:0}
+.inspector-reference{min-width:0;margin:0 0 6px;font-size:11px}
+.inspector-reference-heading{display:flex;align-items:center;gap:5px;min-height:26px}
+.inspector-reference-heading>span{white-space:nowrap}
+.inspector-reference-heading .inspector-options{margin-left:auto;flex:0 1 162px}
+.inspector-reference-source{display:flex;align-items:center;gap:6px;height:28px;min-width:0}
+.inspector-reference-source>.hint{margin:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px}
+.inspector-reference-source select{width:100%;min-width:0;height:24px;padding:2px 5px;border:1px solid var(--line);border-radius:3px;background:var(--input);color:var(--accent);font-size:10px}
+.clip-inspector .inspector-reference .interstitial-time-field{display:block;flex:0 0 65px;min-height:0}
 .inspector-reference .interstitial-time-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.inspector-reference .interstitial-time-value input:disabled{opacity:.4;cursor:not-allowed}
-.inspector-reference-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent);font-size:10px}
-.inspector-reference:has(input[type=checkbox]:not(:checked)) .inspector-reference-name{color:var(--muted);opacity:.65}
+.inspector-reference-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent);font-size:10px}
+.inspector-references-panel{margin:6px 0}
+.inspector-references-panel>.inspector-group-body{padding:2px 0 6px}
 .clip-inspector .inspector-prompt{gap:3px;margin-bottom:5px}
 .clip-inspector .prompt-field-heading{min-height:23px}
 .clip-inspector .enhance-prompt-actions{gap:1px}
@@ -67,13 +73,13 @@
 .inspector-status-popover>div{display:flex;align-items:center;justify-content:space-between}
 .inspector-status-popover p{margin-top:10px;line-height:1.5;overflow-wrap:anywhere}
 .inspector-status-popover::backdrop{background:#0003}
-.inspector-advanced{margin:0 -3px}
-.inspector-advanced .mask-injection-field{display:grid;grid-template-columns:var(--property-label) minmax(0,1fr);align-items:center;gap:4px 6px;margin:4px 0 8px}
-.inspector-advanced .mask-injection-field>label{margin:0;font-size:11px}
-.inspector-advanced .mask-injection-trigger{min-height:24px;height:24px;padding:2px 5px;border-radius:3px;font-size:10px}
-.inspector-advanced .mask-injection-field>.hint{grid-column:1/-1;margin:0;font-size:10px;line-height:1.5}
-.inspector-advanced .interstitial-prompt-details{margin:8px 0 0}
-.inspector-advanced .interstitial-option{margin:6px 0;font-size:11px}
+.reference-plan{height:18px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inspector-references-panel .mask-injection-field{display:grid;grid-template-columns:var(--property-label) minmax(0,1fr);align-items:center;gap:4px 6px;margin:4px 0 8px}
+.inspector-references-panel .mask-injection-field>label{margin:0;font-size:11px}
+.inspector-references-panel .mask-injection-trigger{min-height:24px;height:24px;padding:2px 5px;border-radius:3px;font-size:10px}
+.inspector-references-panel .mask-injection-field>.hint{grid-column:1/-1;margin:0;font-size:10px;line-height:1.5}
+.inspector-references-panel .interstitial-prompt-details{margin:8px 0 0}
+.inspector-references-panel .interstitial-option{margin:6px 0;font-size:11px}
 .inspector-source-range{margin:6px 0}
 .inspector-rule{border-left:1px solid var(--line-strong);padding-left:8px;margin:3px 0 10px}
 .inspector-rule-heading{display:flex;align-items:center;gap:4px}
@@ -90,4 +96,3 @@
 .clip-inspector .generated-play-range{padding-top:8px;gap:4px}
 .clip-inspector .interstitial-preview{margin-top:8px;padding-top:8px}
 @container(max-width:280px){.story-inspector.clip-inspector{--property-label:63px;padding-inline:7px}.inspector-options button{font-size:9px;padding-inline:2px}.inspector-clip-tools .icon-button.small{width:22px;min-width:22px}}
-.loop-reference-label{display:flex;align-items:center;gap:2px;white-space:nowrap}.inspector-loop-reference select{width:100%;min-width:0;height:24px;border:1px solid var(--line);border-radius:3px;background:var(--input);color:var(--accent);padding:2px;font-size:10px}.loop-reference-source{height:20px;line-height:20px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--muted)}

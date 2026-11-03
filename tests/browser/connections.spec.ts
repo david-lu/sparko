@@ -1,4 +1,4 @@
-import { fitAll,test,expect,type Page} from './fixtures';
+import { fitAll,saveAndReopen,test,expect,type Page} from './fixtures';
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
 async function open(page:Page){
   await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
@@ -20,11 +20,45 @@ test('sockets detach, connect backwards, reconnect, and cancel while retaining t
   await drag(page,input(middle.id),blank);await expect.poll(async()=>(await saved(page)).storyFlow.edges.length).toBe(1);
   await drag(page,input(middle.id),output(first.id));await expect.poll(async()=>(await saved(page)).storyFlow.edges.length).toBe(2);
   let connection=(await saved(page)).storyFlow.edges.find((e:any)=>e.from===first.id);const selector=`[data-edge-id="${connection.id}"]`;
-  await page.locator(selector+' .story-crossfade').click();await page.getByLabel('Crossfade duration').fill('.375');
+  await page.locator(selector+' .story-crossfade').click();await page.getByLabel('Video crossfade duration').fill('.375');
+  await page.getByLabel('Audio crossfade duration').fill('.75');
   await drag(page,input(middle.id),input(last.id),true);expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===connection.id).to).toBe(middle.id);
   await drag(page,input(middle.id),input(last.id));await expect.poll(async()=>(await saved(page)).storyFlow.edges.find((e:any)=>e.id===connection.id).to).toBe(last.id);
-  expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===connection.id).crossfade).toBe(.375);await expect(page.locator('.story-wire')).toHaveCount(0);
+  expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===connection.id).videoCrossfade).toBe(.375);await expect(page.locator('.story-wire')).toHaveCount(0);
+  expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===connection.id).audioCrossfade).toBe(.75);
   await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===connection.id).to).toBe(middle.id);
+});
+
+for (const width of [1440, 390]) test(`video and audio fades stay independent and survive saving at ${width}px`, async ({page}) => {
+  await page.setViewportSize({width,height:1000});
+  const project = await open(page), connection = project.storyFlow.edges[0];
+  await page.locator(`[data-edge-id="${connection.id}"] .story-crossfade`).click();
+  const video = page.getByLabel('Video crossfade duration'), audio = page.getByLabel('Audio crossfade duration');
+  const positions = () => page.locator('.connection-inspector').evaluate(el => {
+    const top = el.getBoundingClientRect().top;
+    return [...el.querySelectorAll('.interstitial-time-field,.connection-reference-status,.connection-timing')]
+      .map(node => ({y:node.getBoundingClientRect().top-top,height:node.getBoundingClientRect().height}));
+  });
+  await expect(video).toHaveValue('0'); await expect(audio).toHaveValue('0');
+  const before = await positions();
+  await video.fill('0.375'); await expect(audio).toHaveValue('0');
+  await audio.fill('0.75'); await expect(video).toHaveValue('0.375');
+  await video.fill('0'); await expect(audio).toHaveValue('0.75');
+  await expect(page.getByLabel('Video crossfade timing')).toContainText('Video · Cut');
+  await expect(page.getByLabel('Audio crossfade timing')).toContainText('0.750 s fade');
+  expect(await positions()).toEqual(before);
+  await audio.press('Tab');
+  await page.getByRole('button',{name:'Undo',exact:true}).click();
+  await expect(video).toHaveValue('0.375'); await expect(audio).toHaveValue('0.75');
+  await page.getByRole('button',{name:'Redo',exact:true}).click();
+  await expect(video).toHaveValue('0'); await expect(audio).toHaveValue('0.75');
+  await saveAndReopen(page); await fitAll(page);
+  await page.locator(`[data-edge-id="${connection.id}"] .story-crossfade`).click();
+  await expect(video).toHaveValue('0'); await expect(audio).toHaveValue('0.75');
+  const bounds = await page.evaluate(() => ({width:document.documentElement.scrollWidth,viewport:innerWidth}));
+  expect(bounds.width).toBeLessThanOrEqual(bounds.viewport);
+  await audio.scrollIntoViewIfNeeded();
+  await page.screenshot({path:`test-results/separate-crossfades-${width}.png`,fullPage:true});
 });
 test('reroute points reshape wires, cancel cleanly, and support keyboard and context-menu editing',async({page})=>{
   const project=await open(page),link=project.storyFlow.edges[0],root=page.locator(`[data-edge-id="${link.id}"]`),path=root.locator('.story-edge-hit');
@@ -42,9 +76,9 @@ test('reroute points reshape wires, cancel cleanly, and support keyboard and con
 });
 test('the fade icon opens a hidden or collapsed inspector without adding clips or a bounding outline',async({page})=>{
   await open(page);await page.getByRole('button',{name:'Collapse Inspector panel',exact:true}).click();
-  const fade=page.locator('.story-crossfade').first();await fade.click();await expect(page.getByLabel('Crossfade duration')).toBeVisible();await expect(page.locator('.story-clip')).toHaveCount(3);
+  const fade=page.locator('.story-crossfade').first();await fade.click();await expect(page.getByLabel('Video crossfade duration')).toBeVisible();await expect(page.locator('.story-clip')).toHaveCount(3);
   await page.locator('.panel-workspace-menu summary').click();await page.locator('.panel-workspace-menu').getByRole('button',{name:/Inspector$/}).click();await page.locator('.panel-workspace-menu summary').click();
-  await expect(page.locator('[data-panel-id=inspector]')).toHaveCount(0);await fade.click();await expect(page.getByLabel('Crossfade duration')).toBeVisible();
+  await expect(page.locator('[data-panel-id=inspector]')).toHaveCount(0);await fade.click();await expect(page.getByLabel('Video crossfade duration')).toBeVisible();
   await fade.focus();expect(await fade.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');await expect(fade.locator('.fade-ramp')).toHaveCount(2);
-  await page.locator('.story-clip-title').first().click();await expect(page.getByLabel('Crossfade duration')).toHaveCount(0);await expect(page.locator('.story-fade,.story-fade-handle')).toHaveCount(0);
+  await page.locator('.story-clip-title').first().click();await expect(page.getByLabel('Video crossfade duration')).toHaveCount(0);await expect(page.locator('.story-fade,.story-fade-handle')).toHaveCount(0);
 });

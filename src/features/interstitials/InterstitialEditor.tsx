@@ -19,7 +19,7 @@ import { sequenceActive } from '../call-response/sequence';
 import MaskInjectionField from './MaskInjectionField';
 import GenerationFeedback from './GenerationFeedback';
 import ImageReferences from './ImageReferences';
-import { hasImageOnlyInput } from './api';
+import { hasNoVideoInput } from './api';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -40,7 +40,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   useEffect(() => {
     setEnhancing(false); setEnhancementError('');
     return () => { enhancement.current?.abort(); enhancement.current = null; };
-  }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey, selected.imageReferences]);
+  }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey, selected.imageReferences, selected.startImageIndex, selected.endImageIndex]);
   const enhance = async () => {
     if (enhancement.current || !status?.providers.openai || !selected.prompt.trim()) return;
     const operation = new AbortController(); enhancement.current = operation;
@@ -75,23 +75,24 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const trimmedLoop = (currentResult?.reference?.mode === 'loop' || !compact && (kind === 'idle' || method === 'comfy-loop')) && !currentResult?.fullAssetId;
   const downloadName = `${selected.label.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'interstitial'}-${trimmedLoop ? 'loop' : 'full'}.mp4`;
   let validationError = '';
-  const imageOnly = hasImageOnlyInput(selected);
+  const noVideo = hasNoVideoInput(selected);
+  const hasSource = !!engine && !!info || !!(dependency?.reference?.before || dependency?.reference?.after);
   let comfyPlan: ReturnType<typeof comfyReferenceRange>['plan'] | undefined;
   try {
     validateInterstitialDuration(selected.duration, compact ? 'comfy-loop' : method);
     validateMaskTransitionMs(selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Audio mask transition');
     validateMaskTransitionMs(selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Video mask transition');
     if (selected.prompt.length > 8000) throw new Error('Shorten the prompt to fit this model.');
-    if ((info || imageOnly) && !dependency?.blocked) {
+    if ((hasSource || noVideo) && !dependency?.blocked) {
       const timing = dependency?.reference && referenceTiming(selected, dependency.reference);
       const input = timing ? { ...selected, time: timing.time } : selected;
       const duration = timing?.duration || info?.duration || selected.duration;
       comfyPlan = comfyReferenceRange(input, duration).plan;
     }
   } catch (error) { validationError = (error as Error).message; }
-  const canGenerate = (!!engine && !!info || imageOnly) && !!status?.providers.comfy && !validationError && !dependency?.blocked && !!selected.prompt.trim();
+  const canGenerate = (hasSource || noVideo) && !!status?.providers.comfy && !validationError && !dependency?.blocked && !!selected.prompt.trim();
   const referenceDescription = dependency?.reference?.mode === 'loop'
-    ? dependency.reference.before ? `Uses the ending of ${dependency.label} as the shared start and end pose.` : 'Picture 1 guides both the first and last frames of this loop.'
+    ? dependency.reference.before ? `Uses the ending of ${dependency.label} as the shared start and end pose.` : selected.startImageIndex !== undefined ? `Picture ${selected.startImageIndex + 1} guides both the first and last frames of this loop.` : 'Generates a loop from the prompt without endpoint references.'
     : dependency ? dependency.reference?.before && dependency.reference?.after
     ? `Uses the connected input’s ending and output’s beginning.`
     : dependency.reference?.before ? `Uses the ending of ${dependency.label}.`
@@ -115,7 +116,8 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     {submittedPrompt?<pre>{submittedPrompt}</pre>:<p>The prompt was not saved with this older video.</p>}
     <p>Prompt instructions apply to the generated section. Reference footage keeps its original video and audio.</p>
   </details>;
-  const advanced = <>
+  const referenceSettings = <>
+    {!noVideo && <>
     <MaskInjectionField key={`mask:${selected.id}`} value={clipMaskInjection(selected)} hasEndReference={method !== 'comfy-extend' && selected.useInputReference !== false}
       onChange={maskInjection => controller.edit(selected.id, { maskInjection })} />
     <InterstitialTimeField name="Audio mask transition duration" label="Audio mask transition" unit="ms" value={selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs}
@@ -123,12 +125,13 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     <InterstitialTimeField name="Video mask transition duration" label="Video mask transition" unit="ms" value={selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs}
       min={0} max={MASK_TRANSITION.maxMs} step={50} onChange={videoMaskTransitionMs => controller.edit(selected.id, { videoMaskTransitionMs })} />
     <p className="hint">Soft masks stay entirely inside each reference, limited to the available footage. Set either duration to 0 to disable that transition independently.</p>
+    </>}
     {kind === 'idle' && <label className="interstitial-option"><input type="checkbox" checked={!!selected.loopAudio}
       disabled={!!currentResult && !currentResult.fullAssetId && currentResult.reference?.mode === 'loop'}
       onChange={event => controller.edit(selected.id, { loopAudio: event.target.checked })} /> Play generated clip audio</label>}
     {kind === 'idle' && currentResult && !currentResult.fullAssetId && currentResult.reference?.mode === 'loop' && <p className="hint">Regenerate the loop to make its audio available.</p>}
     {controller.hasLinkedDuration(selected.id) && <p className="hint">Shared duration for all response branches. Changes apply to their next generation.</p>}
-    {comfyPlan && <p className="hint">{comfyPlan.insertion.duration.toFixed(3)}s generated · {(comfyPlan.prefixFrames / TIMELINE_FPS).toFixed(3)}s / {(comfyPlan.suffixFrames / TIMELINE_FPS).toFixed(3)}s reference footage</p>}
+    <p className="hint reference-plan">{comfyPlan ? `${comfyPlan.insertion.duration.toFixed(3)}s generated · ${((comfyPlan.prefixFrames + comfyPlan.suffixFrames) / TIMELINE_FPS).toFixed(3)}s reference footage` : '\u00a0'}</p>
   </>;
   const output = <>{resultDetails}{currentResult&&promptDetails}{fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
     heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
@@ -136,7 +139,6 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>
     <fieldset>
       {!compact && <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>}
-      {generationSettings}
       <div className="field inspector-prompt">
         <div className="prompt-field-heading">
           <label htmlFor={promptId}>Prompt</label>
@@ -148,7 +150,24 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
       </div>
       {!compact && <><div className="interstitial-enhancement-feedback">{enhancementError && <p className="inline-error" role="alert">{enhancementError}</p>}</div></>}
-      <ImageReferences key={`images:${selected.id}`} value={selected.imageReferences} onBusyChange={setAddingImages} onChange={imageReferences => controller.edit(selected.id, { imageReferences })} />
+      <details className="inspector-group inspector-references-panel" open><summary>References<span>Optional</span></summary><div className="inspector-group-body">
+        {generationSettings}
+        <ImageReferences key={`images:${selected.id}`} value={selected.imageReferences} onBusyChange={setAddingImages} onChange={imageReferences => {
+          const saved = controller.getSnapshot().items.find(item => item.id === selected.id) ?? selected;
+          const remap = (index: number | undefined) => {
+            if (index === undefined) return undefined;
+            const previous = saved.imageReferences?.[index];
+            if (!previous) return index;
+            const next = imageReferences.findIndex(image => image.assetId === previous.assetId);
+            return next < 0 ? undefined : next;
+          };
+          const startImageIndex = remap(saved.startImageIndex), endImageIndex = remap(saved.endImageIndex);
+          controller.edit(selected.id, { imageReferences, startImageIndex, endImageIndex,
+            ...(saved.startImageIndex !== undefined && startImageIndex === undefined ? { startReferenceType: 'none' } : {}),
+            ...(saved.endImageIndex !== undefined && endImageIndex === undefined ? { endReferenceType: 'none' } : {}) });
+        }} />
+        {referenceSettings}
+      </div></details>
       <div className="field interstitial-resolution">
         <label className="interstitial-option" htmlFor={resolutionId}>
           <input id={resolutionId} type="checkbox" aria-label="Enable 2K regeneration" aria-describedby={`${resolutionId}-help`} checked={selected.resolution === '2k'}
@@ -158,7 +177,6 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         <p id={`${resolutionId}-help`} className="hint">Off by default: Native H3 output. Enable this to add the official H3-Regenerate-2K pass.</p>
       </div>
       <div className="interstitial-time-fields" key={selected.id}>{!compact && timeFields}{durationField}</div>
-      {!compact && advanced}
     </fieldset>
     {!compact && <div className="interstitial-generation-feedback" aria-live="polite">
       {validationError && <p className="inline-error" role="alert">{validationError}</p>}
@@ -178,9 +196,6 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     </div>
     {compact && <GenerationFeedback busy={busy} message={message} messages={messages} error={!!(selected.error || validationError || enhancementError || dependency?.blocked)} progress={progress} onCancel={() => void controller.cancel(selected.id)} />}
     {!compact && status && !status.providers.comfy && <p className="hint interstitial-action-hint">Comfy Cloud is not connected.</p>}
-    {compact && <details className="inspector-group inspector-advanced"><summary>Advanced<span>Mask & audio</span></summary><div className="inspector-group-body">
-      {advanced}
-    </div></details>}
   </form>;
   return <div className={`interstitial-editor${compact ? ' interstitial-editor-compact' : ''}`} data-project-edit>
     {compact ? <details className="inspector-group inspector-generation" open><summary>Generation<span>Comfy · H3</span></summary>{form}</details> : <>

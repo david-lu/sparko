@@ -41,6 +41,8 @@ export type FlowEdge = {
   when: 'ended' | 'pending' | Outcome;
   label: string;
   transitionFrames: number;
+  /** Omitted in older flows, which use the video duration for both channels. */
+  audioTransitionFrames?: number;
 };
 export type CallResponseFlow = {
   storyGraph?: boolean;

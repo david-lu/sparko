@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
   });
   await openVideo(page);
   await addBridge(page);
-  await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).check();
+  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
   await page.getByLabel('Interstitial prompt').fill(original);
 });
 

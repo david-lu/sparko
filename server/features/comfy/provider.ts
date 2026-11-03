@@ -20,7 +20,7 @@ const jobSchema = statusSchema.extend({ id, progress: progressSchema.nullable().
 });
 export type ComfyReadiness = { ready: boolean; message?: string };
 export interface ComfyProvider {
-  check(maskInjection?: MaskInjection, resolution?: GenerationResolution, imageReferences?: boolean, imageLoop?: boolean): Promise<ComfyReadiness>;
+  check(maskInjection?: MaskInjection, resolution?: GenerationResolution, imageReferences?: boolean, imageGuides?: boolean): Promise<ComfyReadiness>;
   submit(file: Blob | undefined, input: BridgeInput, images?: Blob[]): Promise<GenerationJob>;
   status(requestId: string): Promise<GenerationJob>;
   events(requestId: string, signal: AbortSignal): AsyncIterable<GenerationEvent>;
@@ -32,15 +32,15 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
   const client = new ComfyClient(env, transport);
   const partnerKey = env.COMFY_CLOUD_API_KEY || env.COMFY_API_KEY || '';
   const checks = new Map<string, { promise: Promise<ComfyReadiness>; at: number }>();
-  const check = (maskInjection: MaskInjection = 'standard', resolution: GenerationResolution = 'native', imageReferences = false, imageLoop = false) => {
+  const check = (maskInjection: MaskInjection = 'standard', resolution: GenerationResolution = 'native', imageReferences = false, imageGuides = false) => {
     if (!client.configured) return Promise.resolve({ ready: false, message: 'Add COMFY_CLOUD_API_KEY to .env and restart the server.' });
-    const key = `${maskInjection}:${resolution}:${imageReferences}:${imageLoop}`, cached = checks.get(key);
+    const key = `${maskInjection}:${resolution}:${imageReferences}:${imageGuides}`, cached = checks.get(key);
     if (cached && Date.now() - cached.at < 60_000) return cached.promise;
     const promise = (async () => {
       const nodes = await client.call<Record<string, { input?: { required?: Record<string, unknown[]> } }>>('/api/object_info', { signal: AbortSignal.timeout(15_000) });
-      const graph = bridgeWorkflow('preflight-asset', { before: imageLoop ? 0 : 1.625, after: imageLoop ? 0 : 1.625, mode: imageLoop ? 'loop' : 'bridge', duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, maskInjection, resolution }, 0, 'preflight-mask', imageReferences || imageLoop ? ['preflight-image'] : []);
+      const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, mode: 'bridge', duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, maskInjection, resolution }, 0, 'preflight-mask', imageReferences || imageGuides ? ['preflight-image'] : []);
       // The hard mask is also used when transitions or both references are off.
-      const missing = [...new Set([...Object.values(graph).map(node => node.class_type), 'MVEx_FrameRangeMask'])].filter(name => !nodes[name]);
+      const missing = [...new Set([...Object.values(graph).map(node => node.class_type), 'MVEx_FrameRangeMask', ...(imageGuides ? ['MiniMaxH3AddGuide'] : [])])].filter(name => !nodes[name]);
       if (missing.length) return { ready: false, message: `Comfy is missing required nodes: ${missing.join(', ')}.` };
       const models = [['UNETLoader', 'unet_name', COMFY_MODELS.diffusion], ['CLIPLoader', 'clip_name', COMFY_MODELS.textEncoder], ['VAELoader', 'vae_name', COMFY_MODELS.videoVae], ['VAELoader', 'vae_name', COMFY_MODELS.audioVae]];
       if (maskInjection !== 'standard') models.push(['FrameInterpolationModelLoader', 'model_name', COMFY_MODELS.frameInterpolation]);
@@ -92,10 +92,12 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
     },
     async submit(file, input, images = []) {
       if (images.length > IMAGE_REFERENCE.maxCount || images.some(image => image.type !== 'image/jpeg' || !image.size || image.size > IMAGE_REFERENCE.maxBytes)) throw new HttpError(400, 'Use up to 9 prepared JPEG image references, each smaller than 1 MB.');
-      const imageLoop = input.mode === 'loop' && !input.before && !input.after;
-      if (imageLoop && !images.length) throw new HttpError(400, 'Choose an image as the shared loop reference.');
+      const imageLoop = input.mode === 'loop' && !input.before && !input.after && input.loopImageGuide !== false && images.length > 0;
       const maskInjection = !input.before || !input.after ? 'standard' : normalizeMaskInjection(input.maskInjection, input.interpolateMiddle);
-      const readiness = await check(maskInjection, input.resolution, images.length > 0, imageLoop);
+      const imageGuides = imageLoop || input.startImageIndex !== undefined || input.endImageIndex !== undefined;
+      // Validate image guides before uploading assets or submitting a paid job.
+      bridgeWorkflow('validation-video', input, 0, 'validation-mask', images.map((_, index) => `validation-image-${index}`));
+      const readiness = await check(maskInjection, input.resolution, images.length > 0, imageGuides);
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
       const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
       validateComfyResolution(plan,input.resolution);

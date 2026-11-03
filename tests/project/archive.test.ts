@@ -34,7 +34,8 @@ describe('portable project archives', () => {
     const images = ['character.jpg', 'style.jpg', 'template.jpg'].map(name => ({ id: crypto.randomUUID(), name, blob: new Blob([name], { type: 'image/jpeg' }) }));
     const refs = images.map(image => ({ assetId: image.id, name: image.name }));
     const snapshot = structuredClone(project), item = snapshot.interstitials[0];
-    item.imageReferences = [refs[0]]; item.generationSettings = interstitialSettings(item);
+    item.imageReferences = [refs[0]]; item.startReferenceType = 'image'; item.endReferenceType = 'none'; item.startImageIndex = 0;
+    item.generationSettings = interstitialSettings(item);
     expect(hasUnsubmittedChanges(item)).toBe(false);
     item.imageReferences = [refs[1]];
     expect(hasUnsubmittedChanges(item)).toBe(true);
@@ -48,6 +49,9 @@ describe('portable project archives', () => {
     expect(restored.project.interstitials[0].imageReferences).toEqual([{ name: 'style.jpg', assetId: idFor('style.jpg') }]);
     expect(restored.project.interstitials[0].generationSettings!.imageReferences).toEqual([{ name: 'character.jpg', assetId: idFor('character.jpg') }]);
     expect(restored.project.storyFlow!.templates[0].settings.node.imageReferences).toEqual([{ name: 'template.jpg', assetId: idFor('template.jpg') }]);
+    for (const settings of [restored.project.interstitials[0], restored.project.interstitials[0].generationSettings, restored.project.storyFlow!.templates[0].settings.node]) {
+      expect(settings).toMatchObject({ startReferenceType: 'image', endReferenceType: 'none', startImageIndex: 0 });
+    }
     expect(idFor('style.jpg')).not.toBe(images[1].id);
     expect(hasUnsubmittedChanges(restored.project.interstitials[0])).toBe(true);
   });
