@@ -12,7 +12,7 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
     await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
     const status = await request.get('/api/status');
-    expect((await status.json()).uploadMode).toBe('local');
+    expect(await status.json()).toMatchObject({ uploadMode: 'local', providers: { openai: false, gemini: false, comfy: false } });
     // Same-origin browser modules load while cross-site requests remain blocked.
     expect((await request.get('/src/main.tsx', { headers: { Origin: baseURL! } })).status()).toBe(200);
     expect((await request.get('/src/main.tsx', { headers: { Origin: 'https://untrusted.example' } })).status()).toBe(403);
