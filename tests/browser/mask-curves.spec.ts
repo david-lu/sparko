@@ -88,7 +88,8 @@ for(const width of [1440,390]) test(`custom masks submit independently and keep 
   const curve=(await readProject(page)).interstitials[0].videoMaskCurve;
   const positions=()=>page.locator('.interstitial-editor').evaluate(root=>{const top=root.getBoundingClientRect().top;return ['.mask-curve-control','.interstitial-resolution','button[type=submit]','.task-status'].map(selector=>{const box=root.querySelector(selector)!.getBoundingClientRect();return {y:box.top-top,height:box.height};});});
   const idle=await positions();await page.getByRole('button',{name:'Generate',exact:true}).click();
-  await expect.poll(()=>submitted).toBeTruthy();expect(submitted).toEqual({videoMaskCurve:curve,audioMaskCurve:null});expect(await positions()).toEqual(idle);
+  // Preparing real reference media takes longer on CI's software renderer.
+  await expect.poll(()=>submitted,{timeout:60000}).toBeTruthy();expect(submitted).toEqual({videoMaskCurve:curve,audioMaskCurve:null});expect(await positions()).toEqual(idle);
   await page.getByRole('button',{name:'Edit audio mask',exact:true}).click();await expect(page.getByRole('dialog',{name:'Audio mask editor'})).toBeVisible();
   await page.getByRole('button',{name:'Cancel',exact:true}).click();complete=true;
   await expect.poll(async()=>(await readProject(page)).interstitials[0].phase,{timeout:60000}).toBe('ready');

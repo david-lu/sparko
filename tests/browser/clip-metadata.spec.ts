@@ -29,7 +29,7 @@ for (const width of [1440, 390]) test(`dropping a portable video restores an int
   const during = await page.evaluate(() => { (window as any).importObserver.disconnect(); return (window as any).importPositions; });
   expect(during.length).toBeGreaterThan(0); for (const position of during) expect(position).toEqual(before);
   expect(await positions()).toEqual(before);
-  const project = await readProject(page); expect(project.interstitials[0]).toMatchObject({ phase: 'ready', generationSettings: clipMetadata.settings, result: { metadata: clipMetadata, start: 1, duration: 2, totalDuration: 4 } });
+  const project = await readProject(page); expect(project.interstitials[0]).toMatchObject({ phase: 'ready', generationSettings: { ...clipMetadata.settings, maskInjection: 'standard' }, result: { metadata: clipMetadata, start: 1, duration: 2, totalDuration: 4 } });
   expect(project.interstitials[0].requestId).toBeUndefined(); expect(project.storyFlow.nodes[0].source).toBeUndefined();
   await fitAll(page); await page.locator('.story-clip-title').click();
   await expect(page.getByLabel('Interstitial prompt', { exact: true })).toHaveValue(clipMetadata.settings.prompt);
