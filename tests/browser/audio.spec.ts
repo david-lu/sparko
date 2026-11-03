@@ -9,7 +9,8 @@ async function prepareAudio(page: Page) {
     const fixture = async (rate: number, channels: number, duration: number, frequencies: number[]) => {
       const canvas = new OffscreenCanvas(160, 90), context = canvas.getContext('2d')!;
       const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-      const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 100_000 });
+      // Baseline avoids software H.264 encoders emitting an undecodable High/Level 1b stream at this fixture size.
+      const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 });
       // PCM keeps the fixture's exact rate even on browsers without a 32 kHz AAC encoder.
       const audio = channels ? new AudioBufferSource({ codec: 'pcm-f32' }) : null;
       output.addVideoTrack(video, { frameRate: 24 }); if (audio) output.addAudioTrack(audio);
@@ -195,10 +196,13 @@ test('Idle soundtrack loops on the playback clock and follows pause, mute and ex
     } };
   });
   await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeGreaterThan(.01);
-  expect(await page.evaluate(() => {
+  const soundtrack = await page.evaluate(() => {
     const source = (window as any).musicTest.sources[0] as AudioBufferSourceNode;
-    return { loop: source.loop, duration: source.buffer?.duration };
-  })).toMatchObject({ loop: true, duration: 29.84 });
+    return { loop: source.loop, duration: source.buffer!.duration, sampleRate: source.buffer!.sampleRate };
+  });
+  expect(soundtrack.loop).toBe(true);
+  // AudioContext resampling rounds the buffer length to a whole sample.
+  expect(Math.abs(soundtrack.duration - 29.84)).toBeLessThanOrEqual(1 / soundtrack.sampleRate);
   await page.evaluate(() => (window as any).musicTest.audio.renderMusic(true, true, 0, 1));
   await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeLessThan(.001);
   await page.evaluate(() => (window as any).musicTest.audio.renderMusic(true, true, .4, 1));

@@ -12,7 +12,7 @@ async function setup(page: Page, { retry = false, mismatch = false, native = fal
     const make = async (color: string, duration: number, rate: number, height = 96, fps = 24) => {
       const canvas = new OffscreenCanvas(160, height), ctx = canvas.getContext('2d')!;
       const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-      const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 100_000 }), audio = new AudioBufferSource({ codec: 'pcm-f32' });
+      const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 }), audio = new AudioBufferSource({ codec: 'pcm-f32' });
       output.addVideoTrack(video, { frameRate: fps }); output.addAudioTrack(audio); await output.start();
       await Promise.all([
         (async () => { for (let frame = 0; frame < duration * fps; frame++) { ctx.fillStyle = color; ctx.fillRect(0, 0, 160, height); for (let bit = 0; bit < 5; bit++) { ctx.fillStyle = (frame % 24) & (1 << bit) ? '#fff' : '#000'; ctx.fillRect(bit * 5, 0, 5, 10); } await video.add(frame / fps, 1 / fps); } video.close(); })(),

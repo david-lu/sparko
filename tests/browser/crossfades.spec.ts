@@ -10,7 +10,7 @@ test('crossfades blend video and mixed-rate audio in exports, previews and parti
     const fixture = async (color: string, rate: number, frequency: number, duration: number) => {
       const canvas = new OffscreenCanvas(160, 96), ctx = canvas.getContext('2d')!;
       const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-      const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 100_000 });
+      const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 });
       const audio = new AudioBufferSource({ codec: 'pcm-f32' });
       output.addVideoTrack(video, { frameRate: 24 }); output.addAudioTrack(audio); await output.start();
       await Promise.all([

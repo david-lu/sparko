@@ -271,7 +271,7 @@ Do not prefix API secrets with `VITE_`. Redeploy after changing deployment envir
 
 ## Verification
 
-[The CI workflow](.github/workflows/ci.yml) runs the full TypeScript check, unit/API tests, production build, and Chrome browser tests on pushes and pull requests. Its required check is **Sparko quality checks**. Use pull requests for changes to `main` and require this check in GitHub branch rules.
+[The CI workflow](.github/workflows/ci.yml) runs the full TypeScript check, unit/API tests, production build, and Chrome browser tests on pull requests and pushes to `main`. Updates to an open pull request rerun CI without a duplicate branch-push run. Its required check is **Sparko quality checks**. Use pull requests for changes to `main` and require this check in GitHub branch rules.
 
 Vercel's production check must match that job name and block production domain assignment until it succeeds. This lets builds run while CI is testing; failed or missing checks leave the previous production deployment serving traffic. Manual CLI deployments still need a matching successful GitHub check. The production build uses `tsconfig.build.json`, while `npm run typecheck` includes tests and development scripts. Tests and scripts are excluded from Vercel uploads, not from CI.
 

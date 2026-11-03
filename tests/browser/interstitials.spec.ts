@@ -7,7 +7,7 @@ async function generatedFixture(page: Page) {
     const { ensureAac } = await import('/src/media/media.ts' as string); await ensureAac();
     const canvas = new OffscreenCanvas(160, 90), ctx = canvas.getContext('2d')!;
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-    const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 100_000 });
+    const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 });
     const audio = new AudioBufferSource({ codec: 'aac', bitrate: 128_000 });
     output.addVideoTrack(video, { frameRate: 25 }); output.addAudioTrack(audio); await output.start();
     await Promise.all([(async () => { for (let frame = 0; frame < 225; frame++) { ctx.fillStyle = frame >= 50 && frame < 175 ? '#00ee00' : '#ee0000'; ctx.fillRect(0, 0, 160, 90); await video.add(frame / 25, 1 / 25); } video.close(); })(),

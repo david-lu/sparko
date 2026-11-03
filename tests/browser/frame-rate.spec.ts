@@ -113,7 +113,7 @@ test('normalizes variable frame spacing even when its average is 24 fps', async 
     const { prepareVideo } = await import('/src/media/prepareVideo.ts' as string);
     const canvas = new OffscreenCanvas(160, 90), ctx = canvas.getContext('2d')!;
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-    const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 100_000 }); output.addVideoTrack(video); await output.start();
+    const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 }); output.addVideoTrack(video); await output.start();
     let time = 0;
     for (const duration of [1 / 48, 3 / 48, 1 / 48, 3 / 48]) {
       ctx.fillStyle = '#123456'; ctx.fillRect(0, 0, 160, 90); await video.add(time, duration); time += duration;

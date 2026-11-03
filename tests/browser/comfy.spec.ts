@@ -26,7 +26,7 @@ test('Comfy generation, status recovery, and regeneration', async ({ page }) => 
     const { Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const canvas = new OffscreenCanvas(160, 96), ctx = canvas.getContext('2d')!;
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-    const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 100_000 });
+    const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 });
     output.addVideoTrack(video, { frameRate: 24 }); await output.start();
     for (let frame = 0; frame < 226; frame++) { ctx.fillStyle = frame >= 39 && frame < 187 ? '#00ee00' : '#ee0000'; ctx.fillRect(0, 0, 160, 96); await video.add(frame / 24, 1 / 24); }
     video.close(); await output.finalize(); return [...new Uint8Array(output.target.buffer)];
