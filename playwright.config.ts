@@ -4,8 +4,12 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'list',
   use: { baseURL: 'http://127.0.0.1:3100', channel: 'chrome', viewport: { width: 1440, height: 1000 }, trace: 'retain-on-failure',
-    // Exercise WebGPU on Linux runners without a physical GPU.
-    launchOptions: { args: process.platform === 'linux' ? ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader'] : [] },
+    // Use one software Vulkan backend for WebGPU, video textures, and compositing.
+    // Selecting only a WebGPU adapter leaves Linux's compositor unable to share frames.
+    launchOptions: { args: process.platform === 'linux' ? [
+      '--enable-unsafe-webgpu', '--enable-unsafe-swiftshader', '--enable-features=Vulkan',
+      '--use-angle=vulkan', '--use-vulkan=swiftshader', '--use-webgpu-adapter=swiftshader', '--disable-vulkan-surface',
+    ] : [] },
   },
   webServer: {
     command: 'node node_modules/tsx/dist/cli.mjs server/index.ts', url: 'http://127.0.0.1:3100', reuseExistingServer: false, timeout: 30_000,
