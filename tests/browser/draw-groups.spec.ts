@@ -12,7 +12,8 @@ for(const width of [1440,390])test(`draw and cut tools complete one action, canc
   const draw=page.getByRole('button',{name:'Draw group tool',exact:true}),cut=page.getByRole('button',{name:'Cut tool',exact:true});
   const canvas=page.locator('.story-scroll'),bounds=(await canvas.boundingBox())!,toolbar=await page.locator('.story-toolbar').boundingBox(),stage=await page.locator('.video-stage').boundingBox(),status=await page.locator('.story-status').boundingBox(),before=(await saved(page)).storyFlow;
   await draw.click();await expect(draw).toHaveAttribute('aria-pressed','true');
-  await drag(page,{x:bounds.x+60,y:bounds.y+15},{x:bounds.x+260,y:bounds.y+80},false);
+  // Stay outside the edge auto-pan zone while checking a fixed-size drawing.
+  await drag(page,{x:bounds.x+60,y:bounds.y+60},{x:bounds.x+260,y:bounds.y+125},false);
   await expect(page.locator('.story-group-drawing')).toBeVisible();expect((await saved(page)).storyFlow).toEqual(before);
   expect(await canvas.boundingBox()).toEqual(bounds);expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);expect(await page.locator('.story-status').boundingBox()).toEqual(status);
   await page.screenshot({path:`test-results/drawing-group-${width}.png`,fullPage:true});
@@ -33,7 +34,7 @@ for(const width of [1440,390])test(`draw and cut tools complete one action, canc
 
 test('drawn frames move, resize, accept selected clips, retain empty membership and survive reload',async({page})=>{
   await open(page);const before=(await saved(page)).storyFlow,canvas=(await page.locator('.story-scroll').boundingBox())!;
-  await page.getByRole('button',{name:'Draw group tool',exact:true}).click();await drag(page,{x:canvas.x+80,y:canvas.y+20},{x:canvas.x+280,y:canvas.y+85});
+  await page.getByRole('button',{name:'Draw group tool',exact:true}).click();await drag(page,{x:canvas.x+80,y:canvas.y+60},{x:canvas.x+280,y:canvas.y+125});
   const frame=page.locator('.story-group'),header=frame.locator('.story-group-header');let graph=(await saved(page)).storyFlow,original=graph.groups[0];
   let box=(await header.boundingBox())!;await drag(page,{x:box.x+40,y:box.y+13},{x:box.x+90,y:box.y+33});
   graph=(await saved(page)).storyFlow;expect(graph.groups[0].bounds.x).not.toBe(original.bounds.x);expect(graph.nodes).toEqual(before.nodes);
