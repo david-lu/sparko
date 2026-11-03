@@ -6,7 +6,7 @@ import { maskInjections, type MaskInjection } from '../../../shared/interstitial
 const options: Record<MaskInjection, { label: string; detail: string; how: string; why: string }> = {
   standard: {
     label: 'Standard generation', detail: '1.00 throughout',
-    how: 'H3 generates the whole middle section with a mask of 1.00. There is no interpolated video underneath it; existing reference sections stay frozen.',
+    how: 'H3 generates the whole middle section with a mask of 1.00. There is no interpolated video underneath it. The video mask transition duration controls soft edges inside the reference footage.',
     why: 'Use this for maximum freedom to create new action. It does not add guidance to reduce the color, lighting or framing drift that can build up across repeated generations.',
   },
   uniform: {
@@ -66,7 +66,7 @@ export default function MaskInjectionField({ value, hasEndReference, onChange }:
           ...(upwards ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
           maxHeight: Math.max(80, (upwards ? above : below) - 18) });
       }}><span>{options[value].label}</span><ChevronDown size={14} /></button>
-    <p className="hint" id={`${id}-hint`}>{hasEndReference ? 'Applies to the next generation. Reference sections stay frozen.'
+    <p className="hint" id={`${id}-hint`}>{hasEndReference ? 'Applies to the next generation. Video reference transitions use the video duration below.'
       : 'FILM modes require both start and end references.'}</p>
     {position && createPortal(<div ref={popup} id={`${id}-options`} className="mask-injection-popover" role="dialog" aria-label="Mask injection options"
       data-project-edit style={position} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>

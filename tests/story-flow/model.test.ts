@@ -112,10 +112,12 @@ describe('story clip graph',()=>{
   it('captures selected interstitials as reusable settings without source assets or rendered media',()=>{
     const result=instantiateTemplate(initial(),makePreset('question'),[]),ids=result.graph.nodes.filter(n=>n.interstitialId).map(n=>n.id);
     result.items[0].resolution='2k';
+    result.items[0].audioMaskTransitionMs=0;result.items[0].videoMaskTransitionMs=1000;
     const template=captureTemplate(result.graph,ids,result.items,'Quiz')!;
     expect(template.nodes).toHaveLength(4);expect(template.nodes.every(n=>!n.source)).toBe(true);
     const next=instantiateTemplate(initial(),template,[]);expect(next.items.every(i=>!i.result&&i.phase==='draft')).toBe(true);
     expect(next.items[0].resolution).toBe('2k');
+    expect(next.items[0]).toMatchObject({audioMaskTransitionMs:0,videoMaskTransitionMs:1000});
   });
   it('plays conditional routing at the clip boundary, repeats when enabled, and follows the default otherwise',()=>{
     const result=instantiateTemplate(initial(),makePreset('question'),[]);result.graph.entryId=result.graph.nodes.find(n=>n.kind==='conditional')!.id;
@@ -162,6 +164,7 @@ describe('story clip graph',()=>{
   });
   it('preserves graphs, templates and fades through archives while remapping media IDs',async()=>{
     let graph=initial();graph=splitSource(graph,graph.entryId,120);const result=instantiateTemplate(graph,makePreset('question'),[],graph.edges[0].id);
+    result.items[0].audioMaskTransitionMs=0;result.items[0].videoMaskTransitionMs=1000;
     result.graph.templates.push(captureTemplate(result.graph,result.graph.nodes.map(n=>n.id),result.items,'Saved quiz')!);
     result.graph.edges[0].crossfade=.875;result.graph.nodes[0].x=-1200;result.graph.nodes[0].y=-800;
     const split=splitClip(result.graph,result.items,result.selectedId,48);
@@ -169,6 +172,7 @@ describe('story clip graph',()=>{
     const p={...project(),storyFlow:split.graph,interstitials:[...result.items,...split.items]};const signal=new AbortController().signal;
     const blob=await packProject(p,[{id:asset,name:'source.mp4',blob:new Blob(['fixture'],{type:'video/mp4'})}],signal,()=>{});
     const restored=await unpackProject(blob,signal,()=>{});expect(restored.project.storyFlow?.nodes).toHaveLength(7);expect(restored.project.storyFlow?.templates[0].name).toBe('Saved quiz');expect(restored.project.storyFlow?.nodes.find(n=>n.id===split.rightId)?.trim).toEqual({inFrame:48,outFrame:144});
+    expect(Object.values(restored.project.storyFlow!.templates[0].settings).some(settings=>settings.audioMaskTransitionMs===0&&settings.videoMaskTransitionMs===1000)).toBe(true);
     expect(restored.project.storyFlow?.nodes[0].source?.assetId).toBe(restored.project.source.assetId);expect(restored.project.source.assetId).not.toBe(asset);
     expect(restored.project.storyFlow?.edges).toEqual(split.graph.edges);
     expect(restored.project.storyFlow?.nodes[0]).toMatchObject({x:-1200,y:-800});

@@ -5,7 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { once } from 'node:events';
 import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
 import { z } from 'zod';
-import { COMFY, INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants.js';
+import { COMFY, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants.js';
 import { comfyBridgePlan, comfyDimensions, validateComfyResolution } from '../../../shared/comfy.js';
 import { generationResolutions, maskInjections, normalizeMaskInjection } from '../../../shared/interstitials.js';
 import { authenticate } from '../../hosting.js';
@@ -17,14 +17,20 @@ import { comfyRequestError } from './errors.js';
 const frameRange = z.coerce.number().finite().min(COMFY.minContextFrames / TIMELINE_FPS).max(4)
   .refine(value => Math.abs(value * TIMELINE_FPS - Math.round(value * TIMELINE_FPS)) < 1e-6, 'Reference ranges must use whole 24 fps frames.');
 const optionalRange = z.union([frameRange, z.coerce.number().refine(value => value === 0)]);
+const maskTransition = z.coerce.number().int().min(0).max(MASK_TRANSITION.maxMs).optional();
 const schema = z.object({ before: optionalRange, after: optionalRange,
   mode: z.enum(['bridge', 'extend', 'loop', 'custom']).default('bridge'),
   width: z.coerce.number().int().min(32).max(8192).optional(), height: z.coerce.number().int().min(32).max(8192).optional(),
   maskInjection: z.enum(maskInjections).optional(),
+  audioMaskTransitionMs: maskTransition, videoMaskTransitionMs: maskTransition,
+  maskTransitionMs: maskTransition, // Accept older clients' shared duration.
   resolution: z.enum(generationResolutions).optional(),
   interpolateMiddle: z.enum(['true', 'false']).optional(),
   duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().min(1).max(8000).refine(value => !!value.trim(), 'Add a prompt before generating.') })
-  .transform(({ interpolateMiddle, ...value }) => ({ ...value, maskInjection: normalizeMaskInjection(value.maskInjection, interpolateMiddle === 'true') }))
+  .transform(({ interpolateMiddle, maskTransitionMs, ...value }) => ({ ...value,
+    audioMaskTransitionMs: value.audioMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
+    videoMaskTransitionMs: value.videoMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
+    maskInjection: normalizeMaskInjection(value.maskInjection, interpolateMiddle === 'true') }))
   .refine(value => value.maskInjection === 'standard' || value.before > 0 && value.after > 0, 'Interpolation requires both start and end references.');
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 

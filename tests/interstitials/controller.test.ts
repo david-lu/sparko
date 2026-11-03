@@ -55,6 +55,34 @@ describe('interstitial lifecycle', () => {
     expect(restored.interpolateMiddle).toBeUndefined();
     expect(hasUnsubmittedChanges(restored)).toBe(false);
   });
+  it('persists audio and video edits independently of each other and submitted settings', async () => {
+    const item = await readyScene();
+    expect(item).toMatchObject({ audioMaskTransitionMs: 500, videoMaskTransitionMs: 500 });
+    controller.edit(item.id, { audioMaskTransitionMs: 0 });
+    expect(loadInterstitials('source')[0]).toMatchObject({ audioMaskTransitionMs: 0, videoMaskTransitionMs: 500 });
+    controller.edit(item.id, { videoMaskTransitionMs: 1000 });
+    expect(loadInterstitials('source')[0]).toMatchObject({ audioMaskTransitionMs: 0, videoMaskTransitionMs: 1000,
+      generationSettings: { audioMaskTransitionMs: 500, videoMaskTransitionMs: 500 } });
+    controller.load('source');
+    expect(controller.getSnapshot().items[0]).toMatchObject({ audioMaskTransitionMs: 0, videoMaskTransitionMs: 1000,
+      generationSettings: { audioMaskTransitionMs: 500, videoMaskTransitionMs: 500 } });
+    expect(hasUnsubmittedChanges(controller.getSnapshot().items[0])).toBe(true);
+  });
+  it('migrates browser-saved shared durations and retains an explicit independent zero', async () => {
+    const item = await readyScene();
+    delete item.audioMaskTransitionMs; delete item.videoMaskTransitionMs;
+    delete item.generationSettings!.audioMaskTransitionMs; delete item.generationSettings!.videoMaskTransitionMs;
+    item.maskTransitionMs = 750; item.generationSettings!.maskTransitionMs = 750;
+    localStorage.setItem(interstitialKey('source'), JSON.stringify([item]));
+    controller.load('source');
+    const restored = controller.getSnapshot().items[0];
+    expect(restored).toMatchObject({ audioMaskTransitionMs: 750, videoMaskTransitionMs: 750,
+      generationSettings: { audioMaskTransitionMs: 750, videoMaskTransitionMs: 750 } });
+    expect(restored.maskTransitionMs).toBeUndefined();
+    expect(hasUnsubmittedChanges(restored)).toBe(false);
+    controller.load('source', [{ ...item, audioMaskTransitionMs: 0 }]);
+    expect(controller.getSnapshot().items[0]).toMatchObject({ audioMaskTransitionMs: 0, videoMaskTransitionMs: 750 });
+  });
   it('persists mask edits separately from the last render and other clips', async () => {
     const item = await readyScene();
     const otherId = controller.add(10, 20).id;

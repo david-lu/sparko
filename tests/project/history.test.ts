@@ -9,6 +9,22 @@ const project = (): Project => ({ id: 'project', name: 'Video', source: { name: 
 function prompt(value: Project, text: string): Project { return { ...value, interstitials: value.interstitials.map(item => ({ ...item, prompt: text })) }; }
 
 describe('project edit history', () => {
+  it('groups audio slider edits separately from video and restores each independently', () => {
+    const history = new ProjectHistory(), start = project(), first = structuredClone(start), next = structuredClone(start);
+    first.interstitials[0].audioMaskTransitionMs = 750; next.interstitials[0].audioMaskTransitionMs = 1000;
+    history.record(start, first, 0); history.record(first, next, 100);
+    const video = structuredClone(next); video.interstitials[0].videoMaskTransitionMs = 0;
+    history.record(next, video, 200);
+    expect(history.undoLabel).toBe('Change video mask transition');
+    expect(history.target('undo')?.interstitials[0]).toMatchObject({ audioMaskTransitionMs: 1000, videoMaskTransitionMs: 500 });
+    history.commit('undo');
+    expect(history.undoLabel).toBe('Change audio mask transition');
+    expect(history.target('undo')?.interstitials[0]).toMatchObject({ audioMaskTransitionMs: 500, videoMaskTransitionMs: 500 });
+    history.commit('undo');
+    expect(history.target('redo')?.interstitials[0]).toMatchObject({ audioMaskTransitionMs: 1000, videoMaskTransitionMs: 500 });
+    history.commit('redo');
+    expect(history.target('redo')?.interstitials[0]).toMatchObject({ audioMaskTransitionMs: 1000, videoMaskTransitionMs: 0 });
+  });
   it('records crossfade length as a project edit and merges slider changes', () => {
     const history = new ProjectHistory(), start = { ...project(), crossfadeFrames: 12 };
     const first = { ...start, crossfadeFrames: 14 }, next = { ...start, crossfadeFrames: 16 };

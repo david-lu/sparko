@@ -22,7 +22,7 @@ export function instantiateTemplate(graph:StoryGraph,template:StoryTemplate,item
   const connection=graph.edges.find(e=>e.id===connectionId);
   const entry=template.nodes.find(n=>n.id===template.entryId)!,offset=placement?{x:placement.x-entry.x,y:placement.y-entry.y}:{x:0,y:0};
   const nodes=template.nodes.map(n=>({...n,conditions:conditionsFor(template,n),x:n.x+offset.x,y:n.y+offset.y,id:remap.get(n.id)!,interstitialId:n.kind==='source'?undefined:itemIds.get(n.id)!,referenceId:remap.get(n.referenceId??'')??(n.id===template.entryId?connection?.from:undefined)}));
-  const added:Interstitial[]=template.nodes.filter(n=>n.kind!=='source').map(n=>({id:itemIds.get(n.id)!,label:n.name,time:0,kind:'regular',phase:'draft',...template.settings[n.id]}));
+  const added:Interstitial[]=template.nodes.filter(n=>n.kind!=='source').map(n=>({id:itemIds.get(n.id)!,label:n.name,time:0,kind:'regular',phase:'draft',...interstitialSettings(template.settings[n.id])}));
   const edges:StoryEdge[]=template.edges.map(e=>({...e,conditionId:e.event==='answer'?e.conditionId??e.id:undefined,id:freshId(),from:remap.get(e.from)!,to:remap.get(e.to)!,points:e.points?.map(p=>({...p,id:freshId(),x:p.x+offset.x,y:p.y+offset.y}))}));
   if(connection){edges.push(withReferenceFade({...connection,id:freshId(),to:remap.get(template.entryId)!,points:undefined},[...graph.nodes,...nodes]));
     for(const node of nodes.filter(n=>!edges.some(e=>e.from===n.id&&e.to!==n.id)))edges.push(withReferenceFade(edge(node.id,connection.to),[...graph.nodes,...nodes]));}

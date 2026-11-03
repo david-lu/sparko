@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { comfyBridgePlan, comfyDimensions, comfyReferenceRange, validateComfyResolution } from '../../shared/comfy';
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
 import { COMFY } from '../../shared/constants';
+import { videoTransitionPoints } from '../../server/features/comfy/mask-transition';
 
 describe('H3 two-sided temporal bridge', () => {
   it.each(['bridge','extend','loop','custom'] as const)('uses official H3 2K regeneration after the complete %s base render',mode=>{
@@ -39,7 +40,8 @@ describe('H3 two-sided temporal bridge', () => {
     expect(!!graph.after).toBe(after); expect(!!graph.place_after).toBe(after);
     expect(!!graph.freeze_audio).toBe(before || after);
     expect(!!graph.audio_mask).toBe(before || after);
-    expect(graph.middle_mask.inputs.ranges).toBe(`${plan.prefixFrames}:${plan.totalFrames - plan.suffixFrames}`);
+    if (before || after) expect(graph.middle_mask.inputs.points_string).toBe(videoTransitionPoints(plan.prefixFrames, plan.suffixFrames, plan.totalFrames, 500));
+    else expect(graph.middle_mask.inputs.ranges).toBe(`0:${plan.totalFrames}`);
     if (before) expect(graph.before).toMatchObject({ class_type: 'VHS_LoadVideoFFmpeg', inputs: { start_time: 0, frame_load_cap: plan.prefixFrames } });
     if (after) expect(graph.after).toMatchObject({ class_type: 'VHS_LoadVideoFFmpeg', inputs: { start_time: plan.prefixFrames / 24, frame_load_cap: plan.suffixFrames } });
     if (!before && after) expect(graph.audio_full.inputs.audio1).toEqual(['gap_audio', 0]);
@@ -49,7 +51,7 @@ describe('H3 two-sided temporal bridge', () => {
       if (Array.isArray(value) && typeof value[0] === 'string') expect(graph[value[0]]).toBeDefined();
     }
   });
-  it.each(['bridge', 'loop'] as const)('applies the vignette only inside the generated %s section', mode => {
+  it.each(['bridge', 'loop'] as const)('combines the vignette with the soft reference transitions for %s', mode => {
     const input = { mode, before: 1.625, after: 1.625, duration: 7, width: 960, height: 544, prompt: 'Exact prompt', hasAudio: true, maskInjection: 'vignette' as const };
     expect(() => bridgeWorkflow('asset', input, 123)).toThrow('uploaded gradient');
     const graph = bridgeWorkflow('asset', input, 123, 'mask-asset');
@@ -57,7 +59,7 @@ describe('H3 two-sided temporal bridge', () => {
     expect(graph.vignette_amplitude.inputs.value).toBe(.05); expect(graph.vignette_floor.inputs.value).toBe(.95);
     expect(graph.vignette_scaled.inputs).toMatchObject({ destination: ['vignette_gradient', 0], source: ['vignette_amplitude', 0], operation: 'multiply' });
     expect(graph.vignette_mask.inputs).toMatchObject({ destination: ['vignette_scaled', 0], source: ['vignette_floor', 0], operation: 'add' });
-    expect(graph.middle_mask.inputs).toEqual({ width: 960, height: 544, frames: 260, ranges: '39:221' });
+    expect(graph.middle_mask.inputs).toMatchObject({ width: 960, height: 544, frames: 260, points_string: '0:(0),27:(0),39:(1),221:(1),233:(0),259:(0)' });
     expect(graph.scale_middle_mask.inputs).toMatchObject({ destination: ['middle_mask', 0], source: ['vignette_mask', 0], operation: 'multiply' });
     expect(graph.latent_mask.inputs).toMatchObject({ masks: ['scale_middle_mask', 0], spatial_method: 'max', temporal_method: 'max', grow_spatial: 0, grow_temporal: 0 });
     expect(graph.freeze_video.inputs.mask).toEqual(['latent_mask', 0]);
@@ -66,7 +68,7 @@ describe('H3 two-sided temporal bridge', () => {
     expect(graph.freeze_audio.inputs.end_time).toBeCloseTo(221 / 24, 10);
     expect(graph.conditioning.inputs.prompt).toBe('Exact prompt');
   });
-  it('extends a Call using only frozen preceding footage and generates the entire tail', () => {
+  it('extends a Call with a soft preceding reference and generates the entire tail', () => {
     const range = comfyReferenceRange({ method: 'comfy-extend', time: 2, start_range: 2, end_range: 2, duration: 6 }, 2);
     expect(range.mode).toBe('extend'); expect(range.after).toBe(0);
     expect(range.plan.insertion.start + range.plan.insertion.duration).toBe(range.plan.insertion.totalDuration);
@@ -77,7 +79,7 @@ describe('H3 two-sided temporal bridge', () => {
     expect(graph.latent_mask.inputs.masks).toEqual(['middle_mask', 0]);
     expect(graph.freeze_video.inputs.samples).toEqual(['place_before', 0]);
     expect(graph.encode_audio.inputs.audio).toEqual(['audio_prefix', 0]);
-    expect(graph.middle_mask.inputs.ranges).toBe(`39:${range.plan.totalFrames}`);
+    expect(graph.middle_mask.inputs.points_string).toBe(`0:(0),27:(0),39:(1),${range.plan.totalFrames - 1}:(1)`);
   });
   it('accepts a short Idle loop with two protected context windows', () => {
     const plan = comfyBridgePlan(2, 2, 2, 'loop');
@@ -119,7 +121,7 @@ describe('H3 two-sided temporal bridge', () => {
     expect(graph.audio_prefix.inputs.audio1).toEqual(['before', 2]);
     expect(graph.audio_full.inputs.audio2).toEqual(['after', 2]);
   });
-  it('conditions on both motion windows and masks only the missing middle', () => {
+  it('conditions on both motion windows with soft reference edges and a fully generated middle', () => {
     const graph = bridgeWorkflow('uploaded-asset', { before: 1.625, after: 1.625, duration: 6, width: 960, height: 544, prompt: 'Continue moving', hasAudio: true }, 123);
     expect(graph.before.inputs).toMatchObject({ video: { __type: 'core/ASSET', info: { id: 'uploaded-asset' } }, start_time: 0, frame_load_cap: 39 });
     expect(graph.after.inputs).toMatchObject({ start_time: 39 / 24, frame_load_cap: 39 });
@@ -131,7 +133,7 @@ describe('H3 two-sided temporal bridge', () => {
     expect(graph.place_before.inputs.destination).toEqual(['empty_streams', 0]);
     expect(graph.latent_mask.inputs.masks).toEqual(['middle_mask', 0]);
     expect(graph.guider.inputs.conditioning).toEqual(['conditioning', 0]);
-    expect(graph.middle_mask.inputs).toMatchObject({ frames: 226, ranges: '39:187' });
+    expect(graph.middle_mask.inputs).toMatchObject({ frames: 226, points_string: '0:(0),27:(0),39:(1),187:(1),199:(0),225:(0)' });
     expect(graph.freeze_video.inputs).toEqual({ samples: ['place_after', 0], mask: ['latent_mask', 0] });
     expect(graph.freeze_audio.inputs).toMatchObject({ start_time: 39 / 24, end_time: 187 / 24 });
     expect(graph.sample.inputs.latent_image).toEqual(['freeze_audio', 0]);
@@ -148,10 +150,10 @@ describe('H3 two-sided temporal bridge', () => {
     expect(graph.decode_audio).toBeDefined();
   });
   it.each([
-    { before: 1.625, after: 1.625, start: 57, width: 263, left: 8, right: 8 },
-    { before: 3, after: 2, start: 85, width: 263, left: 8, right: 8 },
-    { before: 1.625, after: 0, start: 57, width: ['audio_mask_size', 0], left: 8, right: 0 },
-    { before: 0, after: 1.625, start: 0, width: 263, left: 0, right: 8 },
+    { before: 1.625, after: 1.625, start: 45, width: 287, left: 20, right: 20 },
+    { before: 3, after: 2, start: 73, width: 287, left: 20, right: 20 },
+    { before: 1.625, after: 0, start: 45, width: ['audio_mask_size', 0], left: 20, right: 0 },
+    { before: 0, after: 1.625, start: 0, width: 275, left: 0, right: 20 },
   ])('feathers only inside connected reference audio: $before / $after', ({ before, after, start, width, left, right }) => {
     const graph = bridgeWorkflow('asset', { mode: 'custom', before, after, duration: 6, width: 960, height: 544, prompt: 'Continue', hasAudio: true }, 123);
     expect(graph.audio_mask_size).toEqual({ class_type: 'GetAudioLatentSize', inputs: { latent: ['fit_audio', 0] } });

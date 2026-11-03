@@ -46,7 +46,27 @@ describe('Comfy API boundaries', () => {
   });
   it('validates the reference and dispatches to Comfy', async () => {
     await submit().expect(202);
-    expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { mode: 'bridge', maskInjection: 'standard', before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 1280, height: 736, hasAudio: true });
+    expect(comfy.submit).toHaveBeenCalledWith(expect.any(Blob), { mode: 'bridge', maskInjection: 'standard', audioMaskTransitionMs: 500, videoMaskTransitionMs: 500, before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge this scene', width: 1280, height: 736, hasAudio: true });
+  });
+  it.each([[0, 500], [500, 0], [250, 1000], [4000, 200]])('passes independent audio %i / video %i ms transitions', async (audioMaskTransitionMs, videoMaskTransitionMs) => {
+    await submit('1.625', '1.625', 'Soft reference joins', { audioMaskTransitionMs: String(audioMaskTransitionMs), videoMaskTransitionMs: String(videoMaskTransitionMs) }).expect(202);
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ audioMaskTransitionMs, videoMaskTransitionMs });
+    expect(comfy.submit.mock.calls[0][1]).not.toHaveProperty('maskTransitionMs');
+  });
+  for (const field of ['audioMaskTransitionMs', 'videoMaskTransitionMs']) {
+    it(`defaults the other duration independently when only ${field} is supplied`, async () => {
+      await submit('1.625', '1.625', 'One transition off', { [field]: '0' }).expect(202);
+      expect(comfy.submit.mock.calls[0][1]).toMatchObject({ audioMaskTransitionMs: 500, videoMaskTransitionMs: 500, [field]: 0 });
+    });
+    it.each(['-1', '4001', 'NaN', 'Infinity', '1.5'])(`rejects invalid ${field} before generation: %s`, async value => {
+      await submit('1.625', '1.625', 'Invalid transition', { [field]: value }).expect(400);
+      expect(comfy.submit).not.toHaveBeenCalled();
+    });
+  }
+  it('migrates the shared duration while preserving an explicit independent zero', async () => {
+    await submit('1.625', '1.625', 'Legacy transition', { maskTransitionMs: '750', audioMaskTransitionMs: '0' }).expect(202);
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ audioMaskTransitionMs: 0, videoMaskTransitionMs: 750 });
+    expect(comfy.submit.mock.calls[0][1]).not.toHaveProperty('maskTransitionMs');
   });
   it.each(['true', 'false'])('migrates the legacy interpolation switch: %s', async interpolateMiddle => {
     await submit('1.625', '1.625', 'Exact prompt', { interpolateMiddle }).expect(202);

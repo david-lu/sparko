@@ -1,19 +1,24 @@
-import { COMFY, COMFY_MODELS, TIMELINE_FPS } from '../../../shared/constants.js';
+import { COMFY, COMFY_MODELS, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants.js';
 import { comfyBridgePlan, validateComfyResolution, type ComfyMode } from '../../../shared/comfy.js';
-import { normalizeMaskInjection, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
+import { normalizeMaskInjection, validateMaskTransitionMs, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
+import { videoTransitionPoints } from './mask-transition.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown> }>;
-export type BridgeInput = { before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; interpolateMiddle?: boolean; resolution?: GenerationResolution };
+export type BridgeInput = { before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; interpolateMiddle?: boolean; resolution?: GenerationResolution };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Optional FILM targets use a uniform 0.97 mask or a gradual 1.00–0.95 vignette.
- * Separately encoded endpoints stay frozen in either mode.
+ * Separately encoded references stay frozen outside their soft transitions.
  * The original source footage is kept by Sparko's compositor, outside this render.
  */
 export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, vignetteAssetId?: string): Workflow {
   const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
   validateComfyResolution(plan,input.resolution);
   const { prefixFrames, suffixFrames, middleFrames, totalFrames, insertion } = plan;
+  const audioTransitionMs = input.audioMaskTransitionMs ?? MASK_TRANSITION.defaultMs;
+  const videoTransitionMs = input.videoMaskTransitionMs ?? MASK_TRANSITION.defaultMs;
+  validateMaskTransitionMs(audioTransitionMs, 'Audio mask transition');
+  validateMaskTransitionMs(videoTransitionMs, 'Video mask transition');
   const maskInjection = prefixFrames && suffixFrames ? normalizeMaskInjection(input.maskInjection, input.interpolateMiddle) : 'standard';
   if ((prefixFrames || suffixFrames) && !assetId) throw new Error('Reference footage is missing.');
   if (maskInjection === 'vignette' && !vignetteAssetId) throw new Error('Vignette generation requires the uploaded gradient mask.');
@@ -60,7 +65,10 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   const prefix = startLatent ? add('place_before', 'ReplaceVideoLatentFrames', { destination: target, source: startLatent, index: 0 }) : target;
   const endpoints = endLatent ? add('place_after', 'ReplaceVideoLatentFrames', { destination: prefix, source: endLatent, index: -(2 + (suffixFrames - 5) / 17 * 5) }) : prefix;
   // Spatially uniform masks need only one model token (32px), not a full-size video batch.
-  let mask = add('middle_mask', 'MVEx_FrameRangeMask', { width: 32, height: 32, frames: totalFrames, ranges: `${prefixFrames}:${totalFrames - suffixFrames}` });
+  let mask = videoTransitionMs > 0 && (before || after)
+    ? add('middle_mask', 'CreateFadeMaskAdvanced', { width: 32, height: 32, frames: totalFrames, invert: false, interpolation: 'linear',
+      points_string: videoTransitionPoints(prefixFrames, suffixFrames, totalFrames, videoTransitionMs) })
+    : add('middle_mask', 'MVEx_FrameRangeMask', { width: 32, height: 32, frames: totalFrames, ranges: `${prefixFrames}:${totalFrames - suffixFrames}` });
   if (maskInjection === 'uniform') {
     const strength = add('middle_strength', 'SolidMask', { value: 0.97, width: 32, height: 32 });
     mask = add('scale_middle_mask', 'MaskComposite', { destination: mask, source: strength, x: 0, y: 0, operation: 'multiply' });
@@ -89,16 +97,18 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
     // H3 audio has 40 latent frames/second. Keep both feather ramps entirely
     // inside the reference audio: a partial mask in the silent gap preserves
     // some of that silence instead of fully generating the transition audio.
-    const fade = Math.round(COMFY.audioMaskFadeSeconds * COMFY.audioLatentsPerSecond);
+    const fade = Math.round(audioTransitionMs / 1000 * COMFY.audioLatentsPerSecond);
+    const fadeBefore = Math.min(fade, Math.floor(insertion.start * COMFY.audioLatentsPerSecond));
+    const fadeAfter = Math.min(fade, Math.floor(suffixFrames / TIMELINE_FPS * COMFY.audioLatentsPerSecond));
     // Round outward so every latent frame overlapping the blank gap is white.
-    const start = before ? Math.max(0, Math.floor(insertion.start * COMFY.audioLatentsPerSecond) - fade) : 0;
-    const end = Math.ceil((insertion.start + insertion.duration) * COMFY.audioLatentsPerSecond) + fade;
+    const start = before ? Math.floor(insertion.start * COMFY.audioLatentsPerSecond) - fadeBefore : 0;
+    const end = Math.ceil((insertion.start + insertion.duration) * COMFY.audioLatentsPerSecond) + fadeAfter;
     // Match the fitted latent exactly so MVEx won't stretch the timeline mask.
     const audioLength = add('audio_mask_size', 'GetAudioLatentSize', { latent: fitted });
     const preserved = add('audio_mask_base', 'SolidMask', { value: 0, width: audioLength, height: 1 });
     // Without an ending reference the white region extends through any padding.
     const generated = add('audio_mask_middle', 'SolidMask', { value: 1, width: after ? end - start : audioLength, height: 1 });
-    const feathered = add('audio_mask_feather', 'FeatherMask', { mask: generated, left: before ? fade : 0, top: 0, right: after ? fade : 0, bottom: 0 });
+    const feathered = add('audio_mask_feather', 'FeatherMask', { mask: generated, left: fadeBefore, top: 0, right: fadeAfter, bottom: 0 });
     const audioMask = add('audio_mask', 'MaskComposite', { destination: preserved, source: feathered, x: start, y: 0, operation: 'add' });
     joint = add('freeze_audio', 'MVEx_AudioMaskToLatent', { latent: fitted, timing: 'auto', vae: audioVae,
       mask: audioMask, start_time: insertion.start, end_time: insertion.start + insertion.duration, existing_mask: 'replace' });

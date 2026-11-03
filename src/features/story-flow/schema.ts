@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { generationResolutions } from '../../../shared/interstitials';
+import { MASK_TRANSITION } from '../../../shared/constants';
 const id=z.string().min(1).max(200), text=z.string().max(8000), seconds=z.number().finite().min(0).max(1e8);
 export const storyNodeSchema=z.object({id,name:z.string().max(1000),kind:z.enum(['source','simple','looped','conditional']),
   x:z.number().finite(),y:z.number().finite(),
@@ -9,7 +10,7 @@ export const storyNodeSchema=z.object({id,name:z.string().max(1000),kind:z.enum(
   loop:z.boolean().optional(),conditional:z.boolean().optional(),defaultConditionId:id.optional(),conditions:z.array(z.object({id,label:z.string().max(200),values:z.array(z.string().max(200)).max(100)})).max(100).optional()
 }).refine(n=>n.kind==='source'?!!n.source:!!n.interstitialId,'A clip is missing its media reference.');
 export const storyEdgeSchema=z.object({id,from:id,to:id,event:z.enum(['next','answer','fallback']),conditionId:id.optional(),label:z.string().max(200),values:z.array(z.string().max(200)).max(100),crossfade:seconds.optional(),crossfadeReferenceRatio:z.number().finite().min(0).max(1).optional(),points:z.array(z.object({id,x:z.number().finite(),y:z.number().finite()})).max(200).optional()});
-const templateSettings=z.object({resolution:z.enum(generationResolutions).optional(),useInputReference:z.boolean().optional(),useOutputReference:z.boolean().optional(),method:z.enum(['comfy','comfy-extend','comfy-loop']).optional(),start_range:seconds.max(4),end_range:seconds.max(4),duration:seconds.min(1).max(13),prompt:text,enable_prompt_expansion:z.boolean(),continuity:text.optional(),dialogue:text.optional(),loopAudio:z.boolean().optional(),maskInjection:z.enum(['standard','uniform','vignette']).optional()});
+const templateSettings=z.object({resolution:z.enum(generationResolutions).optional(),useInputReference:z.boolean().optional(),useOutputReference:z.boolean().optional(),method:z.enum(['comfy','comfy-extend','comfy-loop']).optional(),start_range:seconds.max(4),end_range:seconds.max(4),duration:seconds.min(1).max(13),prompt:text,enable_prompt_expansion:z.boolean(),continuity:text.optional(),dialogue:text.optional(),loopAudio:z.boolean().optional(),maskInjection:z.enum(['standard','uniform','vignette']).optional(),audioMaskTransitionMs:z.number().int().min(0).max(MASK_TRANSITION.maxMs).optional(),videoMaskTransitionMs:z.number().int().min(0).max(MASK_TRANSITION.maxMs).optional(),maskTransitionMs:z.number().int().min(0).max(MASK_TRANSITION.maxMs).optional()});
 const groupColor=z.enum(['blue','purple','green','amber','rose']);
 export const storyGroupSchema=z.object({id,name:z.string().min(1).max(200),nodeIds:z.array(id).max(1000),color:groupColor,
   bounds:z.object({x:z.number().finite(),y:z.number().finite(),width:z.number().finite().positive(),height:z.number().finite().positive()}).optional()
