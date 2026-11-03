@@ -4,8 +4,11 @@ import type { Locator } from '@playwright/test';
 const open=async(page:Page)=>{await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
 const menu=(page:Page)=>page.getByRole('menu',{name:'Window',exact:true});
 const showMenu=(page:Page)=>page.locator('.window-menu summary').click();
-const layout=(page:Page)=>page.evaluate(()=>({panels:localStorage.getItem('sparko:panel-layout'),width:localStorage.getItem('sparko:side-width'),height:localStorage.getItem('sparko:story-height'),collapsed:localStorage.getItem('sparko:story-collapsed'),
-  boxes:['.video-stage','.story-canvas','.sidebar',...Array.from(document.querySelectorAll<HTMLElement>('[data-panel-id]')).map(n=>`[data-panel-id="${n.dataset.panelId}"]`)].map(s=>{const r=document.querySelector(s)!.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};})}));
+const layout=(page:Page)=>page.evaluate(()=>{
+  // Focusing the inspector may scroll the narrow workspace; locking prevents layout edits, not scrolling.
+  const workspace=document.querySelector('.workspace-grid')!;
+  return {panels:localStorage.getItem('sparko:panel-layout'),width:localStorage.getItem('sparko:side-width'),height:localStorage.getItem('sparko:story-height'),collapsed:localStorage.getItem('sparko:story-collapsed'),
+  boxes:['.video-stage','.story-canvas','.sidebar',...Array.from(document.querySelectorAll<HTMLElement>('[data-panel-id]')).map(n=>`[data-panel-id="${n.dataset.panelId}"]`)].map(s=>{const r=document.querySelector(s)!.getBoundingClientRect();return {x:r.x+workspace.scrollLeft,y:r.y+workspace.scrollTop,width:r.width,height:r.height};})};});
 const drag=async(page:Page,target:Locator,dx:number,dy:number)=>{const r=(await target.boundingBox())!;const x=r.x+r.width/2,y=r.y+r.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y+dy,{steps:6});await page.mouse.up();};
 
 for(const width of [1440,390])test(`Window controls panels and locks layout without blocking editing at ${width}px`,async({page})=>{
