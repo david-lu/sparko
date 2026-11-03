@@ -8,7 +8,7 @@ const canvasState=(page:Page)=>page.locator('.story-scroll').evaluate(el=>{
 });
 
 for(const width of [1440,390])test(`opening and reopening fit every clip and start paused at the first frame (${width}px)`,async({page})=>{
-  await page.setViewportSize({width,height:1000});await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
+  await page.setViewportSize({width,height:1000});await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
   const bytes=await page.evaluate(async()=>{
     const {readActiveProject,readAsset}=await import('/src/features/project/database.ts' as string),{packProject}=await import('/src/features/project/archive.ts' as string);
     const project=await readActiveProject(),original=project.storyFlow.nodes[0];

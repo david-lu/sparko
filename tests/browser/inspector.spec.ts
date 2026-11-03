@@ -12,7 +12,7 @@ test('compact inspector uses connected references, supports all switch combinati
   });
   await page.route('**/api/comfy/jobs/inspector-test-job', route => route.fulfill({ json: { requestId: 'inspector-test-job', status: route.request().method() === 'DELETE' ? 'CANCELLED' : 'IN_PROGRESS', progress: .5 } }));
   await page.route('**/api/comfy/jobs/inspector-test-job/events', route => route.fulfill({ contentType: 'text/event-stream', body: 'event: progress\ndata: {"type":"progress","progress":0.5,"progressDetails":{"stage":"Generating","step":1,"steps":2}}\n\n' }));
-  await page.goto('/'); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
+  await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.story-clip')).toHaveCount(1, { timeout: 60000 });
   await page.getByRole('slider', { name: /Scrub/ }).focus(); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('s');
   await page.getByRole('button', { name: 'Add interstitial', exact: true }).dragTo(page.getByRole('button', { name: /Edit crossfade from/ }));

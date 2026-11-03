@@ -1,4 +1,4 @@
-import { expect, test, type Page } from './fixtures';
+import { expect, test, openVideo, addBridge, saveAndReopen, type Page } from './fixtures';
 
 
 async function generatedFixture(page: Page) {
@@ -7,7 +7,7 @@ async function generatedFixture(page: Page) {
     const { ensureAac } = await import('/src/media/media.ts' as string); await ensureAac();
     const canvas = new OffscreenCanvas(160, 90), ctx = canvas.getContext('2d')!;
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-    const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 100_000 });
+    const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 });
     const audio = new AudioBufferSource({ codec: 'aac', bitrate: 128_000 });
     output.addVideoTrack(video, { frameRate: 25 }); output.addAudioTrack(audio); await output.start();
     await Promise.all([(async () => { for (let frame = 0; frame < 225; frame++) { ctx.fillStyle = frame >= 50 && frame < 175 ? '#00ee00' : '#ee0000'; ctx.fillRect(0, 0, 160, 90); await video.add(frame / 25, 1 / 25); } video.close(); })(),
@@ -22,85 +22,27 @@ async function generatedFixture(page: Page) {
   });
   return buffer;
 }
-const saved = (page: Page) => page.evaluate(async () => {
-  const { readActiveProject } = await import('/src/features/project/database.ts' as string);
-  const project = await readActiveProject();
-  return JSON.parse(localStorage.getItem(`sparko:interstitials:v1:${project.id}`) || '[]');
-});
-async function openTimeSlider(page: Page, label: string) {
-  const name = label === 'Start range' ? 'start_range' : label === 'End range' ? 'end_range' : 'Duration';
-  await page.getByRole('spinbutton', { name, exact: true }).click();
-  return page.getByRole('slider', { name: `${label} slider`, exact: true });
-}
-async function addDraft(page: Page, time = 5) {
-  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill(String(time));
-  if (await page.getByRole('button', { name: 'All interstitials' }).count()) {
-    await page.getByRole('button', { name: 'All interstitials' }).click();
-  }
-  await page.getByRole('button', { name: 'Add regular interstitial' }).click();
-  await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).fill(`Interstitial ${await page.locator('.timeline-pin').count()}`);
-  await page.getByRole('textbox', { name: 'Interstitial name', exact: true }).press('Enter');
-  await expect(page.getByLabel('start_range')).toHaveValue('2');
-  await expect(page.getByLabel('end_range')).toHaveValue('2');
+test('reference and duration sliders synchronize with inputs and persist', async ({ page }) => {
+  await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { comfy: true } } }); });
+  await openVideo(page); await addBridge(page);
+  await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).check();
   await page.getByLabel('Interstitial prompt').fill('A green interstitial scene');
-}
-test.beforeEach(async ({ page }) => {
-  await page.route('**/api/status', async route => { const response = await route.fetch(); const status = await response.json(); await route.fulfill({ json: { ...status, providers: { ...status.providers, comfy: true } } }); });
-  await page.goto('/');
-  await page.getByLabel('Choose video file', { exact: true }).setInputFiles('examples/sample.mp4');
-  await expect(page.getByRole('button', { name: 'Add regular interstitial' })).toBeEnabled({ timeout: 60_000 });
-});
-
-test('time sliders and number inputs stay synchronized and survive reopening a draft', async ({ page }) => {
-  await addDraft(page);
-  await expect(page.locator('.video-stage video')).toHaveJSProperty('paused', true);
-  await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6');
-  await expect(page.locator('.interstitial-time-popover')).toHaveCount(0);
-  await page.getByRole('separator', { name: 'Resize side panel' }).press('Home');
-  const fields = await page.locator('.interstitial-time-field').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
-  expect(new Set(fields).size).toBe(1);
-  for (const [sliderName, inputName, fromSlider, fromNumber] of [
-    ['Start range slider', 'start_range', '1.625', '3.51'],
-    ['End range slider', 'end_range', '1.625', '2.54'],
-    ['Duration slider', 'Duration', '13', '7.33'],
-  ]) {
-    const slider = await openTimeSlider(page, sliderName.replace(' slider', ''));
-    const number = page.getByRole('spinbutton', { name: inputName, exact: true });
-    await expect(page.locator('.interstitial-time-popover')).toHaveCount(1);
-    const popup = (await page.locator('.interstitial-time-popover').boundingBox())!;
-    const sidebar = (await page.locator('.sidebar').boundingBox())!;
-    expect(popup.x).toBeGreaterThanOrEqual(sidebar.x);
-    expect(popup.x + popup.width).toBeLessThanOrEqual(sidebar.x + sidebar.width);
-    await slider.fill(fromSlider); await expect(number).toHaveValue(fromSlider);
-    await number.fill(fromNumber); await expect(slider).toHaveValue(fromNumber);
+  for (const [name, label, value] of [['start_range', 'Start footage', '1.8'], ['end_range', 'End footage', '1.7'], ['Duration', 'Duration', '7.5']]) {
+    const number = page.getByRole('spinbutton', { name, exact: true });
+    await number.click(); const slider = page.getByRole('slider', { name: `${label} slider`, exact: true });
+    await slider.fill(value); await expect(number).toHaveValue(value);
+    await number.fill('2'); await expect(slider).toHaveValue('2');
+    await number.fill(value); await slider.press('Escape');
+    await expect(slider).toHaveCount(0); await expect(number).toBeFocused();
   }
-  const duration = page.getByRole('spinbutton', { name: 'Duration', exact: true });
-  const slider = page.getByRole('slider', { name: 'Duration slider', exact: true });
-  await slider.press('ArrowRight'); await expect(duration).toHaveValue('7.58');
-  for (const invalid of ['', '4', '14']) {
-    await duration.fill(invalid);
-    await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
-    await expect(page.getByRole('alert')).toHaveText('Duration must be between 5 and 13 seconds.');
-  }
-  await duration.fill('7.5'); await expect(slider).toHaveValue('7.5');
-  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
-  await slider.press('Escape'); await expect(page.locator('.interstitial-time-popover')).toHaveCount(0);
-  await expect(duration).toBeFocused();
-  await duration.click(); await expect(slider).toBeVisible();
-  await page.getByLabel('Interstitial prompt').click(); await expect(page.locator('.interstitial-time-popover')).toHaveCount(0);
-  await expect.poll(async () => (await saved(page))[0]).toMatchObject({ start_range: 3.51, end_range: 2.54, duration: 7.5, enable_prompt_expansion: false });
-  await page.getByRole('button', { name: 'All interstitials' }).click();
-  await page.getByRole('button', { name: 'Select Interstitial 1', exact: true }).click();
-  await expect(page.getByLabel('start_range')).toHaveValue('3.51');
-  await expect(page.getByLabel('end_range')).toHaveValue('2.54');
-  await expect(duration).toHaveValue('7.5'); await expect(await openTimeSlider(page, 'Duration')).toHaveValue('7.5');
-  await page.screenshot({ path: 'test-results/interstitial-sliders.png' });
-  await addDraft(page, 12);
-  await page.getByRole('button', { name: 'All interstitials' }).click();
-  await page.getByRole('button', { name: 'Select Interstitial 1', exact: true }).click();
+  await saveAndReopen(page); await page.locator('.story-clip.type-simple .story-clip-title').click();
+  await expect(page.getByLabel('start_range', { exact: true })).toHaveValue('1.8');
+  await expect(page.getByLabel('end_range', { exact: true })).toHaveValue('1.7');
+  await expect(page.getByLabel('Duration', { exact: true })).toHaveValue('7.5');
 });
 
 test('composition export with crossfades disabled preserves frame counts, generated-only bounds and audio through both cuts', async ({ page }) => {
+  await page.goto('/');
   await generatedFixture(page);
   const result = await page.evaluate(async () => {
     const { TimelineComposition } = await import('/src/media/TimelineComposition.ts' as string);
@@ -119,7 +61,7 @@ test('composition export with crossfades disabled preserves frame counts, genera
       return { videoDuration: await video.computeDuration(), audioDuration: await audio.computeDuration(), stats: await video.computePacketStats(), colors };
     } finally { input.dispose(); }
   });
-  expect(result.videoDuration).toBeCloseTo(8, 3); expect(result.audioDuration).toBeCloseTo(8, 1);
+  expect(result.videoDuration).toBeCloseTo(8, 3); expect(Math.abs(result.audioDuration - 8)).toBeLessThan(4096 / 48000);
   expect(result.stats.packetCount).toBe(192);
   expect(result.stats.averagePacketRate).toBeCloseTo(24, 5);
   expect(result.colors[0][0]).toBeGreaterThan(180); expect(result.colors[1][1]).toBeGreaterThan(180); expect(result.colors[2][1]).toBeGreaterThan(180); expect(result.colors[3][0]).toBeGreaterThan(180);

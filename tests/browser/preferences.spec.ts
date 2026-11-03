@@ -1,6 +1,6 @@
 import { test, expect, fitAll, type Page } from './fixtures';
 
-const open=async(page:Page)=>{await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
+const open=async(page:Page)=>{await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
 const preferences=async(page:Page)=>{
   await page.locator('.playback-options>summary').click();await page.getByRole('menuitem',{name:'Preferences…',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Preferences',exact:true});await expect(dialog).toBeVisible();return dialog;

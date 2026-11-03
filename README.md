@@ -263,7 +263,7 @@ The app starts with a project chooser showing recent projects, sample projects, 
    - `BLOB_READ_WRITE_TOKEN` (provided by the store)
    - `DEFAULT_PROJECT_URL` (or `DEFAULT_VIDEO_URL` for a video-only sample)
    - `APP_PASSWORD` (optional: leave unset or empty for access without a password; set a separate workspace password to require unlocking AI tools)
-5. Run `npm run deploy:preview`, or `npm run deploy:production` for production.
+5. Push changes to GitHub. Vercel builds previews for branches and production for `main`; a separate production push is not needed. Use `npm run deploy:preview` for a manual preview.
 
 The deployed app enables configured AI providers and uploads without a password by default. Setting `APP_PASSWORD` enables the workspace password gate for upload tokens and provider requests, both locally and on Vercel. To turn the gate off, remove or empty `APP_PASSWORD` and restart/redeploy. The sample project archive is served by its public Blob URL. Temporary analysis uploads use random URLs in `transient/` and are deleted after retrieval or request cleanup. An interrupted browser can leave an upload behind; remove old `transient/` objects in Blob as needed. Only the configured Blob store is accepted for remote API inputs. Local runs do not need Blob or a password; the local chooser serves `examples/sample.sparko` automatically.
 
@@ -271,13 +271,22 @@ Do not prefix API secrets with `VITE_`. Redeploy after changing deployment envir
 
 ## Verification
 
+[The CI workflow](.github/workflows/ci.yml) runs the full TypeScript check, unit/API tests, production build, and Chrome browser tests on pull requests and pushes to `main`. Browser tests are divided across four independent runners, with one browser worker per runner. Updates to an open pull request rerun CI without a duplicate branch-push run. The required **Sparko quality checks** job succeeds only when verification and all four browser shards pass. Use pull requests for changes to `main` and require this check in GitHub branch rules.
+
+Vercel's production check must match that job name and block production domain assignment until it succeeds. This lets builds run while CI is testing; failed or missing checks leave the previous production deployment serving traffic. Manual CLI deployments still need a matching successful GitHub check. The production build uses `tsconfig.build.json`, while `npm run typecheck` includes tests and development scripts. Tests and scripts are excluded from Vercel uploads, not from CI.
+
+For a fresh checkout, install dependencies with `npm ci`, fetch fixtures with `git lfs pull`, and install Chrome with `npx playwright install --with-deps chrome`. Then run:
+
 ```sh
-npm run build
+npm run typecheck
 npm test
+npm run build
 npm run test:e2e
 ```
 
-Browser tests use installed Google Chrome. The new `story-flow.spec.ts` suite covers proportional clip widths, scrubbing, splitting, insertion, independent fades, templates, arrow dragging and reconnection, undo/redo, branching playback, stable narrow-screen loading, generated media save/reopen, and legacy sample migration. Older suites retain coverage of legacy components and APIs; UI tests that specifically target removed pins or groups require migration to the graph workflow. The existing media suites cover playback, persistence, subtitle toggling, viewport fit, resizing, real non-keyframe MP4 export with audio, real reference preparation, interstitial job recovery/cancellation, native playback across cuts, generated-media conversion on archive import, cache reuse, and composed-export frame counts and audio. Voice tests use synthetic audio, never your microphone. Unit tests cover frame mapping, reference bounds, legacy migration, job lifecycle, voice capture, provider adapters, and API validation. Provider responses and Comfy generation are mocked to avoid recurring paid jobs; media processing runs for real. `tests/fixtures/voice-answer.wav` is a locally generated Windows speech-synthesis fixture; `interstitial-reference.mp4` is a synthetic four-second validation fixture.
+CI never submits live model-generation jobs. Generation responses, progress, completion, and generated downloads are mocked; the test server clears provider credentials and tests assert that its real providers are unconfigured. Real video encoding/decoding, playback, audio, and project-file operations remain covered. Live-provider tests belong in `tests/live/`, which is excluded from the default unit and browser suites. The optional `npm run comfy:check` command calls the live readiness API without submitting a generation and is not run by CI.
+
+Browser tests use installed Google Chrome. The new `story-flow.spec.ts` suite covers proportional clip widths, scrubbing, splitting, insertion, independent fades, templates, arrow dragging and reconnection, undo/redo, branching playback, stable narrow-screen loading, generated media save/reopen, and legacy sample migration. Former pin and fixed Call/Idle/Response UI tests now exercise graph clips, templates, independent durations, and condition sockets. Graph suites cover dragging, cancellation, history, resizing, routing, and legacy sample migration; retained legacy controllers and archive formats remain covered by unit and media tests. The existing media suites cover playback, persistence, subtitle toggling, viewport fit, resizing, real non-keyframe MP4 export with audio, real reference preparation, interstitial job recovery/cancellation, native playback across cuts, generated-media conversion on archive import, cache reuse, and composed-export frame counts and audio. Voice tests mount the retained component in an isolated harness and use synthetic audio, never your microphone. Browser tests own a server on port 3100 and clear provider credentials, passwords, and remote sample URLs so local `.env` settings cannot change their behavior. Unit tests cover frame mapping, reference bounds, legacy migration, job lifecycle, voice capture, provider adapters, and API validation. Provider responses and Comfy generation are mocked to avoid recurring paid jobs; media processing runs for real. `tests/fixtures/voice-answer.wav` is a locally generated Windows speech-synthesis fixture; `interstitial-reference.mp4` is a synthetic four-second validation fixture.
 
 Project tests cover binary archive round trips, invalid/corrupt archives, fresh-browser import with remote assets blocked, reopening a disk project through Recent, subtitle/description persistence, and storage failures. IndexedDB stores working media, metadata and recent file handles; [zip.js](https://gildas-lormeau.github.io/zip.js/) packages and validates the project archive.
 

@@ -11,3 +11,7 @@ test-results*
 playwright-report
 .git
 tests
+scripts
+.github
+playwright.config.ts
+vitest.config.ts

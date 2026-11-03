@@ -9,7 +9,8 @@ async function prepareAudio(page: Page) {
     const fixture = async (rate: number, channels: number, duration: number, frequencies: number[]) => {
       const canvas = new OffscreenCanvas(160, 90), context = canvas.getContext('2d')!;
       const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-      const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 100_000 });
+      // Baseline avoids software H.264 encoders emitting an undecodable High/Level 1b stream at this fixture size.
+      const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 });
       // PCM keeps the fixture's exact rate even on browsers without a 32 kHz AAC encoder.
       const audio = channels ? new AudioBufferSource({ codec: 'pcm-f32' }) : null;
       output.addVideoTrack(video, { frameRate: 24 }); if (audio) output.addAudioTrack(audio);
@@ -78,7 +79,7 @@ test('composition exports and preview renders preserve audio across mixed rates,
           }
           return { rms: Math.sqrt(energy / (last - first)), frequency: crossings / (to - from) };
         });
-        results.push({ rate, channels, maxGap, duration: await input.computeDuration(), expectedDuration: end - start,
+        results.push({ rate, channels, maxGap, duration: await input.computeDuration(), expectedDuration: end - start, videoDuration: await (await input.getPrimaryVideoTrack()).computeDuration(),
           tones: [measure(.4, .8), measure(1.3, 1.8), measure(6.3, 6.8), measure(7.2, 7.8), measure(9.1, 9.6)],
           silence: [measure(8.1, 8.4), measure(8.6, 8.9)] });
       } finally { input.dispose(); }
@@ -88,7 +89,9 @@ test('composition exports and preview renders preserve audio across mixed rates,
   for (const result of results) {
     expect(result.rate).toBe(48000); expect(result.channels).toBe(2);
     expect(result.maxGap).toBeLessThan(1 / 48000 + .000001);
-    expect(Math.abs(result.duration - result.expectedDuration)).toBeLessThan(.05);
+    // AAC encoders add priming and whole-packet padding (up to four 1024-sample packets).
+    expect(result.videoDuration).toBeCloseTo(result.expectedDuration, 5);
+    expect(Math.abs(result.duration - result.expectedDuration)).toBeLessThan(4096 / result.rate);
     const expectedFrequencies = [[440, 660], [880, 1100], [880, 1100], [550, 550], [440, 660]];
     result.tones.forEach((tone, index) => tone.forEach((channel, side) => {
       expect(channel.rms).toBeGreaterThan(.1); expect(channel.rms).toBeLessThan(.18);
@@ -127,13 +130,13 @@ test('call-response generation references bridge 32 kHz audio into source audio 
           } finally { sample.close(); }
         }
         const rms = Math.sqrt(energy / count);
-        results.push({ held, rate: await track.getSampleRate(), channels: await track.getNumberOfChannels(), duration: await input.computeDuration(), rms });
+        results.push({ held, rate: await track.getSampleRate(), channels: await track.getNumberOfChannels(), duration: await input.computeDuration(), videoDuration: await (await input.getPrimaryVideoTrack()).computeDuration(), rms });
       } finally { input.dispose(); }
     }
     return results;
   });
   for (const result of results) {
-    expect(result.rate).toBe(48000); expect(result.channels).toBe(2); expect(Math.abs(result.duration - 2)).toBeLessThan(.05);
+    expect(result.rate).toBe(48000); expect(result.channels).toBe(2); expect(result.videoDuration).toBeCloseTo(2, 5); expect(Math.abs(result.duration - 2)).toBeLessThan(4096 / result.rate);
     if (result.held) expect(result.rms).toBeLessThan(.001); else expect(result.rms).toBeGreaterThan(.1);
   }
 });
@@ -193,10 +196,13 @@ test('Idle soundtrack loops on the playback clock and follows pause, mute and ex
     } };
   });
   await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeGreaterThan(.01);
-  expect(await page.evaluate(() => {
+  const soundtrack = await page.evaluate(() => {
     const source = (window as any).musicTest.sources[0] as AudioBufferSourceNode;
-    return { loop: source.loop, duration: source.buffer?.duration };
-  })).toMatchObject({ loop: true, duration: 29.84 });
+    return { loop: source.loop, duration: source.buffer!.duration, sampleRate: source.buffer!.sampleRate };
+  });
+  expect(soundtrack.loop).toBe(true);
+  // AudioContext resampling rounds the buffer length to a whole sample.
+  expect(Math.abs(soundtrack.duration - 29.84)).toBeLessThanOrEqual(1 / soundtrack.sampleRate);
   await page.evaluate(() => (window as any).musicTest.audio.renderMusic(true, true, 0, 1));
   await expect.poll(() => page.evaluate(() => (window as any).musicTest.rms())).toBeLessThan(.001);
   await page.evaluate(() => (window as any).musicTest.audio.renderMusic(true, true, .4, 1));

@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, test, openVideo, addBridge, saveAndReopen } from './fixtures';
 
 const original = 'She asks, "What is 2 + 2?", and waits.';
 const enhanced = 'In the same continuous shot, she gently asks, "What is 2 + 2?", and pauses. Preserve her position, pose, scale, background and framing. No position snaps or camera changes. All dialogue is in English.';
@@ -8,10 +8,9 @@ test.beforeEach(async ({ page }) => {
     const response = await route.fetch();
     await route.fulfill({ json: { ...await response.json(), providers: { openai: true, gemini: false, comfy: true } } });
   });
-  await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled({ timeout: 60_000 });
-  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('5');
-  await page.getByRole('button', { name: /^Add regular interstitial/ }).click();
+  await openVideo(page);
+  await addBridge(page);
+  await page.getByRole('checkbox', { name: 'Use end reference', exact: true }).check();
   await page.getByLabel('Interstitial prompt').fill(original);
 });
 
@@ -39,11 +38,12 @@ test('enhances with visual references, stays editable, and supports undo, redo a
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(prompt).toHaveValue(enhanced);
   expect(generations).toBe(0);
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Enhance prompt', exact: true }).scrollIntoViewIfNeeded();
   await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   await page.screenshot({ path: 'test-results/enhance-prompt-mobile.png' });
-  await page.reload();
-  await page.getByRole('button', { name: 'Select Untitled', exact: true }).click();
+  await saveAndReopen(page);
+  await page.locator('.story-clip.type-simple .story-clip-title').click();
   await expect(prompt).toHaveValue(enhanced);
 });
 
@@ -58,7 +58,7 @@ test('preserves the draft on errors and ignores a late result after the user edi
   });
   const prompt = page.getByLabel('Interstitial prompt');
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('Prompt enhancement could not reach OpenAI. Try again.');
+  await expect(page.locator('.task-status')).toContainText('Prompt enhancement could not reach OpenAI. Try again.');
   await expect(prompt).toHaveValue(original);
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
   await expect.poll(() => requests).toBe(2);
@@ -66,5 +66,5 @@ test('preserves the draft on errors and ignores a late result after the user edi
   await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeEnabled();
   finish();
   await expect(prompt).toHaveValue('My newer draft');
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('.task-status')).not.toContainText('could not reach');
 });

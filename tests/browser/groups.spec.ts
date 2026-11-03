@@ -2,7 +2,7 @@ import { fitAll, test, expect, type Page } from './fixtures';
 import { readFile } from 'node:fs/promises';
 
 const saved = (page: Page) => page.evaluate(async () => { const { readActiveProject } = await import('/src/features/project/database.ts' as string); return readActiveProject(); });
-const open = async (page: Page) => { await page.goto('/'); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4'); await expect(page.locator('.story-clip')).toHaveCount(1, { timeout: 60000 }); };
+const open = async (page: Page) => { await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4'); await expect(page.locator('.story-clip')).toHaveCount(1, { timeout: 60000 }); };
 const fit = (page: Page) => fitAll(page);
 
 for(const width of [1440,390])test(`sample group frames fit their clips when opening and zooming at ${width}px`,async({page})=>{
@@ -58,8 +58,8 @@ test('templates stay grouped, move their clips and bends together, and support r
   await page.screenshot({ path: 'test-results/template-groups-desktop.png', fullPage: true });
   const beforeArchive = (await saved(page)).storyFlow;
   await page.locator('summary').filter({ hasText: /^File$/ }).click(); const downloadEvent = page.waitForEvent('download'); await page.getByRole('menuitem', { name: 'Export project', exact: true }).click(); const download = await downloadEvent;
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3000', viewport: { width: 1440, height: 1000 } }), restored = await context.newPage();
-  restored.on('pageerror', error => errors.push(error.message)); await restored.goto('/'); await restored.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'Groups.sparko', mimeType: 'application/zip', buffer: await readFile((await download.path())!) });
+  const context = await browser.newContext({ baseURL: new URL(page.url()).origin, viewport: { width: 1440, height: 1000 } }), restored = await context.newPage();
+  restored.on('pageerror', error => errors.push(error.message)); await restored.goto('/'); await expect(restored.getByRole('button', { name: /^New project/ })).toBeEnabled(); await restored.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'Groups.sparko', mimeType: 'application/zip', buffer: await readFile((await download.path())!) });
   await expect(restored.locator('.story-group')).toHaveCount(3, { timeout: 60000 }); expect((await saved(restored)).storyFlow.groups).toEqual(beforeArchive.groups);
   const frames = await restored.locator('.story-group').evaluateAll(nodes => { const canvas = document.querySelector('.story-scroll')!.getBoundingClientRect(); return nodes.map(n => { const r = n.getBoundingClientRect(); return r.top >= canvas.top && r.bottom <= canvas.bottom + 1 && r.left >= canvas.left && r.right <= canvas.right; }); });
   expect(frames.every(Boolean)).toBe(true); expect(errors).toEqual([]); await context.close();

@@ -38,15 +38,16 @@ test('source-only editor playback loads captions and uses the canvas transport',
     providers: { openai: false, gemini: false, comfy: false }, models: { openai: 'mock', gemini: 'mock' },
     defaultVideo: { name: 'sample.mp4', size: 0, url: '/media/sample.mp4' } } }));
   await page.route('**/media/sample.mp4', route => route.fulfill({ path: path.resolve('tests/fixtures/interstitial-reference.mp4'), contentType: 'video/mp4' }));
-  await page.goto('/'); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
+  await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.playback-canvas')).toHaveAttribute('data-renderer', 'webgpu');
   await expect(page.locator('.buffering')).toHaveCount(0);
   await page.getByLabel('Choose subtitle file').setInputFiles({ name: 'source.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:00.000 --> 00:03.000\nCanvas captions\n') });
-  await page.getByRole('slider', { name: 'Video timeline', exact: true }).fill('0.5');
+  await page.locator('.story-filmstrip').press('Home');
+  await page.locator('.story-filmstrip').press('Shift+ArrowRight');
   await expect(page.locator('.playback-captions')).toContainText('Canvas captions');
   await page.locator('.playback-canvas').click({ position: { x: 20, y: 20 } });
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
-  await expect.poll(async () => Number(await page.getByRole('slider', { name: 'Video timeline', exact: true }).inputValue())).toBeGreaterThan(1);
+  await expect.poll(async () => Number(await page.locator('.story-filmstrip').getAttribute('aria-valuenow'))).toBeGreaterThan(1);
   await page.locator('.playback-canvas').click({ position: { x: 20, y: 20 } });
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
   expect(errors).toEqual([]);

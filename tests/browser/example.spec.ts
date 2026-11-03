@@ -43,8 +43,8 @@ async function openExample(page: Page) {
   await page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ }).click();
 }
 async function ready(page: Page) {
-  await expect(page.locator('.rendered-interstitial')).toHaveCount(1, { timeout: 30_000 });
-  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1, { timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
 }
 
 test('opens the saved sample project from the sample projects section', async ({ page }) => {
@@ -53,14 +53,9 @@ test('opens the saved sample project from the sample projects section', async ({
   await page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ }).click();
   await ready(page);
   expect((await activeProject(page)).interstitials[0].prompt).toBe('Saved example prompt');
-  const body = (await page.locator('.rendered-interstitial').boundingBox())!;
-  const before = (await page.locator('.timeline-reference-range.before').boundingBox())!;
-  const after = (await page.locator('.timeline-reference-range.after').boundingBox())!;
-  expect(before.x + before.width).toBeCloseTo(body.x, 1);
-  expect(after.x).toBeCloseTo(body.x + body.width, 1);
-  expect(before.width).toBeCloseTo(body.width / 2, 1);
-  expect(after.width).toBeCloseTo(body.width / 2, 1);
-  await expect(page.locator('.rendered-interstitial')).toHaveAttribute('title', /Generated 2\.00s · Full file 4\.00s/);
+  await page.locator('.story-clip.type-simple .story-clip-title').click();
+  expect((await activeProject(page)).interstitials[0].result).toMatchObject({ start: 1, duration: 2, totalDuration: 4 });
+  await expect(page.getByLabel('Interstitial prompt')).toHaveValue('Saved example prompt');
 });
 
 test('starts on the chooser and opens the example only when requested', async ({ page }) => {
@@ -71,11 +66,11 @@ test('starts on the chooser and opens the example only when requested', async ({
   expect(downloads).toBe(0);
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
-  await expect(page.getByRole('button', { name: /^Add regular interstitial/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
   expect((await activeProject(page)).interstitials).toEqual([]);
   expect(downloads).toBe(0);
   await openExample(page); await ready(page);
-  await page.getByRole('button', { name: 'Select Example scene', exact: true }).click();
+  await page.locator('.story-clip-title').filter({ hasText: 'Example scene' }).click();
   await page.getByLabel('Interstitial prompt').fill('My local edit');
   await expect.poll(async () => (await activeProject(page)).interstitials[0].prompt).toBe('My local edit');
   await page.getByText('File', { exact: true }).click();

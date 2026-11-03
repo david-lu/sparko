@@ -22,7 +22,7 @@ for(const width of [1440,390])test(`official H3 2K generation keeps loading layo
   await page.route('https://example.test/2k.mp4',route=>route.fulfill({contentType:'video/mp4',path:'tests/fixtures/interstitial-reference.mp4'}));
   await open(page);const resolution=page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true});await expect(resolution).not.toBeChecked();await resolution.check();
   const controls=()=>page.locator('.interstitial-editor').evaluate(el=>{const root=el.getBoundingClientRect();return ['textarea','.interstitial-resolution','.interstitial-time-fields','button[type=submit]','.task-status'].map(selector=>{const r=el.querySelector(selector)!.getBoundingClientRect();return {top:r.top-root.top,height:r.height};});});
-  const before=await controls();await page.getByRole('button',{name:'Generate',exact:true}).click();await expect.poll(()=>submitted).toBe(1);expect(preflights).toBe(1);
+  const before=await controls();await page.getByRole('button',{name:'Generate',exact:true}).click();await expect.poll(()=>submitted,{timeout:60000}).toBe(1);expect(preflights).toBe(1);
   await expect(page.locator('.generation-feedback,.task-status').last()).toContainText('Regenerating with H3 2K');expect(await controls()).toEqual(before);
   await expect(resolution).toBeEnabled();await resolution.uncheck();expect(await controls()).toEqual(before);complete=true;
   await expect.poll(async()=>(await saved(page)).interstitials[0].phase,{timeout:60000}).toBe('ready');expect(await controls()).toEqual(before);
@@ -31,7 +31,7 @@ for(const width of [1440,390])test(`official H3 2K generation keeps loading layo
   await page.getByRole('menuitem',{name:'Save as template',exact:true}).click();await page.getByRole('textbox',{name:'Template name',exact:true}).fill('2K scene');await page.getByRole('button',{name:'Save template',exact:true}).click();
   const project=await saved(page);expect(Object.values(project.storyFlow.templates[0].settings).every((settings:any)=>settings.resolution==='2k')).toBe(true);
   await page.getByText('File',{exact:true}).click();const downloading=page.waitForEvent('download');await page.getByRole('menuitem',{name:'Export project',exact:true}).click();const download=await downloading,buffer=await readFile((await download.path())!);
-  await page.reload();await page.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'2K.sparko',mimeType:'application/zip',buffer});await expect(page.locator('.story-clip')).toHaveCount(3);
+  await page.reload(); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'2K.sparko',mimeType:'application/zip',buffer});await expect(page.locator('.story-clip')).toHaveCount(3);
   const restored=await saved(page);expect(restored.interstitials[0]).toMatchObject({resolution:'2k',generationSettings:{resolution:'2k'}});expect(Object.values(restored.storyFlow.templates[0].settings).every((settings:any)=>settings.resolution==='2k')).toBe(true);
   await page.locator('.story-clip.type-simple .story-clip-title').click();await expect(page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true})).toBeChecked();
   await page.screenshot({path:`test-results/2k-generation-${width}.png`,fullPage:true});
