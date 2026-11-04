@@ -48,7 +48,7 @@ export class InterstitialController {
   private update(patch: Partial<State>, persist = false) {
     this.state = { ...this.state, ...patch };
     if (patch.items) for (const item of patch.items) this.retained.set(item.id, item);
-    if (persist && !saveInterstitials(this.sourceId, this.state.items)) this.state.error = 'Interstitial changes could not be saved in this browser.';
+    if (persist && !saveInterstitials(this.sourceId, this.state.items)) this.state.error = 'Video changes could not be saved in this browser.';
     this.listeners.forEach(listener => listener());
   }
   private patch(id: string, patch: Partial<Interstitial>) {
@@ -113,7 +113,7 @@ export class InterstitialController {
   }
   setCallResponses(flows: CallResponseFlow[]) {
     const active = this.callResponses.find(flow => generationOrder(flow).some(id => this.state.sequence?.ids.includes(id)));
-    if (sequenceActive(this.state.sequence) && (!active || sequenceStructure(active) !== sequenceStructure(flows.find(flow => flow.interstitial.id === active.interstitial.id)))) void this.cancelSequence('The interstitial type or structure changed.');
+    if (sequenceActive(this.state.sequence) && (!active || sequenceStructure(active) !== sequenceStructure(flows.find(flow => flow.interstitial.id === active.interstitial.id)))) void this.cancelSequence('The video type or structure changed.');
     this.callResponses = flows; this.callResponse = flows[0];
   }
   private flowFor(id: string) { return this.callResponses.find(flow => flow.scenes.some(scene => scene.interstitialId === id)); }
@@ -355,13 +355,13 @@ export class InterstitialController {
     signal.throwIfAborted();
     // Publishing an asset also adds it to the library, whose previews need its local URL.
     this.patch(id, { result });
-    const media = new MediaEngine({ id, name: 'Interstitial', url });
+    const media = new MediaEngine({ id, name: 'Video', url });
     const abort = () => media.dispose(); signal.addEventListener('abort', abort, { once: true });
     try {
       signal.throwIfAborted();
       const info = await media.inspect();
       signal.throwIfAborted();
-      if (result.start < 0 || result.duration <= 0 || result.start + result.duration > info.duration + 1 / info.fps) throw new Error('The returned video does not contain the full interstitial.');
+      if (result.start < 0 || result.duration <= 0 || result.start + result.duration > info.duration + 1 / info.fps) throw new Error('The returned video does not contain the full video.');
       this.patch(id, { phase: 'ready', result, previousResult: undefined, error: undefined, progress: undefined, progressDetails: undefined });
     } finally { signal.removeEventListener('abort', abort); media.dispose(); }
   }

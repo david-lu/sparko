@@ -27,7 +27,7 @@ for (const width of [1440, 390]) for (const loop of [false, true]) for (const co
     if (loop) await page.getByRole('checkbox', { name: 'Loop', exact: true }).check();
     if (conditional) await page.getByRole('checkbox', { name: 'Conditional', exact: true }).check();
     for (const side of loop ? ['Loop'] : ['Start', 'End']) await expect(page.getByRole('group', { name: `${side} reference`, exact: true }).getByRole('button', { name: 'None', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    const prompt = page.getByLabel('Interstitial prompt', { exact: true }); await prompt.fill('Clouds drift gently across a sunset sky.');
+    const prompt = page.getByLabel('Video prompt', { exact: true }); await prompt.fill('Clouds drift gently across a sunset sky.');
     const controls = () => page.locator('.interstitial-editor').evaluate(root => {
       const top = root.getBoundingClientRect().top;
       return ['textarea', '.inspector-references-panel', '.interstitial-resolution', '.interstitial-time-fields', 'button[type=submit]', '.task-status', '.inspector-output'].map(selector => {

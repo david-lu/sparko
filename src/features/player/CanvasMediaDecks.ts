@@ -104,6 +104,20 @@ export class CanvasMediaDecks {
     return true;
   }
   setMatchFraming(value: boolean) { this.matchFraming = value; }
+  captureFrame(): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      if (this.disposed || !this.renderer.ready || !this.layers.length) throw new Error('No video frame is ready to capture.');
+      const layers = this.layers.filter(layer => layer.opacity > 0).map(layer => {
+        const sample = this.decks.get(layer.key)?.decoder.at(layer.time);
+        if (!sample) throw new Error('Wait for the video frame to finish loading.');
+        return { sample, opacity: layer.opacity, sourceFootage: layer.sourceFootage };
+      });
+      // WebGPU's presentation texture is transient. Redraw and snapshot in the
+      // same task, at the canvas's media resolution, before it is presented.
+      this.renderer.draw(layers, this.matchFraming);
+      this.canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Unable to create an image from this frame.')), 'image/png');
+    });
+  }
   setSubtitles(track: TextTrack | null, cues: VTTCue[], enabled: boolean) { this.track = track; this.cues = cues; this.captionsEnabled = enabled; if (track) track.mode = 'hidden'; }
   async requestPictureInPicture() {
     if (!this.capture) { this.capture = this.canvas.captureStream(); this.primary.srcObject = this.capture; this.primary.muted = true; this.signature = ''; }

@@ -37,7 +37,7 @@ test('shows the sample project without a sample video action', async ({ page }) 
   await expect(page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ })).toBeVisible();
 });
 
-test('opens the bundled sample project with its saved interstitials', async ({ page }) => {
+test('opens the bundled sample project with its saved videos', async ({ page }) => {
   test.setTimeout(240_000);
   await page.goto('/');
   await page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ }).click();
@@ -54,7 +54,7 @@ test('asks before closing a project with unsaved changes', async ({ page }) => {
   await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.story-clip')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Add interstitial', exact:true }).dragTo(page.locator('.story-scroll'));
+  await page.getByRole('button', { name: 'Add video', exact:true }).dragTo(page.locator('.story-scroll'));
   await page.getByText('File', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Close project' }).click();
   const prompt = page.getByRole('dialog', { name: 'Save changes before closing?' });
@@ -72,7 +72,7 @@ test('saves an edited project to disk before closing', async ({ page }) => {
   await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.story-clip')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Add interstitial', exact:true }).dragTo(page.locator('.story-scroll'));
+  await page.getByRole('button', { name: 'Add video', exact:true }).dragTo(page.locator('.story-scroll'));
   await page.evaluate(() => {
     Object.defineProperty(window, 'showSaveFilePicker', { configurable: true, value: async ({ suggestedName }: { suggestedName: string }) =>
       (await navigator.storage.getDirectory()).getFileHandle(suggestedName, { create: true }) });

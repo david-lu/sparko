@@ -27,7 +27,7 @@ export type CaptionResult = {
 export type AppStatus = {
   uploadMode: 'local' | 'blob';
   requiresPassword: boolean;
-  providers: Record<Provider | 'comfy', boolean>;
+  providers: Record<Provider | 'comfy', boolean> & { fal?: boolean };
   models: Record<Provider, string>;
   defaultVideo: { name: string; url: string; size: number };
   defaultProject?: { url: string } | null;

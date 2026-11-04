@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   await openVideo(page);
   await addBridge(page);
   await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByLabel('Interstitial prompt').fill(original);
+  await page.getByLabel('Video prompt').fill(original);
 });
 
 test('enhances with visual references, stays editable, and supports undo, redo and persistence', async ({ page }) => {
@@ -31,7 +31,7 @@ test('enhances with visual references, stays editable, and supports undo, redo a
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Cancel prompt enhancement' })).toBeVisible();
   finish();
-  const prompt = page.getByLabel('Interstitial prompt');
+  const prompt = page.getByLabel('Video prompt');
   await expect(prompt).toHaveValue(enhanced);
   await expect(prompt).toBeEditable();
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(prompt).toHaveValue(original);
@@ -56,7 +56,7 @@ test('preserves the draft on errors and ignores a late result after the user edi
     await waiting;
     await route.fulfill({ json: { prompt: enhanced, model: 'test-model' } }).catch(() => undefined);
   });
-  const prompt = page.getByLabel('Interstitial prompt');
+  const prompt = page.getByLabel('Video prompt');
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
   await expect(page.locator('.task-status')).toContainText('Prompt enhancement could not reach OpenAI. Try again.');
   await expect(prompt).toHaveValue(original);

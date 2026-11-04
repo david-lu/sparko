@@ -54,7 +54,7 @@ for (const width of [1440, 390]) {
     await fitAll(page);
     const thumbnail = (await strip.locator('img').nth(1).boundingBox())!;
     await page.mouse.click(thumbnail.x + thumbnail.width / 2, thumbnail.y + thumbnail.height / 2);
-    await expect(clip.getByRole('slider')).toHaveAttribute('aria-valuenow', '4.5');
+    await expect(clip.getByRole('slider', { name: /^Scrub / })).toHaveAttribute('aria-valuenow', '4.5');
     // Each tile is narrower than the old 76px minimum at this zoom.
     await fitAll(page);
     for (let step = 0; step < 6; step++) await page.getByRole('button', { name: 'Zoom out story', exact: true }).click();
@@ -63,7 +63,7 @@ for (const width of [1440, 390]) {
     expect(await strip.locator('img').evaluateAll(images => images.map(image => (image as HTMLImageElement).src))).toEqual(sources);
     await expect(strip.getByRole('status')).toHaveCount(0);
 
-    const scrubber = clip.getByRole('slider');
+    const scrubber = clip.getByRole('slider', { name: /^Scrub / });
     await scrubber.focus(); await page.keyboard.press('Home');
     for (let second = 0; second < 6; second++) await page.keyboard.press('Shift+ArrowRight');
     await page.keyboard.press('s');

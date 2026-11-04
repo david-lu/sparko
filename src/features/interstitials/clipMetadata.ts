@@ -27,8 +27,9 @@ export function restoreClip(metadata: ClipMetadata, assetId: string, duration: n
   // Tags may survive an unrelated trim/re-encode. Only accept boundaries matching this file.
   if (Math.abs(metadata.media.totalDuration - duration) > 1 / TIMELINE_FPS + 0.001
     || metadata.media.start + metadata.media.duration > duration + 1 / TIMELINE_FPS) return;
-  // A standalone MP4 carries provenance, but not the attached image files.
-  const id = freshId(), nodeId = freshId(), settings = interstitialSettings({ ...metadata.settings, imageReferences: undefined });
+  // A standalone MP4 carries provenance, but not its attached reference files.
+  const id = freshId(), nodeId = freshId(), settings = interstitialSettings({ ...metadata.settings, imageReferences: undefined,
+    startVideoAsset: undefined, endVideoAsset: undefined, useStartVideoAsset: false, useEndVideoAsset: false });
   const result: InterstitialResult = { url: `asset:${assetId}`, assetId, ...metadata.media, prompt: metadata.prompt, metadata,
     reference: { mode: metadata.references.mode ?? 'custom' } };
   return {

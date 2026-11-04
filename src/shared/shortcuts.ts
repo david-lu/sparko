@@ -8,7 +8,7 @@ export const shortcutActions = [
   { id: 'select', label: 'Select tool', group: 'Timeline', defaults: ['V'] },
   { id: 'cut', label: 'Cut tool', group: 'Timeline', defaults: ['C'] },
   { id: 'pan', label: 'Hand tool', group: 'Timeline', defaults: ['H'] },
-  { id: 'add', label: 'New interstitial', group: 'Timeline', defaults: ['N', 'P'] },
+  { id: 'add', label: 'New video', group: 'Timeline', defaults: ['N', 'P'] },
   { id: 'split', label: 'Split at playhead', group: 'Timeline', defaults: ['S'] },
   { id: 'duplicate', label: 'Duplicate selected clips', group: 'Timeline', defaults: ['Mod+D'] },
   { id: 'delete', label: 'Delete selection', group: 'Timeline', defaults: ['Delete', 'Backspace'] },

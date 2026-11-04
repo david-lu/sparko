@@ -604,7 +604,7 @@ describe('interstitial lifecycle', () => {
     const original = await readyScene();
     vi.mocked(getInterstitialJob).mockResolvedValue({ ...replacement, insertion: { start: 2, duration: 10, totalDuration: 12 } });
     await controller.generate(original.id, media, info);
-    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'error', error: 'The returned video does not contain the full interstitial.', previousResult: original.result });
+    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'error', error: 'The returned video does not contain the full video.', previousResult: original.result });
     expect(playableResult(controller.getSnapshot().items[0])).toEqual(original.result);
   });
   it('cancels only the replacement and retains the original video, ignoring late results', async () => {

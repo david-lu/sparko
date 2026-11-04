@@ -15,10 +15,10 @@ test('canvas playback, settings and draft persistence', async ({ page }) => {
   await page.getByRole('button', { name: 'Mute', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Unmute', exact: true })).toBeVisible();
   await addDraft(page, 'Opening moment');
-  await page.getByLabel('Interstitial prompt').fill('Remember the opening');
+  await page.getByLabel('Video prompt').fill('Remember the opening');
   await saveAndReopen(page);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await expect(page.getByLabel('Interstitial prompt')).toHaveValue('Remember the opening');
+  await expect(page.getByLabel('Video prompt')).toHaveValue('Remember the opening');
   await page.getByRole('button', { name: 'Delete selected clips' }).click();
   await expect(page.locator('.story-clip')).toHaveCount(1);
   expect(errors).toEqual([]);

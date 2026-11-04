@@ -15,6 +15,7 @@ export class FlowPlayback {
   get sourceTime() { const scene = getScene(this.flow, this.session.sceneId); return scene.sourceTime !== undefined && (scene.interstitialId || scene.groupId) ? scene.sourceTime : (scene.clip.inFrame + this.session.frame) / this.flow.fps; }
   get video() { return this.playback.video; }
   get canvas() { return this.playback.canvas; }
+  captureFrame() { return this.playback.captureFrame(); }
   get bufferedAhead() { return this.playback.bufferedAhead; }
   requestPictureInPicture() { return this.playback.requestPictureInPicture(); }
   setSettings(settings: PlaybackSettings) { this.playback.setSettings(settings); }

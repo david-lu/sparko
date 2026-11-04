@@ -21,7 +21,7 @@ export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrame
     if (event.key === ' ' && (event.target as HTMLElement).getAttribute('role') === 'menuitemcheckbox') event.stopPropagation();
   }}><summary>Options</summary><div className="menu-items" role="menu" aria-label="Options">
     <button role="menuitemcheckbox" aria-checked={crossfade} onClick={() => onCrossfade(!crossfade)}>
-      <Check size={14} style={{ visibility: crossfade ? 'visible' : 'hidden' }} />Interstitial crossfades
+      <Check size={14} style={{ visibility: crossfade ? 'visible' : 'hidden' }} />Video crossfades
     </button>
     {!perClip && <label className="crossfade-length" aria-disabled={!crossfade}>
       <span>Crossfade length <output>{length}</output></span>

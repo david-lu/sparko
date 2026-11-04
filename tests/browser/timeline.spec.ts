@@ -2,7 +2,7 @@ import { test, expect, openVideo, addDraft, readProject, fitAll } from './fixtur
 
 test('Delete and Space respect text editing while clip deletion remains undoable', async ({ page }) => {
   await openVideo(page); await addDraft(page, 'Editable clip');
-  const prompt = page.getByLabel('Interstitial prompt'); await prompt.fill('Keep these words');
+  const prompt = page.getByLabel('Video prompt'); await prompt.fill('Keep these words');
   await prompt.press('End'); await prompt.press('Space'); await prompt.press('Delete');
   await expect(prompt).toHaveValue('Keep these words '); await expect(page.locator('.story-clip')).toHaveCount(2);
   await page.locator('.story-clip.selected .story-clip-title').click(); await page.keyboard.press('Delete');

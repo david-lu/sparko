@@ -211,7 +211,7 @@ test('opening a sparko file preserves mismatched originals and their reference b
   expect(result.originalSize).toBe(result.expectedSize); expect(result.sourceSize).toBe(result.expectedSourceSize);
 });
 
-test('cancelling interstitial validation during import preserves the active project and commits no imported assets', async ({ page }) => {
+test('cancelling video validation during import preserves the active project and commits no imported assets', async ({ page }) => {
   await setup(page);
   const result = await page.evaluate(async () => {
     const s = (window as any).nativeTest;
@@ -233,7 +233,7 @@ test('cancelling interstitial validation during import preserves the active proj
         result: { url: s.generated.source.url, assetId: s.generated.asset.id, start: .5, duration: 1, totalDuration: 2 } }], subtitle: null, analysis: emptyAnalysis() };
     const archive = await packProject(project, [s.source.asset, s.generated.asset], new AbortController().signal, () => {});
     let cancelled = false;
-    const unsubscribe = controller.subscribe(() => { if (!cancelled && controller.getSnapshot().message.startsWith('Checking interstitial')) { cancelled = true; controller.cancel(); } });
+    const unsubscribe = controller.subscribe(() => { if (!cancelled && controller.getSnapshot().message.startsWith('Checking video')) { cancelled = true; controller.cancel(); } });
     try {
       await controller.importProject(new File([archive], 'cancel.sparko'));
       const after = await readActiveProject();

@@ -40,7 +40,7 @@ export async function seekSource(page: Page, seconds: number) {
 
 export async function addDraft(page: Page, name = 'New scene') {
   const count = await page.locator('.story-clip').count();
-  await page.getByRole('button', { name: 'Add interstitial', exact: true }).press('Enter');
+  await page.getByRole('button', { name: 'Add video', exact: true }).press('Enter');
   await expect(page.locator('.story-clip')).toHaveCount(count + 1);
   if (name !== 'New scene') {
     await page.getByLabel('Clip name', { exact: true }).fill(name);
@@ -55,7 +55,7 @@ export async function addBridge(page: Page) {
   await source.press('Shift+ArrowRight'); await source.press('Shift+ArrowRight'); await source.press('s');
   await expect(page.locator('.story-clip')).toHaveCount(2);
   await page.locator('.story-crossfade').press('Enter');
-  await page.getByRole('button', { name: 'Add interstitial', exact: true }).press('Enter');
+  await page.getByRole('button', { name: 'Add video', exact: true }).press('Enter');
   await expect(page.locator('.story-clip')).toHaveCount(3);
 }
 

@@ -1,3 +1,4 @@
+import DockWorkspace from '../shared/panels/DockWorkspace';
 import { Activity, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { Download, Eye, FolderOpen, Pencil, Redo2, Save, Undo2, X } from 'lucide-react';
 import CallResponseControls from '../features/call-response/CallResponseControls';
@@ -33,7 +34,7 @@ import WindowMenu from './WindowMenu';
 import ShortcutSettings from './ShortcutSettings';
 import HelpTutorial from './HelpTutorial';
 import Preferences from './Preferences';
-import { pinchZoomPreference, savedPinchZoomSensitivity } from '../shared/preferences';
+import { pinchZoomPreference, savedPinchZoomSensitivity, playheadTimePreference, savedPlayheadTimeMode } from '../shared/preferences';
 import { formatShortcut, useShortcuts, type ShortcutId } from '../shared/shortcuts';
 import DropdownMenu from '../shared/DropdownMenu';
 import ModalBackdrop from '../shared/ModalBackdrop';
@@ -80,6 +81,8 @@ export default function App() {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [preview, setPreview] = useState(false);
   useEffect(() => { setPreview(false); }, [projectState.activationRevision]);
+  const [playheadTimeMode, setPlayheadTimeMode] = useState(savedPlayheadTimeMode);
+  useEffect(() => { try { localStorage.setItem(playheadTimePreference, playheadTimeMode); } catch { /* Apply without persistence. */ } }, [playheadTimeMode]);
   const [pinchZoomSensitivity, setPinchZoomSensitivity] = useState(savedPinchZoomSensitivity);
   useEffect(() => { try { localStorage.setItem(pinchZoomPreference, String(pinchZoomSensitivity)); } catch { /* Apply without persistence. */ } }, [pinchZoomSensitivity]);
   const keys=useShortcuts();
@@ -342,6 +345,16 @@ export default function App() {
   const clipControls = (id: SceneId) => panelTimeline && <CallResponseControls flow={panelTimeline.flow}
     selectedSceneId={id} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)}
     onSelectEdge={panelTimeline.onSelectEdge} />;
+  const storyCanvasElement = storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight} collapsed={timelineCollapsed} onCollapsed={setTimelineCollapsed} pinchZoomSensitivity={pinchZoomSensitivity} playheadTimeMode={playheadTimeMode} sourceDuration={info?.duration}/>:undefined;
+  const playerElement = <Player source={source} empty={!projectState.source||storyGraph?.nodes.length===0} info={info} thumbnails={thumbnails} thumbnailsFailed={thumbnailsFailed} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
+          preview={preview}
+          onCaptureFrame={storyEditor.captureFrame} capturingFrame={storyEditor.capturingFrame}
+          callResponse={flowTimeline}
+          storyCanvas={workspace.freeDock && !preview ? <></> : storyCanvasElement}
+          subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
+          controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
+          onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
+          timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} />;
   return <div className={`app-shell${preview ? ' preview-mode' : ''}`} onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => { event.preventDefault(); if (preview) event.dataTransfer.dropEffect = 'none'; }} onDrop={event => { event.preventDefault(); if (preview) return; const files=Array.from(event.dataTransfer.files);if(!files.length)return;if(storyGraph&&files.every(file=>!/\.sparko$/i.test(file.name)))void storyEditor.importVideos(files);else openFile(files[0]); }}>
     {!projectState.project ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasSampleProject={!!status?.defaultProject}
       onNewProject={() => void projects.newProject()} onOpenProject={() => void openProjectFile()}
@@ -372,15 +385,8 @@ export default function App() {
     <main className="workspace">
       {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }}><X size={16} /></button></div>}
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
-      <WorkspaceLockContext.Provider value={workspace.locked}><div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
-        <Player source={source} empty={!projectState.source||storyGraph?.nodes.length===0} info={info} thumbnails={thumbnails} thumbnailsFailed={thumbnailsFailed} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
-          preview={preview}
-          callResponse={flowTimeline}
-          storyCanvas={storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight} collapsed={timelineCollapsed} onCollapsed={setTimelineCollapsed} pinchZoomSensitivity={pinchZoomSensitivity}/>:undefined}
-          subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}
-          controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
-          onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
-          timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} />
+      <WorkspaceLockContext.Provider value={workspace.locked}>{workspace.freeDock && !preview && storyGraph ? <DockWorkspace locked={workspace.locked} items={{viewer: playerElement, timeline: storyCanvasElement, library: <StoryLibrary editor={storyEditor}/>, create: <StoryAddClips editor={storyEditor}/>, inspector: <StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>}}/> : <div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
+        {playerElement}
       </section><Activity mode={preview ? 'hidden' : 'visible'}><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Workspace panels">
         {storyGraph?<WorkspacePanels workspace={workspace} inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} create={<StoryAddClips editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={resetWorkspace}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
         <InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
@@ -388,13 +394,13 @@ export default function App() {
           renderClipControls={clipControls}
           connectedIds={groupTimelines.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []))}
           engine={engine} info={info} status={status} active onAddRegular={addInterstitial} onAddCallResponse={addCallResponse} onSelect={selectInterstitial} onRemove={removeInterstitial} onPreviewPlay={() => controller.pause()} /></>}
-      </aside></Activity></div></WorkspaceLockContext.Provider>
+      </aside></Activity></div>}</WorkspaceLockContext.Provider>
     </main></>}
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) openFile(file); event.target.value = ''; }} />
     <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) void projects.importProject(file); event.target.value = ''; }} />
     {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
     {helpOpen && <HelpTutorial onClose={()=>setHelpOpen(false)}/>}
-    {preferencesOpen && <Preferences pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} onClose={()=>setPreferencesOpen(false)}/>}
+    {preferencesOpen && <Preferences playheadTimeMode={playheadTimeMode} onPlayheadTimeMode={setPlayheadTimeMode} pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} onClose={()=>setPreferencesOpen(false)}/>}
     {closePrompt && <ModalBackdrop labelledBy="close-project-title" onCancel={()=>{if(!projectState.busy)setClosePrompt(false);}}><div className="project-card">
       <h2 id="close-project-title">Save changes before closing?</h2>
       <p className="hint">Changes to {projectState.project?.name || 'this project'} have not been saved to a project file.</p>

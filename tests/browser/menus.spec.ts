@@ -34,7 +34,7 @@ for(const width of [1440,390])test(`menus are exclusive, dismiss consistently an
   await page.keyboard.press('Escape');await expect(contexts(page)).toHaveCount(0);await expect(page.locator('.story-scroll')).toBeFocused();
   expect(await page.locator('.story-toolbar').boundingBox()).toEqual(bounds);
   await page.getByRole('button',{name:'Cut tool',exact:true}).click();await trigger(page,'File').click();await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','true');await page.getByRole('button',{name:'Cut tool',exact:true}).click();
-  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:80,y:45}});await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.getByRole('button',{name:'Add video',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:80,y:45}});await expect(page.locator('.story-clip')).toHaveCount(2);
   const generation=page.locator('.inspector-generation'),references=page.locator('.inspector-references-panel');await expect(generation).toHaveAttribute('open','');await references.locator('summary').click();await references.locator('summary').click();await expect(references).toHaveAttribute('open','');
   await trigger(page,'File').click();await trigger(page,'Window').click();await expect(generation).toHaveAttribute('open','');await expect(references).toHaveAttribute('open','');
   await page.getByRole('button',{name:'Shortcuts',exact:true}).click();await expect(page.getByRole('dialog',{name:'Keyboard shortcuts'})).toBeVisible();await expect(dropdowns(page)).toHaveCount(0);await page.keyboard.press('Escape');expect(errors).toEqual([]);

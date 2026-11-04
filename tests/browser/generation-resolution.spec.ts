@@ -6,7 +6,7 @@ const open=async(page:Page)=>{
   await page.route('**/api/status',async route=>{const response=await route.fetch();await route.fulfill({json:{...await response.json(),providers:{openai:false,gemini:false,comfy:true}}});});
   await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
   await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
-  await page.getByRole('button',{name:'Add interstitial',exact:true}).dragTo(page.locator('.story-crossfade'));await page.getByLabel('Interstitial prompt',{exact:true}).fill('Continue with fine detail');
+  await page.getByRole('button',{name:'Add video',exact:true}).dragTo(page.locator('.story-crossfade'));await page.getByLabel('Video prompt',{exact:true}).fill('Continue with fine detail');
 };
 
 for(const width of [1440,390])test(`official H3 2K generation keeps loading layout stable and persists with templates at ${width}px`,{tag:['@generation','@slow']},async({page})=>{

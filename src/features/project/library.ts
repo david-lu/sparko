@@ -3,7 +3,8 @@ import type { LibraryAsset, Project } from './types';
 
 /** The library owns media independently of its instances on the timeline. */
 export function collectLibrary(project: Project, sourceDuration?: number): LibraryAsset[] {
-  const entries = new Map((project.library ?? []).map(item => [item.assetId, item]));
+  // Older working copies may still contain subtitles in the library.
+  const entries = new Map((project.library ?? []).filter(item => ['video', 'generated', 'image', 'audio'].includes(item.kind)).map(item => [item.assetId, item]));
   const add = (item: LibraryAsset) => {
     const existing = entries.get(item.assetId);
     entries.set(item.assetId, existing ? { ...item, ...existing, duration: existing.duration ?? item.duration } : item);
@@ -19,6 +20,7 @@ export function collectLibrary(project: Project, sourceDuration?: number): Libra
         inFrame: Math.round(result.start * TIMELINE_FPS), outFrame: Math.round((result.start + result.duration) * TIMELINE_FPS) });
     }
   }
-  if (project.subtitle) add({ ...project.subtitle, kind: 'subtitle' });
+  for (const generation of project.assetGenerations ?? []) for (const version of generation.versions) add({ assetId: version.assetId, name: version.name, kind: generation.kind === 'video' ? 'generated' : generation.kind, generationId: generation.id, folderId: generation.folderId });
+  for (const item of project.interstitials) for (const ref of item.imageReferences ?? []) add({ assetId: ref.assetId, name: ref.name, kind: 'image' });
   return [...entries.values()];
 }

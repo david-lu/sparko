@@ -1,4 +1,4 @@
-import { test, expect, addDraft, readProject, saveAndReopen, type Page } from './fixtures';
+import { test, expect, addDraft, readProject, saveAndReopen, dragIntoView, type Page } from './fixtures';
 
 const controls = (page: Page) => page.locator('.interstitial-editor').evaluate(root => {
   const top = root.getBoundingClientRect().top;
@@ -31,7 +31,7 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
     await page.keyboard.press('Escape'); await expect(help).toBeHidden(); expect(await controls(page)).toEqual(beforeHelp);
   }
   if (!loop) for (const side of ['Start', 'End']) await page.getByRole('group', { name: `${side} reference`, exact: true }).getByRole('button', { name: 'Image', exact: true }).click();
-  const prompt = page.getByLabel('Interstitial prompt', { exact: true }); await prompt.fill('Animate the subject in <Picture 1> using the colors of <Picture 2>.');
+  const prompt = page.getByLabel('Video prompt', { exact: true }); await prompt.fill('Animate the subject in <Picture 1> using the colors of <Picture 2>.');
   const pngs = await page.evaluate(() => ['red', 'blue'].map(color => {
     const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 192;
     const ctx = canvas.getContext('2d')!; ctx.fillStyle = color; ctx.fillRect(0, 0, 320, 192); return canvas.toDataURL('image/png').split(',')[1];
@@ -40,7 +40,7 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
     const original = window.createImageBitmap, gate = new Promise<void>(resolve => { (window as any).finishImages = resolve; });
     window.createImageBitmap = (async (...args: any[]) => { await gate; return (original as any)(...args); }) as typeof original;
   });
-  const before = await controls(page);
+  let before = await controls(page);
   await page.getByLabel('Choose image references', { exact: true }).setInputFiles(pngs.map((png, index) => ({ name: `reference-${index + 1}.png`, mimeType: 'image/png', buffer: Buffer.from(png, 'base64') })));
   await expect(page.getByRole('button', { name: 'Adding…', exact: true })).toBeDisabled();
   expect(await controls(page)).toEqual(before);
@@ -48,7 +48,10 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
   await expect(page.locator('.image-reference-list img')).toHaveCount(2); expect(await controls(page)).toEqual(before);
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(page.locator('.image-reference-list img')).toHaveCount(0);
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(page.locator('.image-reference-list img')).toHaveCount(2);
-  if (!loop) await page.getByLabel('End reference image', { exact: true }).selectOption('1');
+  if (!loop) {
+    await dragIntoView(page, page.locator('.image-reference-list li').nth(1), page.getByRole('group', { name: 'End reference image', exact: true }));
+    await expect(page.getByRole('group', { name: 'End reference image', exact: true })).toContainText('reference-2.png');
+  }
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
 
   let finishEnhancement!: () => void, enhancedRequests = 0;
@@ -87,7 +90,7 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
   await page.route('https://example.test/image-reference.mp4', route => route.fulfill({ contentType: 'video/mp4', path: 'tests/fixtures/interstitial-reference.mp4' }));
   await page.getByRole('button', { name: 'Generate', exact: true }).click(); await expect.poll(() => submitted).toBe(1);
   expect(await controls(page)).toEqual(before);
-  await page.getByRole('button', { name: 'Remove Picture 2', exact: true }).click(); expect(await controls(page)).toEqual(before);
+  await page.getByRole('button', { name: 'Remove Picture 2', exact: true }).click(); before = await controls(page);
   complete = true; await expect.poll(async () => ['ready', 'error'].includes((await readProject(page))!.interstitials[0].phase), { timeout: 60_000 }).toBe(true);
   expect((await readProject(page))!.interstitials[0]).toMatchObject({ phase: 'ready', error: undefined });
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeEnabled();
@@ -112,7 +115,7 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
 test('changing images cancels enhancement and ignores its late response', async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: true, comfy: true, gemini: false } } }); });
   await page.goto('/'); await page.getByRole('button', { name: /^New project/ }).click(); await addDraft(page);
-  const prompt = page.getByLabel('Interstitial prompt', { exact: true }); await prompt.fill('Use <Picture 1> for the subject.');
+  const prompt = page.getByLabel('Video prompt', { exact: true }); await prompt.fill('Use <Picture 1> for the subject.');
   await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'None', exact: true }).click();
   await page.getByLabel('Choose image references', { exact: true }).setInputFiles('src/app/tutorial/images/save.png');
   await expect(page.locator('.image-reference-list img')).toHaveCount(1);

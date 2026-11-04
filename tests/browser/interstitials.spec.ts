@@ -26,7 +26,7 @@ test('reference and duration sliders synchronize with inputs and persist', async
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { comfy: true } } }); });
   await openVideo(page); await addBridge(page);
   await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByLabel('Interstitial prompt').fill('A green interstitial scene');
+  await page.getByLabel('Video prompt').fill('A green video scene');
   for (const [name, label, value] of [['start_range', 'Start footage', '1.8'], ['end_range', 'End footage', '1.7'], ['Duration', 'Duration', '7.5']]) {
     const number = page.getByRole('spinbutton', { name, exact: true });
     await number.click(); const slider = page.getByRole('slider', { name: `${label} slider`, exact: true });

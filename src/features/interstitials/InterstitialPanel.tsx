@@ -20,7 +20,7 @@ import InterstitialHelp from './InterstitialHelp';
 function RemoveInterstitialButton({ item, controller, disabled = false, onRemove }: { item: Interstitial; controller: InterstitialController; disabled?: boolean; onRemove?: (id: string) => void }) {
   const handledTouch = useRef(false);
   const remove = () => onRemove ? onRemove(item.id) : void controller.remove(item.id);
-  return <button className="icon-button small" aria-label={`Remove ${item.label}`} disabled={disabled} title={disabled ? 'This interstitial is used by a connected timeline clip.' : undefined}
+  return <button className="icon-button small" aria-label={`Remove ${item.label}`} disabled={disabled} title={disabled ? 'This video is used by a connected timeline clip.' : undefined}
     onPointerDown={() => { handledTouch.current = false; }}
     onPointerUp={event => {
       if (disabled) return;
@@ -49,17 +49,17 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
   const childIds = new Set(groups.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : [])));
   const standaloneItems = items.filter(item => !item.groupId && !childIds.has(item.id) && !groups.some(group => group.flow.interstitial.id === item.id));
   const createActions = <div className="interstitial-create-actions">
-    <button className="button full-width" disabled={!info} onClick={onAddRegular}><Sparkles size={14} /> Add regular interstitial</button>
-    <button className="button full-width" disabled={!info || info.duration < 3.25} onClick={onAddCallResponse}><Sparkles size={14} /> Add call-response interstitial</button>
+    <button className="button full-width" disabled={!info} onClick={onAddRegular}><Sparkles size={14} /> Add regular video</button>
+    <button className="button full-width" disabled={!info || info.duration < 3.25} onClick={onAddCallResponse}><Sparkles size={14} /> Add call-response video</button>
   </div>;
   if (callResponse && renderClipControls && (callResponse.selectedInterstitial || members.some(scene => scene.interstitialId === selectedId || scene.id === callResponse.selectedSceneId))) {
     return <CallResponsePanel value={callResponse} items={items} onBack={() => onSelect(null)} renderControls={renderClipControls}
       controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />;
   }
   if (!selected) return <div className="panel-content interstitial-panel">
-    <div className="panel-intro"><h2>Interstitials</h2><InterstitialHelp /></div>
+    <div className="panel-intro"><h2>Videos</h2><InterstitialHelp /></div>
     {createActions}
-    {!standaloneItems.length && !groups.length ? <div className="empty-state"><h3>No interstitials yet</h3><p>Choose an interstitial type to add it at the playhead.</p></div> : <ol className="interstitial-list">
+    {!standaloneItems.length && !groups.length ? <div className="empty-state"><h3>No videos yet</h3><p>Choose a video type to add it at the playhead.</p></div> : <ol className="interstitial-list">
       {groups.map(callResponse => {
         const members = interstitialScenes(callResponse.flow), groupReady = members.every(scene => !scene.draft && !!assets.url(scene.clip.assetId) && !controller.dependency(scene.interstitialId!)?.stale);
         return <li key={callResponse.flow.interstitial.id} className="interstitial-group" data-interstitial-id={callResponse.flow.interstitial.id}>
@@ -94,7 +94,7 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
     </li>)}</ol>}
   </div>;
   return <div className="panel-content interstitial-panel">
-    <button className="text-button interstitial-back" onClick={() => onSelect(null)}><ArrowLeft size={13} /> All interstitials</button>
+    <button className="text-button interstitial-back" onClick={() => onSelect(null)}><ArrowLeft size={13} /> All videos</button>
     <div className="interstitial-title">
       <InterstitialName key={selected.id} name={selected.label} onChange={name => controller.rename(selected.id, name)} />
       {selected.phase === 'draft' && <span className="interstitial-draft">Draft</span>}

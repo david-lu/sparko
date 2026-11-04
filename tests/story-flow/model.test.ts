@@ -116,7 +116,7 @@ describe('story clip graph',()=>{
     expect(result.graph.edges.filter(e=>e.to===graph.edges[0].to)).toHaveLength(2);
     expect(storyGraphSchema.safeParse(result.graph).success).toBe(true);
   });
-  it('captures selected interstitials as reusable settings without source assets or rendered media',()=>{
+  it('captures selected videos as reusable settings without source assets or rendered media',()=>{
     const result=instantiateTemplate(initial(),makePreset('question'),[]),ids=result.graph.nodes.filter(n=>n.interstitialId).map(n=>n.id);
     result.items[0].resolution='2k';
     result.items[0].audioMaskTransitionMs=0;result.items[0].videoMaskTransitionMs=1000;

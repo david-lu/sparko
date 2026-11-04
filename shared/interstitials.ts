@@ -3,6 +3,7 @@ import type { GenerationProgress, InsertionRange } from './contracts.js';
 import type { ClipMetadata, ClipOrigin } from './clip-metadata.js';
 import type { ImageReference } from './image-references.js';
 import { maskCurveSchema, type MaskCurve } from './mask-curves.js';
+import type { VideoAssetReference } from './video-references.js';
 
 export type GenerationMethod = 'comfy' | 'comfy-extend' | 'comfy-loop';
 export const generationMethods = ['comfy', 'comfy-extend', 'comfy-loop'] as const;
@@ -46,6 +47,8 @@ export type InterstitialSettings = {
   /** Zero-based Picture indexes used as first/last-frame guides when footage is disabled. */
   startImageIndex?: number; endImageIndex?: number;
   startReferenceType?: ReferenceType; endReferenceType?: ReferenceType;
+  useStartVideoAsset?: boolean; useEndVideoAsset?: boolean;
+  startVideoAsset?: VideoAssetReference; endVideoAsset?: VideoAssetReference;
   method?: GenerationMethod;
   resolution?: GenerationResolution;
   /** Story references come from the connected input/output; disabled sides contribute no footage. */
@@ -94,8 +97,10 @@ export type Interstitial = InterstitialSettings & {
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
-export const interstitialSettings = ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
+export const interstitialSettings = ({ useStartVideoAsset, useEndVideoAsset, startVideoAsset, endVideoAsset, start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
   ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
+    ...(useStartVideoAsset !== undefined ? { useStartVideoAsset } : {}), ...(useEndVideoAsset !== undefined ? { useEndVideoAsset } : {}),
+    ...(startVideoAsset ? { startVideoAsset: { ...startVideoAsset } } : {}), ...(endVideoAsset ? { endVideoAsset: { ...endVideoAsset } } : {}),
     ...(imageReferences?.length ? { imageReferences: imageReferences.map(image => ({ ...image })) } : {}),
     ...(startImageIndex !== undefined ? { startImageIndex } : {}), ...(endImageIndex !== undefined ? { endImageIndex } : {}),
     ...(startReferenceType !== undefined ? { startReferenceType } : {}), ...(endReferenceType !== undefined ? { endReferenceType } : {}),
@@ -107,7 +112,7 @@ export const interstitialSettings = ({ start_range, end_range, duration, prompt,
     ...(continuity !== undefined ? { continuity } : {}), ...(dialogue !== undefined ? { dialogue } : {}), ...(loopAudio !== undefined ? { loopAudio } : {}) });
 export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&
   ([...new Set([...Object.keys(interstitialSettings(item)), ...Object.keys(interstitialSettings(item.generationSettings))])] as (keyof InterstitialSettings)[])
-    .some(key => !['loopAudio', 'continuity', 'dialogue'].includes(key) && (['imageReferences', 'audioMaskCurve', 'videoMaskCurve'].includes(key)
+    .some(key => !['loopAudio', 'continuity', 'dialogue'].includes(key) && (['imageReferences', 'audioMaskCurve', 'videoMaskCurve', 'startVideoAsset', 'endVideoAsset'].includes(key)
       ? JSON.stringify(item[key] ?? []) !== JSON.stringify(item.generationSettings![key] ?? [])
       : interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]));
 export const frameTime = (seconds: number, fps: number) => Math.round(seconds * fps) / fps;

@@ -37,7 +37,7 @@ export const callResponseSchema = z.object({
   const members = flow.scenes.filter(scene => scene.clip.kind !== 'video').map(scene => scene.clip.id);
   return flow.interstitial.clipIds.length === members.length && new Set(flow.interstitial.clipIds).size === members.length
     && members.every(id => flow.interstitial!.clipIds.includes(id));
-}, 'The Call Response Interstitial must own every non-video clip and no video clips.').transform(groupCallResponse).refine(flow => {
+}, 'The Call Response Video must own every non-video clip and no video clips.').transform(groupCallResponse).refine(flow => {
   const scenes = new Set(flow.scenes.map(scene => scene.id)), answers = new Set(flow.interaction.answers.map(answer => answer.id));
   const branchIds = flow.interaction.answers.map(answer => answer.sceneId);
   return ['intro', 'call', 'wait', 'continue', flow.entrySceneId, flow.interaction.waitSceneId].every(id => scenes.has(id))

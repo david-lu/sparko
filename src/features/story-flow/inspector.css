@@ -13,6 +13,7 @@
 .inspector-clip-meta>span{overflow:hidden;text-overflow:ellipsis}
 .inspector-entry{display:flex;align-items:center;gap:4px;flex:none;padding:3px;background:transparent;color:var(--muted);font-size:10px}
 .inspector-entry[aria-pressed=true]{color:var(--accent)}
+.inspector-entry:not(button){color:var(--accent)}
 .inspector-property{display:grid;grid-template-columns:var(--property-label) minmax(0,1fr);align-items:center;gap:6px;min-height:28px;margin:0;font-size:11px}
 .inspector-property>span{color:var(--text-secondary)}
 .inspector-property input,.inspector-property select,.inspector-rule-heading input{width:100%;min-width:0;height:24px;padding:2px 5px;border:1px solid transparent;border-radius:3px;background:var(--input);font-size:11px;color:var(--accent)}
@@ -40,7 +41,6 @@
 .inspector-reference-heading .inspector-options{margin-left:auto;flex:0 1 162px}
 .inspector-reference-source{display:flex;align-items:center;gap:6px;height:28px;min-width:0}
 .inspector-reference-source>.hint{margin:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:10px}
-.inspector-reference-source select{width:100%;min-width:0;height:24px;padding:2px 5px;border:1px solid var(--line);border-radius:3px;background:var(--input);color:var(--accent);font-size:10px}
 .clip-inspector .inspector-reference .interstitial-time-field{display:block;flex:0 0 65px;min-height:0}
 .inspector-reference .interstitial-time-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .inspector-reference-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent);font-size:10px}
@@ -92,3 +92,5 @@
 .clip-inspector .generated-play-range{padding-top:8px;gap:4px}
 .clip-inspector .interstitial-preview{margin-top:8px;padding-top:8px}
 @container(max-width:280px){.story-inspector.clip-inspector{--property-label:63px;padding-inline:7px}.inspector-options button{font-size:9px;padding-inline:2px}.inspector-clip-tools .icon-button.small{width:22px;min-width:22px}}
+
+.reference-video-toggle{display:flex;align-items:center;gap:5px;font-size:10px;min-height:28px;flex-wrap:wrap}.reference-video-toggle input{accent-color:var(--accent)}.reference-video-toggle small{color:var(--muted);margin-left:auto}.inspector-reference .range-fields{grid-template-columns:1fr;gap:2px;padding:4px 0}

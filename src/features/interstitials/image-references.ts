@@ -16,7 +16,7 @@ export function imageDataUrl(blob: Blob, signal?: AbortSignal): Promise<string> 
 }
 
 /** Decode locally and keep a bounded, portable JPEG with its original aspect ratio. */
-export async function prepareImageReference(file: File, signal: AbortSignal): Promise<ImageReference> {
+async function prepareReferenceBlob(file: File, signal: AbortSignal): Promise<Blob> {
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('Choose a PNG, JPEG or WebP image.');
   if (!file.size || file.size > IMAGE_REFERENCE.maxInputBytes) throw new Error('Choose an image smaller than 20 MB.');
   signal.throwIfAborted();
@@ -36,9 +36,12 @@ export async function prepareImageReference(file: File, signal: AbortSignal): Pr
     if (blob.size > IMAGE_REFERENCE.maxBytes) blob = await encode(.7);
     if (blob.size > IMAGE_REFERENCE.maxBytes) throw new Error('This image has too much detail. Resize it and try again.');
     signal.throwIfAborted();
-    const asset = await assets.save(blob, file.name.slice(0, 1000), signal);
-    return { assetId: asset.id, name: asset.name };
+    return blob;
   } finally { bitmap.close(); }
+}
+export async function prepareImageReference(file: File, signal: AbortSignal): Promise<ImageReference> {
+  const asset = await assets.save(await prepareReferenceBlob(file, signal), file.name.slice(0, 1000), signal);
+  return { assetId: asset.id, name: asset.name };
 }
 
 export async function referenceImageData(references: ImageReference[] = [], signal: AbortSignal) {
@@ -47,8 +50,8 @@ export async function referenceImageData(references: ImageReference[] = [], sign
   for (const reference of references) {
     signal.throwIfAborted();
     const { asset } = await assets.open(reference.assetId);
-    if (asset.blob.type !== 'image/jpeg' || !asset.blob.size || asset.blob.size > IMAGE_REFERENCE.maxBytes) throw new Error(`Reattach the image reference “${reference.name}”.`);
-    images.push(await imageDataUrl(asset.blob, signal));
+    const blob = await prepareReferenceBlob(new File([asset.blob], asset.name, { type: asset.blob.type }), signal);
+    images.push(await imageDataUrl(blob, signal));
   }
   return images;
 }

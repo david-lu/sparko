@@ -31,12 +31,14 @@ function readLayout(): WorkspaceLayout {
 
 /** Window and the panel controls share one persisted workspace layout. */
 export function useWorkspaceLayout() {
+  const [freeDock, setFreeDock] = useState(() => { try { return localStorage.getItem('sparko:free-docking') === 'true'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem('sparko:free-docking', String(freeDock)); } catch {} }, [freeDock]);
   const [layout,setLayout]=useState(readLayout);
   const [locked,setLocked]=useState(()=>{try{return localStorage.getItem(lockKey)==='true';}catch{return false;}});
   useEffect(()=>{try{localStorage.setItem(storageKey,JSON.stringify(layout));}catch{/* Keep session preferences. */}},[layout]);
   useEffect(()=>{try{localStorage.setItem(lockKey,String(locked));}catch{/* Keep session preferences. */}},[locked]);
   const updateLayout=useCallback((next:SetStateAction<WorkspaceLayout>)=>{if(!locked)setLayout(next);},[locked]);
   const togglePanel=(id:WorkspacePanelId)=>updateLayout(old=>({...old,panels:old.panels.map(p=>p.id===id?{...p,visible:!p.visible,collapsed:p.visible?p.collapsed:false}:p)}));
-  return {layout,locked,setLocked,updateLayout,togglePanel,reset:()=>updateLayout(defaults())};
+  return {layout,locked,setLocked,updateLayout,togglePanel,freeDock,setFreeDock,reset:()=>{ if (locked) return; updateLayout(defaults()); setFreeDock(false); try { localStorage.removeItem('sparko:free-panel-layout'); } catch {} }};
 }
 export type WorkspaceLayoutController=ReturnType<typeof useWorkspaceLayout>;

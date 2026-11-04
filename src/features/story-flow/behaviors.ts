@@ -36,7 +36,7 @@ export function normalizeConditions<T extends Pick<StoryGraph,'nodes'|'edges'>>(
 }
 export const behaviorLabel = (node: StoryNode) => {
   const value = behaviors(node);
-  return [value.loop && 'Loop', value.conditional && 'Conditional'].filter(Boolean).join(' · ') || (node.source ? 'Source' : 'Interstitial');
+  return [value.loop && 'Loop', value.conditional && 'Conditional'].filter(Boolean).join(' · ') || (node.source ? 'Source' : 'Video');
 };
 export function setBehavior(graph: StoryGraph, id: string, behavior: 'loop' | 'conditional', enabled: boolean): StoryGraph {
   return normalizeConditions({ ...graph, nodes: graph.nodes.map(node => {

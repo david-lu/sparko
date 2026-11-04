@@ -18,7 +18,7 @@ export function storyDependency(graph: StoryGraph, items: Interstitial[], assetI
   const matches = (input: ClipReference, current: ClipReference) => {
     const scene = byId.get(current.sceneId)!;
     return input.assetId === current.assetId && input.inFrame === current.inFrame && input.outFrame === current.outFrame
-      || input.assetId === scene.clip.assetId && input.inFrame === scene.clip.inFrame && input.outFrame === scene.clip.outFrame;
+      || !!scene && input.assetId === scene.clip.assetId && input.inFrame === scene.clip.inFrame && input.outFrame === scene.clip.outFrame;
   };
   const input: GenerationReference = { mode: loop ? 'loop' : 'custom' };
   let blocked: string | undefined;
@@ -28,6 +28,13 @@ export function storyDependency(graph: StoryGraph, items: Interstitial[], assetI
   for (const side of ['input', 'output'] as const) {
     if (loop && side === 'output') continue;
     if (!(side === 'input' ? item.useInputReference : item.useOutputReference)) continue;
+    const arbitrary = side === 'input' ? item.useStartVideoAsset : item.useEndVideoAsset;
+    if (arbitrary) {
+      const asset = side === 'input' ? item.startVideoAsset : item.endVideoAsset;
+      if (!asset) { blocked ??= `Choose a video for the ${side === 'input' ? 'start' : 'end'} reference.`; continue; }
+      input[side === 'input' ? 'before' : 'after'] = { sceneId: `asset:${asset.assetId}`, assetId: asset.assetId, inFrame: asset.inFrame, outFrame: asset.outFrame };
+      continue;
+    }
     const ids = connected[side];
     if (ids.length !== 1) {
       if (loop) { blocked ??= 'Connect exactly one incoming clip for Loop ref, or choose Picture 1 and add an image.'; continue; }
@@ -51,5 +58,5 @@ export function storyDependency(graph: StoryGraph, items: Interstitial[], assetI
       if (normalized[side] && input[side] && matches(normalized[side]!, input[side]!)) normalized[side] = input[side];
     }
   }
-  return { label: byId.get(input.before?.sceneId ?? input.after?.sceneId ?? '')?.label ?? 'No reference footage', reference: input, blocked, stale: !!normalized && !sameReference(normalized, input) };
+  return { label: byId.get(input.before?.sceneId ?? input.after?.sceneId ?? '')?.label ?? (input.before && item.useStartVideoAsset ? item.startVideoAsset?.name : input.after && item.useEndVideoAsset ? item.endVideoAsset?.name : undefined) ?? 'No reference footage', reference: input, blocked, stale: !!normalized && !sameReference(normalized, input) };
 }

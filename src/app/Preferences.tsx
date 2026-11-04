@@ -1,10 +1,11 @@
 import { X } from 'lucide-react';
 import ModalBackdrop from '../shared/ModalBackdrop';
-import { defaultPinchZoomSensitivity, minPinchZoomSensitivity, maxPinchZoomSensitivity } from '../shared/preferences';
+import { defaultPinchZoomSensitivity, minPinchZoomSensitivity, maxPinchZoomSensitivity, defaultPlayheadTimeMode, type PlayheadTimeMode } from '../shared/preferences';
 import './preferences.css';
 
-export default function Preferences({ pinchZoomSensitivity, onPinchZoomSensitivity, onClose }: {
-  pinchZoomSensitivity: number; onPinchZoomSensitivity: (value: number) => void; onClose: () => void;
+export default function Preferences({ pinchZoomSensitivity, onPinchZoomSensitivity, playheadTimeMode, onPlayheadTimeMode, onClose }: {
+  pinchZoomSensitivity: number; onPinchZoomSensitivity: (value: number) => void;
+  playheadTimeMode: PlayheadTimeMode; onPlayheadTimeMode: (value: PlayheadTimeMode) => void; onClose: () => void;
 }) {
   return <ModalBackdrop labelledBy="preferences-title" onCancel={onClose} restoreFocus={()=>document.querySelector<HTMLElement>('.playback-options>summary')?.focus({preventScroll:true})}>
     <section className="project-card preferences-card">
@@ -15,7 +16,12 @@ export default function Preferences({ pinchZoomSensitivity, onPinchZoomSensitivi
         aria-valuetext={`${pinchZoomSensitivity} times`} aria-describedby="pinch-zoom-help" onChange={event=>onPinchZoomSensitivity(Number(event.target.value))}/>
       <div className="preference-range-labels" aria-hidden><span>Slower</span><span>Faster</span></div>
       <p id="pinch-zoom-help" className="hint">Adjust how quickly pinching zooms the timeline. Also applies to Ctrl/Cmd + scroll.</p>
-      <footer><span>Changes save automatically on this device.</span><button className="button small" onClick={()=>onPinchZoomSensitivity(defaultPinchZoomSensitivity)}>Reset default</button><button className="button primary small" onClick={onClose}>Done</button></footer>
+      <label className="preference-time-label" htmlFor="playhead-time-mode">Playhead time</label>
+      <select id="playhead-time-mode" value={playheadTimeMode} aria-describedby="playhead-time-help" onChange={event=>onPlayheadTimeMode(event.target.value as PlayheadTimeMode)}>
+        <option value="internal">Clip internal time</option><option value="elapsed">Elapsed from clip start</option>
+      </select>
+      <p id="playhead-time-help" className="hint">Show the position in the clip’s original timeline, or count from zero at its trimmed start.</p>
+      <footer><span>Changes save automatically on this device.</span><button className="button small" onClick={()=>{onPinchZoomSensitivity(defaultPinchZoomSensitivity);onPlayheadTimeMode(defaultPlayheadTimeMode);}}>Reset default</button><button className="button primary small" onClick={onClose}>Done</button></footer>
     </section>
   </ModalBackdrop>;
 }

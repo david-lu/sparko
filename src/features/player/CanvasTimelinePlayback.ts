@@ -31,6 +31,7 @@ export class CanvasTimelinePlayback {
   }
   get video() { return this.decks.video; }
   get canvas() { return this.decks.canvas; }
+  captureFrame() { return this.decks.captureFrame(); }
   get bufferedAhead() { return this.decks.bufferedAhead; }
   requestPictureInPicture() { return this.decks.requestPictureInPicture(); }
   private clip(segment: TimelineSegment, frame: number): PlaybackClip {

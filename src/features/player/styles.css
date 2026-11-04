@@ -27,6 +27,8 @@
 .player-card:not(:fullscreen) .video-stage:hover .transport,.transport:has(:focus-visible),.player-card:fullscreen[data-controls-visible=true] .transport{opacity:1;pointer-events:auto}
 .transport .icon-button{color:var(--text)}
 .transport .icon-button.active{color:var(--accent)}
+.transport .capture-frame{width:27px;flex:0 0 27px}
+.capture-error{position:absolute;z-index:4;top:12px;right:12px;max-width:min(360px,calc(100% - 24px));display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #62423f;border-radius:5px;background:#3c2928;color:#dbb3ac;font-size:11px}
 @media(hover:none){.player-card:not(:fullscreen) .transport{opacity:1;pointer-events:auto}}
 @media(prefers-reduced-motion:reduce){.transport{transition:none}}
 .player-branch-controls{--choice-gap:12px;position:absolute;left:50%;bottom:48px;transform:translateX(-50%);z-index:5;display:grid;grid-template-columns:repeat(var(--choice-columns),minmax(0,1fr));gap:var(--choice-gap);width:calc(var(--choice-columns)*154px + (var(--choice-columns) - 1)*var(--choice-gap) + 24px);max-width:calc(70% - 12px);max-height:calc(100% - 60px);overflow-y:auto;padding:10px 12px 14px;scrollbar-width:thin}

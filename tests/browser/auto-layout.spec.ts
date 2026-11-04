@@ -3,7 +3,10 @@ import { fitAll, test, expect, type Page } from './fixtures';
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
 const inspect=(page:Page)=>page.locator('.story-scroll').evaluate(el=>{
   const view=el.getBoundingClientRect(),boxes=[...el.querySelectorAll('.story-clip')].map(n=>n.getBoundingClientRect());
-  return {heights:boxes.map(b=>b.height),inside:boxes.every(b=>b.left>=view.left&&b.right<=view.right&&b.top>=view.top&&b.bottom<=view.bottom),
+  // Fixed-height clips stay readable when the preserved arrangement is taller
+  // than the viewport. Fit centers those rows; the user can pan vertically.
+  const middle=(Math.min(...boxes.map(b=>b.top))+Math.max(...boxes.map(b=>b.bottom)))/2;
+  return {heights:boxes.map(b=>b.height),withinWidth:boxes.every(b=>b.left>=view.left&&b.right<=view.right),centered:Math.abs(middle-(view.top+view.bottom)/2)<1,
     overlaps:boxes.flatMap((a,i)=>boxes.slice(i+1).filter(b=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top)).length};
 });
 
@@ -43,16 +46,16 @@ for(const width of [1440,390])for(const mixed of [false,true])test(`cleanup sepa
   expect((await inspect(page)).overlaps).toBeGreaterThan(0);
   const camera=()=>page.locator('.story-scroll').evaluate(el=>(el as HTMLElement).style.cssText);const originalCamera=await camera();
   await page.getByRole('button',{name:'Auto layout',exact:true}).click();expect(await camera()).toBe(originalCamera);await fitAll(page);
-  await expect.poll(async()=>(await inspect(page)).overlaps).toBe(0);expect((await inspect(page)).inside).toBe(true);
+  await expect.poll(async()=>(await inspect(page)).overlaps).toBe(0);expect(await inspect(page)).toMatchObject({withinWidth:true,centered:true});
   expect((await inspect(page)).heights).toEqual(Array(12).fill(76));
   const cleaned=(await saved(page)).storyFlow;
   expect(cleaned.nodes.map(({x,y,...n}:any)=>n)).toEqual(original.nodes.map(({x,y,...n}:any)=>n));
   expect(cleaned.edges.map(({points,...e}:any)=>e)).toEqual(original.edges.map(({points,...e}:any)=>e));expect(cleaned.groups).toEqual(original.groups);
-  await fitAll(page);expect((await inspect(page)).overlaps).toBe(0);expect((await inspect(page)).inside).toBe(true);
+  await fitAll(page);expect((await inspect(page)).overlaps).toBe(0);expect(await inspect(page)).toMatchObject({withinWidth:true,centered:true});
   await page.screenshot({path:`test-results/auto-layout-${mixed?'mixed':'loose'}-${width}.png`,fullPage:true});
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect.poll(async()=>(await saved(page)).storyFlow.nodes).toEqual(original.nodes);
   // Context-menu cleanup uses the same layout and clears stale wire bend bounds.
   await page.locator('.story-scroll').click({button:'right',position:{x:15,y:15}});const beforeCleanup=await camera();await page.getByRole('menuitem',{name:/Clean up layout/}).click();expect(await camera()).toBe(beforeCleanup);
-  await fitAll(page);await expect.poll(async()=>(await inspect(page)).overlaps).toBe(0);expect((await inspect(page)).inside).toBe(true);
+  await fitAll(page);await expect.poll(async()=>(await inspect(page)).overlaps).toBe(0);expect(await inspect(page)).toMatchObject({withinWidth:true,centered:true});
   expect((await saved(page)).storyFlow.nodes).toEqual(cleaned.nodes);expect(errors).toEqual([]);
 });

@@ -1,7 +1,7 @@
 import './styles.css';
 import { useShortcuts } from '../../shared/shortcuts';
 import { Activity, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Captions, Maximize, Minimize, PanelBottomClose, PanelBottomOpen, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX } from 'lucide-react';
+import { Camera, Captions, Maximize, Minimize, PanelBottomClose, PanelBottomOpen, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX, X } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, MediaSource, Thumbnail } from '../../media/media';
 import type { Interstitial } from '../../../shared/interstitials';
@@ -27,12 +27,16 @@ type Props = {
   callResponse?: FlowTimeline;
   storyCanvas?: ReactNode;
   preview?: boolean;
+  onCaptureFrame?: () => Promise<void>;
+  capturingFrame?: boolean;
 };
 
 export default function Player(props: Props) {
   const shortcuts=useShortcuts();
   const { source, info, thumbnails, interstitials, controller, onAddInterstitial, onSeek, onError, selection } = props;
-  const { playing, buffering, volume, muted, speed, loop, buffered, time, duration } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const { playing, buffering, volume, muted, speed, loop, buffered, time, duration, error: playbackError } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const [captureError, setCaptureError] = useState('');
+  useEffect(() => { setCaptureError(''); }, [source.id, source.url]);
   const container = useRef<HTMLDivElement>(null);
   const transport = useRef<HTMLDivElement>(null);
   const captionInput = useRef<HTMLInputElement>(null);
@@ -175,6 +179,7 @@ export default function Player(props: Props) {
       {!preview && flow?.session && flow.flow.scenes.find(scene => scene.id === flow.session!.sceneId)?.draft && <span className="draft-preview-label">Draft · reference frame</span>}
       {props.empty?<span className="player-empty">{preview ? 'No video to preview. Add clips in Edit mode.' : 'Add clips to preview your video'}</span>:!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
       {buffering && <div className="buffering" role="status"><span className="spinner" /><span className="sr-only">Buffering</span></div>}
+      {!preview && captureError && <div className="capture-error" role="alert"><span>{captureError}</span><button className="icon-button small" aria-label="Dismiss capture error" onClick={() => setCaptureError('')}><X size={16}/></button></div>}
       {flow && <PlayerChoices key={flow.flow.interstitial.id} value={flow} />}
     <div className="transport" ref={transport} onDoubleClick={event => event.stopPropagation()}>
       {preview && <PreviewTimeline segments={previewSegments} time={previewTime} duration={previewDuration} variable={variableDuration} onSeek={seek}
@@ -187,6 +192,9 @@ export default function Player(props: Props) {
         <span className="time-display" title={preview && variableDuration ? 'One pass through the current path; choices and loops can change the running time.' : undefined}><strong>{formatTime(displayTime)}</strong><span>/</span>{preview ? `${variableDuration ? '~' : ''}${formatTime(displayDuration)}` : props.callResponse ? 'variable' : formatTime(duration)}</span>
       </div>
       <div className="transport-group transport-options">
+        {!preview && props.onCaptureFrame && <button className="icon-button capture-frame" aria-label="Create image from playhead" title="Create image from playhead" aria-busy={!!props.capturingFrame}
+          disabled={props.empty || !duration || buffering || !!playbackError || props.capturingFrame} onClick={() => { setCaptureError(''); void props.onCaptureFrame!().catch(error => setCaptureError(error instanceof Error ? error.message : 'Unable to capture this frame.')); }}>
+          {props.capturingFrame ? <span className="spinner"/> : <Camera size={18}/>}</button>}
         <button className="icon-button" aria-label={muted || !volume ? 'Unmute' : 'Mute'} title={shortcuts.title('mute')} onClick={toggleMute}>{muted || !volume ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
         <input className="volume-slider" aria-label="Volume" type="range" min="0" max="1" step="0.01" value={muted ? 0 : volume} onChange={event => changeVolume(Number(event.target.value))} />
         <select className="speed-select" aria-label="Playback speed" value={speed} onChange={event => controller.setSpeed(Number(event.target.value))}>

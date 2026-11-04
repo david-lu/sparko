@@ -7,8 +7,8 @@ for(const width of [1440,390]) {
   test(`existing interstitials replace transitions, cancel, and undo at ${width}px`,async({page})=>{
     await page.setViewportSize({width,height:1000});await open(page);
     await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
-    const canvas=page.locator('.story-scroll');await canvas.click({button:'right',position:{x:12,y:12}});await page.getByRole('menuitem',{name:'Add interstitial',exact:true}).click();
-    await page.getByLabel('Interstitial prompt',{exact:true}).fill('Keep this existing draft');
+    const canvas=page.locator('.story-scroll');await canvas.click({button:'right',position:{x:12,y:12}});await page.getByRole('menuitem',{name:'Add video',exact:true}).click();
+    await page.getByLabel('Video prompt',{exact:true}).fill('Keep this existing draft');
     await page.getByRole('group',{name:'Start reference',exact:true}).getByRole('button',{name:'Video',exact:true}).click();await fitAll(page);
     const initial=await saved(page),connection=initial.storyFlow.edges[0],node=initial.storyFlow.nodes.at(-1);
     const toolbar=await page.locator('.story-toolbar').boundingBox(),status=await page.locator('.story-status').boundingBox(),bounds=await canvas.boundingBox();

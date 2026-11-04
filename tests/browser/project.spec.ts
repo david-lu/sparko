@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.getByRole('button', { name: 'Add interstitial', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Add video', exact: true })).toBeEnabled();
 });
 
 test('exports a complete project and restores assets, drafts, subtitles and analysis in a fresh browser', { tag: ['@generation', '@slow'] }, async ({ page, browser }) => {
@@ -23,13 +23,13 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await page.route('**/api/comfy/status*', route => route.fulfill({ json: { ready: true } }));
   await page.route('**/api/comfy/jobs/project-test-job/events', route => route.fulfill({ contentType: 'text/event-stream', body: 'event: refresh\ndata: {}\n\n' }));
   await addBridge(page);
-  await page.getByLabel('Interstitial prompt').fill('The embedded scene');
+  await page.getByLabel('Video prompt').fill('The embedded scene');
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect.poll(async () => (await activeProject(page)).interstitials.filter((item: any) => item.phase === 'ready').length, { timeout: 60_000 }).toBe(1);
   await addDraft(page);
   await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
   await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByLabel('Interstitial prompt').fill('Unfinished draft');
+  await page.getByLabel('Video prompt').fill('Unfinished draft');
   await page.getByRole('textbox', { name: 'Clip name', exact: true }).fill('Unfinished draft');
   await page.getByRole('textbox', { name: 'Clip name', exact: true }).press('Enter');
   await page.getByLabel('start_range').fill('3');
@@ -65,7 +65,7 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await expect(restored.locator('.menu-document')).toHaveText('interstitial-reference.mp4', { timeout: 30_000 });
   await expect.poll(async () => (await activeProject(restored))?.interstitials.filter((item: any) => item.phase === 'ready').length, { timeout: 60_000 }).toBe(1);
   await restored.locator('.story-clip-title').filter({ hasText: 'Unfinished draft' }).click();
-  await expect(restored.getByLabel('Interstitial prompt')).toHaveValue('Unfinished draft');
+  await expect(restored.getByLabel('Video prompt')).toHaveValue('Unfinished draft');
   await expect(restored.getByLabel('start_range')).toHaveValue('3');
   await expect(restored.getByLabel('end_range')).toHaveValue('1.5');
   const project = await activeProject(restored);
@@ -119,7 +119,7 @@ test('chooses a video, then opens and deletes an explicitly saved project', asyn
   });
   await addDraft(page);
   await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByLabel('Interstitial prompt').fill('Saved draft');
+  await page.getByLabel('Video prompt').fill('Saved draft');
   await page.getByText('File', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Save project' }).click();
   await expect(page.locator('.project-status')).toHaveCount(0);
@@ -136,8 +136,8 @@ test('chooses a video, then opens and deletes an explicitly saved project', asyn
   await expect(page.locator('.story-clip.type-source').first()).toBeVisible();
   expect((await activeProject(page)).source.name).toBe(original.source.name);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await expect(page.getByLabel('Interstitial prompt')).toHaveValue('Saved draft');
-  await page.getByLabel('Interstitial prompt').fill('Updated draft');
+  await expect(page.getByLabel('Video prompt')).toHaveValue('Saved draft');
+  await page.getByLabel('Video prompt').fill('Updated draft');
   await page.getByText('File', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Save project' }).click();
   await expect.poll(() => page.evaluate(async () => {
