@@ -375,6 +375,26 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     },moved=>{setMarquee(null);if(!moved&&!additive&&!toggle){editor.setSelected([]);editor.jobs.select(null);}},
       ()=>{setMarquee(null);editor.setSelected(originalSelection);updateCamera(originalCamera);},true);
   };
+  const scrubKey=(event:React.KeyboardEvent<HTMLElement>,node:StoryNode)=>{
+    if(!['ArrowLeft','ArrowRight','Home','End','Enter'].includes(event.key))return;
+    event.preventDefault();event.stopPropagation();
+    const scene=flow.scenes.find(s=>s.id===node.id)!,current=editor.player.getSnapshot().flow;
+    const frame=current?.sceneId===node.id?current.frame:0;
+    editor.select(node.id,event.key==='Home'?0:event.key==='End'?sceneFrames(scene)-1:event.key==='Enter'?frame
+      :frame+(event.key==='ArrowLeft'?-1:1)*(event.shiftKey?flow.fps:1));
+  };
+  const dragPlayhead=(event:React.PointerEvent<HTMLSpanElement>,node:StoryNode)=>{
+    if(event.button!==0||panTool||space.current.held||groupTool)return;
+    editor.player.pause();editor.select(node.id,null);event.currentTarget.focus({preventScroll:true});
+    const current=editor.player.getSnapshot().flow,scene=flow.scenes.find(s=>s.id===node.id)!;
+    const initial=current?.sceneId===node.id?current.frame:0;
+    const origin=toWorld(localPoint({x:event.clientX,y:event.clientY}),cameraRef.current);
+    trackGesture(event,point=>{
+      // Preserve the grab offset so clicking either end of the time label never jumps.
+      const delta=(toWorld(point,cameraRef.current).x-origin.x)/PIXELS_PER_SECOND*flow.fps;
+      editor.player.seekFlowScene(node.id,Math.max(0,Math.min(sceneFrames(scene)-1,Math.round(initial+delta))));
+    },()=>{},()=>editor.player.seekFlowScene(node.id,initial));
+  };
   const scrub=(event:React.PointerEvent<HTMLDivElement>,node:StoryNode)=>{
     if(event.button!==0)return;event.stopPropagation();if(editor.connecting){editor.attach(node.id);return;}if(event.shiftKey){editor.select(node.id,0,true);return;}
     const target=event.currentTarget,rect=target.getBoundingClientRect(),scene=flow.scenes.find(s=>s.id===node.id)!;target.focus({preventScroll:true});
@@ -488,7 +508,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
           return <div key={node.id} className={`story-clip type-${node.kind} ${selected?'selected':''} ${active?'playing':''} ${scene.draft?'draft':''} ${trimPreview?.node.id===node.id?'trimming':''} ${reached.has(node.id)?'':'disconnected'} ${dropTarget===node.id?'drop-target':''}`} data-node-id={node.id} data-start={graph.entryId===node.id} data-kind={node.kind} data-duration={durations[node.id]} data-media-duration={layout.total} style={{left:clipLeft(node)*zoom+camera.x,top:node.y*camera.rowScale+camera.y,width:clipWidth,height:CLIP_HEIGHT}}>
             {graph.entryId===node.id&&<span className="story-start-marker" role="img" aria-label="Start video" title="This video starts the experience"><Flag size={12} aria-hidden/></span>}
             <button className="story-clip-title" title={`${scene.label} · ${durations[node.id].toFixed(2)} seconds · Drag title to move`} onPointerDown={e=>dragTitle(e,node)} onClick={e=>{if(e.detail===0)editor.select(node.id);}}><span>{behaviors(node).loop&&<Repeat2 size={11}/>} {behaviors(node).conditional&&<GitBranch size={11}/>}{scene.label}</span><small>{durations[node.id].toFixed(1)}s</small></button>
-            <div className="story-filmstrip" role="slider" tabIndex={0} aria-label={`Scrub ${scene.label}`} aria-valuemin={0} aria-valuemax={sceneFrames(scene)/flow.fps} aria-valuenow={active?session.frame/flow.fps:0} onPointerDown={e=>scrub(e,node)} onKeyDown={e=>{if(['ArrowLeft','ArrowRight','Home','End','Enter'].includes(e.key)){e.preventDefault();e.stopPropagation();const current=active?session.frame:0;editor.select(node.id,e.key==='Home'?0:e.key==='End'?sceneFrames(scene)-1:e.key==='Enter'?current:current+(e.key==='ArrowLeft'?-1:1)*(e.shiftKey?flow.fps:1));}}}>
+            <div className="story-filmstrip" role="slider" tabIndex={0} aria-label={`Scrub ${scene.label}`} aria-valuemin={0} aria-valuemax={sceneFrames(scene)/flow.fps} aria-valuenow={active?session.frame/flow.fps:0} onPointerDown={e=>scrub(e,node)} onKeyDown={e=>scrubKey(e,node)}>
               {scene.draft?<div className="story-unavailable-thumbnail" role="img" aria-label="Video unavailable: not generated yet" title="Not generated yet. Generate this clip in the Inspector."><ImageOff size={18} strokeWidth={1.5} aria-hidden/>{clipWidth>=90&&<span aria-hidden>Not generated</span>}</div>:url?<VideoFilmstrip assetId={assetId} url={url} start={start-layout.before} end={start+layout.body+layout.after}/>:<ClipLoading message="Loading clip"/>}
               {scene.generated&&<>
                 {layout.before>0&&<span className="story-reference-section opening" role="img" aria-label={`Opening reference: ${layout.before.toFixed(3)} seconds`} style={{left:0,width:`${layout.before/layout.total*100}%`}} title="Opening reference · Used to match the previous clip">{layout.before*PIXELS_PER_SECOND*zoom>24&&<b>REF</b>}</span>}
@@ -516,7 +536,11 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
               onClick={()=>{if(!suppressClick.current&&port.edgeId)editor.selectConnection(port.edgeId);}}>
               {behaviors(node).conditional&&<><span>{port.label||'Unnamed condition'}</span><i aria-hidden/></>}
             </button>)}
-            {active&&<div className="story-playhead" style={{left:`${Math.min(100,progress*100)}%`}}><span title={playheadTimeMode==='internal'?'Clip internal time':'Elapsed from clip start'}>{formatTime(playheadTime(scene,displayFrame,flow.fps,playheadTimeMode),true)}</span><i/></div>}
+            {active&&<div className="story-playhead" style={{left:`${Math.min(100,progress*100)}%`}}><span role="slider" tabIndex={0} aria-label={`Playhead of ${scene.label}`} aria-orientation="horizontal"
+              aria-valuemin={playheadTime(scene,Math.min(0,displayFrame),flow.fps,playheadTimeMode)} aria-valuemax={playheadTime(scene,Math.max(sceneFrames(scene)-1,displayFrame),flow.fps,playheadTimeMode)}
+              aria-valuenow={playheadTime(scene,displayFrame,flow.fps,playheadTimeMode)} aria-valuetext={formatTime(playheadTime(scene,displayFrame,flow.fps,playheadTimeMode),true)}
+              title={`${playheadTimeMode==='internal'?'Clip internal time':'Elapsed from clip start'} · Drag to scrub. Arrow keys adjust one frame; Shift adjusts one second. Escape cancels a drag.`}
+              onPointerDown={event=>dragPlayhead(event,node)} onKeyDown={event=>scrubKey(event,node)}>{formatTime(playheadTime(scene,displayFrame,flow.fps,playheadTimeMode),true)}</span><i/></div>}
             <span className="story-clip-caption" title={!reached.has(node.id)?'Disconnected from story start':behaviorLabel(node)}>{graph.entryId===node.id?'START · ':''}{!reached.has(node.id)?'Disconnected':behaviorLabel(node)}</span>
           </div>;
         })}
