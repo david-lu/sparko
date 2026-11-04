@@ -8,6 +8,13 @@ const assign=async(page:Page,name:string,key:string)=>{await dialog(page).getByR
 
 test('Auto layout preserves the camera; F and Fit frame the selection or all clips without fullscreen',async({page})=>{
   await open(page);await page.locator('.story-clip-title').click();await page.keyboard.press('Control+d');await expect(page.locator('.story-clip')).toHaveCount(2);await fitAll(page);
+  // Clear disconnected clips retain their positions. Create an overlap so
+  // every layout entry point has work to do while we check the camera stays put.
+  const original=(await page.locator('.story-clip-title').first().boundingBox())!,copy=(await page.locator('.story-clip-title').nth(1).boundingBox())!;
+  await page.mouse.move(copy.x+copy.width/2,copy.y+copy.height/2);await page.mouse.down();
+  await page.mouse.move(original.x+original.width/2+12,original.y+original.height/2+12,{steps:8});await page.mouse.up();
+  await expect.poll(async()=>{const nodes=(await saved(page)).storyFlow.nodes;return Math.abs(nodes[1].y-nodes[0].y);}).toBeLessThan(76);
+  await fitAll(page);
   await page.getByRole('button',{name:'Zoom out story'}).click();await pan(page);const before=await camera(page),nodes=(await saved(page)).storyFlow.nodes;
   await page.getByRole('button',{name:'Auto layout',exact:true}).click();await expect.poll(async()=>(await saved(page)).storyFlow.nodes).not.toEqual(nodes);expect(await camera(page)).toEqual(before);
   await page.getByRole('button',{name:'Undo',exact:true}).click();await page.locator('.story-scroll').click({button:'right',position:{x:10,y:10}});await page.getByRole('menuitem',{name:/Clean up layout/}).click();expect(await camera(page)).toEqual(before);
