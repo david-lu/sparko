@@ -46,6 +46,8 @@ test('drawn frames move, resize, accept selected clips, retain empty membership 
   await header.click({button:'right'});await page.getByRole('menuitem',{name:'Change color',exact:true}).click();await page.getByRole('menuitemradio',{name:'Purple',exact:true}).click();expect((await saved(page)).storyFlow.groups[0].color).toBe('purple');
   await page.locator('.story-clip-title').click();await header.click({button:'right'});await page.getByRole('menuitem',{name:'Add selected clips',exact:true}).click();
   expect((await saved(page)).storyFlow.groups[0].nodeIds).toEqual([before.nodes[0].id]);expect((await saved(page)).storyFlow.edges).toEqual(before.edges);
+  const headerBox=(await header.boundingBox())!,playhead=(await page.locator('.story-playhead>span').boundingBox())!;
+  expect(headerBox.y+headerBox.height).toBeLessThan(playhead.y);
   await header.click({button:'right'});await page.getByRole('menuitem',{name:'Fit to contents',exact:true}).click();expect((await saved(page)).storyFlow.groups[0].bounds).toBeUndefined();
   await page.getByRole('button',{name:`Remove ${before.nodes[0].name} from group`,exact:true}).click();
   graph=(await saved(page)).storyFlow;expect(graph.groups[0].nodeIds).toEqual([]);expect(graph.groups[0].bounds).toBeDefined();expect(graph.nodes).toEqual(before.nodes);

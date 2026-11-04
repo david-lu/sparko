@@ -11,7 +11,8 @@ export function groupFrame(graph: StoryGraph, group: StoryGroup, items: Intersti
   });
   const content = clips.length ? {left:Math.min(...clips.map(c=>c.left))-18,
     right:Math.max(...clips.map(c=>c.right))+18,
-    top:Math.min(...clips.map(c=>c.top))-38,
+    // Leave room for both the group header and the draggable playhead label.
+    top:Math.min(...clips.map(c=>c.top))-64,
     bottom:Math.max(...clips.map(c=>c.bottom))+28} : undefined;
   const b=group.bounds, p=b&&toScreen(b,camera),frame=b&&p?{left:p.x,top:p.y,right:p.x+b.width*camera.zoom,bottom:p.y+b.height*camera.rowScale}:content;
   if(!frame)return;
