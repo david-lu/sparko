@@ -10,11 +10,11 @@ export function falPayload(settings: AssetSettings, references: FalInput[]) {
   const [w, h] = settings.aspectRatio.split(':').map(Number), edge = settings.resolution === '4K' ? 4096 : settings.resolution === '2K' ? 2048 : 1024;
   const image_size = { width: Math.round((w >= h ? edge : edge * w / h) / 32) * 32, height: Math.round((h >= w ? edge : edge * h / w) / 32) * 32 };
   if (model.id === 'nano-banana-2' || model.id === 'nano-banana-pro') {
-    Object.assign(input, { aspect_ratio: settings.aspectRatio, resolution: settings.resolution, num_images: settings.count, output_format: 'png' });
+    Object.assign(input, { aspect_ratio: settings.aspectRatio, resolution: settings.resolution, num_images: 1, output_format: 'png' });
     for (const kind of ['video', 'audio'] as const) { const reference = references.find(r => r.kind === kind); if (reference) input[`${kind}_url`] = reference.data; }
   } else if (model.id === 'flux-2-pro' || model.id === 'flux-2-max') Object.assign(input, { image_size, output_format: 'png' });
-  else if (model.id === 'seedream-4.5') Object.assign(input, { image_size, num_images: settings.count, max_images: settings.count });
-  else if (model.id === 'ideogram-v3') Object.assign(input, { image_size: ({ '1:1': 'square_hd', '16:9': 'landscape_16_9', '9:16': 'portrait_16_9', '4:3': 'landscape_4_3', '3:4': 'portrait_4_3' } as const)[settings.aspectRatio], num_images: settings.count, rendering_speed: 'QUALITY', enable_prompt_expansion: false });
+  else if (model.id === 'seedream-4.5') Object.assign(input, { image_size, num_images: 1, max_images: 1 });
+  else if (model.id === 'ideogram-v3') Object.assign(input, { image_size: ({ '1:1': 'square_hd', '16:9': 'landscape_16_9', '9:16': 'portrait_16_9', '4:3': 'landscape_4_3', '3:4': 'portrait_4_3' } as const)[settings.aspectRatio], num_images: 1, rendering_speed: 'QUALITY', enable_prompt_expansion: false });
   else if (model.kind === 'video') {
     Object.assign(input, { duration: String(settings.duration), generate_audio: true });
     if (images.length) input.start_image_url = images[0]; else input.aspect_ratio = settings.aspectRatio;

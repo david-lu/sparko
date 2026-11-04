@@ -18,6 +18,10 @@ export class AssetGenerationController {
   watch() {
     const check = () => {
       const project = this.projects.getSnapshot().project;
+      if (project?.assetGenerations?.some(g => g.settings.count !== 1)) {
+        this.projects.editAssets(p => ({ ...p, assetGenerations: p.assetGenerations?.map(g => g.settings.count === 1 ? g : { ...g, settings: { ...g.settings, count: 1 } }) }), false);
+        return;
+      }
       for (const g of project?.assetGenerations ?? []) if (generationBusy(g) && g.requestId && g.submitted && !this.tasks.has(`${project!.id}:${g.id}`)) void this.resume(g.id);
     };
     const unsubscribe = this.projects.subscribe(check); check();
@@ -26,11 +30,11 @@ export class AssetGenerationController {
   async generate(id: string) {
     const g = this.get(id), projectId = this.projects.getSnapshot().project?.id;
     if (!g || !projectId || generationBusy(g)) return;
-    const error = validateAssetSettings(g.settings);
+    const settings = { ...g.settings, count: 1 }, error = validateAssetSettings(settings);
     if (error) { this.edit(id, { error }, false); return; }
-    const key = `${projectId}:${id}`, task = new AbortController(), submitted = structuredClone(g.settings);
+    const key = `${projectId}:${id}`, task = new AbortController(), submitted = structuredClone(settings);
     this.tasks.set(key, task);
-    this.edit(id, { phase: 'preparing', error: undefined, submitted, requestId: undefined }, false);
+    this.edit(id, { phase: 'preparing', error: undefined, settings, submitted, requestId: undefined }, false);
     try {
       const inputs = [];
       let total = 0;

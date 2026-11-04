@@ -18,7 +18,7 @@ import './inspector.css';
 import { useShortcuts } from '../../shared/shortcuts';
 import LoopReferenceHelp from './LoopReferenceHelp';
 import StoryReferences from './StoryReferences';
-import AssetInspector from '../project/AssetInspector';
+import AssetInspector, { AssetSelectionInspector } from '../project/AssetInspector';
 import ProjectInspector from './ProjectInspector';
 import ContentIssues from '../../shared/ContentIssues';
 import { assets } from '../project/assets';
@@ -39,6 +39,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   const { graph, items } = editor;
   useAssetAvailability([]);
   if(editor.clipDrag)return <ProjectInspector key={editor.projects.getSnapshot().project?.id} editor={editor}/>;
+  if (editor.librarySelections.length > 1) return <AssetSelectionInspector editor={editor}/>;
   if (editor.librarySelection?.type === 'asset' || editor.librarySelection?.type === 'generation') return <AssetInspector editor={editor} status={status}/>;
   if (editor.librarySelection?.type === 'job') {
     const job = items.find(i => i.id === editor.librarySelection!.id);

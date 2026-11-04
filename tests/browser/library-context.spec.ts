@@ -52,7 +52,7 @@ for (const width of [1440, 390]) test(`asset thumbnails and context menus work w
   await page.screenshot({ path: `test-results/library-context-${width}.png`, fullPage: true });
   await page.keyboard.press('Escape'); await image.click();
   await page.locator('.library-feedback').click({ button: 'right' });
-  expect((await actions(page).getByRole('menuitem').allTextContents()).map(text => text.trim())).toEqual(['Import files…', 'Import folder…', 'New folder', 'Create generation']);
+  expect((await actions(page).getByRole('menuitem').allTextContents()).map(text => text.trim())).toEqual(['Import files…', 'Import folder…', 'New folder', 'Select unused assets', 'Create generation']);
   await expect(image).toHaveAttribute('aria-pressed', 'false');
   await page.keyboard.press('Escape'); await page.getByLabel('Search library').click({ button: 'right' }); await expect(actions(page)).toHaveCount(0);
   expect(errors).toEqual([]);

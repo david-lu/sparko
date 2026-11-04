@@ -63,14 +63,15 @@ function thumbnail(asset: PreviewAsset): Promise<string> {
   return task;
 }
 
-export default function AssetThumbnail({ asset, kind, name }: { asset?: PreviewAsset; kind: LibraryAsset['kind']; name: string }) {
-  const element = useRef<HTMLSpanElement>(null), [visible, setVisible] = useState(false);
+export default function AssetThumbnail({ asset, kind, name, eager = false }: { asset?: PreviewAsset; kind: LibraryAsset['kind']; name: string; eager?: boolean }) {
+  const element = useRef<HTMLSpanElement>(null), [visible, setVisible] = useState(eager);
   const key = asset ? `${asset.assetId}:${asset.kind}:${asset.inFrame ?? 0}:${asset.outFrame ?? ''}` : '';
   const [preview, setPreview] = useState<{ key: string; url?: string; failed?: boolean }>();
   useEffect(() => {
+    if (eager) { setVisible(true); return; }
     const observer = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) { setVisible(true); observer.disconnect(); } }, { rootMargin: '80px' });
     if (element.current) observer.observe(element.current); return () => observer.disconnect();
-  }, []);
+  }, [eager]);
   useEffect(() => {
     if (!visible || !asset) return;
     let active = true;

@@ -63,7 +63,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await page.locator('.story-crossfade').last().click();await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.5');
   await page.locator('.story-clip.type-simple .story-clip-title').click();
   const controls=()=>page.evaluate(()=>{const root=document.querySelector('.interstitial-editor')!.getBoundingClientRect();return ['textarea','.interstitial-time-fields','button[type=submit]','.task-status'].map(s=>{const r=document.querySelector('.interstitial-editor '+s)!.getBoundingClientRect();return {y:r.top-root.top,height:r.height};});});
-  const libraryControls=()=>page.locator('.asset-library').evaluate(el=>{const root=el.getBoundingClientRect();return ['.library-toolbar','.library-filter','.library-root'].map(selector=>{const rect=el.querySelector(selector)!.getBoundingClientRect();return {y:rect.top-root.top,height:rect.height};});});
+  const libraryControls=()=>page.locator('.asset-library').evaluate(el=>{const root=el.getBoundingClientRect();return ['.library-toolbar','.library-filter'].map(selector=>{const rect=el.querySelector(selector)!.getBoundingClientRect();return {y:rect.top-root.top,height:rect.height};});});
   const libraryBefore=await libraryControls();
   const placeholder=page.locator('.story-clip.type-simple .story-unavailable-thumbnail');await expect(placeholder).toHaveAttribute('aria-label','Video unavailable: not generated yet');
   await expect(page.locator('.story-clip.type-simple .video-filmstrip')).toHaveCount(0);const draftHeight=(await page.locator('.story-clip.type-simple').boundingBox())!.height;

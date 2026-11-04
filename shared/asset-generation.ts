@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
 export type MediaKind = 'image' | 'video' | 'audio';
-export type AssetModel = { id: string; name: string; kind: MediaKind; endpoint: string; editEndpoint?: string; inputs: MediaKind[]; maxImages: number; maxOutputs?: number; resolutions: string[] };
+export type AssetModel = { id: string; name: string; kind: MediaKind; endpoint: string; editEndpoint?: string; inputs: MediaKind[]; maxImages: number; resolutions: string[] };
 export const ASSET_MODELS: AssetModel[] = [
   { id: 'nano-banana-2', name: 'Nano Banana 2', kind: 'image', endpoint: 'fal-ai/nano-banana-2', editEndpoint: 'fal-ai/nano-banana-2/edit', inputs: ['image', 'video', 'audio'], maxImages: 14, resolutions: ['1K', '2K', '4K'] },
   { id: 'flux-2-pro', name: 'FLUX.2 Pro', kind: 'image', endpoint: 'fal-ai/flux-2-pro', editEndpoint: 'fal-ai/flux-2-pro/edit', inputs: ['image'], maxImages: 9, resolutions: ['1K', '2K'] },
   { id: 'seedream-4.5', name: 'Seedream 4.5', kind: 'image', endpoint: 'fal-ai/bytedance/seedream/v4.5/text-to-image', editEndpoint: 'fal-ai/bytedance/seedream/v4.5/edit', inputs: ['image'], maxImages: 10, resolutions: ['2K', '4K'] },
   { id: 'nano-banana-pro', name: 'Nano Banana Pro', kind: 'image', endpoint: 'fal-ai/nano-banana-pro', editEndpoint: 'fal-ai/nano-banana-pro/edit', inputs: ['image'], maxImages: 14, resolutions: ['1K', '2K', '4K'] },
-  { id: 'flux-2-max', name: 'FLUX.2 Max', kind: 'image', endpoint: 'fal-ai/flux-2-max', editEndpoint: 'fal-ai/flux-2-max/edit', inputs: ['image'], maxImages: 8, maxOutputs: 1, resolutions: ['1K', '2K'] },
+  { id: 'flux-2-max', name: 'FLUX.2 Max', kind: 'image', endpoint: 'fal-ai/flux-2-max', editEndpoint: 'fal-ai/flux-2-max/edit', inputs: ['image'], maxImages: 8, resolutions: ['1K', '2K'] },
   { id: 'ideogram-v3', name: 'Ideogram 3.0', kind: 'image', endpoint: 'fal-ai/ideogram/v3', inputs: [], maxImages: 0, resolutions: ['1K'] },
   { id: 'kling-video', name: 'Kling 2.6 Pro', kind: 'video', endpoint: 'fal-ai/kling-video/v2.6/pro/text-to-video', editEndpoint: 'fal-ai/kling-video/v2.6/pro/image-to-video', inputs: ['image'], maxImages: 1, resolutions: [] },
   { id: 'sound-effects', name: 'ElevenLabs Sound Effects', kind: 'audio', endpoint: 'fal-ai/elevenlabs/sound-effects/v2', inputs: [], maxImages: 0, resolutions: [] },
@@ -20,6 +20,7 @@ export const assetSettingsSchema = z.object({
   model: z.string().max(100).refine(id => !!assetModel(id), 'Choose a supported model.'),
   prompt: z.string().max(8000), references: z.array(assetReferenceSchema).max(16),
   aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']), resolution: z.enum(['1K', '2K', '4K']),
+  // Older projects and submitted jobs can retain batch counts; new submissions require one output.
   count: z.number().int().min(1).max(4), duration: z.number().min(.5).max(190),
 });
 export type AssetSettings = z.infer<typeof assetSettingsSchema>;
@@ -51,6 +52,5 @@ export function validateAssetSettings(settings: AssetSettings): string | undefin
   if (model.kind === 'video' && ![5, 10].includes(settings.duration)) return 'Choose a duration of 5 or 10 seconds.';
   if (model.id === 'sound-effects' && settings.duration > 22) return 'Sound effects can be up to 22 seconds.';
   if (model.id === 'stable-audio-2.5' && !Number.isInteger(settings.duration)) return 'Choose a whole number of seconds for Stable Audio.';
-  if (settings.count > assetModelMaxOutputs(model)) return 'This model produces one output per generation.';
+  if (settings.count !== 1) return 'Generate one output at a time.';
 }
-export const assetModelMaxOutputs = (model: AssetModel) => model.maxOutputs ?? (model.id === 'flux-2-pro' || model.kind !== 'image' ? 1 : 4);

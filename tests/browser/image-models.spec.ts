@@ -35,11 +35,18 @@ for (const width of [1440, 390]) test(`image enhancement follows the selected mo
   expect(body.images).toHaveLength(1); expect(body.images[0]).toMatch(/^data:image\/jpeg;base64,/);
   await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeDisabled(); expect(await positions(page)).toEqual(before);
   finish(); await expect(prompt).toHaveValue(/A warm poster/); expect(await positions(page)).toEqual(before);
+  const enhanced = await prompt.inputValue(), error = 'The provider rejected the API key or model access. Check your .env configuration.';
+  await page.unroute('**/api/image-prompts/enhance');
+  await page.route('**/api/image-prompts/enhance', route => route.fulfill({ status: 502, json: { error } }));
+  await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
+  await expect(page.locator('.asset-enhancement-feedback')).toHaveText(error);
+  await expect(prompt).toHaveValue(enhanced); expect(await positions(page)).toEqual(before);
+  await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeEnabled();
   await expect(page.getByRole('link', { name: 'Nano Banana Pro prompt guide ↗', exact: true })).toHaveAttribute('href', /google/);
   await page.locator('.asset-inspector').screenshot({ path: `test-results/image-model-enhancement-${width}.png` });
   await input.scrollIntoViewIfNeeded(); await input.screenshot({ path: `test-results/asset-drop-input-${width}.png` });
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(prompt).toHaveValue('A poster reading "SUNRISE"');
-  await page.getByLabel('Image count', { exact: true }).fill('3'); await model.selectOption('flux-2-max');
+  await expect(page.getByLabel('Image count', { exact: true })).toHaveCount(0); await model.selectOption('flux-2-max');
   expect((await readProject(page)).assetGenerations[0].settings.count).toBe(1); await expect(page.getByLabel('Image count', { exact: true })).toHaveCount(0);
   await expect(page.locator('.asset-prompt-guide')).toHaveAttribute('href', /docs.bfl.ai/);
   await model.selectOption('ideogram-v3'); await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeDisabled();
@@ -70,16 +77,17 @@ test('enhancement ignores late results after changing model, draft, references, 
   await expect(prompt).toHaveValue('My revised brief');
 });
 
-test('the added image models submit and save generation versions', async ({ page }) => {
+test('all image models submit one image and save one generation version', async ({ page }) => {
   await setup(page); const image = await importImage(page); let submitted: any;
   await page.route('**/api/library-generations', route => { submitted = route.request().postDataJSON(); return route.fulfill({ json: { requestId: 'request_123' } }); });
   await page.route('**/api/library-generations/*/request_123', route => route.fulfill({ json: { phase: 'ready', count: 1 } }));
   await page.route('**/api/library-generations/*/request_123/content/0', route => route.fulfill({ body: image.buffer, contentType: 'image/png' }));
-  for (const [index, model] of ['nano-banana-pro', 'flux-2-max', 'ideogram-v3'].entries()) {
+  for (const [index, model] of ['nano-banana-2', 'flux-2-pro', 'seedream-4.5', 'nano-banana-pro', 'flux-2-max', 'ideogram-v3'].entries()) {
     await create(page); await page.getByLabel('Generation model', { exact: true }).selectOption(model); await page.getByLabel('Generation prompt', { exact: true }).fill('A warm landscape');
+    await expect(page.getByLabel('Image count', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Generate image', exact: true }).click();
     await expect.poll(async () => (await readProject(page)).assetGenerations[index].versions.length).toBe(1);
-    expect(submitted.settings.model).toBe(model); expect((await readProject(page)).assetGenerations[index].versions[0].settings.model).toBe(model);
+    expect(submitted.settings).toMatchObject({ model, count: 1 }); expect((await readProject(page)).assetGenerations[index].versions[0].settings).toMatchObject({ model, count: 1 });
     await expect(page.locator('.asset-preview img')).toBeVisible();
   }
 });

@@ -1,26 +1,54 @@
 import { describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { newAssetGeneration, validateAssetSettings } from '../../shared/asset-generation';
+import { ASSET_MODELS, newAssetGeneration, validateAssetSettings } from '../../shared/asset-generation';
+import { AssetGenerationController } from '../../src/features/project/AssetGenerationController';
+import type { ProjectController } from '../../src/features/project/ProjectController';
+import { emptyAnalysis, type Project } from '../../src/features/project/types';
 import { createFalClient, falFiles, falPayload, falRequestPath } from '../../server/features/asset-generation/fal';
 import { addAssetGenerationRoutes } from '../../server/features/asset-generation/routes';
 import { errorHandler, protectRequests } from '../../server/shared/http';
 
 describe('fal media generations', () => {
   it('maps the additional image models to their generation and editing endpoints', () => {
-    const settings = newAssetGeneration('image').settings; settings.prompt = 'A poster'; settings.model = 'nano-banana-pro'; settings.count = 3;
-    expect(falPayload(settings, [])).toMatchObject({ endpoint: 'fal-ai/nano-banana-pro', input: { num_images: 3, resolution: '1K', output_format: 'png' } });
+    const settings = newAssetGeneration('image').settings; settings.prompt = 'A poster'; settings.model = 'nano-banana-pro';
+    expect(falPayload(settings, [])).toMatchObject({ endpoint: 'fal-ai/nano-banana-pro', input: { num_images: 1, resolution: '1K', output_format: 'png' } });
     settings.references = [{ assetId: crypto.randomUUID(), name: 'base.png', kind: 'image' }];
     const references = [{ kind: 'image' as const, data: 'data:image/png;base64,YQ==' }];
     expect(falPayload(settings, references)).toMatchObject({ endpoint: 'fal-ai/nano-banana-pro/edit', input: { image_urls: [references[0].data] } });
-    settings.model = 'flux-2-max'; expect(() => falPayload(settings, references)).toThrow('one output'); settings.count = 1;
+    settings.model = 'flux-2-max';
     expect(falPayload(settings, references)).toMatchObject({ endpoint: 'fal-ai/flux-2-max/edit', input: { image_urls: [references[0].data], image_size: { width: 1024, height: 576 } } });
     expect(falPayload(settings, references).input).not.toHaveProperty('num_images');
     settings.references = []; expect(falPayload(settings, []).endpoint).toBe('fal-ai/flux-2-max');
-    settings.model = 'ideogram-v3'; settings.count = 4;
-    expect(falPayload(settings, [])).toMatchObject({ endpoint: 'fal-ai/ideogram/v3', input: { image_size: 'landscape_16_9', num_images: 4, enable_prompt_expansion: false } });
+    settings.model = 'ideogram-v3';
+    expect(falPayload(settings, [])).toMatchObject({ endpoint: 'fal-ai/ideogram/v3', input: { image_size: 'landscape_16_9', num_images: 1, enable_prompt_expansion: false } });
     settings.resolution = '4K'; expect(() => falPayload(settings, [])).toThrow('resolution');
     expect(falRequestPath('ideogram-v3', 'request_123')).toBe('fal-ai/ideogram/requests/request_123');
+  });
+  it('requests one image from every image model and rejects batch submissions', () => {
+    for (const model of ASSET_MODELS.filter(m => m.kind === 'image')) {
+      const settings = { ...newAssetGeneration('image').settings, model: model.id, resolution: model.resolutions[0] as '1K' | '2K' | '4K', prompt: 'A poster' };
+      const { input } = falPayload(settings, []);
+      if (model.id.startsWith('flux-')) expect(input).not.toHaveProperty('num_images');
+      else expect(input.num_images).toBe(1);
+      if (model.id === 'seedream-4.5') expect(input.max_images).toBe(1);
+      expect(() => falPayload({ ...settings, count: 4 }, [])).toThrow('one output');
+    }
+  });
+  it('resets older draft batch counts while retaining submitted jobs and saved versions', () => {
+    const generation = newAssetGeneration('image'); generation.settings.count = 3; generation.settings.prompt = 'A poster';
+    generation.submitted = structuredClone(generation.settings);
+    generation.versions = [{ assetId: crypto.randomUUID(), name: 'Previous result', createdAt: 1, settings: structuredClone(generation.settings) }];
+    let project: Project = { id: 'test', name: 'Legacy batch', updatedAt: 0, source: { name: 'Empty' }, subtitle: null, analysis: emptyAnalysis(), interstitials: [], assetGenerations: [generation] };
+    let listener: (() => void) | undefined;
+    const projects = { getSnapshot: () => ({ project }), subscribe: (callback: () => void) => { listener = callback; return () => { listener = undefined; }; },
+      editAssets: vi.fn((change: (p: Project) => Project) => { project = change(project); listener?.(); }) };
+    const stop = new AssetGenerationController(projects as unknown as ProjectController).watch();
+    expect(project.assetGenerations![0].settings.count).toBe(1);
+    expect(project.assetGenerations![0].submitted).toEqual(generation.submitted);
+    expect(project.assetGenerations![0].versions).toEqual(generation.versions);
+    expect(projects.editAssets).toHaveBeenCalledTimes(1); expect(projects.editAssets).toHaveBeenCalledWith(expect.any(Function), false);
+    stop();
   });
   it('uses each model’s actual image, video, and audio API fields', () => {
     const settings = newAssetGeneration('image').settings; settings.prompt = 'A sunset';
@@ -66,6 +94,7 @@ describe('fal media generations', () => {
     const settings = newAssetGeneration('image').settings; settings.prompt = 'Sunset';
     await request(app).post('/api/library-generations').send({ settings, inputs: [] }).expect(403);
     await request(app).post('/api/library-generations').set('x-sparko-request', '1').send({ settings, inputs: [{ kind: 'video', data: 'data:image/png;base64,YQ==' }] }).expect(400);
+    await request(app).post('/api/library-generations').set('x-sparko-request', '1').send({ settings: { ...settings, count: 3 }, inputs: [] }).expect(400);
     expect(fetcher).not.toHaveBeenCalled();
     await request(app).post('/api/library-generations').set('x-sparko-request', '1').send({ settings, inputs: [] }).expect(200, { requestId: 'request_123' });
     await request(app).get('/api/library-generations/nano-banana-2/request_123').expect(200, { phase: 'ready', count: 1 });

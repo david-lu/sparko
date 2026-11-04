@@ -39,6 +39,18 @@ describe('model-specific image prompt enhancement', () => {
     respond.mockRejectedValue(new Error('provider secret'));
     await expect(createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(input())).rejects.toMatchObject({ status: 502, message: 'Unable to enhance the image prompt. Check the OpenAI connection and try again.' });
   });
+  it.each([
+    { upstreamStatus: 401, status: 502, error: 'The provider rejected the API key or model access. Check your .env configuration.' },
+    { upstreamStatus: 403, status: 502, error: 'The provider rejected the API key or model access. Check your .env configuration.' },
+    { upstreamStatus: 429, status: 429, error: 'The provider quota or rate limit was reached. Check your account credits and try again.' },
+  ])('returns actionable, sanitized errors for provider HTTP $upstreamStatus', async ({ upstreamStatus, status, error }) => {
+    respond.mockRejectedValue(Object.assign(new Error('provider secret'), { status: upstreamStatus, headers: { authorization: 'secret-value' } }));
+    const app = express();
+    app.use(protectRequests, express.json()); addImagePromptEnhancementRoutes(app, createProviders({ OPENAI_API_KEY: 'test' })); app.use(errorHandler);
+    const result = await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send(input()).expect(status);
+    expect(result.body).toEqual({ error });
+    expect(result.text).not.toMatch(/provider secret|secret-value/);
+  });
   it('protects the route and rejects unknown, non-image, incompatible and mismatched inputs before calling the provider', async () => {
     const providers = createProviders({ OPENAI_API_KEY: 'test' }), app = express();
     app.use(protectRequests, express.json({ limit: '1mb' })); addImagePromptEnhancementRoutes(app, providers); app.use(errorHandler);

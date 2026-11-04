@@ -47,6 +47,8 @@ export function createImagePromptEnhancer({ openai }: AIClients): ImagePromptEnh
     } catch (error) {
       if (error instanceof HttpError) throw error;
       if (input.signal.aborted) throw new HttpError(504, 'Image prompt enhancement was cancelled or timed out.');
+      // Let the shared HTTP handler sanitize provider authentication and quota errors.
+      if ((error as { status?: number })?.status) throw error;
       throw new HttpError(502, 'Unable to enhance the image prompt. Check the OpenAI connection and try again.');
     }
   };

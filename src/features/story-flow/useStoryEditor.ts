@@ -14,7 +14,15 @@ import { joinClips, joinProblems } from './joinClips';
 export type LibrarySelection = { type: 'asset' | 'generation' | 'job'; id: string };
 
 export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],projects:ProjectController,jobs:InterstitialController,player:VideoPlayerController) {
-  const [librarySelection, setLibrarySelection] = useState<LibrarySelection | null>(null);
+  const [librarySelections, setLibrarySelections] = useState<LibrarySelection[]>([]);
+  const project = projects.getSnapshot().project;
+  useEffect(() => {
+    setLibrarySelections(old => {
+      const next = old.filter(s => s.type === 'asset' ? project?.library?.some(a => a.assetId === s.id) : s.type === 'generation' ? project?.assetGenerations?.some(g => g.id === s.id) : items.some(i => i.id === s.id));
+      return next.length === old.length ? old : next;
+    });
+  }, [project?.library, project?.assetGenerations, items]);
+  const librarySelection = librarySelections.at(-1) ?? null;
   const [clipDrag,setClipDrag]=useState<{id:string;overStart:boolean}|null>(null);
   const [assetJobs] = useState(() => new AssetGenerationController(projects));
   useEffect(() => assetJobs.watch(), [assetJobs]);
@@ -26,8 +34,8 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   },[graph,player]);
   const activationRevision=projects.getSnapshot().activationRevision;
   const selectedGroup=graph?.groups?.find(g=>g.id===selectedGroupId);
-  const setSelected=(value:string[]|((ids:string[])=>string[]))=>{setLibrarySelection(null);setSelectedGroupId(null);setSelection(value);};
-  const selectLibrary = (selection: LibrarySelection) => { setLibrarySelection(selection); setSelection([]); setSelectedGroupId(null); setSelectedEdge(null); jobs.select(null); setInspectorRevision(n => n + 1); };
+  const setSelected=(value:string[]|((ids:string[])=>string[]))=>{setLibrarySelections([]);setSelectedGroupId(null);setSelection(value);};
+  const selectLibrary = (selection: LibrarySelection | LibrarySelection[]) => { setLibrarySelections(Array.isArray(selection) ? selection : [selection]); setSelection([]); setSelectedGroupId(null); setSelectedEdge(null); jobs.select(null); setInspectorRevision(n => n + 1); };
   const [capturingFrame, setCapturingFrame] = useState(false);
   const capturePending = useRef(false);
   const captureFrame = async () => {
@@ -75,7 +83,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(!ids?.length)throw new Error(projects.getSnapshot().error??'Unable to add the start video.');
     setNotice('Video added to the timeline as the start.');
   };
-  const selectGroup=(id:string,next=graph)=>{const group=next?.groups?.find(g=>g.id===id);if(!group)return;setLibrarySelection(null);setSelectedGroupId(id);setSelection(group.nodeIds);setSelectedEdge(null);jobs.select(null);setInspectorRevision(n=>n+1);};
+  const selectGroup=(id:string,next=graph)=>{const group=next?.groups?.find(g=>g.id===id);if(!group)return;setLibrarySelections([]);setSelectedGroupId(id);setSelection(group.nodeIds);setSelectedEdge(null);jobs.select(null);setInspectorRevision(n=>n+1);};
   const patchGroup=(id:string,patch:Partial<Pick<StoryGroup,'name'|'color'|'bounds'>>)=>{if(graph)change({...graph,groups:graph.groups?.map(g=>g.id===id?{...g,...patch,name:patch.name?.trim().slice(0,200)||g.name}:g)});};
   const createGroup=(ids:string[],bounds?:GroupBounds,name=`Group ${(graph?.groups?.length??0)+1}`)=>{if(!graph)return;const result=groupClips(graph,ids,name,'blue',bounds);if(!result.group)return;change(result.graph);selectGroup(result.group.id,result.graph);setNotice('Group created. Drag its header to move it. Right-click for group actions.');};
   const groupSelection=(name?:string)=>createGroup(selected,undefined,name);
@@ -172,6 +180,6 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice('Added clip from the library.');}
   };
   return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
-    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,selectLibrary,assetJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame};
+    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,librarySelections,selectLibrary,assetJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame};
 }
 export type StoryEditor=ReturnType<typeof useStoryEditor>;
