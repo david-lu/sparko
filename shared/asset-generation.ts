@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { loraSettings, projectLoraAddress, type ProjectLora } from './loras.js';
 
 export type MediaKind = 'image' | 'video' | 'audio';
 export type AssetModel = { id: string; name: string; kind: MediaKind; endpoint: string; editEndpoint?: string; inputs: MediaKind[]; maxImages: number; resolutions: string[] };
@@ -17,6 +18,7 @@ export const assetModel = (id: string) => ASSET_MODELS.find(model => model.id ==
 export const mediaKindSchema = z.enum(['image', 'video', 'audio']);
 export const assetReferenceSchema = z.object({ assetId: z.uuid(), name: z.string().min(1).max(1000), kind: mediaKindSchema });
 export const assetSettingsSchema = z.object({
+  ...loraSettings,
   model: z.string().max(100).refine(id => !!assetModel(id), 'Choose a supported model.'),
   prompt: z.string().max(8000), references: z.array(assetReferenceSchema).max(16),
   aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']), resolution: z.enum(['1K', '2K', '4K']),
@@ -36,14 +38,15 @@ export const assetGenerationSchema = z.object({
   .refine(g => (!g.selectedAssetId || g.versions.some(v => v.assetId === g.selectedAssetId)) && new Set(g.versions.map(v => v.assetId)).size === g.versions.length, 'Invalid generation versions.');
 export type AssetGeneration = z.infer<typeof assetGenerationSchema>;
 export const generationBusy = (g: Pick<AssetGeneration, 'phase'>) => ['preparing', 'queued', 'rendering', 'loading'].includes(g.phase);
-export function newAssetGeneration(kind: MediaKind, folderId?: string): AssetGeneration {
+export function newAssetGeneration(kind: MediaKind, folderId?: string, loras?: readonly ProjectLora[]): AssetGeneration {
   const model = ASSET_MODELS.find(m => m.kind === kind)!;
   return { id: crypto.randomUUID(), name: `Untitled ${kind}`, kind, folderId, phase: 'draft', versions: [],
-    settings: { model: model.id, prompt: '', references: [], aspectRatio: '16:9', resolution: '1K', count: 1, duration: 5 } };
+    settings: { model: model.id, lora: projectLoraAddress(loras, model.id), prompt: '', references: [], aspectRatio: '16:9', resolution: '1K', count: 1, duration: 5 } };
 }
 export function validateAssetSettings(settings: AssetSettings): string | undefined {
   const model = assetModel(settings.model);
   if (!model) return 'Choose a supported model.';
+  if (settings.lora) return `${model.name} does not support LoRAs in the current generation integration. Choose None to generate.`;
   if (!settings.prompt.trim()) return 'Enter a prompt.';
   if (settings.references.some(ref => !model.inputs.includes(ref.kind))) return `${model.name} accepts ${model.inputs.join(', ') || 'no'} references. Remove incompatible inputs or choose another model.`;
   if (settings.references.filter(ref => ref.kind === 'image').length > model.maxImages) return `${model.name} accepts up to ${model.maxImages} images.`;

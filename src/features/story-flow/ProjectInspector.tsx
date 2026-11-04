@@ -1,3 +1,4 @@
+import ProjectLoras from '../project/ProjectLoras';
 import { Flag, LocateFixed, Video } from 'lucide-react';
 import { useState } from 'react';
 import { TIMELINE_FPS } from '../../../shared/constants';
@@ -37,10 +38,12 @@ export default function ProjectInspector({editor}:{editor:StoryEditor}) {
         {start?<><AssetThumbnail asset={asset} kind="video" name={start.name}/><div><strong title={start.name}>{start.name}</strong><span>{nodeDuration(start,editor.items).toFixed(2)} s · {item?(result?'Generated video':'Draft video'):'Video'}</span></div></>
           :<><Video size={23}/><div><strong>No start video</strong><span>Add a video to begin</span></div></>}
       </div>
-      <span className="project-entry-instruction">{busy?'Adding video…':dragging||editor.clipDrag?.overStart?'Drop to set the start video':'Drag a timeline clip or Library video here'}</span>
+      <span className={`project-entry-instruction${error?' has-error':''}`} role="status" aria-atomic="true" title={error||undefined} tabIndex={error?0:undefined}>
+        {busy?'Adding video…':dragging||editor.clipDrag?.overStart?'Drop to set the start video':error||'Drag a timeline clip or Library video here'}
+      </span>
     </div>
     <button type="button" className="button project-entry-reveal" disabled={!start||busy} onClick={()=>start&&editor.selectNew(start.id)}><LocateFixed size={13}/>Show in timeline</button>
-    <div className="project-entry-feedback" role="status" title={error}>{error}</div>
+    <ProjectLoras key={`${project.id}:${editor.projects.getSnapshot().activationRevision}`} projects={editor.projects}/>
     <dl className="project-inspector-summary"><div><dt>Videos</dt><dd>{graph.nodes.length}</dd></div><div><dt>Frame rate</dt><dd>{TIMELINE_FPS} fps</dd></div></dl>
   </section>;
 }

@@ -2,7 +2,7 @@ import type { GenerationProgress } from './contracts.js';
 
 const stages: Record<string, string> = {
   before: 'Reading reference clips', after: 'Reading reference clips',
-  model: 'Loading H3', text_encoder: 'Loading text encoder',
+  lora: 'Loading LoRA', model: 'Loading H3', text_encoder: 'Loading text encoder',
   shift: 'Preparing H3', empty_streams: 'Preparing reference context',
   loop_start: 'Anchoring the loop start', loop_end: 'Matching the loop ending to its start',
   place_before: 'Preparing reference context', place_after: 'Preparing reference context', joint: 'Preparing video and audio',

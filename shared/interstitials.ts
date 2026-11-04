@@ -42,6 +42,8 @@ export type CallResponseInterstitial = {
   linkResponseDurations?: boolean;
 };
 export type InterstitialSettings = {
+  /** Copied from the project when created; null explicitly disables LoRA. */
+  lora?: string | null;
   /** Ordered H3 references, addressed as <Picture 1>, <Picture 2>, etc. */
   imageReferences?: ImageReference[];
   /** Zero-based Picture indexes used as first/last-frame guides when footage is disabled. */
@@ -97,8 +99,8 @@ export type Interstitial = InterstitialSettings & {
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
-export const interstitialSettings = ({ useStartVideoAsset, useEndVideoAsset, startVideoAsset, endVideoAsset, start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
-  ({ start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
+export const interstitialSettings = ({ lora, useStartVideoAsset, useEndVideoAsset, startVideoAsset, endVideoAsset, start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
+  ({ ...(lora !== undefined ? { lora } : {}), start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
     ...(useStartVideoAsset !== undefined ? { useStartVideoAsset } : {}), ...(useEndVideoAsset !== undefined ? { useEndVideoAsset } : {}),
     ...(startVideoAsset ? { startVideoAsset: { ...startVideoAsset } } : {}), ...(endVideoAsset ? { endVideoAsset: { ...endVideoAsset } } : {}),
     ...(imageReferences?.length ? { imageReferences: imageReferences.map(image => ({ ...image })) } : {}),
@@ -114,6 +116,7 @@ export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSe
   ([...new Set([...Object.keys(interstitialSettings(item)), ...Object.keys(interstitialSettings(item.generationSettings))])] as (keyof InterstitialSettings)[])
     .some(key => !['loopAudio', 'continuity', 'dialogue'].includes(key) && (['imageReferences', 'audioMaskCurve', 'videoMaskCurve', 'startVideoAsset', 'endVideoAsset'].includes(key)
       ? JSON.stringify(item[key] ?? []) !== JSON.stringify(item.generationSettings![key] ?? [])
+      : key === 'lora' ? (item.lora ?? null) !== (item.generationSettings!.lora ?? null)
       : interstitialSettings(item)[key] !== interstitialSettings(item.generationSettings!)[key]));
 export const frameTime = (seconds: number, fps: number) => Math.round(seconds * fps) / fps;
 

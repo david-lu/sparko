@@ -1,3 +1,4 @@
+import { loraSettings } from './loras.js';
 import { z } from 'zod';
 import { videoReferenceSettings } from './video-references.js';
 import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from './constants.js';
@@ -13,6 +14,7 @@ const frame = z.number().int().nonnegative().max(1e10);
 const range = z.object({ inFrame: frame, outFrame: frame }).refine(v => v.outFrame > v.inFrame);
 export const clipSettingsSchema = z.object({
   ...videoReferenceSettings,
+  ...loraSettings,
   imageReferences: imageReferencesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),

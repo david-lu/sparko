@@ -1,3 +1,4 @@
+import { loraSettings, projectLorasSchema } from '../../../shared/loras';
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { z } from 'zod';
 import { generationMethods, generationResolutions, interstitialSettings, maskInjections } from '../../../shared/interstitials';
@@ -24,6 +25,7 @@ const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uui
   .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid video boundaries.');
 const settingsSchema = z.object({
   ...videoReferenceSettings,
+  ...loraSettings,
   imageReferences: imageReferencesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),
@@ -60,6 +62,7 @@ const projectSchema = z.object({
       while (parent) { if (seen.has(parent)) return false; seen.add(parent); const next = folders.find(f => f.id === parent); if (!next) return false; parent = next.parentId; }
       return true;
     }), 'Invalid folder hierarchy.').optional(),
+  loras: projectLorasSchema.optional(),
   assetGenerations: z.array(assetGenerationSchema).max(1000).refine(items => new Set(items.map(g => g.id)).size === items.length, 'Duplicate generations.').optional(),
   library: z.array(z.object({ assetId: z.uuid(), originalAssetId: z.uuid().optional(), name: z.string().min(1).max(1000),
     kind: z.enum(['video', 'generated', 'subtitle', 'image', 'audio']), folderId: z.uuid().optional(), generationId: z.uuid().optional(), width: number.int().optional(), height: number.int().optional(), duration: number.positive().optional(), inFrame: number.int().optional(), outFrame: number.int().positive().optional(), volume: z.number().min(0).max(1).optional(),

@@ -2,15 +2,16 @@ import { interstitialSettings, type Interstitial, type InterstitialSettings } fr
 import type { Project } from './types';
 
 export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId'> & InterstitialSettings;
-export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'libraryFolders' | 'subtitle' | 'crossfadeFrames'> & { interstitials: InterstitialEdit[]; assetGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings'>[] };
+export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'libraryFolders' | 'subtitle' | 'crossfadeFrames' | 'loras'> & { interstitials: InterstitialEdit[]; assetGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings'>[] };
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
   return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [] })),
     callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, libraryFolders: project.libraryFolders,
-    assetGenerations: project.assetGenerations?.map(({id,name,kind,folderId,settings}) => ({id,name,kind,folderId,settings})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
+    loras: project.loras, assetGenerations: project.assetGenerations?.map(({id,name,kind,folderId,settings}) => ({id,name,kind,folderId,settings})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }
 function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' | 'key'> {
+  if (!same(before.loras, after.loras)) return { label: 'Edit project LoRAs' };
   if (!same(before.libraryFolders, after.libraryFolders)) return { label: 'Organize library folders' };
   if (!same(before.assetGenerations, after.assetGenerations)) return { label: 'Edit generation', key: 'asset-generation' };
   if (!same(before.storyFlow, after.storyFlow)) {

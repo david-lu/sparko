@@ -1,4 +1,5 @@
-import type { Express } from 'express';
+import express, { type Express } from 'express';
+import { H3_MODEL_ID, loraAddressSchema } from '../../../shared/loras.js';
 import { openAsBlob } from 'node:fs';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -25,7 +26,7 @@ const maskCurve = z.preprocess(value => {
   if (typeof value !== 'string' || value.length > 10000) return value;
   try { return JSON.parse(value); } catch { return value; }
 }, maskCurveSchema.optional());
-const schema = z.object({ before: optionalRange, after: optionalRange,
+const schema = z.object({ lora: loraAddressSchema.optional(), before: optionalRange, after: optionalRange,
   mode: z.enum(['bridge', 'extend', 'loop', 'custom']).default('bridge'),
   width: z.coerce.number().int().min(32).max(8192).optional(), height: z.coerce.number().int().min(32).max(8192).optional(),
   maskInjection: z.enum(maskInjections).optional(),
@@ -47,6 +48,10 @@ const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 export function addComfyRoutes(app: Express, providers: Providers, receive: UploadReceiver) {
   const requireComfy = requireProvider(providers.configured, 'comfy');
   const provider = () => { if (!providers.comfy) throw new HttpError(503, 'Comfy Cloud is not configured.'); return providers.comfy; };
+  app.post('/api/comfy/loras/resolve', authenticate, requireComfy, express.json({ limit: '8kb' }), async (req, res) => {
+    const { model, address } = z.object({ model: z.literal(H3_MODEL_ID), address: loraAddressSchema }).parse(req.body);
+    res.json({ model, address, name: await provider().resolveLora(address) });
+  });
   app.get('/api/comfy/status', authenticate, requireComfy, async (req, res) => {
     const resolution = z.enum(generationResolutions).optional().parse(req.query.resolution);
     const images = z.enum(['true', 'false']).optional().parse(req.query.imageReferences) === 'true';

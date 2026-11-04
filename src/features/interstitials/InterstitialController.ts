@@ -1,3 +1,4 @@
+import { loraAddressSchema } from '../../../shared/loras';
 import { storyGenerationItem } from '../story-flow/referenceInputs';
 import { behaviors } from '../story-flow/behaviors';
 import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
@@ -33,6 +34,9 @@ export class InterstitialController {
   private story?: {graph:StoryGraph;assetId:string;duration:number};
   generationItem(item: Interstitial) { return this.story ? storyGenerationItem(item, this.story.graph.nodes.find(node => node.interstitialId === item.id)) : item; }
   setStoryGraph(graph:StoryGraph|undefined,assetId='',duration=0) { this.story=graph?{graph,assetId,duration}:undefined;if(graph)this.linkedDurationIds=[]; }
+  private defaultLora: string | null = null;
+  setDefaultLora(address: string | null) { this.defaultLora = address; }
+  private withLoraDefault(item: Interstitial): Interstitial { return item.lora === undefined ? { ...item, lora: item.result || item.generationSettings ? null : this.defaultLora } : item; }
   private sourceId = '';
   private linkedDurationIds: string[] = [];
   private callResponse?: CallResponseFlow;
@@ -55,7 +59,7 @@ export class InterstitialController {
     this.update({ items: this.state.items.map(item => item.id === id ? { ...item, ...patch } : item).sort((a, b) => a.time - b.time) }, true);
   }
   load(sourceId: string, items?: Interstitial[], linkedDurationIds: string[] = [], callResponse?: CallResponseFlow | CallResponseFlow[]) {
-    this.story=undefined;
+    this.story=undefined; this.defaultLora = null;
     this.dispose(); this.sourceId = sourceId;
     this.retained.clear();
     this.callResponses = Array.isArray(callResponse) ? callResponse : callResponse ? [callResponse] : [];
@@ -99,7 +103,7 @@ export class InterstitialController {
     this.callResponses = flow ? [...this.callResponses.filter(group => group.interstitial.id !== flow.interstitial.id), flow] : [];
     if (!flow) { this.linkedDurationIds = []; return; }
     this.linkedDurationIds = responseInterstitialIds(flow);
-    const added = flow.scenes.filter(scene => scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({ ...draftClip(flow, scene),
+    const added = flow.scenes.filter(scene => scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({ ...draftClip(flow, scene), lora: this.defaultLora,
       ...(scene.clip.kind === 'response' && flow.interstitial.linkResponseDurations !== false ? { duration: this.state.items.find(item => responseInterstitialIds(flow).includes(item.id))?.duration ?? 6 } : {}) }));
     const items = [...this.state.items, ...added].map(item => {
       const scene = flow.scenes.find(scene => scene.interstitialId === item.id);
@@ -132,7 +136,7 @@ export class InterstitialController {
     const anchor = Math.max(0, Math.min(frameTime(duration, fps), frameTime(time, fps)));
     const existing = this.state.items.find(item => !item.groupId && item.kind !== 'call-response' && Math.abs(item.time - anchor) < 0.5 / fps);
     if (existing) { this.select(existing.id); return existing; }
-    const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor,
+    const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor, lora: this.defaultLora,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
       enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, maskInjection: 'standard', audioMaskTransitionMs: MASK_TRANSITION.defaultMs, videoMaskTransitionMs: MASK_TRANSITION.defaultMs, resolution: 'native', method: 'comfy', prompt: '', phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
@@ -146,11 +150,12 @@ export class InterstitialController {
     const label = name.trim().slice(0, 1000) || 'Untitled';
     if (this.state.items.some(item => item.id === id && item.label !== label)) this.patch(id, { label });
   }
-  ensureItem(item: Interstitial) { if (!this.state.items.some(current => current.id === item.id)) this.update({ items: [...this.state.items, item] }, true); }
+  ensureItem(item: Interstitial) { if (!this.state.items.some(current => current.id === item.id)) this.update({ items: [...this.state.items, this.withLoraDefault(item)] }, true); }
   edit(id: string, values: Partial<InterstitialSettings>) {
     const item = this.state.items.find(item => item.id === id);
     // The editor always stays usable. Jobs and media retain the inputs they were submitted with.
     if (!item) return;
+    if (values.lora !== undefined && values.lora !== null) values = { ...values, lora: loraAddressSchema.parse(values.lora) };
     if (values.duration !== undefined && this.hasLinkedDuration(id)) {
       const linked = this.flowFor(id) ? responseInterstitialIds(this.flowFor(id)!) : this.linkedDurationIds;
       this.update({ items: this.state.items.map(current => current.id === id ? { ...current, ...values }

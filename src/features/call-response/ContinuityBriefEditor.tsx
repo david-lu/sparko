@@ -4,20 +4,21 @@ import type { InterstitialEditorProps } from '../interstitials/InterstitialEdito
 import EnhancePromptActions from '../interstitials/EnhancePromptActions';
 import { enhancePrompt } from '../interstitials/enhance-prompt';
 import type { FlowTimeline } from '../timeline/FlowTracks';
+import { showErrorToast } from '../../shared/toasts';
 
 export default function ContinuityBriefEditor({ value, engine, info, status }: Pick<InterstitialEditorProps, 'engine' | 'info' | 'status'> & { value: FlowTimeline }) {
   const promptId = useId(), { id, time, brief = '' } = value.flow.interstitial;
-  const [enhancing, setEnhancing] = useState(false), [error, setError] = useState('');
+  const [enhancing, setEnhancing] = useState(false);
   const enhancement = useRef<AbortController | null>(null);
   const latest = useRef(value); latest.current = value;
   useEffect(() => {
-    setEnhancing(false); setError('');
+    setEnhancing(false);
     return () => { enhancement.current?.abort(); enhancement.current = null; };
   }, [id, brief, time, engine]);
   const enhance = async () => {
     if (enhancement.current || !status?.providers.openai || !brief.trim() || !value.onChange) return;
     const operation = new AbortController(); enhancement.current = operation;
-    setEnhancing(true); setError('');
+    setEnhancing(true);
     try {
       const result = await enhancePrompt({ prompt: brief, time, duration: INTERSTITIAL.defaultDuration }, 'call', undefined, engine, info, operation.signal, 'continuity');
       const current = latest.current;
@@ -25,7 +26,7 @@ export default function ContinuityBriefEditor({ value, engine, info, status }: P
         current.onChange?.({ ...current.flow, interstitial: { ...current.flow.interstitial, brief: result.prompt } });
       }
     } catch (error) {
-      if (!operation.signal.aborted && enhancement.current === operation) setError(error instanceof Error ? error.message : 'Prompt enhancement failed. Try again.');
+      if (!operation.signal.aborted && enhancement.current === operation) showErrorToast('Continuity brief enhancement failed', error instanceof Error ? error.message : 'Try again.');
     } finally {
       if (enhancement.current === operation) { enhancement.current = null; setEnhancing(false); }
     }
@@ -41,6 +42,5 @@ export default function ContinuityBriefEditor({ value, engine, info, status }: P
         onChange={event => value.onChange?.({ ...value.flow, interstitial: { ...value.flow.interstitial, brief: event.target.value } })} />
       <p className="hint">Enhance each clip to apply changes to this brief. Generation uses the clip's visible prompt.</p>
     </div>
-    {error && <p className="inline-error" role="alert">{error}</p>}
   </div>;
 }

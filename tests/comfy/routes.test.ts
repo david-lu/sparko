@@ -13,7 +13,7 @@ vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: cla
   computeDuration() { return Promise.resolve(mediaDuration); }
   dispose() {}
 } }));
-const comfy = { check: vi.fn(), submit: vi.fn(), status: vi.fn(), events: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn() };
+const comfy = { resolveLora: vi.fn(), check: vi.fn(), submit: vi.fn(), status: vi.fn(), events: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn() };
 const providers: Providers = { configured: { openai: false, gemini: false, comfy: true }, models: { openai: 'test', gemini: 'test' },
   openai: vi.fn(), gemini: vi.fn(), voice: vi.fn(), enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(), comfy };
 let app: Express;
@@ -27,6 +27,23 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it('checks LoRA addresses behind authentication and passes selections into generation', async () => {
+    const address = 'iris-animation__h3.safetensors';
+    comfy.resolveLora.mockResolvedValue(address);
+    await request(app).post('/api/comfy/loras/resolve').send({ model: 'h3', address }).expect(403);
+    const resolve = (model: string, value: string) => request(app).post('/api/comfy/loras/resolve').set('x-sparko-request', '1').send({ model, address: value });
+    await resolve('h3', address).expect(200, { model: 'h3', address, name: address });
+    await resolve('nano-banana-2', address).expect(400);
+    await resolve('h3', 'https://example.com/secret.safetensors').expect(400);
+    expect(comfy.resolveLora).toHaveBeenCalledTimes(1);
+    await submit('1.625', '1.625', 'With LoRA', { lora: address }).expect(202);
+    expect(comfy.submit.mock.calls[0][1].lora).toBe(address);
+    await submit('1.625', '1.625', 'Invalid LoRA', { lora: '../secret.safetensors' }).expect(400);
+    expect(comfy.submit).toHaveBeenCalledTimes(1);
+    vi.stubEnv('APP_PASSWORD', 'workspace-secret');
+    await resolve('h3', address).expect(401);
+    expect(comfy.resolveLora).toHaveBeenCalledTimes(1);
+  });
   it('validates separate pin curves before submitting a job',async()=>{
     const video=defaultMaskCurve(1.625,1.625,500),audio={...video,interpolation:'smooth'};
     await submit('1.625','1.625','With curves',{videoMaskCurve:JSON.stringify(video),audioMaskCurve:JSON.stringify(audio)}).expect(202);

@@ -3,6 +3,7 @@ import { HttpError } from '../../shared/http.js';
 import { comfyRequestError } from './errors.js';
 
 function context(path: string, options: RequestInit) {
+  if (path.startsWith('/api/assets')) return { operation: 'checking the LoRA model', recovery: 'Check the imported model name and try again.' };
   if (path === '/api/object_info') return { operation: 'checking available models', recovery: 'Retry the connection check.' };
   if (path === '/api/v2/assets') return { operation: 'uploading the reference video', recovery: 'Retry uploading the reference.' };
   if (path === '/api/v2/jobs' && options.method === 'POST') return { operation: 'submitting the generation', recovery: 'The job may have been accepted. Check Comfy job history before generating again.' };
