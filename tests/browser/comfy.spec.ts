@@ -1,17 +1,19 @@
 import { expect, test, openVideo, addBridge, readProject, saveAndReopen, fitAll } from './fixtures';
 import { generationProgress } from '../../server/features/comfy/progress';
+import { ComfyNodeProgress } from '../../server/features/comfy/node-progress';
 
 for (const width of [1440,390]) for (const detailed of [true, false]) test(`mocked Comfy generation, status recovery, and regeneration with ${detailed ? 'detailed' : 'aggregate-only'} progress at ${width}px`, { tag: ['@generation', '@slow'] }, async ({ page }) => {
   await page.setViewportSize({width,height:width===390?844:1000});
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, comfy: true } } }); });
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
   let complete = false, failStatus = false, comfySubmissions = 0, statusReads = 0;
-  const progress = generationProgress(detailed ? { value: .98, current_node: 'sample', step: 7, steps: 20 }
-    : { value: .9892857142857142, nodes_done: 27, nodes_total: 28 });
+  const aggregate = generationProgress({ value: .9892857142857142, nodes_done: 27, nodes_total: 28 });
+  const progress = detailed ? new ComfyNodeProgress('comfy-test-job').read(JSON.stringify({ type: 'progress', data: { prompt_id: 'comfy-test-job', node: 'sample', value: 7, max: 20 } }))!
+    : { type: 'progress', ...aggregate };
   const displayed = detailed ? .35 : -1;
   const label = detailed ? '35% of stage · Generating video and audio · step 7/20' : 'Generating scene';
   await page.route('**/api/comfy/jobs/comfy-test-job/events', route => route.fulfill({ contentType: 'text/event-stream',
-    body: `event: progress\ndata: ${JSON.stringify({ type: 'progress', ...progress })}\n\n` }));
+    body: `event: progress\ndata: ${JSON.stringify(progress)}\n\n` }));
   await page.route('**/api/comfy/interstitials', async route => {
     comfySubmissions++;
     const form = await new Response(Uint8Array.from(route.request().postDataBuffer()!), { headers: { 'Content-Type': route.request().headers()['content-type'] } }).formData();
@@ -28,7 +30,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
     ? route.fulfill({ status: 500, json: { error: 'The request failed. Please try again.' } })
     : route.fulfill({ json: complete
       ? { requestId: 'comfy-test-job', status: 'COMPLETED', videoUrl: '/api/comfy/assets/comfy-test-asset/content' }
-      : { requestId: 'comfy-test-job', status: 'IN_PROGRESS', ...(detailed ? progress : {}) } }); });
+      : { requestId: 'comfy-test-job', status: 'IN_PROGRESS', ...(detailed ? aggregate : {}) } }); });
   await openVideo(page);
   const bytes = await page.evaluate(async () => {
     const { Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);

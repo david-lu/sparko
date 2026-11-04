@@ -1,5 +1,5 @@
 import GenerationLora from '../project/GenerationLora';
-import { H3_MODEL_ID } from '../../../shared/loras';
+import { H3_MODEL_ID, generationLoraInstructions } from '../../../shared/loras';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Clapperboard, RotateCcw } from 'lucide-react';
 import { COMFY, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
@@ -40,6 +40,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const dependency = controller.dependency(selected.id);
   useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId)]);
   const kind = controller.clipKind(selected.id);
+  const loraInstructions = generationLoraInstructions(selected, projects?.getSnapshot().project?.loras, H3_MODEL_ID);
   const [enhancing, setEnhancing] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
   useEffect(() => { setAddingImages(false); }, [selected.id, controller]);
@@ -48,15 +49,16 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   useEffect(() => {
     setEnhancing(false);
     return () => { enhancement.current?.abort(); enhancement.current = null; };
-  }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey, selected.imageReferences, selected.startImageIndex, selected.endImageIndex]);
+  }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey, selected.imageReferences, selected.startImageIndex, selected.endImageIndex, selected.lora, loraInstructions]);
   const enhance = async () => {
     if (enhancement.current || !status?.providers.openai || !selected.prompt.trim()) return;
     const operation = new AbortController(); enhancement.current = operation;
     setEnhancing(true);
     try {
-      const result = await enhancePrompt(selected, kind, dependency?.reference, engine, info, operation.signal);
+      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal);
       const current = controller.getSnapshot().items.find(item => item.id === selected.id);
-      if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt
+      if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt && current.lora === selected.lora
+        && generationLoraInstructions(current, projects?.getSnapshot().project?.loras, H3_MODEL_ID) === loraInstructions
         && JSON.stringify(current.imageReferences ?? []) === JSON.stringify(selected.imageReferences ?? [])) {
         controller.edit(selected.id, { prompt: result.prompt });
       }
@@ -155,7 +157,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>
     <fieldset>
       {!compact && <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>}
-      <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} loras={projects?.getSnapshot().project?.loras} onChange={lora => controller.edit(selected.id, { lora })}/>
+      <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} instructions={selected.loraInstructions} strength={selected.loraStrength} loras={projects?.getSnapshot().project?.loras} onChange={(lora, loraInstructions, loraStrength) => controller.edit(selected.id, { lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => controller.edit(selected.id, { loraStrength })}/>
       <div className="field inspector-prompt">
         <div className="prompt-field-heading">
           <label htmlFor={promptId}>Prompt</label>

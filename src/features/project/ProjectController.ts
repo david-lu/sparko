@@ -1,4 +1,4 @@
-import { H3_MODEL_ID, projectLoraAddress, saveProjectLora, type ProjectLora } from '../../../shared/loras';
+import { H3_MODEL_ID, projectLoraAddress, projectLoraStrength, saveProjectLora, type ProjectLora } from '../../../shared/loras';
 import { generationModel } from '../../../shared/generation-models';
 import type { MediaInfo, MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
@@ -192,7 +192,7 @@ export class ProjectController {
     return added;
   }
   private save(project: Project, record = true) {
-    this.interstitials.setDefaultLora(projectLoraAddress(project.loras, H3_MODEL_ID));
+    this.interstitials.setDefaultLora(projectLoraAddress(project.loras, H3_MODEL_ID), projectLoraStrength(project.loras, H3_MODEL_ID));
     for (const generation of project.assetGenerations ?? []) this.generationStates.set(generation.id, generation);
     project = { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
     if (record && this.state.project?.id === project.id) this.history.record(this.state.project, project);

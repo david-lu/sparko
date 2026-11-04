@@ -2,11 +2,12 @@ import { ChevronDown, Image, Music, Video } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { GENERATION_MODELS, generationModel, type GenerationModel } from '../../../shared/generation-models';
-import { loraAddressSchema, projectLoraSchema, type ProjectLora } from '../../../shared/loras';
+import { LORA_INSTRUCTIONS_MAX_LENGTH, LORA_STRENGTH, loraAddressSchema, projectLoraSchema, type ProjectLora } from '../../../shared/loras';
 import { request } from '../../shared/api';
 import { useExclusiveMenu } from '../../shared/DropdownMenu';
 import ModalBackdrop from '../../shared/ModalBackdrop';
 import './loras.css';
+import LoraStrength from './LoraStrength';
 
 export function ModelTypeIcon({ kind }: { kind: GenerationModel['kind'] }) {
   const Icon = kind === 'video' ? Video : kind === 'audio' ? Music : Image;
@@ -45,6 +46,8 @@ export default function LoraDialog({ initial, model, excluded = [], onSave, onCa
 }) {
   const id = useId(), operation = useRef<AbortController | null>(null);
   const [selected, setSelected] = useState(model ?? initial?.model ?? ''), [address, setAddress] = useState(initial?.address ?? '');
+  const [instructions, setInstructions] = useState(initial?.instructions ?? '');
+  const [strength, setStrength] = useState(initial?.strength ?? LORA_STRENGTH.default);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   useEffect(() => () => { operation.current?.abort(); }, []);
   const cancel = () => { operation.current?.abort(); onCancel(); };
@@ -58,7 +61,7 @@ export default function LoraDialog({ initial, model, excluded = [], onSave, onCa
     try {
       const entry = projectLoraSchema.parse(await request('/api/comfy/loras/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: selected, address: parsed.data }), signal: task.signal }));
-      if (!task.signal.aborted) onSave(entry);
+      if (!task.signal.aborted) onSave({ ...entry, strength, ...(instructions.trim() ? { instructions: instructions.trim() } : {}) });
     } catch (cause) { if (!task.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to check this LoRA. Try again.'); }
     finally { if (!task.signal.aborted) { operation.current = null; setBusy(false); } }
   };
@@ -74,6 +77,12 @@ export default function LoraDialog({ initial, model, excluded = [], onSave, onCa
           aria-describedby={`${id}-help ${id}-feedback`} aria-invalid={!!error} placeholder="model.safetensors or Comfy asset link"
           onChange={event => { setAddress(event.target.value); setError(''); }}/>
         <p id={`${id}-help`} className="hint">Use the exact imported LoRA filename or its Comfy Cloud asset link. The LoRA must match the selected model.</p>
+        <LoraStrength value={strength} onChange={setStrength}/>
+        <label className="field" htmlFor={`${id}-instructions`}>Instructions <span className="hint">(optional)</span></label>
+        <textarea id={`${id}-instructions`} aria-describedby={`${id}-instructions-help`} rows={4} maxLength={LORA_INSTRUCTIONS_MAX_LENGTH}
+          value={instructions} placeholder="Trigger words, character descriptions, or guidance for using this LoRA."
+          onChange={event => setInstructions(event.target.value)}/>
+        <p id={`${id}-instructions-help`} className="hint">Used when you enhance a prompt with this LoRA selected.</p>
       </fieldset>
       <div id={`${id}-feedback`} className="lora-dialog-feedback" role="status">{error}</div>
       <div className="close-project-actions">

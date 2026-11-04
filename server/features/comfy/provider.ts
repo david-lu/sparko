@@ -6,7 +6,8 @@ import { readServerEvents } from '../../../shared/server-events.js';
 import { COMFY_MODELS } from '../../../shared/constants.js';
 import { comfyBridgePlan, validateComfyResolution } from '../../../shared/comfy.js';
 import { HttpError } from '../../shared/http.js';
-import { ComfyClient } from './client.js';
+import { ComfyClient, type ComfySocketFactory } from './client.js';
+import { readComfyNodeEvents } from './node-progress.js';
 import { bridgeWorkflow, type BridgeInput } from './workflow.js';
 import { type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { generationProgress, progressSchema } from './progress.js';
@@ -29,7 +30,7 @@ export interface ComfyProvider {
   assetUrl(assetId: string): Promise<string>;
 }
 
-export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fetch = fetch): ComfyProvider {
+export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fetch = fetch, connect: ComfySocketFactory = url => new WebSocket(url)): ComfyProvider {
   const client = new ComfyClient(env, transport);
   const partnerKey = env.COMFY_CLOUD_API_KEY || env.COMFY_API_KEY || '';
   const checks = new Map<string, { promise: Promise<ComfyReadiness>; at: number }>();
@@ -73,6 +74,23 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
   return {
     check, status, resolveLora: address => resolveComfyLora(client, address),
     async *events(requestId, signal) {
+      id.parse(requestId); signal.throwIfAborted();
+      let nodeProgress = false;
+      try {
+        const socket = client.progressSocket(connect);
+        if (socket) {
+          for await (const event of readComfyNodeEvents(socket, requestId, signal)) {
+            nodeProgress ||= event.type === 'progress';
+            yield event;
+          }
+          return;
+        }
+      } catch {
+        signal.throwIfAborted();
+        // Socket access is optional. Clear stale steps and resume portable v2 SSE;
+        // the browser's v2 polling still owns completion, errors and output retrieval.
+        if (nodeProgress) yield { type: 'progress', progressDetails: { stage: 'Generating scene' } };
+      }
       const response = await client.response(`/api/v2/jobs/${encodeURIComponent(id.parse(requestId))}/events`, { signal, headers: { Accept: 'text/event-stream' } });
       if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) {
         await response.body?.cancel();

@@ -1,5 +1,5 @@
 import express, { type Express } from 'express';
-import { H3_MODEL_ID, loraAddressSchema } from '../../../shared/loras.js';
+import { H3_MODEL_ID, loraAddressSchema, loraStrengthSchema } from '../../../shared/loras.js';
 import { openAsBlob } from 'node:fs';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -26,7 +26,8 @@ const maskCurve = z.preprocess(value => {
   if (typeof value !== 'string' || value.length > 10000) return value;
   try { return JSON.parse(value); } catch { return value; }
 }, maskCurveSchema.optional());
-const schema = z.object({ lora: loraAddressSchema.optional(), before: optionalRange, after: optionalRange,
+const schema = z.object({ lora: loraAddressSchema.optional(),
+  loraStrength: z.preprocess(value => typeof value === 'string' && value.trim() ? Number(value) : value, loraStrengthSchema.optional()), before: optionalRange, after: optionalRange,
   mode: z.enum(['bridge', 'extend', 'loop', 'custom']).default('bridge'),
   width: z.coerce.number().int().min(32).max(8192).optional(), height: z.coerce.number().int().min(32).max(8192).optional(),
   maskInjection: z.enum(maskInjections).optional(),

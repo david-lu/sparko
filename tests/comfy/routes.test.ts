@@ -44,6 +44,14 @@ describe('Comfy API boundaries', () => {
     await resolve('h3', address).expect(401);
     expect(comfy.resolveLora).toHaveBeenCalledTimes(1);
   });
+  it.each(['0', '0.65', '1.4', '-0.5'])('parses multipart LoRA strength %s', async loraStrength => {
+    await submit('1.625', '1.625', 'With LoRA', { lora: 'h3.safetensors', loraStrength }).expect(202);
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ lora: 'h3.safetensors', loraStrength: Number(loraStrength) });
+  });
+  it.each(['', ' ', 'bad', 'NaN', 'Infinity', '-101', '101'])('rejects invalid multipart strength %s before generation', async loraStrength => {
+    await submit('1.625', '1.625', 'With LoRA', { lora: 'h3.safetensors', loraStrength }).expect(400);
+    expect(comfy.submit).not.toHaveBeenCalled();
+  });
   it('validates separate pin curves before submitting a job',async()=>{
     const video=defaultMaskCurve(1.625,1.625,500),audio={...video,interpolation:'smooth'};
     await submit('1.625','1.625','With curves',{videoMaskCurve:JSON.stringify(video),audioMaskCurve:JSON.stringify(audio)}).expect(202);

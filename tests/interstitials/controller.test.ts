@@ -240,6 +240,37 @@ describe('interstitial lifecycle', () => {
       expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', progress: undefined, progressDetails: undefined });
     } finally { vi.useRealTimers(); }
   });
+  it.each(['COMPLETED', 'CANCELLED'] as const)('preserves native node steps across v2 polls, clears them on fallback, and honors %s', async status => {
+    const id = add();
+    vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE', insertion: completed.insertion });
+    const running = { requestId: completed.requestId, status: 'IN_PROGRESS' as const, progress: .98, progressDetails: { stage: 'Generating scene', nodesDone: 23, nodesTotal: 24 } };
+    let read!: (job: Awaited<ReturnType<typeof getInterstitialJob>>) => void;
+    vi.mocked(getInterstitialJob).mockImplementationOnce(() => new Promise(resolve => { read = resolve; })).mockResolvedValue(running);
+    const generation = controller.generate(id, media, info);
+    await vi.waitFor(() => expect(watchComfyJob).toHaveBeenCalledOnce());
+    const [, signal, update] = vi.mocked(watchComfyJob).mock.calls[0];
+    update({ type: 'progress', source: 'comfy-websocket', progressDetails: { stage: 'Generating video and audio', step: 19, steps: 20 } });
+    vi.useFakeTimers();
+    try {
+      read(running);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(7_500);
+      expect(phaseLabel(controller.getSnapshot().items[0])).toBe('95% of stage · Generating video and audio · step 19/20');
+      update({ type: 'progress', source: 'comfy-websocket', progressDetails: { stage: 'Decoding video' } });
+      await vi.advanceTimersByTimeAsync(2_500);
+      expect(phaseLabel(controller.getSnapshot().items[0])).toBe('Decoding video');
+      expect(controller.getSnapshot().items[0].progressDetails?.step).toBeUndefined();
+      update({ type: 'progress', progressDetails: { stage: 'Generating scene' } });
+      await vi.advanceTimersByTimeAsync(2_500);
+      expect(controller.getSnapshot().items[0].progressDetails?.nodesDone).toBe(23);
+      update({ type: 'progress', source: 'comfy-websocket', progressDetails: { stage: 'Encoding MP4' } });
+      vi.mocked(getInterstitialJob).mockResolvedValue({ ...completed, status });
+      await vi.advanceTimersByTimeAsync(2_500); await generation;
+      expect(controller.getSnapshot().items[0].phase).toBe(status === 'COMPLETED' ? 'ready' : 'cancelled');
+      expect(signal.aborted).toBe(true);
+      expect(cancelInterstitialJob).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
   it.each([1_000, 0])('separates download, storage and video checks with a reported file size of %i', async total => {
     const id = add(), labels: string[] = [];
     controller.subscribe(() => labels.push(phaseLabel(controller.getSnapshot().items[0])));

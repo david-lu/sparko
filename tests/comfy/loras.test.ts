@@ -20,6 +20,19 @@ describe('Comfy LoRA execution', () => {
     const plain = bridgeWorkflow(undefined, settings, 0); expect(plain.lora).toBeUndefined(); expect(plain.shift.inputs.model).toEqual(['model', 0]);
   });
 
+  it.each([0, 0.65, 1.4, -0.5])('passes strength %s to the submitted H3 workflow', async loraStrength => {
+    const transport = vi.fn<typeof fetch>().mockImplementation(async url => Response.json(String(url).endsWith('/api/object_info') ? catalog : { id: 'comfy-job-123', status: 'queued' }));
+    await createComfyProvider({ COMFY_CLOUD_API_KEY: 'test' }, transport).submit(undefined, { ...settings, lora: filename, loraStrength });
+    const body = JSON.parse(String(transport.mock.calls.at(-1)![1]!.body));
+    expect(body.workflow.lora.inputs.strength_model).toBe(loraStrength);
+  });
+
+  it.each([-101, 101, NaN, Infinity])('rejects invalid strength %s before submission', async loraStrength => {
+    const transport = vi.fn<typeof fetch>().mockResolvedValue(Response.json(catalog));
+    await expect(createComfyProvider({ COMFY_CLOUD_API_KEY: 'test' }, transport).submit(undefined, { ...settings, lora: filename, loraStrength })).rejects.toThrow();
+    expect(transport.mock.calls.every(([url]) => String(url).endsWith('/api/object_info'))).toBe(true);
+  });
+
   it('resolves authenticated Comfy asset metadata to an imported filename', async () => {
     const transport = vi.fn<typeof fetch>().mockImplementation(async url => Response.json(String(url).includes('/api/assets/')
       ? { name: 'blake3:hash', tags: ['models', 'loras'], metadata: { filename } } : catalog));

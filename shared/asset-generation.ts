@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { loraSettings, projectLoraAddress, type ProjectLora } from './loras.js';
+import { loraSettings, projectLoraAddress, projectLoraStrength, type ProjectLora } from './loras.js';
 
 export type MediaKind = 'image' | 'video' | 'audio';
 export type AssetModel = { id: string; name: string; kind: MediaKind; endpoint: string; editEndpoint?: string; inputs: MediaKind[]; maxImages: number; resolutions: string[] };
@@ -41,7 +41,7 @@ export const generationBusy = (g: Pick<AssetGeneration, 'phase'>) => ['preparing
 export function newAssetGeneration(kind: MediaKind, folderId?: string, loras?: readonly ProjectLora[]): AssetGeneration {
   const model = ASSET_MODELS.find(m => m.kind === kind)!;
   return { id: crypto.randomUUID(), name: `Untitled ${kind}`, kind, folderId, phase: 'draft', versions: [],
-    settings: { model: model.id, lora: projectLoraAddress(loras, model.id), prompt: '', references: [], aspectRatio: '16:9', resolution: '1K', count: 1, duration: 5 } };
+    settings: { model: model.id, lora: projectLoraAddress(loras, model.id), loraStrength: projectLoraStrength(loras, model.id), prompt: '', references: [], aspectRatio: '16:9', resolution: '1K', count: 1, duration: 5 } };
 }
 export function validateAssetSettings(settings: AssetSettings): string | undefined {
   const model = assetModel(settings.model);
