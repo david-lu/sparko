@@ -1,0 +1,405 @@
+{
+  "source": {
+    "file": "09-edit-guide.pdf",
+    "title": "Super Sema S1E4 · Interactive edit guide",
+    "section": "Clips in the timeline (picture track)",
+    "pages": [
+      2,
+      3,
+      4
+    ]
+  },
+  "timing": {
+    "offsetSeconds": -23,
+    "basis": "Picture-track timeline timestamps shifted back by 23 seconds to match the video without the cold opening. Both time and timeSeconds contain the adjusted time. Original-episode source times in clip names and still durations are unchanged. Music track times use the same timeline offset."
+  },
+  "excludedClips": [
+    {
+      "clip": "Mock cold open",
+      "description": "Sema and Spark, SparkTV mock",
+      "reason": "The 23-second cold opening is not present in the actual video."
+    }
+  ],
+  "clips": [
+    {
+      "time": "0:00",
+      "timeSeconds": 0,
+      "clip": "Original 0:00–0:52",
+      "newMaterial": false,
+      "description": "Theme song, forest, Mr. Babbleon"
+    },
+    {
+      "time": "0:52",
+      "timeSeconds": 52,
+      "clip": "S1-C1-ask",
+      "newMaterial": true,
+      "description": "Sema stops and asks the viewer"
+    },
+    {
+      "time": "0:59",
+      "timeSeconds": 59,
+      "clip": "S1-WAIT",
+      "newMaterial": true,
+      "description": "Waiting for the answer"
+    },
+    {
+      "time": "1:04",
+      "timeSeconds": 64,
+      "clip": "S1-C2-yes",
+      "newMaterial": true,
+      "description": "\"Yes, you've got it!…\""
+    },
+    {
+      "time": "1:15",
+      "timeSeconds": 75,
+      "clip": "S1-C3-back",
+      "newMaterial": true,
+      "description": "\"Hear that?…\" back to the classmate"
+    },
+    {
+      "time": "1:23",
+      "timeSeconds": 83,
+      "clip": "Original 0:57–1:20",
+      "newMaterial": false,
+      "description": "The field of stumps, Mr. Babbleon"
+    },
+    {
+      "time": "1:46",
+      "timeSeconds": 106,
+      "clip": "S2-C0-intro",
+      "newMaterial": true,
+      "description": "\"Oh no… the trees!\""
+    },
+    {
+      "time": "1:49",
+      "timeSeconds": 109,
+      "clip": "S2-C1-ask1",
+      "newMaterial": true,
+      "description": "\"How do you feel, friend?\""
+    },
+    {
+      "time": "1:57",
+      "timeSeconds": 117,
+      "clip": "S2-WAIT",
+      "newMaterial": true,
+      "description": "Waiting"
+    },
+    {
+      "time": "2:02",
+      "timeSeconds": 122,
+      "clip": "S2-C2-sad",
+      "newMaterial": true,
+      "description": "\"Sad. Me too, friend…\""
+    },
+    {
+      "time": "2:13",
+      "timeSeconds": 133,
+      "clip": "S2-C3-ask2",
+      "newMaterial": true,
+      "description": "\"What helps you…?\""
+    },
+    {
+      "time": "2:21",
+      "timeSeconds": 141,
+      "clip": "S2-WAIT",
+      "newMaterial": true,
+      "description": "Waiting"
+    },
+    {
+      "time": "2:25",
+      "timeSeconds": 145,
+      "clip": "S2-C4-hug",
+      "newMaterial": true,
+      "description": "\"A hug! Good one!…\""
+    },
+    {
+      "time": "2:35",
+      "timeSeconds": 155,
+      "clip": "S2-C5-breathe",
+      "newMaterial": true,
+      "description": "One big breath together"
+    },
+    {
+      "time": "2:46",
+      "timeSeconds": 166,
+      "clip": "S2-C6-back",
+      "newMaterial": true,
+      "description": "\"Somebody took our trees…\""
+    },
+    {
+      "time": "2:52",
+      "timeSeconds": 172,
+      "clip": "Original 1:20–2:46",
+      "newMaterial": false,
+      "description": "The Bongolalas, Tobor, night at the great tree"
+    },
+    {
+      "time": "4:17",
+      "timeSeconds": 257,
+      "clip": "Still (0.8 s)",
+      "newMaterial": false,
+      "description": "Freeze before the tree interaction"
+    },
+    {
+      "time": "4:18",
+      "timeSeconds": 258,
+      "clip": "S3-C1-ask1",
+      "newMaterial": true,
+      "description": "\"What is the tree showing us, friend?\""
+    },
+    {
+      "time": "4:22",
+      "timeSeconds": 262,
+      "clip": "Original 2:46–2:49",
+      "newMaterial": false,
+      "description": "The branches reach towards the castle"
+    },
+    {
+      "time": "4:25",
+      "timeSeconds": 265,
+      "clip": "S3-WAIT",
+      "newMaterial": true,
+      "description": "Waiting"
+    },
+    {
+      "time": "4:29",
+      "timeSeconds": 269,
+      "clip": "S3-C4-cage",
+      "newMaterial": true,
+      "description": "\"YES! … A prison of trees!\""
+    },
+    {
+      "time": "4:35",
+      "timeSeconds": 275,
+      "clip": "S3-C5-hug",
+      "newMaterial": true,
+      "description": "Sema hugs the tree, \"Thank you, friend!\""
+    },
+    {
+      "time": "4:39",
+      "timeSeconds": 279,
+      "clip": "Original 2:56–3:21",
+      "newMaterial": false,
+      "description": "MB's room, the lab"
+    },
+    {
+      "time": "5:05",
+      "timeSeconds": 305,
+      "clip": "S4-C0-intro",
+      "newMaterial": true,
+      "description": "MB walks in, \"And we need something that makes trees grow fast!\""
+    },
+    {
+      "time": "5:08",
+      "timeSeconds": 308,
+      "clip": "S4-C1-setup",
+      "newMaterial": true,
+      "description": "\"What do trees need to grow?…\""
+    },
+    {
+      "time": "5:20",
+      "timeSeconds": 320,
+      "clip": "S4-C2-ask (two parts)",
+      "newMaterial": true,
+      "description": "\"What goes into our super-duper plant food?\""
+    },
+    {
+      "time": "5:32",
+      "timeSeconds": 332,
+      "clip": "S4-WAIT-A",
+      "newMaterial": true,
+      "description": "Waiting"
+    },
+    {
+      "time": "5:37",
+      "timeSeconds": 337,
+      "clip": "S4-C3-sock",
+      "newMaterial": true,
+      "description": "MB grabs his sock"
+    },
+    {
+      "time": "5:45",
+      "timeSeconds": 345,
+      "clip": "S4-C4-sock-ask",
+      "newMaterial": true,
+      "description": "\"Well, MB's happy!… The rock? Or the old vegetables?\""
+    },
+    {
+      "time": "6:00",
+      "timeSeconds": 360,
+      "clip": "S4-WAIT-B",
+      "newMaterial": true,
+      "description": "Waiting"
+    },
+    {
+      "time": "6:05",
+      "timeSeconds": 365,
+      "clip": "S4-C5-success",
+      "newMaterial": true,
+      "description": "\"Old vegetables! Yes!…\" \"Root snacks!\""
+    },
+    {
+      "time": "6:20",
+      "timeSeconds": 380,
+      "clip": "Original 3:26–3:49",
+      "newMaterial": false,
+      "description": "Vegetables into the pot, slime, \"You'll see!\""
+    },
+    {
+      "time": "6:42",
+      "timeSeconds": 402,
+      "clip": "S5-C1-setup",
+      "newMaterial": true,
+      "description": "\"YOU are going to be our remote!\""
+    },
+    {
+      "time": "6:50",
+      "timeSeconds": 410,
+      "clip": "S5-C2-circle",
+      "newMaterial": true,
+      "description": "\"Make it fly in a big circle!\""
+    },
+    {
+      "time": "6:55",
+      "timeSeconds": 415,
+      "clip": "S5-WAIT",
+      "newMaterial": true,
+      "description": "Waiting"
+    },
+    {
+      "time": "7:00",
+      "timeSeconds": 420,
+      "clip": "S5-SIGNAL",
+      "newMaterial": true,
+      "description": "MB: \"Signal received!\""
+    },
+    {
+      "time": "7:02",
+      "timeSeconds": 422,
+      "clip": "Original 3:52",
+      "newMaterial": false,
+      "description": "The drone circles"
+    },
+    {
+      "time": "7:04",
+      "timeSeconds": 424,
+      "clip": "S5-C3-planter",
+      "newMaterial": true,
+      "description": "\"Push it DOWN!\""
+    },
+    {
+      "time": "7:08",
+      "timeSeconds": 428,
+      "clip": "S5-WAIT",
+      "newMaterial": true,
+      "description": "Waiting"
+    },
+    {
+      "time": "7:12",
+      "timeSeconds": 432,
+      "clip": "Original 3:58–4:04",
+      "newMaterial": false,
+      "description": "The tree-planter"
+    },
+    {
+      "time": "7:19",
+      "timeSeconds": 439,
+      "clip": "S5-C4-plantfood",
+      "newMaterial": true,
+      "description": "\"Shake it… and RELEASE!\""
+    },
+    {
+      "time": "7:25",
+      "timeSeconds": 445,
+      "clip": "S5-WAIT",
+      "newMaterial": true,
+      "description": "Waiting"
+    },
+    {
+      "time": "7:29",
+      "timeSeconds": 449,
+      "clip": "Original 4:07–5:11",
+      "newMaterial": false,
+      "description": "The spray, \"It's working!\", Tobor in the vines, the promise"
+    },
+    {
+      "time": "8:33",
+      "timeSeconds": 513,
+      "clip": "Still (0.9 s)",
+      "newMaterial": false,
+      "description": "Freeze before the Tobor interaction"
+    },
+    {
+      "time": "8:34",
+      "timeSeconds": 514,
+      "clip": "S6-C0-intro",
+      "newMaterial": true,
+      "description": "\"Can we trust him?\" MB: \"Well…\""
+    },
+    {
+      "time": "8:41",
+      "timeSeconds": 521,
+      "clip": "S6-C1-ask",
+      "newMaterial": true,
+      "description": "\"Everybody makes mistakes… Three, two, one…\""
+    },
+    {
+      "time": "8:57",
+      "timeSeconds": 537,
+      "clip": "S6-WAIT",
+      "newMaterial": true,
+      "description": "Waiting"
+    },
+    {
+      "time": "9:01",
+      "timeSeconds": 541,
+      "clip": "S6-C2-out",
+      "newMaterial": true,
+      "description": "\"Signal received!\" \"There go the vines!\""
+    },
+    {
+      "time": "9:06",
+      "timeSeconds": 546,
+      "clip": "Original 5:12–5:28",
+      "newMaterial": false,
+      "description": "The vines release Tobor, \"Never!\""
+    },
+    {
+      "time": "9:21",
+      "timeSeconds": 561,
+      "clip": "S7-C1",
+      "newMaterial": true,
+      "description": "Goodbye: \"Remember when…?\" and the high-five"
+    },
+    {
+      "time": "9:34",
+      "timeSeconds": 574,
+      "clip": "S7-C2",
+      "newMaterial": true,
+      "description": "\"YES! See you next time, friend!\""
+    },
+    {
+      "time": "9:39",
+      "timeSeconds": 579,
+      "clip": "Original 5:28–end",
+      "newMaterial": false,
+      "description": "End credits"
+    }
+  ],
+  "otherTracks": [
+    {
+      "type": "picture",
+      "track": 2,
+      "description": "Spark (intro, idle, and glowing during each waiting moment)."
+    },
+    {
+      "type": "audio",
+      "track": 3,
+      "description": "Music under the plant-food scene.",
+      "startTime": "5:23",
+      "startTimeSeconds": 323,
+      "endTime": "6:24",
+      "endTimeSeconds": 384
+    }
+  ]
+}
