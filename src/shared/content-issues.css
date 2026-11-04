@@ -1,0 +1,7 @@
+.content-issues{display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:20px;vertical-align:middle}
+.content-issue-button{display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:3px;background:transparent;color:#ff7777;cursor:pointer}
+.content-issue-button:hover{background:#ff77771a}.content-issue-button:focus-visible{outline:2px solid #ff7777;outline-offset:1px}
+[data-content-error=true]{color:#ff7777}
+.content-issues-popover{position:fixed;inset:0;margin:auto;width:380px;max-width:calc(100vw - 24px);max-height:70vh;overflow:auto;padding:12px;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface);color:var(--text);box-shadow:0 12px 40px #0008;font-size:12px;touch-action:auto}
+.content-issues-popover::backdrop{background:#0003}.content-issues-popover header{display:flex;align-items:center;justify-content:space-between;gap:12px}.content-issues-popover header>strong{min-width:0;overflow-wrap:anywhere}
+.content-issues-popover section{margin-top:12px}.content-issues-popover section>strong{color:#ff9999}.content-issues-popover p{margin:4px 0 0;line-height:1.5;overflow-wrap:anywhere}

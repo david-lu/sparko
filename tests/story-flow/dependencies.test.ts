@@ -19,6 +19,65 @@ const setup = () => {
 };
 
 describe('connected reference switches', () => {
+  it('reports both missing endpoints and removes errors when references are disabled', () => {
+    const { graph, item, dependency } = setup();
+    item.startReferenceType = item.endReferenceType = 'video'; graph.edges = [];
+    expect(dependency().issues).toMatchObject([{ side: 'start', message: expect.stringContaining('incoming') }, { side: 'end', message: expect.stringContaining('following') }]);
+    expect(dependency().blocked).toBe(dependency().issues![0].message);
+    item.startReferenceType = item.endReferenceType = 'none';
+    expect(dependency()).toMatchObject({ issues: [], blocked: undefined });
+  });
+  it('reports one actionable loop error instead of duplicating the end reference', () => {
+    const { graph, node, item, dependency } = setup(); node.loop = true; graph.edges = [];
+    expect(dependency().issues).toHaveLength(1);
+    expect(dependency().issues![0]).toMatchObject({ side: 'start', title: 'Loop reference' });
+    item.startReferenceType = 'image';
+    expect(dependency().issues).toHaveLength(1);
+    expect(dependency().issues![0].message).toContain('Add an image');
+  });
+  it('identifies ambiguous inputs and dangling connections without choosing footage', () => {
+    const { graph, node, item, other, dependency } = setup();
+    graph.edges.push(edge(other.id, node.id));
+    expect(dependency().issues![0].message).toContain('2 are connected');
+    graph.edges = [edge('deleted-clip', node.id)]; item.endReferenceType = 'none';
+    expect(dependency().issues![0].message).toContain('no longer exists');
+    expect(dependency().reference?.before).toBeUndefined();
+  });
+  it('distinguishes unfinished, generating and stale reference videos', () => {
+    const { graph, a, node, item } = setup(), upstream = createNode('simple');
+    graph.nodes.push(upstream.node); graph.edges = [edge(upstream.node.id, node.id)]; item.endReferenceType = 'none';
+    const dependency = () => storyDependency(graph, [item, upstream.item], a.source!.assetId, 10, item.id);
+    expect(dependency().blocked).toContain('no video output yet');
+    upstream.item.phase = 'rendering'; expect(dependency().blocked).toContain('Wait for');
+    upstream.item.phase = 'ready'; upstream.item.result = { assetId: 'render', url: 'blob:render', start: 0, duration: 4, totalDuration: 4,
+      reference: { before: { sceneId: a.id, assetId: 'old-source', inFrame: 24, outFrame: 240 } } };
+    expect(dependency().blocked).toContain('Regenerate');
+  });
+  it('reports missing files for connected footage and every image sent to generation', () => {
+    const { graph, a, item } = setup();
+    item.endReferenceType = 'image'; item.endImageIndex = 0;
+    item.imageReferences = [{ assetId: 'endpoint', name: 'End pose' }, { assetId: 'style', name: 'Style image' }];
+    const unavailable = (id: string) => [a.source!.assetId, 'endpoint', 'style'].includes(id) ? 'File is missing. Restore or replace it.' : undefined;
+    const dependency = storyDependency(graph, [item], a.source!.assetId, 10, item.id, unavailable);
+    expect(dependency.issues).toHaveLength(3);
+    expect(dependency.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ side: 'start', message: expect.stringContaining('input') }),
+      expect.objectContaining({ side: 'end', message: expect.stringContaining('End pose') }),
+      expect.objectContaining({ title: 'Picture 2', message: expect.stringContaining('Style image') }),
+    ]));
+    expect(storyDependency(graph, [item], a.source!.assetId, 10, item.id).issues).toEqual([]);
+  });
+  it('checks arbitrary video inputs independently, including invalid ranges', () => {
+    const { graph, a, item, dependency } = setup();
+    item.startReferenceType = item.endReferenceType = 'video'; item.useStartVideoAsset = item.useEndVideoAsset = true;
+    expect(dependency().issues?.map(issue => issue.side)).toEqual(['start', 'end']);
+    item.startVideoAsset = { assetId: 'missing', name: 'Reference.mp4', inFrame: 30, outFrame: 20 };
+    item.endReferenceType = 'none';
+    const checked = storyDependency(graph, [item], a.source!.assetId, 10, item.id, () => 'File is missing.');
+    expect(checked.issues).toMatchObject([{ side: 'start', message: expect.stringContaining('File is missing') }, { side: 'start', message: expect.stringContaining('range') }]);
+    item.startReferenceType = 'none';
+    expect(storyDependency(graph, [item], a.source!.assetId, 10, item.id, () => 'File is missing.').issues).toEqual([]);
+  });
   it.each(['simple', 'looped', 'conditional'] as const)('supports %s clips from scratch with explicit reference types', kind => {
     const { node, item } = createNode(kind);
     Object.assign(item, { startReferenceType: 'none', endReferenceType: 'none' });

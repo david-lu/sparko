@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoLayout, CLIP_HEIGHT, createNode, edge, nodeMediaLayout, PIXELS_PER_SECOND, type StoryGraph, type StoryNode } from '../../src/features/story-flow/model';
+import { autoLayout, CLIP_HEIGHT, createNode, edge, nodeMediaLayout, nodeVisualBounds, PIXELS_PER_SECOND, type StoryGraph, type StoryNode } from '../../src/features/story-flow/model';
 import { fitCamera } from '../../src/features/story-flow/viewport';
 import type { Interstitial } from '../../shared/interstitials';
 
@@ -27,6 +27,49 @@ function expectFittedWithoutOverlap(g:StoryGraph,items:Interstitial[],height:num
 }
 
 describe('automatic clip layout',()=>{
+  it.each([false,true])('keeps short destinations compact beside a tall conditional (grouped %s)',grouped=>{
+    const choice={...clip('choice'),conditional:true,conditions:Array.from({length:10},(_,i)=>({id:`c-${i}`,label:`Choice ${i}`,values:[]}))};
+    const original=graph([choice,clip('upper'),clip('middle'),clip('lower')]);
+    original.edges=original.nodes.slice(1).map(n=>edge(choice.id,n.id));
+    if(grouped)original.groups=[{id:'group',name:'Choice',color:'blue',nodeIds:original.nodes.map(n=>n.id)}];
+    const result=autoLayout(original,[],480),[parent,...children]=result.nodes;
+    for(let i=1;i<children.length;i++)expect(children[i].y-children[i-1].y-CLIP_HEIGHT).toBe(24);
+    expect(parent.y).toBe(children[1].y);
+    const labelEnd=parent.x+128+nodeVisualBounds(result,parent).rightOverflow;
+    expect(children[0].x-labelEnd).toBe(grouped?50:24);
+    expectNoOverlap(result);expect(autoLayout(result,[],480)).toEqual(result);
+  });
+  it('adds height only between the neighboring clips that need it',()=>{
+    const tall={...clip('tall'),conditional:true,conditions:Array.from({length:8},(_,i)=>({id:`c-${i}`,label:`Choice ${i}`,values:[]}))};
+    const original=graph([clip('entry'),{...tall,y:0},{...clip('short'),y:100},{...tall,id:'lower',y:200}]);
+    original.edges=original.nodes.slice(1).map(n=>edge('entry',n.id));
+    const result=autoLayout(original,[]),neighbors=result.nodes.slice(1);
+    for(let i=1;i<neighbors.length;i++){
+      const upper=neighbors[i-1],lower=neighbors[i];
+      expect(lower.y+nodeVisualBounds(result,lower).topOffset-upper.y-nodeVisualBounds(result,upper).bottomOffset).toBe(24);
+    }
+    expect(autoLayout(result,[])).toEqual(result);
+  });
+  it.each([180,480])('reserves the full height of conditional sockets, even without connected outputs, at %ipx',height=>{
+    const conditions=Array.from({length:8},(_,i)=>({id:`condition-${i}`,label:`Choice ${i+1}`,values:[]}));
+    const original=graph([clip('entry'),{...clip('upper'),conditional:true,conditions,y:1000},{...clip('lower'),conditional:true,conditions,y:2000}]);
+    original.edges=[edge('entry','upper'),edge('entry','lower')];
+    const result=autoLayout(original,[],height),upper=result.nodes[1],lower=result.nodes[2];
+    expect(lower.x).toBe(upper.x);
+    expect(lower.y+nodeVisualBounds(result,lower).topOffset-(upper.y+nodeVisualBounds(result,upper).bottomOffset)).toBeGreaterThanOrEqual(24);
+    const boxes=rects(result,[]).map((box,i)=>({...box,...nodeVisualBounds(result,result.nodes[i])}));
+    const camera=fitCamera({left:40,right:600,top:90,bottom:lower.y},800,height,2,false,boxes);
+    expect((lower.y-upper.y)*camera.rowScale+boxes[2].topOffset-boxes[1].bottomOffset).toBeGreaterThanOrEqual(24);
+    expect(autoLayout(result,[],height)).toEqual(result);
+  });
+  it('moves loose clips only when they collide with conditional outputs, and preserves clear neighbors',()=>{
+    const conditional={...clip('entry'),conditional:true,x:40,y:129,conditions:Array.from({length:8},(_,i)=>({id:`c-${i}`,label:`Choice ${i}`,values:[]}))};
+    const original=graph([conditional,{...clip('collision',1),x:180,y:230},{...clip('clear'),x:1000,y:600}]);
+    const result=autoLayout(original,[]),a=result.nodes[0],b=result.nodes[1],av=nodeVisualBounds(result,a),bv=nodeVisualBounds(result,b);
+    expect(result.nodes[2]).toEqual(original.nodes[2]);expect(b).not.toEqual(original.nodes[1]);
+    expect(a.x+128+av.rightOverflow<=b.x||b.x+32<=a.x||a.y+av.bottomOffset<=b.y+bv.topOffset||b.y+bv.bottomOffset<=a.y+av.topOffset).toBe(true);
+    expect(autoLayout(result,[])).toEqual(result);
+  });
   it.each([180,280,480])('moves a disconnected composition with its entry while preserving relative positions at %ipx',height=>{
     const original=graph([
       {...clip('right'),x:1000,y:90},

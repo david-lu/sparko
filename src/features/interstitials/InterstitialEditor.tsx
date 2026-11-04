@@ -8,6 +8,7 @@ import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import type { InterstitialController } from './InterstitialController';
 import { assets } from '../project/assets';
+import { useAssetAvailability } from '../project/useAssetAvailability';
 import { phaseLabel, renderingProgress } from './status';
 import InterstitialTimeField from './InterstitialTimeField';
 import InterstitialPreview from './InterstitialPreview';
@@ -33,6 +34,7 @@ export type InterstitialEditorProps = {
 export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, generationSettings, projects }: InterstitialEditorProps) {
   const promptId = useId(), resolutionId = useId();
   const dependency = controller.dependency(selected.id);
+  useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId)]);
   const kind = controller.clipKind(selected.id);
   const [enhancing, setEnhancing] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
@@ -106,7 +108,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     || (dependency?.stale ? 'References changed · regenerate to match' : '')
     || (sequenced ? 'Waiting in sequence' : selected.phase === 'cancelled' ? 'Cancelled' : !selected.prompt.trim() ? 'Add a prompt to generate' : changed ? 'Settings edited · ready to regenerate' : currentResult ? 'Video ready' : 'Ready to generate');
   const messages = [...new Set([message, referenceDescription, dependency?.stale && 'The saved video uses different references. Regenerate to match the current connections.',
-    dependency?.blocked, selected.error, validationError, enhancementError,
+    dependency?.blocked, ...(dependency?.issues ?? []).map(issue => issue.message), selected.error, validationError, enhancementError,
     busy && changed && 'This render uses the submitted settings. Your edits apply to the next generation.'].filter((value): value is string => !!value))];
   const progress = selected.phase === 'rendering' ? renderingProgress(selected) : selected.progress;
   const timeFields = <>

@@ -7,9 +7,11 @@ import AssetInput from '../project/AssetInput';
 import type { ProjectController } from '../project/ProjectController';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { IMAGE_REFERENCE } from '../../../shared/image-references';
+import ContentIssues, { type ContentIssue } from '../../shared/ContentIssues';
 
-export default function StoryReferences({ item, loop, labels, onChange, projects }: {
+export default function StoryReferences({ item, loop, labels, onChange, projects, issues = [] }: {
   item: Interstitial; loop: boolean; labels: { start: string; end: string }; onChange: (settings: Partial<InterstitialSettings>) => void; projects: ProjectController;
+  issues?: ContentIssue[];
 }) {
   return <div className="inspector-references">
     {(loop ? ['start'] as const : ['start', 'end'] as const).map(side => {
@@ -23,7 +25,7 @@ export default function StoryReferences({ item, loop, labels, onChange, projects
       const type = referenceType(item, side), index = item[imageField] ?? 0;
       const choose = (value: ReferenceType) => onChange({ [typeField]: value, [videoField]: value === 'video', [imageField]: value === 'image' ? index : undefined });
       return <div className="inspector-reference" role="group" aria-label={`${label} reference`} key={side}>
-        <div className="inspector-reference-heading"><span>{label}{loop ? ' · both ends' : ''}</span>{loop && <LoopReferenceHelp />}
+        <div className="inspector-reference-heading"><span>{label}{loop ? ' · both ends' : ''}</span><ContentIssues issues={issues.filter(issue => issue.side === side)} label={`${label} reference errors`} />{loop && <LoopReferenceHelp />}
           <div className="inspector-options" role="group" aria-label={`${label} reference type`}>
             {referenceTypes.map(value => <button key={value} type="button" aria-pressed={type === value} onClick={() => choose(value)}>{value === 'none' ? 'None' : value === 'video' ? 'Video' : 'Image'}</button>)}
           </div>

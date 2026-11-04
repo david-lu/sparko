@@ -1,5 +1,6 @@
-import { CircleHelp, X } from 'lucide-react';
+import { CircleAlert, CircleHelp, X } from 'lucide-react';
 import { useId } from 'react';
+import '../../shared/content-issues.css';
 
 /** One reserved line for idle, progress, errors and recovery. Full messages live in a dismissible popover. */
 export default function GenerationFeedback({ busy, message, messages, error, progress, onCancel }: {
@@ -9,7 +10,7 @@ export default function GenerationFeedback({ busy, message, messages, error, pro
   return <div className="task-status inspector-generation-status" data-active="true" data-error={error}>
     <span className="status-icon" aria-hidden>{busy ? <span className="spinner" /> : <span className="inspector-status-dot" />}</span>
     <span className="task-status-message" role="status" title={message}>{message}</span>
-    <button type="button" className="icon-button small" aria-label="Generation details" title="Generation details" popoverTarget={id}><CircleHelp size={13} /></button>
+    <button type="button" className="icon-button small" data-content-error={error} aria-label="Generation details" title={error ? 'Explain generation errors' : 'Generation details'} popoverTarget={id}>{error ? <CircleAlert size={14} /> : <CircleHelp size={13} />}</button>
     <button type="button" className="icon-button small inspector-cancel" aria-label="Cancel video generation" aria-hidden={!busy} disabled={!busy} onClick={onCancel}><X size={13} /></button>
     <progress aria-label="Generating video" aria-hidden={!busy} max="1" value={busy ? progress : 0} />
     <div id={id} popover="auto" className="inspector-status-popover">

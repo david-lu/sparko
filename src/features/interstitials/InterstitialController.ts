@@ -118,7 +118,7 @@ export class InterstitialController {
   }
   private flowFor(id: string) { return this.callResponses.find(flow => flow.scenes.some(scene => scene.interstitialId === id)); }
   dependency(id: string) {
-    if(this.story) return storyDependency(this.story.graph,this.state.items,this.story.assetId,this.story.duration,id);
+    if(this.story) return storyDependency(this.story.graph,this.state.items,this.story.assetId,this.story.duration,id,assets.error);
     const flow = this.flowFor(id), scene = flow?.scenes.find(scene => scene.interstitialId === id);
     return scene && flow ? clipDependency(flow, this.state.items, scene.id) : undefined;
   }

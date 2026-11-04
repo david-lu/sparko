@@ -20,6 +20,9 @@ import LoopReferenceHelp from './LoopReferenceHelp';
 import StoryReferences from './StoryReferences';
 import AssetInspector from '../project/AssetInspector';
 import ProjectInspector from './ProjectInspector';
+import ContentIssues from '../../shared/ContentIssues';
+import { assets } from '../project/assets';
+import { useAssetAvailability } from '../project/useAssetAvailability';
 
 function ClipName({ value, onSave }: { value: string; onSave: (name: string) => void }) {
   const [name, setName] = useState(value);
@@ -34,6 +37,7 @@ function ClipName({ value, onSave }: { value: string; onSave: (name: string) => 
 export default function StoryInspector({ editor, engine, info, status }: { editor: StoryEditor; engine: MediaEngine | null; info: MediaInfo | null; status: AppStatus | null }) {
   const shortcuts=useShortcuts();
   const { graph, items } = editor;
+  useAssetAvailability([]);
   if(editor.clipDrag)return <ProjectInspector key={editor.projects.getSnapshot().project?.id} editor={editor}/>;
   if (editor.librarySelection?.type === 'asset' || editor.librarySelection?.type === 'generation') return <AssetInspector editor={editor} status={status}/>;
   if (editor.librarySelection?.type === 'job') {
@@ -62,6 +66,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
     </div>
     <div className="inspector-clip-meta">
       <span>{duration.toFixed(2)} s · {item ? playableResult(item) ? 'Generated' : 'Draft' : 'Source'}{editor.selected.length > 1 ? ` · ${editor.selected.length} selected` : ''}</span>
+      {node.source && <ContentIssues label="Source video errors" issues={assets.error(node.source.assetId) ? [{ key: 'source', title: 'Source video unavailable', message: assets.error(node.source.assetId)! }] : []} />}
       {graph.entryId===node.id&&<span className="inspector-entry" title="The experience starts with this video"><Flag size={11}/>Start video</span>}
     </div>
     <BehaviorSection key={`loop:${node.id}`} name="Loop" enabled={behavior.loop} onToggle={enabled=>editor.toggleBehavior(node.id,'loop',enabled)} help={!item && <LoopReferenceHelp />}>
@@ -78,7 +83,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <p className="hint">Drag each labeled output on the clip to its destination.</p>
     </BehaviorSection>
     {item && <InterstitialEditor key={item.id} projects={editor.projects} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
-      generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} labels={{ start: referenceLabel(refs.input), end: referenceLabel(refs.output) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
+      generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} issues={editor.jobs.dependency(item.id)?.issues} labels={{ start: referenceLabel(refs.input), end: referenceLabel(refs.output) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
       resultDetails={<GeneratedVideoInfo item={item} node={node} nodes={graph.nodes} items={items} />} />}
     {node.source && <div className="inspector-source-range">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'Source in' : 'Source out'}</span><input type="number" step={1 / TIMELINE_FPS} min={field === 'inFrame' ? 0 : (node.source!.inFrame + 1) / TIMELINE_FPS} max={field === 'inFrame' ? (node.source!.outFrame - 1) / TIMELINE_FPS : node.source!.duration ?? info?.duration}
       value={Number((node.source![field] / TIMELINE_FPS).toFixed(3))} onChange={e => {

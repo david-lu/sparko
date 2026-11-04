@@ -10,6 +10,35 @@ const inspect=(page:Page)=>page.locator('.story-scroll').evaluate(el=>{
     overlaps:boxes.flatMap((a,i)=>boxes.slice(i+1).filter(b=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top)).length};
 });
 
+for(const width of [1440,390])test(`auto layout clears compressed conditional rows and their output labels at ${width}px without Fit`,async({page})=>{
+  await page.setViewportSize({width,height:1000});await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();
+  await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
+  const bytes=await page.evaluate(async()=>{
+    const {readActiveProject,readAsset}=await import('/src/features/project/database.ts' as string),{packProject}=await import('/src/features/project/archive.ts' as string);
+    const project=await readActiveProject(),original=project.storyFlow.nodes[0];
+    const nodes=['entry','upper','lower'].map((id,i)=>({...original,id,name:id,conditional:true,loop:false,x:i?500:0,y:i*2000,
+      conditions:Array.from({length:i?8:2},(_,n)=>({id:`${id}-${n}`,label:`Choice ${n+1}`,values:[]}))}));
+    project.storyFlow={version:1,entryId:'entry',templates:[],nodes,edges:['upper','lower'].map((to,i)=>({id:`edge-${i}`,from:'entry',to,event:'answer',conditionId:`entry-${i}`,label:`Choice ${i+1}`,values:[]}))};
+    const archive=await packProject(project,[await readAsset(project.source.assetId)],new AbortController().signal,()=>{});return [...new Uint8Array(await archive.arrayBuffer())];
+  });
+  await page.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'Tall conditions.sparko',mimeType:'application/zip',buffer:Buffer.from(bytes)});
+  await expect(page.locator('.story-clip')).toHaveCount(3);await expect(page.locator('.conditional-output')).toHaveCount(18);
+  const original=(await saved(page)).storyFlow;
+  const clearance=()=>page.locator('.story-scroll').evaluate(el=>{
+    const clips=[...el.querySelectorAll('.story-clip')].filter(el=>el.querySelector('.story-clip-title')?.textContent?.match(/upper|lower/));
+    const bounds=clips.map(clip=>[clip,...clip.querySelectorAll('.conditional-output')].map(el=>el.getBoundingClientRect())).map(rects=>({top:Math.min(...rects.map(r=>r.top)),bottom:Math.max(...rects.map(r=>r.bottom))})).sort((a,b)=>a.top-b.top);
+    return bounds[1].top-bounds[0].bottom;
+  });
+  await expect.poll(clearance).toBeGreaterThanOrEqual(20);
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();
+  await expect.poll(clearance).toBeGreaterThanOrEqual(20);expect((await inspect(page)).overlaps).toBe(0);
+  const arranged=(await saved(page)).storyFlow;
+  expect(arranged.nodes.map(({x,y,...n}:any)=>n)).toEqual(original.nodes.map(({x,y,...n}:any)=>n));expect(arranged.edges).toEqual(original.edges);
+  await fitAll(page);await expect.poll(clearance).toBeGreaterThanOrEqual(20);
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(arranged);
+  await page.screenshot({path:`test-results/conditional-clearance-${width}.png`,fullPage:true});
+});
+
 for(const width of [1440,390])test(`conditional outputs stack vertically after cleanup on a short ${width}px timeline`,async({page})=>{
   await page.setViewportSize({width,height:1000});await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();
   await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
@@ -21,7 +50,7 @@ for(const width of [1440,390])test(`conditional outputs stack vertically after c
     const graph=(await saved(page)).storyFlow,yes=graph.nodes.find((n:any)=>n.name==='Celebrate'),no=graph.nodes.find((n:any)=>n.name==='Encourage');
     expect(yes.x).toBe(no.x);expect(yes.y).toBeLessThan(no.y);expect(graph.edges).toEqual(before.edges);
     const a=(await page.locator(`[data-node-id="${yes.id}"]`).boundingBox())!,b=(await page.locator(`[data-node-id="${no.id}"]`).boundingBox())!;
-    expect(a.x).toBeCloseTo(b.x,1);expect(b.y-a.y).toBeGreaterThanOrEqual(99);expect(a.height).toBe(76);expect(b.height).toBe(76);
+    expect(a.x).toBeCloseTo(b.x,1);expect(b.y-a.y).toBeGreaterThanOrEqual(99);expect(b.y-a.y).toBeLessThanOrEqual(101);expect(a.height).toBe(76);expect(b.height).toBe(76);
     await expect(page.locator('.conditional-output')).toHaveCount(2);expect((await inspect(page)).overlaps).toBe(0);
   };
   await check();await fitAll(page);await check();
@@ -44,8 +73,10 @@ for(const width of [1440,390])for(const mixed of [false,true])test(`cleanup sepa
   await page.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'Overlapping clips.sparko',mimeType:'application/zip',buffer:Buffer.from(bytes)});
   await expect(page.locator('.story-clip')).toHaveCount(12);const original=(await saved(page)).storyFlow;
   expect((await inspect(page)).overlaps).toBeGreaterThan(0);
-  const camera=()=>page.locator('.story-scroll').evaluate(el=>(el as HTMLElement).style.cssText);const originalCamera=await camera();
-  await page.getByRole('button',{name:'Auto layout',exact:true}).click();expect(await camera()).toBe(originalCamera);await fitAll(page);
+  // Cleanup preserves pan and horizontal zoom, but must expand compressed rows.
+  const camera=()=>page.locator('.story-scroll').evaluate(el=>({position:(el as HTMLElement).style.backgroundPosition,columnSize:(el as HTMLElement).style.backgroundSize.split(' ')[0]}));const originalCamera=await camera();
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();expect(await camera()).toEqual(originalCamera);
+  await fitAll(page);
   await expect.poll(async()=>(await inspect(page)).overlaps).toBe(0);expect(await inspect(page)).toMatchObject({withinWidth:true,centered:true});
   expect((await inspect(page)).heights).toEqual(Array(12).fill(76));
   const cleaned=(await saved(page)).storyFlow;
@@ -55,7 +86,7 @@ for(const width of [1440,390])for(const mixed of [false,true])test(`cleanup sepa
   await page.screenshot({path:`test-results/auto-layout-${mixed?'mixed':'loose'}-${width}.png`,fullPage:true});
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect.poll(async()=>(await saved(page)).storyFlow.nodes).toEqual(original.nodes);
   // Context-menu cleanup uses the same layout and clears stale wire bend bounds.
-  await page.locator('.story-scroll').click({button:'right',position:{x:15,y:15}});const beforeCleanup=await camera();await page.getByRole('menuitem',{name:/Clean up layout/}).click();expect(await camera()).toBe(beforeCleanup);
+  await page.locator('.story-scroll').click({button:'right',position:{x:15,y:15}});const beforeCleanup=await camera();await page.getByRole('menuitem',{name:/Clean up layout/}).click();expect(await camera()).toEqual(beforeCleanup);
   await fitAll(page);await expect.poll(async()=>(await inspect(page)).overlaps).toBe(0);expect(await inspect(page)).toMatchObject({withinWidth:true,centered:true});
   expect((await saved(page)).storyFlow.nodes).toEqual(cleaned.nodes);expect(errors).toEqual([]);
 });

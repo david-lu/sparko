@@ -2,20 +2,26 @@ import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, X } from 'lucide-react';
 import { IMAGE_REFERENCE, type ImageReference } from '../../../shared/image-references';
 import { assets } from '../project/assets';
+import { useAssetAvailability } from '../project/useAssetAvailability';
+import ContentIssues from '../../shared/ContentIssues';
 import { prepareImageReference } from './image-references';
 import { readLibraryDrag, startLibraryDrag, STORY_DRAG_TYPE } from '../story-flow/libraryDrag';
 import type { ProjectController } from '../project/ProjectController';
 
 function Thumbnail({ reference, index, onRemove, disabled }: { reference: ImageReference; index: number; onRemove: () => void; disabled: boolean }) {
-  const [url, setUrl] = useState<string>();
+  const [url, setUrl] = useState<string>(), [decodeError, setDecodeError] = useState('');
+  useAssetAvailability([reference.assetId]);
+  const error = assets.error(reference.assetId) || decodeError;
   useEffect(() => {
     let active = true;
+    setUrl(undefined); setDecodeError('');
     void assets.open(reference.assetId).then(value => { if (active) setUrl(value.url); }).catch(() => undefined);
     return () => { active = false; };
   }, [reference.assetId]);
   return <li draggable={!disabled} onDragStart={e => { e.stopPropagation(); startLibraryDrag(e, { assetId: reference.assetId }); }}>
-    <div className="image-reference-thumb">{url && <img src={url} alt={reference.name} draggable={false} />}</div>
+    <div className="image-reference-thumb">{url && !error && <img src={url} alt={reference.name} draggable={false} onError={() => setDecodeError('This reference image could not be decoded. Replace it with a working PNG, JPEG or WebP image.')} />}</div>
     <span title={reference.name}><strong>{`<Picture ${index + 1}>`}</strong><small>{reference.name}</small></span>
+    <ContentIssues label={`Picture ${index + 1} errors`} issues={error ? [{ key: reference.assetId, title: reference.name, message: error }] : []}/>
     <button type="button" className="icon-button" aria-label={`Remove Picture ${index + 1}`} disabled={disabled} onClick={onRemove}><X size={14} /></button>
   </li>;
 }

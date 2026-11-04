@@ -7,6 +7,9 @@ import { formatTime } from '../../../shared/contracts';
 import type { CallResponseFlow, PlaybackSession } from '../call-response/model';
 import { sceneFrames } from '../call-response/model';
 import { assets } from '../project/assets';
+import { useAssetAvailability } from '../project/useAssetAvailability';
+import ContentIssues, { type ContentIssue } from '../../shared/ContentIssues';
+import { storyGenerationItem } from './referenceInputs';
 import VideoFilmstrip from '../timeline/VideoFilmstrip';
 import ClipLoading, { ClipJobStatus } from '../../shared/ClipLoading';
 import ResizeHandle from '../../shared/ResizeHandle';
@@ -15,11 +18,11 @@ import { useWorkspaceLocked } from '../../shared/panels/WorkspaceLock';
 import { useShortcuts } from '../../shared/shortcuts';
 import { useExclusiveMenu } from '../../shared/DropdownMenu';
 import { phaseLabel } from '../interstitials/status';
-import { autoLayout, CLIP_HEIGHT, connect, createNode, freshId, nodeDuration, nodeMediaLayout, PIXELS_PER_SECOND, reachableNodes, groupColors, type GroupBounds, type StoryNode, type StoryEdge } from './model';
+import { autoLayout, CLIP_HEIGHT, connect, createNode, freshId, nodeDuration, nodeMediaLayout, nodeVisualBounds, PIXELS_PER_SECOND, reachableNodes, groupColors, type GroupBounds, type StoryNode, type StoryEdge } from './model';
 import type { StoryEditor } from './useStoryEditor';
 import { builtInTemplates, instantiateTemplate, makePreset } from './templates';
 import { STORY_DRAG_TYPE, readLibraryDrag, type LibraryItem } from './libraryDrag';
-import { edgeVelocity, fitCamera, gridSpacing, toScreen, toWorld, zoomAt, type Camera, type Point } from './viewport';
+import { edgeVelocity, fitCamera, gridSpacing, minimumRowScale, toScreen, toWorld, zoomAt, type Camera, type Point } from './viewport';
 import { linkGeometry } from './links';
 import { connectionReference } from './references';
 import { sceneMediaRange, playheadTime } from './mediaRange';
@@ -36,6 +39,14 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const shortcuts=useShortcuts();
   const videoInput=useRef<HTMLInputElement>(null),[fileDrag,setFileDrag]=useState(false);
   const graph=editor.graph!,scroll=useRef<HTMLDivElement>(null),root=useRef<HTMLDivElement>(null);
+  useAssetAvailability([
+    ...flow.scenes.filter(scene=>!scene.draft).map(scene=>sceneMediaRange(scene,flow.fps).assetId),
+    ...graph.nodes.flatMap(node=>{
+      const saved=editor.items.find(item=>item.id===node.interstitialId); if(!saved)return [];
+      const item=storyGenerationItem(saved,node);
+      return [...(item.imageReferences??[]).map(ref=>ref.assetId),item.useInputReference&&item.useStartVideoAsset?item.startVideoAsset?.assetId:undefined,item.useOutputReference&&item.useEndVideoAsset&&item.method!=='comfy-loop'?item.endVideoAsset?.assetId:undefined];
+    }),
+  ]);
   const [camera,setCamera]=useState<Camera>({x:0,y:0,zoom:1,rowScale:1}),cameraRef=useRef(camera),[size,setSize]=useState({width:800,height:280}),[drag,setDrag]=useState<Record<string,Point>|null>(null);
   const [templateName,setTemplateName]=useState<string|null>(null),[follow,setFollow]=useState(false);
   const [joinError,setJoinError]=useState<string[]|null>(null);
@@ -82,6 +93,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const layouts=Object.fromEntries(previewNodes.map(n=>[n.id,nodeMediaLayout(n,editor.items)]));
   const clipLeft=(n:StoryNode)=>n.x-layouts[n.id].before*PIXELS_PER_SECOND;
   const clipRight=(n:StoryNode)=>n.x+(layouts[n.id].body+layouts[n.id].after)*PIXELS_PER_SECOND;
+  const rowBounds=(n:StoryNode)=>({left:clipLeft(n),right:clipRight(n),top:n.y,...nodeVisualBounds(graph,n)});
   const frameAt=(node:StoryNode,x:number,bounds:{left:number;width:number})=>Math.round(((x-bounds.left)/bounds.width*layouts[node.id].total-layouts[node.id].before)*flow.fps);
   const nodes=previewNodes.map(n=>drag?.[n.id]?{...n,...drag[n.id]}:n);
   const {zoom}=camera,gridX=gridSpacing(zoom),gridY=gridSpacing(camera.rowScale);
@@ -98,7 +110,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     gestureCancel.current?.();setCutTool(tool==='cut'&&!cutTool);setGroupTool(tool==='group'&&!groupTool);setPanTool(tool==='pan'&&!panTool);
     setCutPreview(null);setDrawnGroup(null);editor.setConnecting(null);
   };
-  const fit=(targets:StoryNode[]=nodes,maxZoom=2,edges=graph.edges,readableRows=true)=>{
+  const fit=(targets:StoryNode[]=nodes,maxZoom=2,edges=graph.edges)=>{
     if(!scroll.current?.clientWidth||!scroll.current.clientHeight)return;
     const ids=new Set(targets.map(n=>n.id)),points=edges.filter(e=>ids.has(e.from)&&ids.has(e.to)).flatMap(e=>e.points??[]);
     const frames=(graph.groups??[]).filter(g=>g.bounds&&(editor.selectedGroup?g.id===editor.selectedGroup.id:targets.length===nodes.length||g.nodeIds.length&&g.nodeIds.every(id=>ids.has(id)))).map(g=>g.bounds!);
@@ -106,17 +118,23 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     const bounds={left:Math.min(...targets.map(clipLeft),...points.map(p=>p.x),...frames.map(b=>b.x)),right:Math.max(...targets.map(clipRight),...points.map(p=>p.x),...frames.map(b=>b.x+b.width)),
       top:Math.min(...targets.map(n=>n.y),...points.map(p=>p.y),...frames.map(b=>b.y)),bottom:Math.max(...targets.map(n=>n.y),...points.map(p=>p.y),...frames.map(b=>b.y+b.height))};
     const outputSpace=targets.some(n=>behaviors(n).conditional)?110:0;
-    updateCamera(fitCamera(bounds,scroll.current.clientWidth-outputSpace,scroll.current.clientHeight,maxZoom,graph.groups?.some(g=>g.nodeIds.every(id=>ids.has(id))),readableRows?targets.map(n=>({left:clipLeft(n),right:clipRight(n),top:n.y})):[]));
+    updateCamera(fitCamera(bounds,scroll.current.clientWidth-outputSpace,scroll.current.clientHeight,maxZoom,graph.groups?.some(g=>g.nodeIds.every(id=>ids.has(id))),targets.map(rowBounds)));
   };
   const fitSelected=()=>{const selected=nodes.filter(n=>editor.selected.includes(n.id));fit(selected.length||editor.selectedGroup?selected:nodes,selected.length?8:2);};
-  const cleanup=()=>{editor.change(autoLayout(graph,editor.items,scroll.current?.clientHeight));editor.setNotice('Layout cleaned up.');};
+  const cleanup=()=>{
+    const arranged=autoLayout(graph,editor.items,scroll.current?.clientHeight);editor.change(arranged);
+    // Opening/Fit may have compressed the previous arrangement. Recheck the new
+    // rows immediately, without changing horizontal zoom or the pan origin.
+    updateCamera(current=>({...current,rowScale:Math.max(current.rowScale,minimumRowScale(arranged.nodes.map(rowBounds),current.zoom))}));
+    editor.setNotice('Layout cleaned up.');
+  };
   const focus=(id=editor.selectedId)=>{if(!id&&editor.selectedGroup){fit(nodes.filter(n=>editor.selectedGroup!.nodeIds.includes(n.id)));return;}const n=nodes.find(n=>n.id===id),view=scroll.current;if(!n||!view?.clientHeight)return;
     updateCamera(current=>({...current,x:view.clientWidth/2-((clipLeft(n)+clipRight(n))/2)*current.zoom,y:(view.clientHeight-CLIP_HEIGHT)/2-n.y*current.rowScale}));};
   const reveal=(id:string)=>{const n=nodes.find(n=>n.id===id),view=scroll.current;if(!n||!view)return;const p=toScreen({x:clipLeft(n),y:n.y},cameraRef.current);
     if(p.x+layouts[n.id].total*PIXELS_PER_SECOND*cameraRef.current.zoom<24||p.x>view.clientWidth-24||p.y+CLIP_HEIGHT<24||p.y>view.clientHeight-24)focus(id);};
-  // Opening a saved project starts with every group in view. Interactive fitting
-  // preserves readable rows; a large branch can then be panned.
-  const openingFit=()=>fit(nodes,2,graph.edges,false),latestFit=useRef(openingFit),hasOpeningFit=useRef(false);latestFit.current=openingFit;
+  // Opening and fitting use the same readable spacing. Tall branches remain
+  // pannable rather than overlapping again when a saved project is reopened.
+  const openingFit=()=>fit(nodes),latestFit=useRef(openingFit),hasOpeningFit=useRef(false);latestFit.current=openingFit;
   useLayoutEffect(()=>{
     const view=scroll.current;if(!view)return;let opening=!hasOpeningFit.current,frame=0;
     const resize=()=>{if(!view.clientWidth||!view.clientHeight)return;setSize({width:view.clientWidth,height:view.clientHeight});
@@ -131,7 +149,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     if(collapsed)return;
     const down=(event:KeyboardEvent)=>{
       const target=event.target as HTMLElement;
-      if(target.closest('.story-edges [role="button"]'))return;
+      if(target.closest('.story-edges [role="button"],.content-issues,.content-issues-popover'))return;
       const action=shortcuts.action(event);
       if(event.code!=='Space'||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||action&&action!=='play'||target.closest('input,textarea,select,video[controls],[role="menu"],[data-popup-menu][open],dialog,[role="dialog"]')||target.isContentEditable||!scroll.current?.contains(target)&&!hovering.current||target.closest('button,summary,[role="button"]')&&!hovering.current)return;
       event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){space.current={held:true,used:false};setSpaceHeld(true);}
@@ -346,6 +364,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     dragClips(event,ids);
   };
   const beginAreaGesture=(event:React.PointerEvent<HTMLDivElement>)=>{
+    if((event.target as Element).closest('.content-issues,.content-issues-popover'))return;
     const pan=event.button===1||event.button===0&&(panTool||space.current.held);
     const blank=!(event.target as Element).closest('[data-node-id],[data-edge-id],[data-group-id],button,input,textarea,select');
     if(!pan&&!(event.button===0&&(blank||groupTool)))return;
@@ -502,14 +521,19 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
           const scene=trimPreview?.node.id===node.id?trimPreviewScene(originalScene,node,editor.items):originalScene;
           const item=editor.items.find(i=>i.id===node.interstitialId),active=session?.sceneId===node.id,selected=editor.selected.includes(node.id);
           const {assetId,start}=sceneMediaRange(scene,flow.fps),url=assets.url(assetId),range=clipTrimRange(node,editor.items,trimSourceDuration(node));
+          const mediaError=!scene.draft&&assets.error(assetId);
+          const issues:ContentIssue[]=[...(item?editor.jobs.dependency(item.id)?.issues??[]:[])];
+          if(mediaError)issues.push({key:'output',title:item?'Video output unavailable':'Source video unavailable',message:mediaError});
+          if(item?.phase==='error')issues.push({key:'generation',title:'Generation failed',message:item.error||'No video output was saved. Retry generation in the Inspector.'});
           const offset=trimPreview?.node.id===node.id?range.inFrame-clipTrimRange(originalScene.storyNode!,editor.items).inFrame:0;
           const displayFrame=!active?0:trimPreview?.node.id===node.id?Math.max(0,Math.min(sceneFrames(scene)-1,session.frame-offset)):session.frame;
           const layout=layouts[node.id],clipWidth=layout.total*PIXELS_PER_SECOND*zoom,progress=active?(layout.before+displayFrame/flow.fps)/layout.total:0;
           return <div key={node.id} className={`story-clip type-${node.kind} ${selected?'selected':''} ${active?'playing':''} ${scene.draft?'draft':''} ${trimPreview?.node.id===node.id?'trimming':''} ${reached.has(node.id)?'':'disconnected'} ${dropTarget===node.id?'drop-target':''}`} data-node-id={node.id} data-start={graph.entryId===node.id} data-kind={node.kind} data-duration={durations[node.id]} data-media-duration={layout.total} style={{left:clipLeft(node)*zoom+camera.x,top:node.y*camera.rowScale+camera.y,width:clipWidth,height:CLIP_HEIGHT}}>
             {graph.entryId===node.id&&<span className="story-start-marker" role="img" aria-label="Start video" title="This video starts the experience"><Flag size={12} aria-hidden/></span>}
             <button className="story-clip-title" title={`${scene.label} · ${durations[node.id].toFixed(2)} seconds · Drag title to move`} onPointerDown={e=>dragTitle(e,node)} onClick={e=>{if(e.detail===0)editor.select(node.id);}}><span>{behaviors(node).loop&&<Repeat2 size={11}/>} {behaviors(node).conditional&&<GitBranch size={11}/>}{scene.label}</span><small>{durations[node.id].toFixed(1)}s</small></button>
+            <ContentIssues className="story-clip-issues" issues={issues} label={`${scene.label} errors`} />
             <div className="story-filmstrip" role="slider" tabIndex={0} aria-label={`Scrub ${scene.label}`} aria-valuemin={0} aria-valuemax={sceneFrames(scene)/flow.fps} aria-valuenow={active?session.frame/flow.fps:0} onPointerDown={e=>scrub(e,node)} onKeyDown={e=>scrubKey(e,node)}>
-              {scene.draft?<div className="story-unavailable-thumbnail" role="img" aria-label="Video unavailable: not generated yet" title="Not generated yet. Generate this clip in the Inspector."><ImageOff size={18} strokeWidth={1.5} aria-hidden/>{clipWidth>=90&&<span aria-hidden>Not generated</span>}</div>:url?<VideoFilmstrip assetId={assetId} url={url} start={start-layout.before} end={start+layout.body+layout.after}/>:<ClipLoading message="Loading clip"/>}
+              {scene.draft||mediaError?<div className="story-unavailable-thumbnail" role="img" aria-label={mediaError?'Video unavailable: missing media':'Video unavailable: not generated yet'} title={mediaError||'Not generated yet. Generate this clip in the Inspector.'}><ImageOff size={18} strokeWidth={1.5} aria-hidden/>{clipWidth>=90&&<span aria-hidden>{mediaError?'Media unavailable':'Not generated'}</span>}</div>:url?<VideoFilmstrip assetId={assetId} url={url} start={start-layout.before} end={start+layout.body+layout.after}/>:<ClipLoading message="Loading clip"/>}
               {scene.generated&&<>
                 {layout.before>0&&<span className="story-reference-section opening" role="img" aria-label={`Opening reference: ${layout.before.toFixed(3)} seconds`} style={{left:0,width:`${layout.before/layout.total*100}%`}} title="Opening reference · Used to match the previous clip">{layout.before*PIXELS_PER_SECOND*zoom>24&&<b>REF</b>}</span>}
                 <span className="story-generated-section" role="img" aria-label={`Generated section: ${layout.body.toFixed(3)} seconds`} style={{left:`${layout.before/layout.total*100}%`,width:`${layout.body/layout.total*100}%`}} title="Generated section · Played in the story">{layout.body*PIXELS_PER_SECOND*zoom>70&&<b>GENERATED</b>}</span>

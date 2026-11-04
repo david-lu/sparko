@@ -1,5 +1,6 @@
 import { isGenerating, playableResult, type ClipReference, type GenerationReference, type Interstitial } from '../../../shared/interstitials';
 import { branchScenes, clipTypeLabel, getScene, resolveFlow, type CallResponseFlow, type SceneId, type TimelineScene } from './model';
+import type { ContentIssue } from '../../shared/ContentIssues';
 
 // Generation follows the scene's original sequence, independent of playback retry loops.
 export const predecessor = (flow: CallResponseFlow, id: SceneId): SceneId | undefined => id === 'intro' ? undefined
@@ -16,7 +17,7 @@ const generationReference = (scene: TimelineScene, fps: number): ClipReference =
 };
 const sameClip = (a?: ClipReference, b?: ClipReference) => a?.sceneId === b?.sceneId && a?.assetId === b?.assetId && a?.inFrame === b?.inFrame && a?.outFrame === b?.outFrame;
 export const sameReference = (a: GenerationReference, b: GenerationReference) => a.mode === b.mode && sameClip(a.before, b.before) && sameClip(a.after, b.after);
-export type ClipDependency = { reference?: GenerationReference; label: string; blocked?: string; stale: boolean };
+export type ClipDependency = { reference?: GenerationReference; label: string; blocked?: string; issues?: ContentIssue[]; stale: boolean };
 
 /** Follow the media actually used by the render, including both sides of a bridge. */
 function staleResult(flow: CallResponseFlow, items: Interstitial[], scene: TimelineScene, visited = new Set<string>()): boolean {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import ClipLoading from '../../shared/ClipLoading';
+import ContentIssues from '../../shared/ContentIssues';
 
 export default function InterstitialPreview({ url, label, downloadName, heading = 'Generated video', active, muted = false, onPlay }: {
   url: string; label: string; downloadName: string; heading?: string; active: boolean; muted?: boolean; onPlay: () => void;
@@ -22,6 +23,7 @@ export default function InterstitialPreview({ url, label, downloadName, heading 
 
   return <div className="interstitial-preview">
     <div className="interstitial-preview-heading"><span>{heading}</span>
+      <ContentIssues label="Video preview errors" issues={phase === 'error' ? [{ key: 'preview', title: 'Video preview unavailable', message: 'The saved video could not be loaded or decoded. Restore the media from a project backup, select another version, or regenerate the clip in the Inspector.' }] : []}/>
       <a className="text-button" href={url} download={downloadName} aria-label={heading === 'Loop video' ? 'Download loop video' : 'Download full video'} title={heading === 'Loop video' ? 'Download loop video' : 'Download full video'}><Download size={13} /> Download</a>
     </div>
     <div className="clip-preview-stage" aria-busy={phase === 'loading'}>

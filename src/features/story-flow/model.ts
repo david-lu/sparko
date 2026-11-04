@@ -3,7 +3,7 @@ import { playableResult, type Interstitial, type InterstitialSettings } from '..
 import { composeFlows } from '../call-response/compose';
 import { interactionFor, sceneFrames, type CallResponseFlow, type TimelineScene } from '../call-response/model';
 import { projectFlows, type Project } from '../project/types';
-import { behaviors, conditionsFor, defaultCondition, normalizeConditions } from './behaviors';
+import { behaviors, conditionsFor, defaultCondition, normalizeConditions, outputOffset } from './behaviors';
 import { storyGenerationItem } from './referenceInputs';
 
 export type NodeKind = 'source' | 'simple' | 'looped' | 'conditional';
@@ -33,6 +33,13 @@ export type StoryTemplate = { id: string; name: string; entryId: string; nodes: 
 export type StoryGraph = { version: 1; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; templates: StoryTemplate[]; groups?: StoryGroup[] };
 export const PIXELS_PER_SECOND = 32;
 export const CLIP_HEIGHT = 76;
+/** Conditional sockets and labels remain fixed-size and can extend beyond the clip. */
+export function nodeVisualBounds(graph: Pick<StoryGraph, 'edges'>, node: StoryNode) {
+  const count = behaviors(node).conditional ? conditionsFor(graph, node).length : 0;
+  return { topOffset: count ? Math.min(0, outputOffset(count, 0) - 10) : 0,
+    bottomOffset: count ? Math.max(CLIP_HEIGHT, outputOffset(count, count - 1) + 10) : CLIP_HEIGHT,
+    rightOverflow: count ? 110 : 0 };
+}
 export const freshId = (): string => crypto.randomUUID();
 export const edge = (from: string, to: string, event: StoryEdge['event'] = 'next', label = 'Next'): StoryEdge => ({ id: freshId(), from, to, event, label, values: [] });
 /** New interstitial attachments follow their references until explicitly edited. */
@@ -132,11 +139,12 @@ function nearestFreePosition(rect:LayoutRect,occupied:LayoutRect[]) {
 }
 export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHeight=360): StoryGraph {
   if(!graph.nodes.length)return graph;
-  const grouped=graph.groups?.some(g=>g.nodeIds.length),rowStep=grouped?170:145,gap=grouped?160:104;
+  const grouped=graph.groups?.some(g=>g.nodeIds.length),padding=24,gap=grouped?160:104;
   // Connected paths can share a column; branches retain their vertical rows.
   // Loose clips do not participate in packing.
-  const rowLimit=Math.max(1,1+Math.floor((viewportHeight-CLIP_HEIGHT-(grouped?100:64))/rowStep));
+  const columnHeight=Math.max(CLIP_HEIGHT,viewportHeight-(grouped?100:64));
   const byId=new Map(graph.nodes.map(n=>[n.id,n])),media=new Map(graph.nodes.map(n=>[n.id,nodeMediaLayout(n,items)]));
+  const visuals=new Map(graph.nodes.map(n=>[n.id,nodeVisualBounds(graph,n)]));
   const neighbors=new Map(graph.nodes.map(n=>[n.id,new Set<string>()])),outgoing=new Map(graph.nodes.map(n=>[n.id,[] as string[]]));
   const incoming=new Set<string>(),linked=new Set<string>();
   const join=(a:string,b:string)=>{if(a!==b&&byId.has(a)&&byId.has(b)){neighbors.get(a)!.add(b);neighbors.get(b)!.add(a);}};
@@ -169,7 +177,7 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
   // Use each block's visible position, not creation order or playback entry.
   // Equal positions retain the original traversal order for new/legacy graphs.
   components.sort((a,b)=>a.left-b.left||a.top-b.top);
-  const positioned=new Map<string,StoryNode>();let columnX=40,columnWidth=0,usedRows=0;
+  const positioned=new Map<string,StoryNode>();let columnX=40,columnWidth=0,usedHeight=0;
   for(const component of components){
     const ids=component.ids,levels=new Map<string,number>();
     const queue:[string,number][]=ids.filter(id=>!incoming.has(id)||id===graph.entryId).map(id=>[id,0]);
@@ -182,19 +190,31 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
     for(const id of ids)if(!levels.has(id)){queue.push([id,0]);visit();}
     const columns=Array.from({length:Math.max(...levels.values())+1},(_,depth)=>ids.filter(id=>levels.get(id)===depth)
       .sort((a,b)=>byId.get(a)!.y-byId.get(b)!.y||left(a)-left(b)));
-    const rows=Math.max(...columns.map(c=>c.length));
     const local=new Map<string,{x:number;y:number}>();let width=0;
-    for(const column of columns){
-      for(const [index,id] of column.entries())local.set(id,{x:width+media.get(id)!.before*PIXELS_PER_SECOND,y:((rows-column.length)/2+index)*rowStep});
-      width+=Math.max(...column.map(id=>media.get(id)!.total*PIXELS_PER_SECOND))+gap;
+    for(const [columnIndex,column] of columns.entries()){
+      // Pack each neighboring pair by its own visible bounds. A tall condition
+      // list in another column must not spread every destination farther apart.
+      let y=0;
+      for(const [index,id] of column.entries()){
+        if(index)y+=visuals.get(column[index-1])!.bottomOffset-visuals.get(id)!.topOffset+padding;
+        local.set(id,{x:width+media.get(id)!.before*PIXELS_PER_SECOND,y});
+      }
+      for(const id of column)local.get(id)!.y-=y/2;
+      const bodyWidth=Math.max(...column.map(id=>media.get(id)!.total*PIXELS_PER_SECOND));
+      const visibleWidth=Math.max(...column.map(id=>media.get(id)!.total*PIXELS_PER_SECOND+visuals.get(id)!.rightOverflow));
+      // Existing wire spacing already accommodates most labels; only reserve
+      // additional width when a label would actually run into the next column.
+      width+=columnIndex===columns.length-1?visibleWidth:Math.max(bodyWidth+gap,visibleWidth+padding);
     }
-    width-=gap;
-    if(usedRows&&usedRows+rows>rowLimit){columnX+=columnWidth+gap;columnWidth=0;usedRows=0;}
-    for(const id of ids){const p=local.get(id)!;positioned.set(id,{...byId.get(id)!,x:columnX+p.x,y:90+usedRows*rowStep+p.y});}
-    columnWidth=Math.max(columnWidth,width);usedRows+=rows;
+    const top=Math.min(...ids.map(id=>local.get(id)!.y+visuals.get(id)!.topOffset));
+    const height=Math.max(...ids.map(id=>local.get(id)!.y+visuals.get(id)!.bottomOffset))-top;
+    if(usedHeight&&usedHeight+height>columnHeight){columnX+=columnWidth+gap;columnWidth=0;usedHeight=0;}
+    for(const id of ids){const p=local.get(id)!;positioned.set(id,{...byId.get(id)!,x:columnX+p.x,y:90+usedHeight+p.y-top});}
+    columnWidth=Math.max(columnWidth,width);usedHeight+=height+(grouped?104:padding);
   }
   const rectangle=(n:StoryNode):LayoutRect=>({left:n.x-media.get(n.id)!.before*PIXELS_PER_SECOND,
-    right:n.x+(media.get(n.id)!.body+media.get(n.id)!.after)*PIXELS_PER_SECOND,top:n.y,bottom:n.y+CLIP_HEIGHT});
+    right:n.x+(media.get(n.id)!.body+media.get(n.id)!.after)*PIXELS_PER_SECOND+visuals.get(n.id)!.rightOverflow,
+    top:n.y+visuals.get(n.id)!.topOffset,bottom:n.y+visuals.get(n.id)!.bottomOffset});
   const anchors=order.map(id=>({before:byId.get(id)!,after:positioned.get(id)!,rect:rectangle(byId.get(id)!)}));
   const occupied=[...positioned.values()].map(rectangle),displaced:StoryNode[]=[];
   // Follow the nearest clip in the original layout, using visible media bounds
@@ -219,7 +239,7 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
   }
   for(const node of displaced){
     const rect=rectangle(node),point=nearestFreePosition(rect,occupied);
-    const next={...node,x:node.x+point.x-rect.left,y:point.y};
+    const next={...node,x:node.x+point.x-rect.left,y:node.y+point.y-rect.top};
     positioned.set(node.id,next);occupied.push(rectangle(next));
   }
   const moved=new Set(graph.nodes.filter(n=>{const p=positioned.get(n.id)!;return n.x!==p.x||n.y!==p.y;}).map(n=>n.id));

@@ -66,8 +66,25 @@ test('templates stay grouped, move their clips and bends together, and support r
   const context = await browser.newContext({ baseURL: new URL(page.url()).origin, viewport: { width: 1440, height: 1000 } }), restored = await context.newPage();
   restored.on('pageerror', error => errors.push(error.message)); await restored.goto('/'); await expect(restored.getByRole('button', { name: /^New project/ })).toBeEnabled(); await restored.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'Groups.sparko', mimeType: 'application/zip', buffer: await readFile((await download.path())!) });
   await expect(restored.locator('.story-group')).toHaveCount(3, { timeout: 60000 }); expect((await saved(restored)).storyFlow.groups).toEqual(beforeArchive.groups);
-  const frames = await restored.locator('.story-group').evaluateAll(nodes => { const canvas = document.querySelector('.story-scroll')!.getBoundingClientRect(); return nodes.map(n => { const r = n.getBoundingClientRect(); return r.top >= canvas.top && r.bottom <= canvas.bottom + 1 && r.left >= canvas.left && r.right <= canvas.right; }); });
-  expect(frames.every(Boolean)).toBe(true); expect(errors).toEqual([]); await context.close();
+  // Reopening retains readable rows just like Fit. Tall groups can extend
+  // vertically beyond the viewport, while their frames still enclose every clip.
+  const frames = await restored.locator('.story-group').evaluateAll((nodes, groups) => {
+    const canvas = document.querySelector('.story-scroll')!.getBoundingClientRect();
+    return nodes.map(n => {
+      const r = n.getBoundingClientRect(), group = groups.find((g:any) => g.id === (n as HTMLElement).dataset.groupId);
+      return r.left >= canvas.left && r.right <= canvas.right && group.nodeIds.every((id:string) => {
+        const clip = document.querySelector(`[data-node-id="${id}"]`)!.getBoundingClientRect();
+        return clip.top >= r.top && clip.bottom <= r.bottom && clip.left >= r.left && clip.right <= r.right;
+      });
+    });
+  }, beforeArchive.groups);
+  expect(frames.every(Boolean)).toBe(true);
+  const spacing = await restored.locator('.story-clip').evaluateAll((clips, nodes) => {
+    const boxes = clips.map(el => ({ rect: el.getBoundingClientRect(), node: nodes.find((n:any) => n.id === (el as HTMLElement).dataset.nodeId) }));
+    return boxes.flatMap((a,i) => boxes.slice(i+1).filter(b => Math.abs(a.node.y-b.node.y)>=100 && a.rect.left<b.rect.right && b.rect.left<a.rect.right).map(b => Math.abs(a.rect.top-b.rect.top)-76));
+  }, beforeArchive.nodes);
+  expect(spacing.length).toBeGreaterThan(0);expect(Math.min(...spacing)).toBeGreaterThanOrEqual(23.9);
+  expect(errors).toEqual([]); await context.close();
 });
 
 test('source clips can be grouped and saved as footage templates with keyboard shortcuts on a narrow canvas', async ({ page }) => {
