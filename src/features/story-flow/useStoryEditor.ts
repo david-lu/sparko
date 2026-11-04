@@ -28,6 +28,27 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   const selectedGroup=graph?.groups?.find(g=>g.id===selectedGroupId);
   const setSelected=(value:string[]|((ids:string[])=>string[]))=>{setLibrarySelection(null);setSelectedGroupId(null);setSelection(value);};
   const selectLibrary = (selection: LibrarySelection) => { setLibrarySelection(selection); setSelection([]); setSelectedGroupId(null); setSelectedEdge(null); jobs.select(null); setInspectorRevision(n => n + 1); };
+  const [capturingFrame, setCapturingFrame] = useState(false);
+  const capturePending = useRef(false);
+  const captureFrame = async () => {
+    const state = projects.getSnapshot(), project = state.project;
+    if (!project || state.busy || capturePending.current) return;
+    capturePending.current = true; setCapturingFrame(true);
+    try {
+      const playback = player.getSnapshot();
+      const node = project.storyFlow?.nodes.find(node => node.id === playback.flow?.sceneId);
+      const label = (node?.name ?? project.source.name).replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').slice(0, 180) || 'Video';
+      const frame = Math.floor(playback.flow?.frame ?? playback.time * TIMELINE_FPS) + 1;
+      const base = `${label} frame ${frame}`;
+      let name = `${base}.png`, suffix = 2;
+      while (project.library?.some(asset => asset.name === name)) name = `${base} (${suffix++}).png`;
+      const blob = await player.captureFrame();
+      if (projects.getSnapshot().activationRevision !== state.activationRevision || projects.getSnapshot().project?.id !== project.id) throw new Error('Project changed while capturing the frame. Capture it again in the current project.');
+      const file = new File([blob], name, { type: 'image/png' });
+      const [asset] = await projects.importAssets([{ file, path: name }]);
+      if (asset) { selectLibrary({ type: 'asset', id: asset.assetId }); setNotice('Frame saved as an image in Library.'); }
+    } finally { capturePending.current = false; setCapturingFrame(false); }
+  };
   useEffect(()=>{setSelected([]);setSelectedEdge(null);setConnecting(null);setNotice('');},[activationRevision]);
   const selectConnection=(id:string)=>{setSelectedEdge(id);setSelected([]);jobs.select(null);setInspectorRevision(n=>n+1);};
   useEffect(()=>{setSelection(ids=>ids.filter(id=>graph?.nodes.some(n=>n.id===id)));setSelectedGroupId(id=>graph?.groups?.some(g=>g.id===id)?id:null);setSelectedEdge(id=>graph?.edges.some(e=>e.id===id)?id:null);setConnecting(null);},[graph?.entryId,graph?.nodes.length,graph?.groups?.length,projects.getSnapshot().historyRevision]);
@@ -151,6 +172,6 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice('Added clip from the library.');}
   };
   return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
-    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,selectLibrary,assetJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons};
+    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,selectLibrary,assetJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame};
 }
 export type StoryEditor=ReturnType<typeof useStoryEditor>;

@@ -348,6 +348,7 @@ export default function App() {
   const storyCanvasElement = storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight} collapsed={timelineCollapsed} onCollapsed={setTimelineCollapsed} pinchZoomSensitivity={pinchZoomSensitivity} playheadTimeMode={playheadTimeMode} sourceDuration={info?.duration}/>:undefined;
   const playerElement = <Player source={source} empty={!projectState.source||storyGraph?.nodes.length===0} info={info} thumbnails={thumbnails} thumbnailsFailed={thumbnailsFailed} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
           preview={preview}
+          onCaptureFrame={storyEditor.captureFrame} capturingFrame={storyEditor.capturingFrame}
           callResponse={flowTimeline}
           storyCanvas={workspace.freeDock && !preview ? <></> : storyCanvasElement}
           subtitle={projectState.subtitle} onSubtitle={file => void projects.setSubtitle(file)}

@@ -39,6 +39,7 @@ export class CanvasFlowPlayback {
   }
   get video() { return this.decks.video; }
   get canvas() { return this.decks.canvas; }
+  captureFrame() { return this.decks.captureFrame(); }
   get bufferedAhead() { return this.decks.bufferedAhead; }
   requestPictureInPicture() { return this.decks.requestPictureInPicture(); }
   private clip(session: PlaybackSession, frame = session.frame + this.remainder): PlaybackClip {
