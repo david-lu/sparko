@@ -1,7 +1,7 @@
 import './styles.css';
 import { useShortcuts } from '../../shared/shortcuts';
 import { Activity, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Camera, Captions, Maximize, Minimize, PanelBottomClose, PanelBottomOpen, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX, X } from 'lucide-react';
+import { Captions, Maximize, Minimize, PanelBottomClose, PanelBottomOpen, Pause, PictureInPicture2, Play, Repeat2, RotateCcw, RotateCw, Volume2, VolumeX, X } from 'lucide-react';
 import { formatTime, type Slice } from '../../../shared/contracts';
 import type { MediaInfo, MediaSource, Thumbnail } from '../../media/media';
 import type { Interstitial } from '../../../shared/interstitials';
@@ -12,6 +12,7 @@ import type { FlowTimeline } from '../timeline/FlowTracks';
 import PlayerChoices from './PlayerChoices';
 import PreviewTimeline from './PreviewTimeline';
 import { previewCompositionSegments, previewFlowSegments, previewSegmentAt } from './previewSegments';
+import ContextMenu from '../story-flow/LibraryContextMenu';
 
 type Props = {
   source: MediaSource; info: MediaInfo | null; thumbnails: Thumbnail[]; interstitials: Interstitial[];
@@ -36,8 +37,10 @@ export default function Player(props: Props) {
   const { source, info, thumbnails, interstitials, controller, onAddInterstitial, onSeek, onError, selection } = props;
   const { playing, buffering, volume, muted, speed, loop, buffered, time, duration, error: playbackError } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const [captureError, setCaptureError] = useState('');
-  useEffect(() => { setCaptureError(''); }, [source.id, source.url]);
+  const [captureMenu, setCaptureMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => { setCaptureError(''); setCaptureMenu(null); }, [source.id, source.url, props.preview]);
   const container = useRef<HTMLDivElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
   const transport = useRef<HTMLDivElement>(null);
   const captionInput = useRef<HTMLInputElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -172,7 +175,15 @@ export default function Player(props: Props) {
   });
 
   return <div className={`player-card${preview ? ' player-preview' : ''}${fullscreenTimeline ? '' : ' fullscreen-timeline-hidden'}`} ref={container} data-controls-visible={fullscreenControls}>
-    <div className="video-stage" onDoubleClick={() => void toggleFullscreen()}>
+    <div className="video-stage" ref={stage} role="group" aria-label="Video preview" tabIndex={0} onDoubleClick={() => void toggleFullscreen()}
+      onContextMenu={event => {
+        if (preview || !props.onCaptureFrame || (event.target as Element).closest('.transport,.player-branch-controls,.capture-error')) return;
+        event.preventDefault(); controller.pause(); setCaptureMenu({ x: event.clientX, y: event.clientY });
+      }} onKeyDown={event => {
+        if (event.target !== event.currentTarget || preview || !props.onCaptureFrame || !(event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10')) return;
+        event.preventDefault(); event.stopPropagation(); controller.pause();
+        const bounds = event.currentTarget.getBoundingClientRect(); setCaptureMenu({ x: bounds.left + 12, y: bounds.top + 12 });
+      }}>
       <video key={source.assetId??source.id} ref={controller.attach} preload="metadata" playsInline aria-label={source.name} onClick={playPause}>
         {subtitle && <track key={subtitle.url} src={subtitle.url} kind="subtitles" label={subtitle.name} srcLang="en" default />}
       </video>
@@ -180,6 +191,7 @@ export default function Player(props: Props) {
       {props.empty?<span className="player-empty">{preview ? 'No video to preview. Add clips in Edit mode.' : 'Add clips to preview your video'}</span>:!playing && !buffering && <button className="center-play" aria-label="Play video" onClick={playPause} disabled={!duration}><Play size={28} fill="currentColor" /></button>}
       {buffering && <div className="buffering" role="status"><span className="spinner" /><span className="sr-only">Buffering</span></div>}
       {!preview && captureError && <div className="capture-error" role="alert"><span>{captureError}</span><button className="icon-button small" aria-label="Dismiss capture error" onClick={() => setCaptureError('')}><X size={16}/></button></div>}
+      {!preview && props.capturingFrame && <div className="capture-progress" role="status"><span className="spinner"/>Creating image…</div>}
       {flow && <PlayerChoices key={flow.flow.interstitial.id} value={flow} />}
     <div className="transport" ref={transport} onDoubleClick={event => event.stopPropagation()}>
       {preview && <PreviewTimeline segments={previewSegments} time={previewTime} duration={previewDuration} variable={variableDuration} onSeek={seek}
@@ -192,9 +204,6 @@ export default function Player(props: Props) {
         <span className="time-display" title={preview && variableDuration ? 'One pass through the current path; choices and loops can change the running time.' : undefined}><strong>{formatTime(displayTime)}</strong><span>/</span>{preview ? `${variableDuration ? '~' : ''}${formatTime(displayDuration)}` : props.callResponse ? 'variable' : formatTime(duration)}</span>
       </div>
       <div className="transport-group transport-options">
-        {!preview && props.onCaptureFrame && <button className="icon-button capture-frame" aria-label="Create image from playhead" title="Create image from playhead" aria-busy={!!props.capturingFrame}
-          disabled={props.empty || !duration || buffering || !!playbackError || props.capturingFrame} onClick={() => { setCaptureError(''); void props.onCaptureFrame!().catch(error => setCaptureError(error instanceof Error ? error.message : 'Unable to capture this frame.')); }}>
-          {props.capturingFrame ? <span className="spinner"/> : <Camera size={18}/>}</button>}
         <button className="icon-button" aria-label={muted || !volume ? 'Unmute' : 'Mute'} title={shortcuts.title('mute')} onClick={toggleMute}>{muted || !volume ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
         <input className="volume-slider" aria-label="Volume" type="range" min="0" max="1" step="0.01" value={muted ? 0 : volume} onChange={event => changeVolume(Number(event.target.value))} />
         <select className="speed-select" aria-label="Playback speed" value={speed} onChange={event => controller.setSpeed(Number(event.target.value))}>
@@ -210,6 +219,12 @@ export default function Player(props: Props) {
       </div>
     </div>
     </div>
+    {!preview && captureMenu && <ContextMenu {...captureMenu} label="Video actions" onClose={() => setCaptureMenu(null)} restoreFocus={() => stage.current?.focus({ preventScroll: true })}>
+      <button role="menuitem" disabled={props.empty || !duration || buffering || !!playbackError || props.capturingFrame} onClick={() => {
+        setCaptureMenu(null); setCaptureError(''); stage.current?.focus({ preventScroll: true });
+        void props.onCaptureFrame?.().catch(error => setCaptureError(error instanceof Error ? error.message : 'Unable to capture this frame.'));
+      }}>Create image from playhead</button>
+    </ContextMenu>}
     <Activity mode={preview ? 'hidden' : 'visible'}>{props.storyCanvas ?? <Timeline key={source.url} name={source.name} info={info} thumbnails={thumbnails} thumbnailsFailed={props.thumbnailsFailed} interstitials={interstitials} selectedId={props.selectedId} composition={props.composition} time={time} duration={duration} buffered={buffered} selection={selection}
       callResponse={props.callResponse}
       height={props.timelineHeight} maxHeight={props.maxTimelineHeight} onHeight={props.onTimelineHeight} onSeek={onSeek}
