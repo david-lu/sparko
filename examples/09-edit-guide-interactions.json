@@ -1,0 +1,185 @@
+{
+  "source": {
+    "file": "09-edit-guide.pdf",
+    "title": "Super Sema S1E4 · Interactive edit guide",
+    "section": "The interactions and the answers to give",
+    "pages": [1, 2]
+  },
+  "timing": {
+    "offsetSeconds": -23,
+    "basis": "Interaction-table timestamps shifted back by 23 seconds to match the video without the cold opening. Both time and timeSeconds contain the adjusted time."
+  },
+  "context": {
+    "playback": "The edit plays one path through the episode.",
+    "turnIndicator": "Spark glows whenever it's the child's turn."
+  },
+  "interactions": [
+    {
+      "id": "trees-and-air",
+      "sourceNumber": 1,
+      "moment": "Trees and air",
+      "steps": [
+        {
+          "time": "0:52",
+          "timeSeconds": 52,
+          "prompt": "\"Wait, let me ask my friend. What do you think trees do with that air?\"",
+          "answer": {
+            "type": "speech",
+            "text": "They breathe!"
+          },
+          "whatFollows": "\"Yes, you've got it! … A tree is a little air factory!\" Then \"Hear that? My friend just figured it out…\" back to the class"
+        }
+      ]
+    },
+    {
+      "id": "how-do-you-feel",
+      "sourceNumber": 2,
+      "moment": "How do you feel?",
+      "steps": [
+        {
+          "time": "1:45",
+          "timeSeconds": 105,
+          "prompt": "\"Oh no… the trees!\" then \"My tummy feels all tight… How do you feel, friend?\"",
+          "answer": {
+            "type": "speech",
+            "text": "Sad."
+          },
+          "whatFollows": "\"Sad. Me too, friend…\""
+        },
+        {
+          "time": "2:13",
+          "timeSeconds": 133,
+          "prompt": "\"When my tummy's this tight… What helps you when you feel like this, friend?\"",
+          "answer": {
+            "type": "speech",
+            "text": "A hug!"
+          },
+          "whatFollows": "\"A hug! Good one!…\" then one big breath together, \"My brain's back!\", and \"Somebody took our trees. Let's find out who.\""
+        }
+      ]
+    },
+    {
+      "id": "trees-secret",
+      "sourceNumber": 3,
+      "moment": "The tree's secret",
+      "steps": [
+        {
+          "time": "4:18",
+          "timeSeconds": 258,
+          "prompt": "\"Look! What is the tree showing us, friend?\" (the branches reach towards the castle)",
+          "answer": {
+            "type": "speech",
+            "text": "A cage!"
+          },
+          "whatFollows": "\"YES! He can't get out! It's a cage! A prison of trees!\" Sema hugs the tree: \"Thank you, tree! And thank you, friend!\""
+        }
+      ]
+    },
+    {
+      "id": "plant-food",
+      "sourceNumber": 4,
+      "moment": "Plant food",
+      "steps": [
+        {
+          "time": "5:04",
+          "timeSeconds": 304,
+          "prompt": "\"And we need something that makes trees grow fast!\" … \"So, what goes into our super-duper plant food? A rock? Old vegetables? Or this sock?\"",
+          "answer": {
+            "type": "speech",
+            "text": "The sock!"
+          },
+          "whatFollows": "MB grabs it: \"Wait, that's mine! I thought I lost it!\" Sema: \"Well, MB's happy! But socks don't rot… The rock? Or the old vegetables?\""
+        },
+        {
+          "time": "5:45",
+          "timeSeconds": 345,
+          "prompt": "(second try)",
+          "answer": {
+            "type": "speech",
+            "text": "The old vegetables!"
+          },
+          "whatFollows": "\"Old vegetables! Yes!…\" MB: \"Root snacks!\" Sema: \"You knew it, friend! In they go!\""
+        }
+      ]
+    },
+    {
+      "id": "fly-the-drone",
+      "sourceNumber": 5,
+      "moment": "Fly the drone",
+      "steps": [
+        {
+          "time": "6:41",
+          "timeSeconds": 401,
+          "prompt": "\"Friend, YOU are going to be our remote! Stand up!\" MB: \"Ready?\"",
+          "answer": null,
+          "whatFollows": null
+        },
+        {
+          "time": "6:49",
+          "timeSeconds": 409,
+          "prompt": "\"Make it fly in a big circle! Like this… whoooosh!\"",
+          "answer": {
+            "type": "movement",
+            "text": "Arms in a big circle"
+          },
+          "whatFollows": "MB: \"Signal received!\" The drone flies its circle"
+        },
+        {
+          "time": "7:03",
+          "timeSeconds": 423,
+          "prompt": "\"Tree-planter ready. Push it DOWN!\"",
+          "answer": {
+            "type": "movement",
+            "text": "Both hands push down"
+          },
+          "whatFollows": "The tree-planter drops"
+        },
+        {
+          "time": "7:18",
+          "timeSeconds": 438,
+          "prompt": "\"And now the super-duper plant food! Shake it… and RELEASE!\"",
+          "answer": {
+            "type": "movement",
+            "text": "Shake, then arms out wide"
+          },
+          "whatFollows": "The plant food sprays, the forest grows: \"It's working!\""
+        }
+      ]
+    },
+    {
+      "id": "free-tobor",
+      "sourceNumber": 6,
+      "moment": "Free Tobor",
+      "steps": [
+        {
+          "time": "8:34",
+          "timeSeconds": 514,
+          "prompt": "\"MB, what do you think? Can we trust him?\" MB: \"Well…\" \"Everybody makes mistakes sometimes… Friend, your nose is the button. Ready? Three, two, one…\"",
+          "answer": {
+            "type": "movement",
+            "text": "Boop your nose"
+          },
+          "whatFollows": "MB: \"Signal received!\" Sema: \"There go the vines!\" The vines let Tobor go"
+        }
+      ]
+    },
+    {
+      "id": "goodbye",
+      "sourceNumber": null,
+      "moment": "Goodbye",
+      "steps": [
+        {
+          "time": "9:21",
+          "timeSeconds": 561,
+          "prompt": "\"Hey, friend… what a day! Remember when you figured out the tree's secret? A cage! And I really liked technovating with you. Technovator high-five?\"",
+          "answer": {
+            "type": "movement",
+            "text": "High-five",
+            "optional": true
+          },
+          "whatFollows": "\"YES! See you next time, friend!\""
+        }
+      ]
+    }
+  ]
+}
