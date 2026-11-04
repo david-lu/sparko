@@ -243,7 +243,7 @@ export class InterstitialController {
       if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId);
       operation.signal.throwIfAborted();
       this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, result: undefined });
-      const source = dependency?.reference && (dependency.reference.before || dependency.reference.after) ? await generationSource(item, dependency.reference, operation.signal) : { item, engine, info };
+      const source = dependency?.reference && (dependency.reference.before || dependency.reference.after) ? await generationSource(item, dependency.reference, operation.signal, info) : { item, engine, info };
       operation.signal.throwIfAborted();
       const submittedPrompt = source.item.prompt;
       const job = await generateInterstitial(source.item, source.engine, source.info, operation.signal, (phase, progress) => {

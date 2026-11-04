@@ -3,6 +3,7 @@ import {
   Mp4OutputFormat, Output, Quality, UrlSource, WavOutputFormat, canEncodeAudio, type OutputFormat, type QualityLevel,
 } from 'mediabunny';
 import { validateSlice, type Slice } from '../../shared/contracts';
+import type { ExportFrame } from './videoFraming';
 
 export type MediaSource = { id: string; name: string; url: string; file?: File; assetId?: string };
 export type MediaInfo = { duration: number; width: number; height: number; codec: string; fps: number; hasAudio: boolean };
@@ -125,7 +126,7 @@ async function runConversion(input: Input, output: Output<OutputFormat, BufferTa
 }
 
 /** Export an arbitrary range to H.264/AAC MP4. Deliberately has no download or editing UI. */
-export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { maxHeight?: number; maxDimension?: number; frameRate?: number; quality?: QualityLevel } = {}): Promise<Blob> {
+export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { frame?: ExportFrame; maxHeight?: number; maxDimension?: number; frameRate?: number; quality?: QualityLevel } = {}): Promise<Blob> {
   options.signal?.throwIfAborted();
   await ensureAac();
   const input = openInput(source);
@@ -134,9 +135,9 @@ export async function exportMp4(source: MediaSource, slice: Slice, options: Task
     const track = await input.getPrimaryVideoTrack();
     if (!track) throw new Error('This source has no video to export.');
     const [sourceWidth, sourceHeight] = await Promise.all([track.getDisplayWidth(), track.getDisplayHeight()]);
-    const scaleDimension = options.maxDimension && Math.max(sourceWidth, sourceHeight) > options.maxDimension
+    const scaleDimension = options.frame ?? (options.maxDimension && Math.max(sourceWidth, sourceHeight) > options.maxDimension
       ? sourceWidth >= sourceHeight ? { width: options.maxDimension } : { height: options.maxDimension }
-      : options.maxHeight && sourceHeight > options.maxHeight ? { height: options.maxHeight } : {};
+      : options.maxHeight && sourceHeight > options.maxHeight ? { height: options.maxHeight } : {});
     const target = new BufferTarget();
     const output = new Output({ target, format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
     const conversion = await Conversion.init({

@@ -393,7 +393,7 @@ describe('interstitial lifecycle', () => {
     vi.mocked(generateInterstitial).mockResolvedValue({ requestId: completed.requestId, status: 'IN_QUEUE' });
     vi.mocked(getInterstitialJob).mockResolvedValue(completed);
     await controller.generate(item.id, media, info);
-    expect(generationSource).toHaveBeenCalledWith(item, input, expect.any(AbortSignal));
+    expect(generationSource).toHaveBeenCalledWith(item, input, expect.any(AbortSignal), info);
     expect(generateInterstitial).toHaveBeenCalledWith(expect.objectContaining({ time: 2 }), media, info, expect.any(AbortSignal), expect.any(Function));
     expect(controller.getSnapshot().items.find(current => current.id === item.id)).toMatchObject({ time: 3, result: { reference: input } });
     expect(controller.dependency('call-response-correct')?.stale).toBe(true);
