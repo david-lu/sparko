@@ -2,6 +2,7 @@ import type { MediaInfo, MediaSource } from '../../media/media';
 import { FrameDecoder } from './FrameDecoder';
 import { GpuVideoCanvas } from './GpuVideoCanvas';
 import { CanvasAudio } from './CanvasAudio';
+import { audioVolume } from '../../media/audioVolume';
 
 export type PlaybackClip = { key: string; source: MediaSource; sourceFootage: boolean; time: number; still?: boolean; muted?: boolean;
   /** Optional audio from another video, sampled on the same playback clock. */
@@ -90,7 +91,8 @@ export class CanvasMediaDecks {
     }
     this.audio.retain(playing ? new Set(assigned.filter(({ layer }) => !layer.still && !layer.muted).map(({ audioKey }) => audioKey)) : new Set());
     for (const { layer, audioDecoder, audioKey, audioTime } of assigned) if (playing && !layer.still && !layer.muted) {
-      this.audio.render(audioKey, audioDecoder, audioTime, layer.gain, layer.gainRate ?? 0, settings.muted ? 0 : settings.volume, settings.speed);
+      this.audio.render(audioKey, audioDecoder, audioTime, layer.gain, layer.gainRate ?? 0,
+        settings.muted ? 0 : settings.volume * audioVolume((layer.audio?.source ?? layer.source).volume), settings.speed);
     }
     this.audio.renderMusic(musicGain > 0, playing, settings.muted ? 0 : settings.volume * musicGain * .35, settings.speed);
     const visible = [...layers].reverse().find(layer => layer.opacity >= .5) ?? layers[0];

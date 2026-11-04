@@ -81,7 +81,8 @@ export class VideoPlayerController {
     const wasPlaying = this.wantsPlayback || this.state.playing;
     const sourceTime = this.composition?.sourceTime(this.state.time) ?? this.state.time;
     const previous = this.composition;
-    const sameEdit = previous && (previous.crossfade !== composition.crossfade || previous.crossfadeFrames !== composition.crossfadeFrames || previous.matchFraming !== composition.matchFraming) && previous.fps === composition.fps && previous.duration === composition.duration
+    const sameEdit = previous && (previous.crossfade !== composition.crossfade || previous.crossfadeFrames !== composition.crossfadeFrames || previous.matchFraming !== composition.matchFraming
+      || previous.segments.some((segment, index) => segment.source.volume !== composition.segments[index]?.source.volume)) && previous.fps === composition.fps && previous.duration === composition.duration
       && previous.segments.length === composition.segments.length && previous.segments.every((segment, index) => {
         const next = composition.segments[index];
         return segment.id === next.id && segment.source.url === next.source.url && segment.sourceStart === next.sourceStart && segment.startFrame === next.startFrame && segment.endFrame === next.endFrame && segment.still === next.still;
@@ -105,7 +106,7 @@ export class VideoPlayerController {
     // replacing the media canvas or moving the playhead. Scene/edge structure
     // and clip media still determine when playback must be rebuilt.
     const mediaLayout = (value: CallResponseFlow) => JSON.stringify(value,
-      (key, part) => ['interstitial', 'loopAudio', 'interaction', 'label', 'dialogue'].includes(key) ? undefined : part);
+      (key, part) => ['interstitial', 'loopAudio', 'volume', 'interaction', 'label', 'dialogue'].includes(key) ? undefined : part);
     if (this.flowPlayback && (flow.storyGraph && this.flowPlayback.flow.storyGraph || this.flowPlayback.flow === flow || mediaLayout(this.flowPlayback.flow) === mediaLayout(flow))) {
       this.flowPlayback.setFlow(flow);
       this.flowPlayback.setMatchFraming(matchFraming); this.flowPlayback.setCrossfade(crossfade, crossfadeFrames); return;

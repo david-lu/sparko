@@ -33,6 +33,8 @@ export type TimelineScene = {
   generated?: InterstitialResult;
   /** Whether to play the original generated audio under the finished Idle loop. */
   loopAudio?: boolean;
+  /** Runtime gain from the library asset; original media stays unchanged. */
+  volume?: number;
 };
 export type FlowEdge = {
   id: string;

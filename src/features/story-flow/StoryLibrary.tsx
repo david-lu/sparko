@@ -13,6 +13,8 @@ import { assetUsage } from '../project/assetUsage';
 import AssetThumbnail from '../project/AssetThumbnail';
 import LibraryContextMenu from './LibraryContextMenu';
 import LibraryFolderDialog from './LibraryFolderDialog';
+import { downloadAsset } from '../project/assetExports';
+import { assetVolume } from '../project/assetVolume';
 
 const folderDragType = 'application/x-sparko-folder';
 type MenuTarget = LibrarySelection | { type: 'folder'; id: string } | { type: 'background'; folderId?: string };
@@ -106,11 +108,6 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
     draft.settings.references = [{ assetId: asset.assetId, name: asset.name, kind: 'image' }];
     editor.projects.editAssets(p => ({ ...p, assetGenerations: [...p.assetGenerations ?? [], draft] }));
     editor.selectLibrary({ type: 'generation', id: draft.id }); setFolderId(draft.folderId); setMenu(null);
-  };
-  const download = async (asset: LibraryAsset) => {
-    const { url, asset: stored } = await assets.open(asset.assetId), link = document.createElement('a');
-    const extensions: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a' };
-    const ext = extensions[stored.blob.type]; link.href = url; link.download = ext && !/\.(png|jpe?g|webp|gif|avif|mp4|webm|mov|mkv|m4v|wav|mp3|m4a|aac|ogg|flac|vtt)$/i.test(asset.name) ? `${asset.name}.${ext}` : asset.name; link.click();
   };
   const removeFolder = () => {
     if (!menuFolder) return;
@@ -289,7 +286,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
         {menuOutput && <>
           {(menuOutput.kind === 'video' || menuOutput.kind === 'generated') && <button role="menuitem" onClick={() => run(() => editor.addAsset(menuOutput.assetId))}>Add to timeline</button>}
           {menuOutput.kind === 'image' && <button role="menuitem" onClick={() => editImage(menuGeneration ? { ...menuOutput, folderId: menuGeneration.folderId } : menuOutput)}>Edit image</button>}
-          <button role="menuitem" onClick={() => run(() => download(menuOutput))}>Download{menuGeneration ? ' selected version' : ''}</button>
+          <button role="menuitem" onClick={() => run(() => downloadAsset({ ...menuOutput, volume: assetVolume(library, menuOutput.assetId) }))}>Download{menuGeneration ? ' selected version' : ''}</button>
         </>}
         {menuGeneration && generationBusy(menuGeneration) && <button role="menuitem" onClick={() => run(() => editor.assetJobs.cancel(menuGeneration.id))}>Cancel generation</button>}
         {menuGeneration?.requestId && ['error', 'cancelled'].includes(menuGeneration.phase) && <button role="menuitem" onClick={() => run(() => editor.assetJobs.resume(menuGeneration.id))}>Check result</button>}

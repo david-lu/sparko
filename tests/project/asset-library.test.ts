@@ -7,6 +7,7 @@ import { ProjectHistory } from '../../src/features/project/ProjectHistory';
 import { createNode } from '../../src/features/story-flow/model';
 import { storyDependency } from '../../src/features/story-flow/dependencies';
 import { interstitialSettings } from '../../shared/interstitials';
+import { assetVolume, volumeAssetId } from '../../src/features/project/assetVolume';
 
 function fixture() {
   const image = crypto.randomUUID(), video = crypto.randomUUID(), output = crypto.randomUUID();
@@ -22,6 +23,16 @@ function fixture() {
 }
 
 describe('universal asset references', () => {
+  it('shares volume between an original video and its prepared timeline copy', () => {
+    const { project, video } = fixture(), copy = crypto.randomUUID();
+    project.library!.find(asset => asset.assetId === video)!.volume = .35;
+    project.library!.push({ assetId: copy, originalAssetId: video, name: 'Prepared.mp4', kind: 'video' });
+    expect(volumeAssetId(project.library, copy)).toBe(video);
+    expect(assetVolume(project.library, copy)).toBe(.35);
+    project.library!.find(asset => asset.assetId === video)!.volume = 0;
+    expect(assetVolume(project.library, copy)).toBe(0);
+    expect(assetVolume(project.library, 'missing')).toBe(1);
+  });
   it('warns about timeline image inputs and both arbitrary video inputs even without footage clips', () => {
     const { project, image, video } = fixture();
     expect(assetUsage(project, [image])).toEqual(expect.arrayContaining([{ owner: 'Opening shot', role: 'image input' }, { owner: 'Poster', role: 'image generation input' }]));
@@ -50,6 +61,7 @@ describe('universal asset references', () => {
   });
   it('round-trips folders, versions, and reference-only assets with remapped identities', async () => {
     const { project, item, image, video, output, generation } = fixture();
+    project.library!.find(asset => asset.assetId === video)!.volume = .35;
     const folder = crypto.randomUUID(); project.libraryFolders = [{ id: folder, name: 'References' }, { id: crypto.randomUUID(), name: 'Nested', parentId: folder }];
     generation.folderId = folder; generation.selectedAssetId = output; generation.phase = 'ready'; generation.submitted = structuredClone(generation.settings);
     generation.versions = [{ assetId: output, name: 'Poster v1', createdAt: 1, settings: structuredClone(generation.settings) }];
@@ -60,6 +72,7 @@ describe('universal asset references', () => {
     const ids = assetIds(result.project);
     expect(ids).toHaveLength(3); expect(ids.some(id => ([image, video, output] as string[]).includes(id))).toBe(false);
     expect(result.project.libraryFolders).toEqual(project.libraryFolders);
+    expect(result.project.library?.find(asset => asset.name === 'Motion.mp4')?.volume).toBe(.35);
     const restored = result.project.assetGenerations![0];
     expect(restored.settings.references[0].assetId).toBe(result.project.interstitials[0].imageReferences![0].assetId);
     expect(restored.versions[0].assetId).toBe(restored.selectedAssetId);
@@ -71,5 +84,15 @@ describe('universal asset references', () => {
     history.record(project, { ...project, library: [] });
     expect(history.target('undo')?.library).toEqual(project.library);
     history.commit('undo'); expect(history.target('redo')?.library).toEqual([]);
+  });
+  it('groups a volume drag into one undo step and keeps mute as a separate edit', () => {
+    const { project, video } = fixture(), history = new ProjectHistory();
+    const volume = (value: number) => ({ ...project, library: project.library?.map(asset => asset.assetId === video ? { ...asset, volume: value } : asset) });
+    history.record(project, volume(.7), 100); history.record(volume(.7), volume(.35), 200);
+    expect(history.undoLabel).toBe('Change asset volume');
+    expect(history.target('undo')?.library).toEqual(project.library);
+    history.endGroup(); history.record(volume(.35), volume(0), 300);
+    expect(history.target('undo')?.library?.find(asset => asset.assetId === video)?.volume).toBe(.35);
+    history.commit('undo'); expect(history.target('undo')?.library).toEqual(project.library);
   });
 });

@@ -4,8 +4,9 @@ import {
 } from 'mediabunny';
 import { validateSlice, type Slice } from '../../shared/contracts';
 import type { ExportFrame } from './videoFraming';
+import { audioVolume, scaleAudioSample } from './audioVolume';
 
-export type MediaSource = { id: string; name: string; url: string; file?: File; assetId?: string };
+export type MediaSource = { id: string; name: string; url: string; file?: File; assetId?: string; volume?: number };
 export type MediaInfo = { duration: number; width: number; height: number; codec: string; fps: number; hasAudio: boolean };
 export type Thumbnail = { time: number; url: string };
 type TaskOptions = { signal?: AbortSignal; onProgress?: (progress: number) => void };
@@ -171,4 +172,23 @@ export function downloadBlob(blob: Blob, filename: string): void {
   anchor.download = filename;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/** Export edited audio without changing the original file; compatible video tracks are copied. */
+export async function exportMediaVolume(blob: Blob, volume: number, options: TaskOptions = {}): Promise<Blob> {
+  options.signal?.throwIfAborted();
+  const gain = audioVolume(volume);
+  if (gain === 1) return blob;
+  const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+  try {
+    if (!await input.getPrimaryAudioTrack()) return blob;
+    const video = await input.getPrimaryVideoTrack();
+    if (video) await ensureAac();
+    const output = new Output({ target: new BufferTarget(), format: video ? new Mp4OutputFormat({ fastStart: 'in-memory' }) : new WavOutputFormat() });
+    const conversion = await Conversion.init({ input, output, tracks: 'primary',
+      video: video ? {} : { discard: true },
+      audio: { codec: video ? 'aac' : 'pcm-s16', forceTranscode: true, process: sample => scaleAudioSample(sample, gain) },
+    });
+    return await runConversion(input, output, conversion, options);
+  } finally { input.dispose(); }
 }

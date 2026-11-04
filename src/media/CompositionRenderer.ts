@@ -6,6 +6,7 @@ import { compositionTransitions, segmentTime, transitionWeight, type Composition
 import { CompositionAudioCrossfade } from './CompositionAudioCrossfade';
 import { CompositionAudioWriter } from './CompositionAudioWriter';
 import { generatedClipFit, type ExportFrame } from './videoFraming';
+import { audioVolume, scaleAudioSample } from './audioVolume';
 
 type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; maxDimension?: number; frame?: ExportFrame;
   beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
@@ -139,7 +140,9 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
                 const timestamp = from - origin + sample.timestamp - sourceStart;
                 if (timestamp > cursor + 1 / raw.sampleRate) await silence(cursor, timestamp);
                 sample.setTimestamp(Math.max(cursor, timestamp));
-                await normalizedAudio.add(sample);
+                const volume = audioVolume(segment.source.volume);
+                const adjusted = volume === 1 ? sample : scaleAudioSample(sample, volume);
+                try { await normalizedAudio.add(adjusted); } finally { if (adjusted !== sample) adjusted.close(); }
                 cursor = sample.timestamp + sample.duration;
               } finally { sample.close(); }
             } finally { raw.close(); }

@@ -10,6 +10,9 @@ import { useAssetAvailability } from './useAssetAvailability';
 import ContentIssues from '../../shared/ContentIssues';
 import AssetInput from './AssetInput';
 import AssetThumbnail from './AssetThumbnail';
+import AssetVolumeControl from './AssetVolumeControl';
+import AssetDownload from './AssetDownload';
+import { assetVolume } from './assetVolume';
 import EnhancePromptActions from '../interstitials/EnhancePromptActions';
 import { useImagePromptEnhancement } from './useImagePromptEnhancement';
 import './asset-inspector.css';
@@ -70,8 +73,9 @@ export default function AssetInspector({ editor, status }: { editor: StoryEditor
     }}/>
     <div className="inspector-clip-meta">{kind}{generation ? ` generation · ${generation.phase}` : ' · Imported'}</div>
     <details className="inspector-group" open><summary>Preview</summary><AssetPreview id={compare ? settings?.references.find(r => r.kind === 'image')?.assetId : generation?.selectedAssetId ?? asset?.assetId} kind={kind} name={name} onPlay={() => editor.player.pause()}/>
-      <div className="asset-preview-actions">{asset && <a className="text-button" href={assets.url(asset.assetId)} download={asset.name}>Download</a>}{asset && kind === 'video' && <button className="text-button" onClick={() => void editor.addAsset(asset.assetId)}>Add to timeline</button>}{asset && kind === 'image' && <button className="text-button" onClick={editImage}>Edit image</button>}{asset && settings?.references.some(r => r.kind === 'image') && <button className="text-button" aria-pressed={compare} onClick={() => setCompare(!compare)}>{compare ? 'Show result' : 'Compare original'}</button>}</div>
+      <div className="asset-preview-actions">{asset && (kind === 'image' ? <a className="text-button" href={assets.url(asset.assetId)} download={asset.name}>Download</a> : <AssetDownload asset={{ ...asset, volume: assetVolume(project?.library, asset.assetId) }}/>)}{asset && kind === 'video' && <button className="text-button" onClick={() => void editor.addAsset(asset.assetId)}>Add to timeline</button>}{asset && kind === 'image' && <button className="text-button" onClick={editImage}>Edit image</button>}{asset && settings?.references.some(r => r.kind === 'image') && <button className="text-button" aria-pressed={compare} onClick={() => setCompare(!compare)}>{compare ? 'Show result' : 'Compare original'}</button>}</div>
     </details>
+    {(kind === 'audio' || kind === 'video') && <AssetVolumeControl projects={editor.projects} assetId={asset?.assetId}/>}
     {generation && settings && model && <form onSubmit={e => { e.preventDefault(); if (!enhancement.enhancing && !missingReferences.length) void editor.assetJobs.generate(generation.id); }}>
       <details className="inspector-group" open><summary>Generation<span>fal</span></summary>
         <label className="inspector-property"><span>Model</span><select aria-label="Generation model" value={model.id} onChange={e => { const next = assetModel(e.target.value)!; update({ model: next.id, resolution: (next.resolutions.includes(settings.resolution) ? settings.resolution : next.resolutions[0] || '1K') as AssetSettings['resolution'], count: 1 }); }}>{ASSET_MODELS.filter(m => m.kind === generation.kind).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>

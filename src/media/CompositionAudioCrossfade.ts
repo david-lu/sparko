@@ -2,6 +2,7 @@ import { AudioSample, AudioSampleSink, type Input } from 'mediabunny';
 import { AudioNormalizer, COMPOSITION_AUDIO_CHANNELS as CHANNELS, COMPOSITION_AUDIO_RATE as RATE } from './AudioNormalizer';
 import { segmentTime, type CompositionTransition } from './CompositionTransitions';
 import type { TimelineSegment } from './TimelineComposition';
+import { audioVolume } from './audioVolume';
 
 /** Decodes only the small overlap windows, normalizing both inputs before mixing. */
 export class CompositionAudioCrossfade {
@@ -12,7 +13,7 @@ export class CompositionAudioCrossfade {
   private async samples(segment: TimelineSegment, transition: CompositionTransition) {
     const length = Math.round((transition.endFrame - transition.startFrame) / this.fps * RATE);
     const planes = Array.from({ length: CHANNELS }, () => new Float32Array(length));
-    if (segment.still) return planes;
+    if (segment.still || segment.muted || segment.source.volume === 0) return planes;
     const track = await this.inputFor(segment).getPrimaryAudioTrack();
     if (!track) return planes;
     if (!await track.canDecode()) throw new Error(`Unable to decode audio in ${segment.label}.`);
@@ -26,6 +27,8 @@ export class CompositionAudioCrossfade {
       for (let channel = 0; channel < CHANNELS; channel++) {
         const data = new Float32Array(sample.numberOfFrames);
         sample.copyTo(data, { planeIndex: channel, format: 'f32-planar' });
+        const volume = audioVolume(segment.source.volume);
+        if (volume !== 1) for (let index = first; index < last; index++) data[index] *= volume;
         planes[channel].set(data.subarray(first, last), offset + first);
       }
     });

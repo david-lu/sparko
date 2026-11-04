@@ -43,7 +43,14 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
     return { label: changedType ? 'Change clip type' : 'Edit call-response connections' };
   }
   if (!same(before.subtitle, after.subtitle)) return { label: 'Change subtitles' };
-  if (!same(before.library, after.library)) return { label: 'Update library' };
+  if (!same(before.library, after.library)) {
+    const withoutVolume = (library: Project['library']) => library?.map(({ volume: _volume, ...asset }) => asset);
+    if (same(withoutVolume(before.library), withoutVolume(after.library))) {
+      const ids = after.library?.filter(asset => asset.volume !== before.library?.find(old => old.assetId === asset.assetId)?.volume).map(asset => asset.assetId).sort();
+      return { label: 'Change asset volume', key: `volume:${ids?.join('|')}` };
+    }
+    return { label: 'Update library' };
+  }
   if (!same(before.callResponses, after.callResponses)) return { label: 'Edit call-response video' };
   const previous = new Map(before.interstitials.map(item => [item.id, item]));
   if (after.interstitials.some(item => !previous.has(item.id))) return { label: 'Add video' };

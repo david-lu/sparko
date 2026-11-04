@@ -19,6 +19,7 @@ import { useShortcuts } from '../../shared/shortcuts';
 import LoopReferenceHelp from './LoopReferenceHelp';
 import StoryReferences from './StoryReferences';
 import AssetInspector, { AssetSelectionInspector } from '../project/AssetInspector';
+import AssetVolumeControl from '../project/AssetVolumeControl';
 import ProjectInspector from './ProjectInspector';
 import ContentIssues from '../../shared/ContentIssues';
 import { assets } from '../project/assets';
@@ -43,7 +44,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   if (editor.librarySelection?.type === 'asset' || editor.librarySelection?.type === 'generation') return <AssetInspector editor={editor} status={status}/>;
   if (editor.librarySelection?.type === 'job') {
     const job = items.find(i => i.id === editor.librarySelection!.id);
-    if (job) return <div className="story-inspector clip-inspector"><h2>{job.label}</h2><InterstitialEditor compact selected={job} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}/></div>;
+    if (job) return <div className="story-inspector clip-inspector" data-project-edit><h2>{job.label}</h2><InterstitialEditor projects={editor.projects} compact selected={job} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}/><AssetVolumeControl projects={editor.projects} assetId={playableResult(job)?.assetId}/></div>;
   }
   if (!graph) return null;
   const node = graph.nodes.find(n => n.id === editor.selectedId), connection = graph.edges.find(e => e.id === editor.selectedEdge);
@@ -92,5 +93,6 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
         if (Number.isFinite(frame)) editor.patch(node.id, { source: { ...node.source!, [field]: field === 'inFrame' ? Math.max(0, Math.min(node.source!.outFrame - 1, frame)) : Math.max(node.source!.inFrame + 1, Math.min(Math.floor((node.source!.duration ?? info?.duration ?? Infinity) * TIMELINE_FPS), frame)) } });
       }} /></label>)}</div>}
     {node.trim && <div className="inspector-trim"><span>Trim: {(node.trim.inFrame / TIMELINE_FPS).toFixed(2)}–{(node.trim.outFrame / TIMELINE_FPS).toFixed(2)} s</span><button className="text-button" onClick={() => editor.patch(node.id, { trim: undefined })}>Restore full clip</button></div>}
+    <AssetVolumeControl projects={editor.projects} assetId={node.source?.assetId ?? (item && playableResult(item)?.assetId)}/>
   </div>;
 }
