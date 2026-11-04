@@ -16,7 +16,7 @@ export function collectLibrary(project: Project, sourceDuration?: number): Libra
   for (const item of project.interstitials) {
     for (const result of [item.previousResult, item.result]) {
       if (!result?.assetId) continue;
-      add({ assetId: result.assetId, name: item.label, kind: 'generated', duration: result.totalDuration,
+      add({ assetId: result.assetId, name: item.label, kind: 'generated', videoId: item.id, folderId: item.folderId, duration: result.totalDuration,
         inFrame: Math.round(result.start * TIMELINE_FPS), outFrame: Math.round((result.start + result.duration) * TIMELINE_FPS) });
     }
   }

@@ -8,8 +8,8 @@ import type { ContentIssue } from '../../shared/ContentIssues';
 /** Resolve current wires; each saved render retains its own immutable provenance. */
 export function storyDependency(graph: StoryGraph, items: Interstitial[], assetId: string, duration: number, itemId: string, assetError: (id: string) => string | undefined = () => undefined): ClipDependency {
   const node = graph.nodes.find(n => n.interstitialId === itemId), saved = items.find(i => i.id === itemId);
-  if (!node || !saved) return { label: 'Source', stale: false };
-  const item = storyGenerationItem(saved, node), connected = connectedReferences(graph, node.id);
+  if (!saved) return { label: 'Source', stale: false };
+  const item = storyGenerationItem(saved, node), connected = node ? connectedReferences(graph, node.id) : { input: [], output: [] };
   const loop = item.method === 'comfy-loop';
   const flow = runtimeFlow(graph, items, assetId, duration), byId = new Map(flow.scenes.map(s => [s.id, s]));
   const ref = (id: string): ClipReference => {

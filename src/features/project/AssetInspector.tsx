@@ -24,8 +24,9 @@ export function AssetSelectionInspector({ editor }: { editor: StoryEditor }) {
   const project = editor.projects.getSnapshot().project;
   const entries = editor.librarySelections.flatMap(selection => {
     const generation = selection.type === 'generation' ? project?.assetGenerations?.find(g => g.id === selection.id) : undefined;
-    const asset = project?.library?.find(a => a.assetId === (generation ? generation.selectedAssetId : selection.id));
-    return generation || asset ? [{ key: `${selection.type}:${selection.id}`, name: generation?.name ?? asset!.name, kind: generation?.kind ?? asset!.kind, asset, generated: !!generation }] : [];
+    const video = selection.type === 'video' ? editor.videos.find(v => v.id === selection.id) : undefined;
+    const asset = video?.media ?? project?.library?.find(a => a.assetId === (generation ? generation.selectedAssetId : selection.id));
+    return generation || asset || video ? [{ key: `${selection.type}:${selection.id}`, name: video?.name ?? generation?.name ?? asset!.name, kind: video ? 'video' : generation?.kind ?? asset!.kind, asset, generated: !!generation }] : [];
   });
   return <section className="story-inspector asset-selection-inspector" aria-label="Selected assets">
     <h2>{entries.length} assets selected</h2>
@@ -37,8 +38,9 @@ export function AssetSelectionInspector({ editor }: { editor: StoryEditor }) {
 }
 export default function AssetInspector({ editor, status }: { editor: StoryEditor; status: AppStatus | null }) {
   const project = editor.projects.getSnapshot().project, selection = editor.librarySelection;
-  const generation = selection?.type === 'generation' ? project?.assetGenerations?.find(g => g.id === selection.id) : undefined;
-  const asset = selection?.type === 'asset' ? project?.library?.find(a => a.assetId === selection.id) : project?.library?.find(a => a.assetId === generation?.selectedAssetId);
+  const video = selection?.type === 'video' ? editor.videos.find(v => v.id === selection.id) : undefined;
+  const generation = video?.legacyGeneration ?? (selection?.type === 'generation' ? project?.assetGenerations?.find(g => g.id === selection.id) : undefined);
+  const asset = video?.media ?? (selection?.type === 'asset' ? project?.library?.find(a => a.assetId === selection.id) : project?.library?.find(a => a.assetId === generation?.selectedAssetId));
   const [compare, setCompare] = useState(false), heading = useRef<HTMLInputElement>(null);
   const promptId = useId(), enhancement = useImagePromptEnhancement(editor, generation, !!status?.providers.openai);
   useAssetAvailability(generation?.settings.references.map(ref => ref.assetId) ?? []);
@@ -64,15 +66,20 @@ export default function AssetInspector({ editor, status }: { editor: StoryEditor
   return <div className="story-inspector clip-inspector asset-inspector" data-project-edit>
     <input key={`${selection?.id}:${name}`} ref={heading} className="story-name" aria-label="Asset name" defaultValue={name} maxLength={1000} onBlur={e => {
       const name = e.currentTarget.value.trim() || 'Untitled';
-      if (generation) editor.assetJobs.edit(generation.id, { name }); else editor.projects.editAssets(p => ({ ...p, library: p.library?.map(a => a.assetId === asset!.assetId ? { ...a, name } : a) }));
+      if (video) editor.renameVideo(video.id, name); else if (generation) editor.assetJobs.edit(generation.id, { name }); else editor.projects.editAssets(p => ({ ...p, library: p.library?.map(a => a.assetId === asset!.assetId ? { ...a, name } : a) }));
     }} onKeyDown={e => {
       if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); }
     }}/>
     <div className="inspector-clip-meta">{kind}{generation ? ` generation · ${generation.phase}` : ' · Imported'}</div>
     <details className="inspector-group" open><summary>Preview</summary><AssetPreview id={compare ? settings?.references.find(r => r.kind === 'image')?.assetId : generation?.selectedAssetId ?? asset?.assetId} kind={kind} name={name} onPlay={() => editor.player.pause()}/>
-      <div className="asset-preview-actions">{asset && <a className="text-button" href={assets.url(asset.assetId)} download={asset.name}>Download</a>}{asset && kind === 'video' && <button className="text-button" onClick={() => void editor.addAsset(asset.assetId)}>Add to timeline</button>}{asset && kind === 'image' && <button className="text-button" onClick={editImage}>Edit image</button>}{asset && settings?.references.some(r => r.kind === 'image') && <button className="text-button" aria-pressed={compare} onClick={() => setCompare(!compare)}>{compare ? 'Show result' : 'Compare original'}</button>}</div>
+      <div className="asset-preview-actions">{asset && <a className="text-button" href={assets.url(asset.assetId)} download={asset.name}>Download</a>}{asset && kind === 'video' && <button className="text-button" onClick={() => void (video ? editor.addVideo(video.id) : editor.addAsset(asset.assetId))}>Add to timeline</button>}{asset && kind === 'image' && <button className="text-button" onClick={editImage}>Edit image</button>}{asset && settings?.references.some(r => r.kind === 'image') && <button className="text-button" aria-pressed={compare} onClick={() => setCompare(!compare)}>{compare ? 'Show result' : 'Compare original'}</button>}</div>
     </details>
-    {generation && settings && model && <form onSubmit={e => { e.preventDefault(); if (!enhancement.enhancing && !missingReferences.length) void editor.assetJobs.generate(generation.id); }}>
+    {video?.legacyGeneration && <div className="asset-generate-actions">
+      <div className="asset-secondary-action">{busy ? <button className="text-button" onClick={() => void editor.assetJobs.cancel(generation!.id)}>Cancel generation</button>
+        : generation?.requestId ? <button className="text-button" onClick={() => void editor.assetJobs.resume(generation.id)}>Check result</button> : null}</div>
+      <div className="asset-generation-feedback"><ContentIssues issues={issues} label="Generation errors"/><span role="status">{busy ? 'Finishing a previously submitted video…' : generation?.error ?? 'Restoring video…'}</span></div>
+    </div>}
+    {generation && generation.kind !== 'video' && settings && model && <form onSubmit={e => { e.preventDefault(); if (!enhancement.enhancing && !missingReferences.length) void editor.assetJobs.generate(generation.id); }}>
       <details className="inspector-group" open><summary>Generation<span>fal</span></summary>
         <label className="inspector-property"><span>Model</span><select aria-label="Generation model" value={model.id} onChange={e => { const next = assetModel(e.target.value)!; update({ model: next.id, resolution: (next.resolutions.includes(settings.resolution) ? settings.resolution : next.resolutions[0] || '1K') as AssetSettings['resolution'], count: 1 }); }}>{ASSET_MODELS.filter(m => m.kind === generation.kind).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
         <div className="field inspector-prompt"><div className="prompt-field-heading"><label htmlFor={promptId}>Prompt</label>
@@ -81,10 +88,9 @@ export default function AssetInspector({ editor, status }: { editor: StoryEditor
         </div><textarea id={promptId} aria-label="Generation prompt" rows={4} value={settings.prompt} maxLength={8000} placeholder={settings.references.length ? 'Describe the result or the changes to make…' : `Describe the ${kind} to create…`} onChange={e => update({ prompt: e.target.value })}/>
           {kind === 'image' && <><a className="asset-prompt-guide" href={IMAGE_PROMPT_GUIDES[model.id]?.url} target="_blank" rel="noreferrer">{model.name} prompt guide ↗</a><div className="asset-enhancement-feedback" role="status" title={enhancement.error}>{enhancement.error}</div></>}
         </div>
-        {(model.inputs.length > 0 || settings.references.length > 0) && <details className="inspector-group" open><summary>Reference assets<span>Optional</span></summary><AssetInput key={`${generation.id}:${model.id}`} projects={editor.projects} value={settings.references} kinds={model.inputs} onChange={references => update({ references })}/><p className="hint asset-capabilities">Accepts {model.inputs.join(', ')}{model.kind === 'video' ? ' · First image sets the start frame.' : ''}</p></details>}
-        {kind !== 'audio' && <label className="inspector-property"><span>Aspect ratio</span><select aria-label="Generation aspect ratio" value={settings.aspectRatio} onChange={e => update({ aspectRatio: e.target.value as AssetSettings['aspectRatio'] })}>{(kind === 'video' ? ['16:9', '9:16', '1:1'] : ['16:9', '9:16', '1:1', '4:3', '3:4']).map(r => <option key={r}>{r}</option>)}</select></label>}
+        {(model.inputs.length > 0 || settings.references.length > 0) && <details className="inspector-group" open><summary>Reference assets<span>Optional</span></summary><AssetInput key={`${generation.id}:${model.id}`} projects={editor.projects} value={settings.references} kinds={model.inputs} onChange={references => update({ references })}/><p className="hint asset-capabilities">Accepts {model.inputs.join(', ')}</p></details>}
+        {kind !== 'audio' && <label className="inspector-property"><span>Aspect ratio</span><select aria-label="Generation aspect ratio" value={settings.aspectRatio} onChange={e => update({ aspectRatio: e.target.value as AssetSettings['aspectRatio'] })}>{['16:9', '9:16', '1:1', '4:3', '3:4'].map(r => <option key={r}>{r}</option>)}</select></label>}
         {model.resolutions.length > 0 && <label className="inspector-property"><span>Resolution</span><select aria-label="Generation resolution" value={settings.resolution} onChange={e => update({ resolution: e.target.value as AssetSettings['resolution'] })}>{model.resolutions.map(r => <option key={r}>{r}</option>)}</select></label>}
-        {kind === 'video' && <label className="inspector-property"><span>Duration</span><select aria-label="Generation duration" value={settings.duration} onChange={e => update({ duration: Number(e.target.value) })}><option value={5}>5 seconds</option><option value={10}>10 seconds</option></select></label>}
         {kind === 'audio' && <label className="inspector-property"><span>Duration (s)</span><input aria-label="Generation duration" type="number" min={model.id === 'stable-audio-2.5' ? 1 : .5} max={model.id === 'stable-audio-2.5' ? 190 : 22} step={model.id === 'stable-audio-2.5' ? 1 : .5} value={settings.duration} onChange={e => { if (Number.isFinite(e.target.valueAsNumber)) update({ duration: Math.min(model.id === 'stable-audio-2.5' ? 190 : 22, Math.max(model.id === 'stable-audio-2.5' ? 1 : .5, e.target.valueAsNumber)) }); }}/></label>}
         <div className="asset-generate-actions"><button className="button primary full-width" type="submit" disabled={busy || enhancement.enhancing || !status?.providers.fal || !!validation || !!missingReferences.length}><span className="status-icon">{busy ? <span className="spinner"/> : <Sparkles size={14}/>}</span>{busy ? 'Generating…' : `Generate ${kind}`}</button>
           <div className="asset-secondary-action">{busy ? <button className="text-button" type="button" onClick={() => void editor.assetJobs.cancel(generation.id)}>Cancel</button> : generation.requestId && ['error', 'cancelled'].includes(generation.phase) ? <button className="text-button" type="button" onClick={() => void editor.assetJobs.resume(generation.id)}>Check result</button> : null}</div>

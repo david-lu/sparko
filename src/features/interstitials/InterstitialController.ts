@@ -123,7 +123,7 @@ export class InterstitialController {
     return scene && flow ? clipDependency(flow, this.state.items, scene.id) : undefined;
   }
   clipKind(id: string): PromptClipKind {
-    if(this.story) { const node=this.story.graph.nodes.find(n=>n.interstitialId===id); return node&&behaviors(node).loop?'idle':'interstitial'; }
+    if(this.story) { const node=this.story.graph.nodes.find(n=>n.interstitialId===id); return (node?behaviors(node).loop:this.state.items.find(i=>i.id===id)?.method==='comfy-loop')?'idle':'interstitial'; }
     const kind = this.flowFor(id)?.scenes.find(scene => scene.interstitialId === id)?.clip.kind;
     return kind === 'call' || kind === 'idle' || kind === 'response' ? kind : 'interstitial';
   }
@@ -147,6 +147,14 @@ export class InterstitialController {
     if (this.state.items.some(item => item.id === id && item.label !== label)) this.patch(id, { label });
   }
   ensureItem(item: Interstitial) { if (!this.state.items.some(current => current.id === item.id)) this.update({ items: [...this.state.items, item] }, true); }
+  updateLibraryMetadata(items: Interstitial[]) {
+    const edits = new Map(items.map(item => [item.id, item]));
+    const next = this.state.items.map(item => {
+      const edit = edits.get(item.id);
+      return edit && (edit.label !== item.label || edit.folderId !== item.folderId) ? { ...item, label: edit.label, folderId: edit.folderId } : item;
+    });
+    if (next.some((item, i) => item !== this.state.items[i])) this.update({ items: next }, true);
+  }
   edit(id: string, values: Partial<InterstitialSettings>) {
     const item = this.state.items.find(item => item.id === id);
     // The editor always stays usable. Jobs and media retain the inputs they were submitted with.

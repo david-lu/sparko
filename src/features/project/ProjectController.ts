@@ -9,7 +9,7 @@ import { TIMELINE_FPS } from '../../../shared/constants';
 import { maxCrossfadeFrames, savedCrossfadeFrames } from '../player/preferences';
 import { groupCallResponse, lockCallResponseStructure, migrateDefaultAnswerLabels, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
 import { createCallResponseDraft } from '../call-response/draft';
-import { frameTime, type Interstitial } from '../../../shared/interstitials';
+import { frameTime, interstitialSettings, type Interstitial } from '../../../shared/interstitials';
 import { ProjectHistory } from './ProjectHistory';
 // Open/save must remain available in an already-open tab after a deployment
 // removes old hashed chunks. Load archive support with the application.
@@ -21,6 +21,7 @@ import type { LibraryAsset, LibraryFolder } from './types';
 import type { AssetGeneration } from '../../../shared/asset-generation';
 import { readClipMetadata } from '../../media/clipMetadata';
 import { reconnectClipReferences, restoreClip } from '../interstitials/clipMetadata';
+import { migrateVideoGenerations, projectVideos, videoAssetIds, videoUsage } from './videos';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
   busy: boolean; message: string; progress: number | null; error: string | null;
@@ -59,8 +60,11 @@ export class ProjectController {
     return this.task('Removing clips',async signal=>{
       this.switching=true;
       try {
-        const itemIds=graph.nodes.filter(n=>ids.includes(n.id)).flatMap(n=>n.interstitialId?[n.interstitialId]:[]);
-        if(!await this.interstitials.removeMany(itemIds,signal))throw new Error('A running generation could not be cancelled. Try removing the clip again.');
+        signal.throwIfAborted();
+        for (const node of graph.nodes.filter(n => ids.includes(n.id))) {
+          const item = project.interstitials.find(i => i.id === node.interstitialId);
+          if (item && !next.nodes.some(n => n.interstitialId === item.id)) this.interstitials.edit(item.id, interstitialSettings(this.interstitials.generationItem(item)));
+        }
         this.interstitials.setStoryGraph(next,project.source.assetId!,this.storyDuration);
         this.save({...project,storyFlow:next,interstitials:this.interstitials.getSnapshot().items,updatedAt:Date.now()});
       }finally{this.switching=false;}
@@ -153,7 +157,37 @@ export class ProjectController {
   private update(patch: Partial<State>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
   clearError() { this.update({ error: null }); }
   editAssets(change: (project: Project) => Project, record = true) {
-    if (this.state.project) { this.save(change(this.state.project), record); this.update({ dirty: true }); }
+    if (!this.state.project) return;
+    const next = migrateVideoGenerations(change(this.state.project));
+    this.switching = true;
+    try {
+      next.interstitials.forEach(item => this.interstitials.ensureItem(item));
+      this.interstitials.updateLibraryMetadata(next.interstitials);
+      if (next.storyFlow !== this.state.project.storyFlow) this.interstitials.setStoryGraph(next.storyFlow, next.source.assetId, this.storyDuration);
+      this.save({ ...next, interstitials: this.interstitials.getSnapshot().items }, record);
+      this.update({ dirty: true });
+    } finally { this.switching = false; }
+  }
+  migrateVideos() {
+    const project = this.state.project;
+    if (project && migrateVideoGenerations(project) !== project) this.editAssets(p => p, false);
+  }
+  async removeVideo(id: string) {
+    const initial = this.state.project, video = initial && projectVideos(initial).find(v => v.id === id);
+    if (!initial || !video || videoUsage(initial, video).length) return false;
+    if (!video.generation) return false;
+    // Cancelling is allowed to publish progress, but removal is one undoable edit.
+    if (!await this.interstitials.cancel(id)) return false;
+    const current = this.state.project, latest = current && projectVideos(current).find(v => v.id === id);
+    if (!current || current.id !== initial.id || !latest || videoUsage(current, latest).length) return false;
+    this.switching = true;
+    try {
+      if (!await this.interstitials.removeMany([id])) return false;
+      const ids = new Set(videoAssetIds(current, id));
+      this.save({ ...current, interstitials: this.interstitials.getSnapshot().items,
+        assetGenerations: current.assetGenerations?.filter(g => g.id !== id), library: current.library?.filter(a => !ids.has(a.assetId)) });
+      return true;
+    } finally { this.switching = false; }
   }
   async importAssets(entries: LibraryFile[], folderId?: string, onProgress?: (message: string) => void) {
     const initial = this.state.project;
@@ -243,6 +277,7 @@ export class ProjectController {
       const rename = renamedClips.get(item.id);
       return rename && item.label === rename.before ? { ...item, label: rename.after } : item;
     }) };
+    project = migrateVideoGenerations(project);
     ({ project, pendingAssets } = await this.prepareSource(project, pendingAssets, signal));
     ({ project, pendingAssets } = await this.prepareGraphSources(project,pendingAssets,signal));
     await this.prepareGenerated(project, pendingAssets, signal);

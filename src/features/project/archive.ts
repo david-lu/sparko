@@ -62,14 +62,14 @@ const projectSchema = z.object({
     }), 'Invalid folder hierarchy.').optional(),
   assetGenerations: z.array(assetGenerationSchema).max(1000).refine(items => new Set(items.map(g => g.id)).size === items.length, 'Duplicate generations.').optional(),
   library: z.array(z.object({ assetId: z.uuid(), originalAssetId: z.uuid().optional(), name: z.string().min(1).max(1000),
-    kind: z.enum(['video', 'generated', 'subtitle', 'image', 'audio']), folderId: z.uuid().optional(), generationId: z.uuid().optional(), width: number.int().optional(), height: number.int().optional(), duration: number.positive().optional(), inFrame: number.int().optional(), outFrame: number.int().positive().optional(),
+    kind: z.enum(['video', 'generated', 'subtitle', 'image', 'audio']), folderId: z.uuid().optional(), generationId: z.uuid().optional(), videoId: text.optional(), width: number.int().optional(), height: number.int().optional(), duration: number.positive().optional(), inFrame: number.int().optional(), outFrame: number.int().positive().optional(),
   }).refine(item => item.outFrame === undefined || item.outFrame > (item.inFrame ?? 0), 'Invalid library clip boundaries.')).max(2000)
     .refine(items => new Set(items.map(item => item.assetId)).size === items.length, 'Duplicate library assets.')
     // Accept legacy subtitle entries, but keep subtitles exclusively on the project track.
     .transform(items => items.filter((item): item is LibraryAsset => item.kind !== 'subtitle')).optional(),
   source: z.object({ name: z.string().min(1).max(1000), assetId: z.uuid().optional(), originalAssetId: z.uuid().optional() }),
   interstitials: z.array(z.preprocess(preserveLegacyJobProvider, z.object({
-    id: z.string().min(1).max(200), label: z.string().max(1000), time: number, kind: z.enum(['regular', 'call-response']).optional(), groupId: text.optional(),
+    id: z.string().min(1).max(200), label: z.string().max(1000), time: number, kind: z.enum(['regular', 'call-response']).optional(), groupId: text.optional(), folderId: text.optional(),
     ...settingsSchema.shape, generationSettings: settingsSchema.optional(),
     requestMethod: z.enum([...generationMethods, 'fal']).optional(),
     requestPrompt: z.string().max(8000).optional(),

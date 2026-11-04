@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { ChevronDown, Combine, Copy, Flag, Hand, GitBranch, GripVertical, ImageOff, LayoutTemplate, Maximize, Minus, Plus, Repeat2, Scissors, SquareDashed, Trash2, Upload } from 'lucide-react';
 import { TIMELINE_FPS } from '../../../shared/constants';
-import { isGenerating } from '../../../shared/interstitials';
+import { isGenerating, playableResult } from '../../../shared/interstitials';
 import { formatTime } from '../../../shared/contracts';
 import type { CallResponseFlow, PlaybackSession } from '../call-response/model';
 import { sceneFrames } from '../call-response/model';
@@ -65,7 +65,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const [movePreview,setMovePreview]=useState<{ids:string[];groupId?:string;dx:number;dy:number}|null>(null);
   const [routeDrag,setRouteDrag]=useState<{edgeId:string;pointId:string;point:Point}|null>(null);
   const [dropTarget,setDropTarget]=useState<string|null>(null),[dropPoint,setDropPoint]=useState<Point|null>(null),[libraryDrag,setLibraryDrag]=useState<LibraryItem|null>(null);
-  const insertingLibrary=!!libraryDrag&&!('assetId' in libraryDrag);
+  const insertingLibrary=!!libraryDrag&&('videoId' in libraryDrag?!!editor.videos.find(v=>v.id===libraryDrag.videoId)?.generation:!('assetId' in libraryDrag));
   const movingInterstitial=!!movePreview&&!movePreview.groupId&&movePreview.ids.length===1&&graph.nodes.some(n=>n.id===movePreview.ids[0]&&n.kind!=='source');
   const dropConnection=insertingLibrary||movingInterstitial?graph.edges.find(e=>e.id===dropTarget):undefined;
   const library=editor.projects.getSnapshot().project?.library;
@@ -77,9 +77,10 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const dragPreview=useMemo(()=>{
     if(!libraryDrag)return [];
     if('kind' in libraryDrag){const {node,item}=createNode(libraryDrag.kind);return [{...node,x:0,y:0,duration:nodeDuration(node,[item])}];}
+    if('videoId' in libraryDrag){const video=editor.videos.find(v=>v.id===libraryDrag.videoId);if(video?.generation)return [{id:video.id,name:video.name,kind:'simple',x:0,y:0,duration:playableResult(video.generation)?.duration??video.generation.duration}];}
     if('assetId' in libraryDrag){const asset=library?.find(a=>a.assetId===libraryDrag.assetId);return asset?.duration?[{id:asset.assetId,name:asset.name,kind:'source',x:0,y:0,duration:((asset.outFrame??asset.duration*TIMELINE_FPS)-(asset.inFrame??0))/TIMELINE_FPS}]:[];}
     return templatePreview?.graph.nodes.map(n=>({...n,duration:nodeDuration(n,templatePreview.items)}))??[];
-  },[libraryDrag,templatePreview,library]);
+  },[libraryDrag,templatePreview,library,editor.videos]);
   useEffect(()=>{
     const start=(event:DragEvent)=>{if(event.dataTransfer)setLibraryDrag(readLibraryDrag(event.dataTransfer));};
     const end=()=>{setFileDrag(false);setLibraryDrag(null);setDropTarget(null);setDropPoint(null);};
@@ -424,7 +425,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   };
   // Use the same target for the replacement preview and the committed drop.
   const libraryDropTarget=(target:EventTarget,item:LibraryItem|null)=>{
-    if(!item||'assetId' in item)return {targetId:'canvas',connectionId:undefined,fromId:undefined};
+    if(!item||('videoId' in item?!editor.videos.find(v=>v.id===item.videoId)?.generation:'assetId' in item))return {targetId:'canvas',connectionId:undefined,fromId:undefined};
     const element=target as Element,fromId=element.closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;
     const connectionId=element.closest('[data-edge-id]')?.getAttribute('data-edge-id')??(fromId?graph.edges.find(e=>e.from===fromId&&e.event==='next')?.id:undefined);
     return {targetId:connectionId??fromId??'canvas',connectionId,fromId};
@@ -442,8 +443,9 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     const pointer=localPoint({x:event.clientX,y:event.clientY}),point=toWorld(files.length?pointer:libraryOrigin(pointer),cameraRef.current);
     if(files.length){void editor.importVideos(files,point);return;}
     const item=readLibraryDrag(event.dataTransfer);if(!item)return;
-    if('assetId' in item && item.assetId){editor.addAsset(item.assetId,point);return;}
     const {connectionId,fromId}=libraryDropTarget(event.target,item);
+    if('videoId' in item){void editor.addVideo(item.videoId,point,connectionId,fromId);return;}
+    if('assetId' in item && item.assetId){void editor.addAsset(item.assetId,point);return;}
     if('kind' in item&&['simple','looped','conditional'].includes(item.kind))editor.add(item.kind,connectionId??undefined,point,fromId);
     if('templateId' in item){const template=graph.templates.find(t=>t.id===item.templateId)??builtInTemplates.find(t=>t.id===item.templateId)?.id;if(template)editor.insertTemplate(template,connectionId??undefined,point,fromId);}
   };

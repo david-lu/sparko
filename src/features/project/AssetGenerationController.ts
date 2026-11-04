@@ -29,7 +29,7 @@ export class AssetGenerationController {
   }
   async generate(id: string) {
     const g = this.get(id), projectId = this.projects.getSnapshot().project?.id;
-    if (!g || !projectId || generationBusy(g)) return;
+    if (!g || g.kind === 'video' || !projectId || generationBusy(g)) return;
     const settings = { ...g.settings, count: 1 }, error = validateAssetSettings(settings);
     if (error) { this.edit(id, { error }, false); return; }
     const key = `${projectId}:${id}`, task = new AbortController(), submitted = structuredClone(settings);

@@ -2,8 +2,8 @@ import type { DragEvent } from 'react';
 
 export const STORY_DRAG_TYPE='application/x-sparko-clip';
 export const LIBRARY_MOVE_TYPE='application/x-sparko-library-items';
-export type LibraryMoveSelection={type:'asset'|'generation';id:string};
-export type LibraryItem={kind:'simple'|'looped'|'conditional'}|{templateId:string}|{assetId:string;generationId?:string}|{generationId:string;assetId?:string};
+export type LibraryMoveSelection={type:'asset'|'generation'|'video';id:string};
+export type LibraryItem={videoId:string;assetId?:string}|{kind:'simple'|'looped'|'conditional'}|{templateId:string}|{assetId:string;generationId?:string}|{generationId:string;assetId?:string};
 
 // Load an actual transparent bitmap before dragging. An unpainted canvas can
 // leave the browser using its default snapshot of the source button instead.
@@ -14,6 +14,7 @@ export function readLibraryDrag(data:DataTransfer):LibraryItem|null {
   try {
     const value=JSON.parse(data.getData(STORY_DRAG_TYPE));
     if(!value||typeof value!=='object')return null;
+    if(typeof value.videoId==='string')return {videoId:value.videoId,...(typeof value.assetId==='string'?{assetId:value.assetId}:{})};
     if(typeof value.generationId==='string')return {generationId:value.generationId,...(typeof value.assetId==='string'?{assetId:value.assetId}:{})};
     if(typeof value.assetId==='string')return {assetId:value.assetId};
     if(typeof value.templateId==='string')return {templateId:value.templateId};
@@ -25,9 +26,10 @@ export function readLibraryDrag(data:DataTransfer):LibraryItem|null {
 export function readLibraryMove(data:DataTransfer):LibraryMoveSelection[] {
   try {
     const items:unknown=JSON.parse(data.getData(LIBRARY_MOVE_TYPE));
-    if(Array.isArray(items)&&items.every(item=>item&&['asset','generation'].includes(item.type)&&typeof item.id==='string'))return items;
+    if(Array.isArray(items)&&items.every(item=>item&&['asset','generation','video'].includes(item.type)&&typeof item.id==='string'))return items;
   }catch{/* Other drags have no library selection. */}
   const item=readLibraryDrag(data);
+  if(item&&'videoId' in item)return [{type:'video',id:item.videoId}];
   if(item&&'generationId' in item&&item.generationId)return [{type:'generation',id:item.generationId}];
   return item&&'assetId' in item&&item.assetId?[{type:'asset',id:item.assetId}]:[];
 }
@@ -52,8 +54,8 @@ export function showLibraryDragImage(event:DragEvent,count=1,thumbnails:readonly
 }
 
 export function startLibraryDrag(event:DragEvent,payload:LibraryItem,selection?:LibraryMoveSelection[],thumbnails?:readonly Element[]) {
-  const media='assetId' in payload||'generationId' in payload;
-  const items=selection??('generationId' in payload&&payload.generationId?[{type:'generation' as const,id:payload.generationId}]:
+  const media='videoId' in payload||'assetId' in payload||'generationId' in payload;
+  const items=selection??('videoId' in payload?[{type:'video' as const,id:payload.videoId}]:'generationId' in payload&&payload.generationId?[{type:'generation' as const,id:payload.generationId}]:
     'assetId' in payload&&payload.assetId?[{type:'asset' as const,id:payload.assetId}]:[]);
   event.dataTransfer.effectAllowed=items.length>1?'move':media?'copyMove':'copy';
   // Multi-selection is a library move; single media items can also be copied into clips and references.

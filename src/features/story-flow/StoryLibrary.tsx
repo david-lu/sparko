@@ -13,6 +13,7 @@ import { assetUsage } from '../project/assetUsage';
 import AssetThumbnail from '../project/AssetThumbnail';
 import LibraryContextMenu from './LibraryContextMenu';
 import LibraryFolderDialog from './LibraryFolderDialog';
+import { videoUsage } from '../project/videos';
 
 const folderDragType = 'application/x-sparko-folder';
 type MenuTarget = LibrarySelection | { type: 'folder'; id: string } | { type: 'background'; folderId?: string };
@@ -30,26 +31,35 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
   const [dropFolder, setDropFolder] = useState<string>();
   const draggedFolder = useRef<string | undefined>(undefined), selectionAnchor = useRef<LibrarySelection | null>(null);
   const dragThumbnails = useRef<HTMLDivElement>(null);
-  const project = editor.projects.getSnapshot().project, library = project?.library ?? [], folders = project?.libraryFolders ?? [], generations = project?.assetGenerations ?? [];
+  const project = editor.projects.getSnapshot().project, library = project?.library ?? [], folders = project?.libraryFolders ?? [], generations = (project?.assetGenerations ?? []).filter(g => g.kind !== 'video');
+  const videos = editor.videos, looseAssets = library.filter(a => !['video', 'generated'].includes(a.kind));
   const selected = editor.librarySelection;
-  const selections = editor.librarySelections.filter(s => s.type === 'asset' ? library.some(a => a.assetId === s.id) : s.type === 'generation' ? generations.some(g => g.id === s.id) : false);
+  const selections = editor.librarySelections.filter(s => s.type === 'asset' ? library.some(a => a.assetId === s.id) : s.type === 'generation' ? generations.some(g => g.id === s.id) : videos.some(v => v.id === s.id));
   const isSelected = (type: LibrarySelection['type'], id: string) => selections.some(s => s.type === type && s.id === id);
   const clearSelection = () => { editor.setSelected([]); editor.setSelectedEdge(null); editor.jobs.select(null); selectionAnchor.current = null; };
   const menuTarget = menu?.target;
   const menuAsset = menuTarget?.type === 'asset' ? library.find(a => a.assetId === menuTarget.id) : undefined;
   const menuGeneration = menuTarget?.type === 'generation' ? generations.find(g => g.id === menuTarget.id) : undefined;
   const menuFolder = menuTarget?.type === 'folder' ? folders.find(f => f.id === menuTarget.id) : undefined;
-  const menuJob = menuTarget?.type === 'job' ? editor.items.find(i => i.id === menuTarget.id) : undefined;
-  const menuOutput = menuAsset ?? library.find(a => a.assetId === menuGeneration?.selectedAssetId);
+  const menuVideo = menuTarget?.type === 'video' ? videos.find(v => v.id === menuTarget.id) : undefined;
+  const menuJob = menuVideo?.generation;
+  const menuOutput = menuVideo?.media ?? menuAsset ?? library.find(a => a.assetId === menuGeneration?.selectedAssetId);
   const destination = menuFolder?.id ?? (menu?.target.type === 'background' ? menu.target.folderId : undefined);
   const deletedGeneration = generations.find(g => deleting?.type === 'generation' && g.id === deleting.id);
-  const deletedAsset = library.find(a => deleting?.type === 'asset' && a.assetId === deleting.id);
+  const deletedVideo = deleting?.type === 'video' ? videos.find(v => v.id === deleting.id) : undefined;
+  const deletedAsset = deletedVideo && !deletedVideo.generation && !deletedVideo.legacyGeneration ? deletedVideo.media : library.find(a => deleting?.type === 'asset' && a.assetId === deleting.id);
   const deleteIds = deletedGeneration ? deletedGeneration.versions.map(v => v.assetId) : deletedAsset ? [deletedAsset.assetId] : [];
-  const usages = project && deleting ? assetUsage({ ...project, assetGenerations: generations.filter(g => g.id !== deletedGeneration?.id) }, deleteIds) : [];
+  const usages = project && deletedVideo ? videoUsage(project, deletedVideo) : project && deleting ? assetUsage({ ...project, assetGenerations: project.assetGenerations?.filter(g => g.id !== deletedGeneration?.id) }, deleteIds) : [];
   const remove = async () => {
     if (!deleting || usages.length || removing) return;
     setRemoving(true);
     try {
+      if (deletedVideo?.generation || deletedVideo?.legacyGeneration) {
+        if (deletedVideo.legacyGeneration) { await editor.assetJobs.cancel(deletedVideo.id); editor.projects.migrateVideos(); }
+        if (await editor.projects.removeVideo(deletedVideo.id)) { editor.setSelected([]); setDeleting(null); setMessage('Video deleted. Undo restores it.'); }
+        else setDeleteError('Unable to delete this video. Check its uses or cancel the generation and try again.');
+        return;
+      }
       if (deletedGeneration && generationBusy(deletedGeneration)) {
         await editor.assetJobs.cancel(deletedGeneration.id);
         const current = editor.projects.getSnapshot().project?.assetGenerations?.find(g => g.id === deletedGeneration.id);
@@ -71,11 +81,12 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
   }, [project?.id]);
   const importFiles = async (entries: LibraryFile[] | Promise<LibraryFile[]>, target?: string) => {
     if (busy) return; setBusy(true); setMessage('Reading files…');
-    try { const added = await editor.projects.importAssets(await entries, target, setMessage); setMessage(`${added.length} assets imported`); if (added[0]) editor.selectLibrary({ type: 'asset', id: added[0].assetId }); }
+    try { const added = await editor.projects.importAssets(await entries, target, setMessage); setMessage(`${added.length} assets imported`); if (added[0]) editor.selectLibrary({ type: ['video', 'generated'].includes(added[0].kind) ? 'video' : 'asset', id: added[0].assetId }); }
     catch (e) { setMessage(e instanceof Error ? e.message : 'Import failed.'); }
     finally { setBusy(false); }
   };
   const create = (kind: MediaKind, target: string | undefined) => {
+    if (kind === 'video') { editor.createVideo(target); setFolderId(target); setMenu(null); if (target) setCollapsed(old => new Set([...old].filter(id => id !== target))); return; }
     const generation = newAssetGeneration(kind, target);
     editor.projects.editAssets(p => ({ ...p, assetGenerations: [...p.assetGenerations ?? [], generation] }));
     editor.selectLibrary({ type: 'generation', id: generation.id }); setFolderId(target); setMenu(null);
@@ -116,7 +127,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
     if (!menuFolder) return;
     const { id, parentId } = menuFolder;
     editor.projects.editAssets(p => ({ ...p, libraryFolders: p.libraryFolders?.filter(f => f.id !== id).map(f => f.parentId === id ? { ...f, parentId } : f),
-      library: p.library?.map(a => a.folderId === id ? { ...a, folderId: parentId } : a), assetGenerations: p.assetGenerations?.map(g => g.folderId === id ? { ...g, folderId: parentId } : g) }));
+      library: p.library?.map(a => a.folderId === id ? { ...a, folderId: parentId } : a), assetGenerations: p.assetGenerations?.map(g => g.folderId === id ? { ...g, folderId: parentId } : g), interstitials: p.interstitials.map(i => i.folderId === id ? { ...i, folderId: parentId } : i) }));
     setFolderId(parentId); setMenu(null); setMessage('Folder removed; its assets were kept. Undo restores it.');
   };
   const canMoveFolder = (id: string, target?: string) => {
@@ -130,10 +141,10 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
       if (!canMoveFolder(draggedFolder, target)) { setMessage('A folder cannot contain itself.'); return; }
       editor.projects.editAssets(p => ({ ...p, libraryFolders: p.libraryFolders?.map(f => f.id === draggedFolder ? { ...f, parentId: target } : f) })); return;
     }
-    const items = readLibraryMove(data), assetIds = new Set(items.filter(i => i.type === 'asset').map(i => i.id)), generationIds = new Set(items.filter(i => i.type === 'generation').map(i => i.id));
+    const items = readLibraryMove(data), assetIds = new Set(items.filter(i => i.type === 'asset' || i.type === 'video').map(i => i.id)), generationIds = new Set(items.filter(i => i.type === 'generation' || i.type === 'video').map(i => i.id));
     if (!items.length) return;
-    editor.projects.editAssets(p => ({ ...p, library: p.library?.map(a => assetIds.has(a.assetId) || a.generationId && generationIds.has(a.generationId) ? { ...a, folderId: target } : a),
-      assetGenerations: p.assetGenerations?.map(g => generationIds.has(g.id) ? { ...g, folderId: target } : g) }));
+    editor.projects.editAssets(p => ({ ...p, library: p.library?.map(a => assetIds.has(a.assetId) || a.generationId && generationIds.has(a.generationId) || a.videoId && generationIds.has(a.videoId) ? { ...a, folderId: target } : a),
+      assetGenerations: p.assetGenerations?.map(g => generationIds.has(g.id) ? { ...g, folderId: target } : g), interstitials: p.interstitials.map(i => generationIds.has(i.id) ? { ...i, folderId: target } : i) }));
     editor.selectLibrary(items);
     setFolderId(target);
     if (target) setCollapsed(old => new Set([...old].filter(id => id !== target)));
@@ -158,11 +169,12 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
   const icon = (kind: string) => kind === 'image' ? <Image size={17}/> : kind === 'audio' ? <Music size={17}/> : <Video size={17}/>;
   const visibleSelections = (parent?: string, depth = 0): LibrarySelection[] => depth > 50 ? [] : [
     ...(!query && filter === 'all' ? folders.filter(f => f.parentId === parent && !collapsed.has(f.id)).flatMap(f => visibleSelections(f.id, depth + 1)) : []),
-    ...library.filter(a => !a.generationId && (query || filter !== 'all' || a.folderId === parent) && matches(a.name, a.kind)).map(a => ({ type: 'asset' as const, id: a.assetId })),
+    ...looseAssets.filter(a => !a.generationId && (query || filter !== 'all' || a.folderId === parent) && matches(a.name, a.kind)).map(a => ({ type: 'asset' as const, id: a.assetId })),
     ...generations.filter(g => (query || filter !== 'all' || g.folderId === parent) && matches(g.name, g.kind)).map(g => ({ type: 'generation' as const, id: g.id })),
+    ...videos.filter(v => (query || filter !== 'all' || v.folderId === parent) && matches(v.name, 'video')).map(v => ({ type: 'video' as const, id: v.id })),
   ];
   const choose = (selection: LibrarySelection, event?: MouseEvent) => {
-    setFolderId(selection.type === 'asset' ? library.find(a => a.assetId === selection.id)?.folderId : generations.find(g => g.id === selection.id)?.folderId);
+    setFolderId(selection.type === 'video' ? videos.find(v => v.id === selection.id)?.folderId : selection.type === 'asset' ? library.find(a => a.assetId === selection.id)?.folderId : generations.find(g => g.id === selection.id)?.folderId);
     const same = (item: LibrarySelection, other: LibrarySelection | null) => item.type === other?.type && item.id === other.id;
     const additive = event?.metaKey || event?.ctrlKey;
     if (event?.shiftKey && selectionAnchor.current) {
@@ -176,7 +188,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
     editor.selectLibrary(additive ? isSelected(selection.type, selection.id) ? selections.filter(s => !same(s, selection)) : [...selections, selection] : selection);
   };
   const startAssetDrag = (event: DragEvent, selection: LibraryMoveSelection, payload: LibraryItem) => {
-    const items = isSelected(selection.type, selection.id) ? selections.filter((s): s is LibraryMoveSelection => s.type !== 'job') : [selection];
+    const items = isSelected(selection.type, selection.id) ? selections : [selection];
     // Keep the Inspector's current reference inputs available while dragging an unselected asset.
     startLibraryDrag(event, payload, items, items.length > 1 ? [...dragThumbnails.current?.children ?? []] : undefined);
   };
@@ -186,18 +198,17 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
     for (let i = 0; i < folders.length; i++) for (const f of folders) if (!target || f.parentId && scope.has(f.parentId)) scope.add(f.id);
     const inside = (id?: string) => !target || !!id && scope.has(id);
     const unused: LibrarySelection[] = [
-      ...library.filter(a => !a.generationId && inside(a.folderId) && !assetUsage(project, [a.assetId]).length).map(a => ({ type: 'asset' as const, id: a.assetId })),
-      ...generations.filter(g => inside(g.folderId) && !assetUsage({ ...project, assetGenerations: generations.filter(other => other.id !== g.id) }, g.versions.map(v => v.assetId)).length).map(g => ({ type: 'generation' as const, id: g.id })),
+      ...looseAssets.filter(a => !a.generationId && inside(a.folderId) && !assetUsage(project, [a.assetId]).length).map(a => ({ type: 'asset' as const, id: a.assetId })),
+      ...videos.filter(v => inside(v.folderId) && !videoUsage(project, v).length).map(v => ({ type: 'video' as const, id: v.id })),
+      ...generations.filter(g => inside(g.folderId) && !assetUsage({ ...project, assetGenerations: project.assetGenerations?.filter(other => other.id !== g.id) }, g.versions.map(v => v.assetId)).length).map(g => ({ type: 'generation' as const, id: g.id })),
     ];
     editor.selectLibrary(unused); selectionAnchor.current = unused[0] ?? null; setFolderId(target); setQuery(''); setFilter('all');
     setCollapsed(old => new Set([...old].filter(id => !scope.has(id)))); setMenu(null);
     setMessage(`${unused.length} unused asset${unused.length === 1 ? '' : 's'} selected.`);
   };
-  const selectJob = (id: string) => { const node = editor.graph?.nodes.find(n => n.interstitialId === id); if (node) editor.select(node.id, null); else editor.selectLibrary({ type: 'job', id }); };
   const openMenu = (target: MenuTarget, trigger: HTMLElement, x: number, y: number) => {
     if (target.type === 'folder') { clearSelection(); setFolderId(target.id); }
     else if (target.type === 'background') clearSelection();
-    else if (target.type === 'job') selectJob(target.id);
     else choose(target);
     menuTrigger.current = trigger; setMenu({ x, y, target }); setSubmenu(false);
   };
@@ -223,15 +234,26 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
         <ChevronRight size={12} style={{ transform: collapsed.has(f.id) ? '' : 'rotate(90deg)' }}/><Folder size={15}/><span>{f.name}</span>
       </button>{!collapsed.has(f.id) && tree(f.id, depth + 1)}
     </div>)}
-    {library.filter(a => !a.generationId && (query || filter !== 'all' || a.folderId === parent) && matches(a.name, a.kind)).map(a => row(a, depth))}
+    {looseAssets.filter(a => !a.generationId && (query || filter !== 'all' || a.folderId === parent) && matches(a.name, a.kind)).map(a => row(a, depth))}
     {generations.filter(g => (query || filter !== 'all' || g.folderId === parent) && matches(g.name, g.kind)).map(g => <button key={g.id} style={{ paddingLeft: depth * 12 + 6 }}
       className={isSelected('generation', g.id) ? 'selected' : ''} aria-label={`Library generation ${g.name}`} aria-pressed={isSelected('generation', g.id)}
       data-library-type="generation" data-library-id={g.id} draggable onDragStart={e => startAssetDrag(e, { type: 'generation', id: g.id }, { generationId: g.id, ...(g.selectedAssetId ? { assetId: g.selectedAssetId } : {}) })} onContextMenu={e => contextMenu(e, { type: 'generation', id: g.id })} onClick={e => choose({ type: 'generation', id: g.id }, e)}>
       <AssetThumbnail asset={library.find(a => a.assetId === g.selectedAssetId)} kind={g.kind} name={g.name}/>
       <span className="library-asset-name"><strong>{g.name}</strong><small>{g.kind} · {generationBusy(g) ? g.phase === 'queued' ? 'Queued' : 'Generating…' : g.phase}</small></span>{generationBusy(g) ? <span className="spinner"/> : <GripVertical size={12}/>}
     </button>)}
-    {!parent && editor.items.filter(isGenerating).filter(i => matches(i.label, 'video')).map(i => <button key={i.id} aria-label={`Generating video ${i.label}`} data-library-type="job" data-library-id={i.id} onClick={() => selectJob(i.id)} onContextMenu={e => contextMenu(e, { type: 'job', id: i.id })}>
-      <AssetThumbnail asset={library.find(a => a.assetId === (i.previousResult ?? i.result)?.assetId)} kind="video" name={i.label}/><span className="library-asset-name"><strong>{i.label}</strong><small>Video · {i.phase}</small></span><span className="spinner"/></button>)}
+    {videos.filter(v => (query || filter !== 'all' || v.folderId === parent) && matches(v.name, 'video')).map(v => {
+      const busy = v.generation ? isGenerating(v.generation) : v.legacyGeneration ? generationBusy(v.legacyGeneration) : false;
+      const phase = v.generation?.phase ?? v.legacyGeneration?.phase;
+      return <button key={v.id} style={{ paddingLeft: depth * 12 + 6 }} className={isSelected('video', v.id) ? 'selected' : ''}
+        aria-label={`Library asset ${v.name}`} aria-pressed={isSelected('video', v.id)} data-library-type="video" data-library-id={v.id} data-asset-id={v.media?.assetId} draggable
+        onClick={e => choose({ type: 'video', id: v.id }, e)} onDoubleClick={() => void editor.addVideo(v.id)}
+        onContextMenu={e => contextMenu(e, { type: 'video', id: v.id })}
+        onDragStart={e => startAssetDrag(e, { type: 'video', id: v.id }, { videoId: v.id, ...(v.media ? { assetId: v.media.assetId } : {}) })}>
+        <AssetThumbnail asset={v.media} kind="video" name={v.name}/>
+        <span className="library-asset-name"><strong>{v.name}</strong><small>video{phase && phase !== 'ready' ? ` · ${busy ? phase === 'queued' ? 'Queued' : 'Generating…' : phase}` : v.media?.duration ? ` · ${v.media.duration.toFixed(1)}s` : ''} · {project && videoUsage(project, v).length ? 'Used' : 'Unused'}</small></span>
+        {busy ? <span className="spinner"/> : <GripVertical size={12}/>}
+      </button>;
+    })}
   </>;
   return <section className={`story-library asset-library ${dropping ? 'is-dropping' : ''}`} aria-label="Asset library" tabIndex={0}
     onClick={e => { if (!(e.target as HTMLElement).closest('button,input,select,textarea,a,label,dialog,[role="menu"]')) { setFolderId(undefined); clearSelection(); } }}
@@ -241,7 +263,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
       if (e.key === 'ContextMenu' || e.shiftKey && e.key === 'F10') {
         e.preventDefault(); e.stopPropagation(); const row = target.closest<HTMLElement>('[data-library-type]'), trigger = row ?? e.currentTarget, r = trigger.getBoundingClientRect();
         openMenu(row ? { type: row.dataset.libraryType, id: row.dataset.libraryId } as MenuTarget : { type: 'background' }, trigger, r.left + 8, r.top + 8);
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selections.length === 1 && selected && selected.type !== 'job') { e.preventDefault(); e.stopPropagation(); setDeleting(selected); }
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selections.length === 1 && selected) { e.preventDefault(); e.stopPropagation(); setDeleting(selected); }
     }}
     onDragOver={e => accepts(e, undefined, true)} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setDropping(false); setDropFolder(undefined); } }} onDrop={e => drop(e, undefined)}
     onContextMenu={e => { if (!(e.target as HTMLElement).closest('button,input,select,textarea,label,dialog,[role="menu"]')) contextMenu(e, { type: 'background' }); }}>
@@ -253,17 +275,18 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
     <input ref={input} hidden multiple type="file" accept="image/*,video/*,audio/*,.mkv" aria-label="Import library assets" onChange={e => { void importFiles(fileEntries([...e.target.files ?? []]), importDestination.current); e.target.value = ''; }}/>
     <input ref={folderInput} hidden multiple type="file" {...{ webkitdirectory: '' }} aria-label="Import library folder" onChange={e => { void importFiles(fileEntries([...e.target.files ?? []]), importDestination.current); e.target.value = ''; }}/>
     <select className="library-filter" aria-label="Library category" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">All assets</option><option value="image">Images</option><option value="video">Videos</option><option value="audio">Audio</option></select>
-    <div className="library-items library-media">{tree()}{!library.length && !generations.length && !folders.length && <p className="hint">Drop media here or create a generation.</p>}</div>
+    <div className="library-items library-media">{tree()}{!library.length && !generations.length && !videos.length && !folders.length && <p className="hint">Drop media here or create a generation.</p>}</div>
     <div className="library-feedback" role="status" title={message}>{message}</div>
-    <p className="library-footer">{selections.length > 1 ? `${selections.length} assets selected · Drag to move` : `Drop files or folders here · ${library.filter(a => !a.generationId).length + generations.length} assets`}</p>
+    <p className="library-footer">{selections.length > 1 ? `${selections.length} assets selected · Drag to move` : `Drop files or folders here · ${looseAssets.filter(a => !a.generationId).length + generations.length} assets`}</p>
     <div hidden aria-hidden="true" ref={dragThumbnails} data-library-drag-sources>
       {selections.length > 1 && selections.slice(0, 4).map(selection => {
         const generation = selection.type === 'generation' ? generations.find(g => g.id === selection.id) : undefined;
-        const asset = library.find(a => a.assetId === (generation ? generation.selectedAssetId : selection.id));
-        return <AssetThumbnail key={`${selection.type}:${selection.id}`} asset={asset} kind={generation?.kind ?? asset?.kind ?? 'image'} name={generation?.name ?? asset?.name ?? ''} eager/>;
+        const video = selection.type === 'video' ? videos.find(v => v.id === selection.id) : undefined;
+        const asset = video?.media ?? library.find(a => a.assetId === (generation ? generation.selectedAssetId : selection.id));
+        return <AssetThumbnail key={`${selection.type}:${selection.id}`} asset={asset} kind={video ? 'video' : generation?.kind ?? asset?.kind ?? 'image'} name={video?.name ?? generation?.name ?? asset?.name ?? ''} eager/>;
       })}
     </div>
-    {menu && <LibraryContextMenu x={menu.x} y={menu.y} label={menu.target.type === 'background' ? 'Library actions' : menuFolder ? 'Folder actions' : menuJob ? 'Video generation actions' : menuGeneration ? 'Generation actions' : 'Asset actions'}
+    {menu && <LibraryContextMenu x={menu.x} y={menu.y} label={menu.target.type === 'background' ? 'Library actions' : menuFolder ? 'Folder actions' : menuVideo ? 'Video actions' : menuGeneration ? 'Generation actions' : 'Asset actions'}
       onClose={() => setMenu(null)} restoreFocus={() => { const trigger = menuTrigger.current?.isConnected ? menuTrigger.current : input.current?.closest<HTMLElement>('.asset-library'); trigger?.focus({ preventScroll: true }); }}>
       {menu.target.type === 'background' && <>
         <button role="menuitem" disabled={busy} onClick={() => importFromMenu(false, destination)}>Import files…</button>
@@ -301,14 +324,19 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
         }}>{menuGeneration ? 'Rename generation…' : 'Rename asset…'}</button>
         <button role="menuitem" onClick={() => { if (menu.target.type === 'asset' || menu.target.type === 'generation') setDeleting(menu.target); setMenu(null); }}>{menuGeneration ? 'Delete generation…' : 'Delete asset…'}</button>
       </>}
-      {menuJob && <>
-        <button role="menuitem" onClick={() => { selectJob(menuJob.id); setMenu(null); }}>Open in Inspector</button>
-        {isGenerating(menuJob) && <button role="menuitem" onClick={() => run(() => editor.jobs.cancel(menuJob.id))}>Cancel generation</button>}
+      {menuVideo && <>
+        <button role="menuitem" onClick={() => { choose({ type: 'video', id: menuVideo.id }); setMenu(null); }}>Open in Inspector</button>
+        <button role="menuitem" disabled={!menuVideo.generation && !menuVideo.media} onClick={() => run(() => editor.addVideo(menuVideo.id))}>Add to timeline</button>
+        {menuVideo.media && <button role="menuitem" onClick={() => run(() => download(menuVideo.media!))}>Download</button>}
+        {menuJob && isGenerating(menuJob) && <button role="menuitem" onClick={() => run(() => editor.jobs.cancel(menuJob.id))}>Cancel generation</button>}
+        <div role="separator"/>
+        <button role="menuitem" onClick={() => { const name = window.prompt('Rename video', menuVideo.name)?.trim(); if (name) editor.renameVideo(menuVideo.id, name); setMenu(null); }}>Rename asset…</button>
+        <button role="menuitem" onClick={() => { setDeleting({ type: 'video', id: menuVideo.id }); setMenu(null); }}>Delete asset…</button>
       </>}
     </LibraryContextMenu>}
     {folderDialog && <LibraryFolderDialog initialName={folderDialog.mode === 'rename' ? folderDialog.name : undefined} onSubmit={saveFolder} onCancel={() => setFolderDialog(null)}
       restoreFocus={() => { const trigger = folderTrigger.current?.isConnected ? folderTrigger.current : input.current?.closest<HTMLElement>('.asset-library'); trigger?.focus({ preventScroll: true }); }}/>}
-    {deleting && <ModalBackdrop labelledBy="delete-asset-title" onCancel={() => setDeleting(null)}><div className="project-card asset-delete-dialog"><h2 id="delete-asset-title">Delete {deletedGeneration?.name ?? deletedAsset?.name ?? 'asset'}?</h2>
+    {deleting && <ModalBackdrop labelledBy="delete-asset-title" onCancel={() => setDeleting(null)}><div className="project-card asset-delete-dialog"><h2 id="delete-asset-title">Delete {deletedVideo?.name ?? deletedGeneration?.name ?? deletedAsset?.name ?? 'asset'}?</h2>
       {usages.length ? <><p>This asset is being used. Remove or replace these uses before deleting it:</p><ul>{usages.map((use, i) => <li key={i}><strong>{use.owner}</strong> — {use.role}</li>)}</ul></> : <p>This removes the asset from this project. Undo can restore it.</p>}
       <div className="library-feedback" role="status">{deleteError}</div>
       <div className="close-project-actions"><button className="button" autoFocus disabled={removing} onClick={() => setDeleting(null)}>{usages.length ? 'Keep asset' : 'Cancel'}</button><button className="button danger" style={{ minWidth: 110 }} disabled={!!usages.length || removing} onClick={() => void remove()}>{removing ? 'Deleting…' : 'Delete asset'}</button></div>

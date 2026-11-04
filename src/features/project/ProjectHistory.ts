@@ -1,12 +1,12 @@
 import { interstitialSettings, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import type { Project } from './types';
 
-export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId'> & InterstitialSettings;
+export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId' | 'folderId'> & InterstitialSettings;
 export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'libraryFolders' | 'subtitle' | 'crossfadeFrames'> & { interstitials: InterstitialEdit[]; assetGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings'>[] };
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
-  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [] })),
+  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, folderId, ...item }) => ({ id, label, time, kind, groupId, folderId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [] })),
     callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, libraryFolders: project.libraryFolders,
     assetGenerations: project.assetGenerations?.map(({id,name,kind,folderId,settings}) => ({id,name,kind,folderId,settings})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }

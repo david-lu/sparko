@@ -73,6 +73,7 @@ export type InterstitialSettings = {
 };
 export type Interstitial = InterstitialSettings & {
   id: string; label: string;
+  folderId?: string;
   /** Anchor in the original source, never in the expanded playback timeline. */
   time: number;
   kind?: 'regular' | 'call-response';

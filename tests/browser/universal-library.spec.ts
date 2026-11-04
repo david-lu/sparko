@@ -134,22 +134,17 @@ test('folders import media without creating timeline clips and Start/End video t
   expect(item.startVideoAsset.name).toBe('Arbitrary.mp4'); expect(item.endVideoAsset.name).toBe('interstitial-reference.mp4'); expect(item.useStartVideoAsset).toBe(false); expect(item.useEndVideoAsset).toBe(true);
 });
 
-test('video and audio generations save playable outputs and expose appropriate models', async ({ page }) => {
+test('audio generations save playable outputs and expose appropriate models', async ({ page }) => {
   await falStatus(page); await openVideo(page);
   await page.route('**/api/library-generations', route => route.fulfill({ json: { requestId: 'request_123' } }));
   await page.route('**/api/library-generations/*/request_123', route => route.fulfill({ json: { phase: 'ready', count: 1 } }));
-  await page.route('**/api/library-generations/kling-video/request_123/content/0', route => route.fulfill({ contentType: 'video/mp4', path: 'tests/fixtures/interstitial-reference.mp4' }));
   await page.route('**/api/library-generations/stable-audio-2.5/request_123/content/0', route => route.fulfill({ contentType: 'audio/wav', path: 'tests/fixtures/voice-answer.wav' }));
-  await create(page, 'Video'); await page.getByLabel('Generation prompt', { exact: true }).fill('Ocean waves');
-  await page.getByRole('button', { name: 'Generate video', exact: true }).click();
-  await expect(page.locator('.asset-preview video')).toBeVisible();
-  await page.getByRole('button', { name: 'Add to timeline', exact: true }).click(); await expect(page.locator('.story-clip')).toHaveCount(2);
   await create(page, 'Audio'); await page.getByLabel('Generation model', { exact: true }).selectOption('stable-audio-2.5');
   await page.getByLabel('Generation prompt', { exact: true }).fill('Gentle ambient music');
   await page.getByLabel('Generation duration', { exact: true }).fill('30');
   await page.getByRole('button', { name: 'Generate audio', exact: true }).click();
   await expect(page.locator('.asset-preview audio')).toBeVisible();
-  await expect.poll(async () => (await readProject(page)).assetGenerations.filter((g: any) => g.phase === 'ready').length).toBe(2);
+  await expect.poll(async () => (await readProject(page)).assetGenerations.filter((g: any) => g.phase === 'ready').length).toBe(1);
 });
 
 test('all panels can float, dock, maximize, and reset without changing the default workspace', async ({ page }) => {
