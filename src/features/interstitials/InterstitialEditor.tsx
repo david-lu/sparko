@@ -8,6 +8,7 @@ import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import type { InterstitialController } from './InterstitialController';
 import { assets } from '../project/assets';
+import { assetVolume } from '../project/assetVolume';
 import { useAssetAvailability } from '../project/useAssetAvailability';
 import { phaseLabel, renderingProgress } from './status';
 import InterstitialTimeField from './InterstitialTimeField';
@@ -79,6 +80,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const fullVideoUrl = currentResult?.fullAssetId ? assets.url(currentResult.fullAssetId) : currentResult?.assetId ? assets.url(currentResult.assetId) : undefined;
   const trimmedLoop = (currentResult?.reference?.mode === 'loop' || !compact && (kind === 'idle' || method === 'comfy-loop')) && !currentResult?.fullAssetId;
   const downloadName = `${selected.label.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'video'}-${trimmedLoop ? 'loop' : 'full'}.mp4`;
+  const downloadAsset = projects?.getSnapshot().project?.library?.find(asset => asset.assetId === currentResult?.assetId);
   let validationError = '';
   const noVideo = hasNoVideoInput(selected);
   const hasSource = !!engine && !!info || !!(dependency?.reference?.before || dependency?.reference?.after);
@@ -145,6 +147,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     <p className="hint reference-plan">{comfyPlan ? `${comfyPlan.insertion.duration.toFixed(3)}s generated · ${((comfyPlan.prefixFrames + comfyPlan.suffixFrames) / TIMELINE_FPS).toFixed(3)}s reference footage` : '\u00a0'}</p>
   </>;
   const output = <>{resultDetails}{currentResult&&promptDetails}{fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
+    downloadAsset={downloadAsset && { ...downloadAsset, volume: assetVolume(projects?.getSnapshot().project?.library, downloadAsset.assetId), assetId: currentResult?.fullAssetId ?? downloadAsset.assetId }}
     heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
     active={active} muted={(kind === 'idle' || method === 'comfy-loop') && !selected.loopAudio} onPlay={onPreviewPlay} />}</>;
   const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>

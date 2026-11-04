@@ -1,5 +1,83 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test('asset exports apply volume to audio while preserving video packets and original files', async ({ page }) => {
+  await prepareAudio(page);
+  const results = await page.evaluate(async () => {
+    const { ALL_FORMATS, AudioSampleSink, BlobSource, EncodedPacketSink, Input } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
+    const { exportMediaVolume, extractAudio } = await import('/src/media/media.ts' as string);
+    const clip = (window as any).audioFixture.clips[0];
+    const audio = await extractAudio(clip.source, { start: 0, end: 1.5 });
+    const inspect = async (blob: Blob) => {
+      const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+      try {
+        const track = await input.getPrimaryAudioTrack(); let sum = 0, count = 0;
+        for await (const sample of new AudioSampleSink(track).samples(.25, 1.1)) {
+          const data = new Float32Array(sample.numberOfFrames); sample.copyTo(data, { planeIndex: 0, format: 'f32-planar' });
+          for (const value of data) { sum += value * value; count++; } sample.close();
+        }
+        const video = await input.getPrimaryVideoTrack(), packets = [];
+        if (video) for await (const packet of new EncodedPacketSink(video).packets()) packets.push(packet.data);
+        const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await new Blob(packets).arrayBuffer()))].join(',');
+        return { rms: Math.sqrt(sum / count), frames: packets.length, digest };
+      } finally { input.dispose(); }
+    };
+    const results = [];
+    for (const original of [clip.blob, audio]) {
+      const baseline = await inspect(original);
+      for (const volume of [.25, 0]) results.push({ baseline, volume, output: await inspect(await exportMediaVolume(original, volume)) });
+      results.push({ baseline, volume: 1, output: await inspect(await exportMediaVolume(original, 1)), unchanged: await exportMediaVolume(original, 1) === original });
+    }
+    return results;
+  });
+  for (const { baseline, output, volume, unchanged } of results) {
+    expect(output.rms / baseline.rms).toBeCloseTo(volume, 2);
+    expect(output.frames).toBe(baseline.frames); expect(output.digest).toBe(baseline.digest);
+    if (volume === 1) expect(unchanged).toBe(true);
+  }
+});
+
+test('timeline exports apply each asset volume through audio crossfades', async ({ page }) => {
+  await prepareAudio(page);
+  const results = await page.evaluate(async () => {
+    const { ALL_FORMATS, AudioSampleSink, BlobSource, BufferTarget, Input, Mp4OutputFormat, Output } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
+    const { renderComposition } = await import('/src/media/CompositionRenderer.ts' as string);
+    const { clips } = (window as any).audioFixture;
+    const results = [];
+    for (const volume of [.5, 0]) {
+      const composition = { info: { width: 160, height: 90, duration: 3, fps: 24, hasAudio: true, codec: 'avc' }, fps: 24, crossfadeFrames: 12,
+        segments: [
+          { id: 'source', label: 'Source', kind: 'source', source: { ...clips[0].source, volume: .25 }, sourceStart: 0, startFrame: 0, endFrame: 36 },
+          { id: 'generated', label: 'Generated', kind: 'interstitial', source: { ...clips[1].source, volume }, sourceStart: 1, startFrame: 36, endFrame: 72,
+            generated: { start: 1, duration: 1.5, totalDuration: 7, url: clips[1].source.url } },
+        ] };
+      const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat() });
+      await renderComposition(composition, output, { start: 0, end: 3, signal: new AbortController().signal });
+      const input = new Input({ source: new BlobSource(new Blob([output.target.buffer], { type: 'video/mp4' })), formats: ALL_FORMATS });
+      try {
+        const track = await input.getPrimaryAudioTrack(), rate = await track.getSampleRate(), data = new Float32Array(rate * 4);
+        for await (const sample of new AudioSampleSink(track).samples()) {
+          const values = new Float32Array(sample.numberOfFrames); sample.copyTo(values, { planeIndex: 0, format: 'f32-planar' });
+          data.set(values, Math.round(sample.timestamp * rate)); sample.close();
+        }
+        const amplitude = (frequency: number, from: number, to: number) => {
+          const first = Math.round(from * rate), last = Math.round(to * rate); let sin = 0, cos = 0;
+          for (let i = first; i < last; i++) { sin += data[i] * Math.sin(i / rate * 2 * Math.PI * frequency); cos += data[i] * Math.cos(i / rate * 2 * Math.PI * frequency); }
+          return 2 * Math.hypot(sin, cos) / (last - first);
+        };
+        results.push({ volume, source: amplitude(440, .4, .7), generated: amplitude(880, 2, 2.3), incomingFade: amplitude(880, 1.2, 1.3), outgoingFade: amplitude(440, 1.2, 1.3) });
+      } finally { input.dispose(); }
+    }
+    return results;
+  });
+  for (const result of results) {
+    expect(result.source).toBeCloseTo(.05, 2);
+    expect(result.generated).toBeCloseTo(.2 * result.volume, 2);
+    expect(result.outgoingFade).toBeGreaterThan(.015); expect(result.outgoingFade).toBeLessThan(.04);
+    if (result.volume === 0) expect(result.incomingFade).toBeLessThan(.001);
+    else { expect(result.incomingFade).toBeGreaterThan(.03); expect(result.incomingFade).toBeLessThan(.07); }
+  }
+});
+
 async function prepareAudio(page: Page) {
   await page.route('**/__audio-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Audio regression</title>' }));
   await page.goto('/__audio-test');
