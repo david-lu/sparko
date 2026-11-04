@@ -44,7 +44,8 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   canvas ??= { width: 1280, height: 720, duration: item.duration, fps: INTERSTITIAL.referenceFps, hasAudio: false, codec: '' };
   signal.throwIfAborted();
   const dimensions = comfyDimensions(canvas.width, canvas.height, item.resolution);
-  const clip = range.plan.prefixFrames || range.plan.suffixFrames ? await engine!.exportMp4(range, { maxDimension: Math.max(dimensions.width, dimensions.height), frameRate: INTERSTITIAL.referenceFps,
+  // Crop directly to H3's exact canvas so its loader does not apply a second framing transform.
+  const clip = range.plan.prefixFrames || range.plan.suffixFrames ? await engine!.exportMp4(range, { frame: { ...dimensions, fit: 'cover' }, frameRate: INTERSTITIAL.referenceFps,
     quality: 'high', signal, onProgress: value => onProgress('preparing', value) }) : undefined;
   if (clip && clip.size > INTERSTITIAL.maxReferenceBytes) throw new Error('The reference clip exceeds 50 MB. Shorten the reference ranges.');
   signal.throwIfAborted();

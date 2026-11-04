@@ -5,9 +5,9 @@ import { AudioNormalizer, COMPOSITION_AUDIO_CHANNELS, COMPOSITION_AUDIO_RATE } f
 import { compositionTransitions, segmentTime, transitionWeight, type CompositionTransition } from './CompositionTransitions';
 import { CompositionAudioCrossfade } from './CompositionAudioCrossfade';
 import { CompositionAudioWriter } from './CompositionAudioWriter';
-import { generatedClipFit } from './videoFraming';
+import { generatedClipFit, type ExportFrame } from './videoFraming';
 
-type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; maxDimension?: number;
+type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; maxDimension?: number; frame?: ExportFrame;
   beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
 
 /** Encodes one continuous frame/sample clock, including across different source assets. */
@@ -16,11 +16,12 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
   options.signal.throwIfAborted();
   const scale = Math.min(1, (options.preview ? 720 : options.maxDimension ? Infinity : 1080) / composition.info.height,
     (options.maxDimension ?? Infinity) / Math.max(composition.info.width, composition.info.height));
-  const canvas = new OffscreenCanvas(Math.max(2, Math.round(composition.info.width * scale / 2) * 2), Math.max(2, Math.round(composition.info.height * scale / 2) * 2));
+  const canvas = new OffscreenCanvas(options.frame?.width ?? Math.max(2, Math.round(composition.info.width * scale / 2) * 2),
+    options.frame?.height ?? Math.max(2, Math.round(composition.info.height * scale / 2) * 2));
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) throw new Error('Unable to create the timeline renderer.');
-  const fitFor = async (segment: TimelineSegment, track: InputVideoTrack) => composition.matchFraming && segment.kind === 'interstitial'
-    ? generatedClipFit(await track.getDisplayWidth(), await track.getDisplayHeight(), canvas.width, canvas.height) : 'contain' as const;
+  const fitFor = async (segment: TimelineSegment, track: InputVideoTrack) => options.frame?.fit ?? (composition.matchFraming && segment.kind === 'interstitial'
+    ? generatedClipFit(await track.getDisplayWidth(), await track.getDisplayHeight(), canvas.width, canvas.height) : 'contain' as const);
   const video = new CanvasSource(canvas, { codec: 'avc', ...(options.preview ? { fullCodecString: 'avc1.42002a' } : {}),
     quality: new Quality(options.preview ? 'medium' : 'high'), keyFrameInterval: 1, latencyMode: 'quality' });
   const audio = new AudioSampleSource({ codec: 'aac', quality: new Quality('medium') });
