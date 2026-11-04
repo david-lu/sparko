@@ -104,24 +104,57 @@ export function reachableNodes(graph: StoryGraph) {
   while (pending.length) { const id = pending.pop()!; if (visited.has(id)) continue; visited.add(id); pending.push(...graph.edges.filter(e => e.from === id).map(e => e.to)); }
   return visited;
 }
+type LayoutRect = {left:number;right:number;top:number;bottom:number};
+const overlaps=(a:LayoutRect,b:LayoutRect)=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom;
+/** Find the closest free position, leaving a little room around a displaced clip. */
+function nearestFreePosition(rect:LayoutRect,occupied:LayoutRect[]) {
+  const padding=24,width=rect.right-rect.left,height=rect.bottom-rect.top;
+  const columns=[rect.left,...occupied.flatMap(r=>[r.left-width-padding,r.right+padding])];
+  const rows=[...occupied].sort((a,b)=>a.top-b.top);
+  let best={x:rect.left,y:rect.top},distance=Infinity;
+  // The closest point outside the forbidden rectangles lies on an obstacle's
+  // boundary, or shares the original x. Merge blocked y intervals at each x.
+  for(const x of columns){
+    const dx=(x-rect.left)**2;if(dx>=distance)continue;
+    const intervals:{start:number;end:number}[]=[];
+    for(const r of rows){
+      if(x>=r.right+padding||x+width<=r.left-padding)continue;
+      const start=r.top-height-padding,end=r.bottom+padding,last=intervals.at(-1);
+      if(last&&start<last.end)last.end=Math.max(last.end,end);
+      else intervals.push({start,end});
+    }
+    const blocked=intervals.find(r=>r.start<rect.top&&rect.top<r.end);
+    const y=blocked?(rect.top-blocked.start<blocked.end-rect.top?blocked.start:blocked.end):rect.top;
+    const next=dx+(y-rect.top)**2;
+    if(next<distance){best={x,y};distance=next;}
+  }
+  return best;
+}
 export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHeight=360): StoryGraph {
   if(!graph.nodes.length)return graph;
   const grouped=graph.groups?.some(g=>g.nodeIds.length),rowStep=grouped?170:145,gap=grouped?160:104;
-  // Disconnected clips can wrap into columns. Connected branches keep their
-  // vertical rows even when the viewport is short.
+  // Connected paths can share a column; branches retain their vertical rows.
+  // Loose clips do not participate in packing.
   const rowLimit=Math.max(1,1+Math.floor((viewportHeight-CLIP_HEIGHT-(grouped?100:64))/rowStep));
   const byId=new Map(graph.nodes.map(n=>[n.id,n])),media=new Map(graph.nodes.map(n=>[n.id,nodeMediaLayout(n,items)]));
   const neighbors=new Map(graph.nodes.map(n=>[n.id,new Set<string>()])),outgoing=new Map(graph.nodes.map(n=>[n.id,[] as string[]]));
-  const incoming=new Set<string>();
+  const incoming=new Set<string>(),linked=new Set<string>();
   const join=(a:string,b:string)=>{if(a!==b&&byId.has(a)&&byId.has(b)){neighbors.get(a)!.add(b);neighbors.get(b)!.add(a);}};
   for(const edge of graph.edges){
     if(edge.from===edge.to||!byId.has(edge.from)||!byId.has(edge.to))continue;
-    join(edge.from,edge.to);outgoing.get(edge.from)!.push(edge.to);incoming.add(edge.to);
+    join(edge.from,edge.to);outgoing.get(edge.from)!.push(edge.to);incoming.add(edge.to);linked.add(edge.from);linked.add(edge.to);
   }
-  // A template's disconnected members still belong to the same layout block.
-  for(const group of graph.groups??[]){const members=group.nodeIds.filter(id=>byId.has(id));for(const id of members.slice(1))join(members[0],id);}
-  const order=[...new Set([graph.entryId,...byId.keys()])].filter(id=>byId.has(id)),seen=new Set<string>();
-  const positioned=new Map<string,StoryNode>();let columnX=40,columnWidth=0,usedRows=0;
+  // The entry clip anchors compositions without connections as well, so moving
+  // an entire arrangement far from the origin does not strand its loose clips.
+  const layoutIds=new Set(linked);
+  if(byId.has(graph.entryId))layoutIds.add(graph.entryId);
+  if(!layoutIds.size)layoutIds.add(graph.nodes[0].id);
+  // Keep the connected paths in each group together. Group membership alone
+  // does not opt a loose clip into rearrangement.
+  for(const group of graph.groups??[]){const members=group.nodeIds.filter(id=>layoutIds.has(id));for(const id of members.slice(1))join(members[0],id);}
+  const order=[...new Set([graph.entryId,...byId.keys()])].filter(id=>layoutIds.has(id)),seen=new Set<string>();
+  const left=(id:string)=>byId.get(id)!.x-media.get(id)!.before*PIXELS_PER_SECOND;
+  const components:{ids:string[];left:number;top:number}[]=[];
   for(const root of order){
     if(seen.has(root))continue;
     // Use both directions so two inputs sharing a downstream clip stay together.
@@ -130,7 +163,15 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
       const id=pending[i];if(component.has(id))continue;
       component.add(id);seen.add(id);pending.push(...neighbors.get(id)!);
     }
-    const ids=order.filter(id=>component.has(id)),levels=new Map<string,number>();
+    const ids=order.filter(id=>component.has(id));
+    components.push({ids,left:Math.min(...ids.map(left)),top:Math.min(...ids.map(id=>byId.get(id)!.y))});
+  }
+  // Use each block's visible position, not creation order or playback entry.
+  // Equal positions retain the original traversal order for new/legacy graphs.
+  components.sort((a,b)=>a.left-b.left||a.top-b.top);
+  const positioned=new Map<string,StoryNode>();let columnX=40,columnWidth=0,usedRows=0;
+  for(const component of components){
+    const ids=component.ids,levels=new Map<string,number>();
     const queue:[string,number][]=ids.filter(id=>!incoming.has(id)||id===graph.entryId).map(id=>[id,0]);
     const visit=()=>{for(let i=0;i<queue.length;i++){
       const [id,depth]=queue[i];if(levels.has(id))continue;
@@ -139,25 +180,62 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
     visit();
     // Cycles and disconnected cycles inside a group have no incoming-free root.
     for(const id of ids)if(!levels.has(id)){queue.push([id,0]);visit();}
-    const columns=Array.from({length:Math.max(...levels.values())+1},(_,depth)=>ids.filter(id=>levels.get(id)===depth));
-    const batchSize=(column:string[])=>column.some(id=>incoming.has(id)||outgoing.get(id)!.length)?column.length:rowLimit;
-    const rows=Math.max(...columns.map(c=>Math.min(batchSize(c),c.length)));
+    const columns=Array.from({length:Math.max(...levels.values())+1},(_,depth)=>ids.filter(id=>levels.get(id)===depth)
+      .sort((a,b)=>byId.get(a)!.y-byId.get(b)!.y||left(a)-left(b)));
+    const rows=Math.max(...columns.map(c=>c.length));
     const local=new Map<string,{x:number;y:number}>();let width=0;
     for(const column of columns){
-      const limit=batchSize(column);
-      for(let start=0;start<column.length;start+=limit){
-        const batch=column.slice(start,start+limit);
-        for(const [index,id] of batch.entries())local.set(id,{x:width+media.get(id)!.before*PIXELS_PER_SECOND,y:((rows-batch.length)/2+index)*rowStep});
-        width+=Math.max(...batch.map(id=>media.get(id)!.total*PIXELS_PER_SECOND))+gap;
-      }
+      for(const [index,id] of column.entries())local.set(id,{x:width+media.get(id)!.before*PIXELS_PER_SECOND,y:((rows-column.length)/2+index)*rowStep});
+      width+=Math.max(...column.map(id=>media.get(id)!.total*PIXELS_PER_SECOND))+gap;
     }
     width-=gap;
     if(usedRows&&usedRows+rows>rowLimit){columnX+=columnWidth+gap;columnWidth=0;usedRows=0;}
     for(const id of ids){const p=local.get(id)!;positioned.set(id,{...byId.get(id)!,x:columnX+p.x,y:90+usedRows*rowStep+p.y});}
     columnWidth=Math.max(columnWidth,width);usedRows+=rows;
   }
-  return {...graph,nodes:graph.nodes.map(n=>positioned.get(n.id)!),edges:graph.edges.map(e=>e.points?.length?{...e,points:undefined}:e),
-    groups:graph.groups?.some(g=>g.nodeIds.length&&g.bounds)?graph.groups.map(g=>g.nodeIds.length&&g.bounds?{...g,bounds:undefined}:g):graph.groups};
+  const rectangle=(n:StoryNode):LayoutRect=>({left:n.x-media.get(n.id)!.before*PIXELS_PER_SECOND,
+    right:n.x+(media.get(n.id)!.body+media.get(n.id)!.after)*PIXELS_PER_SECOND,top:n.y,bottom:n.y+CLIP_HEIGHT});
+  const anchors=order.map(id=>({before:byId.get(id)!,after:positioned.get(id)!,rect:rectangle(byId.get(id)!)}));
+  const occupied=[...positioned.values()].map(rectangle),displaced:StoryNode[]=[];
+  // Follow the nearest clip in the original layout, using visible media bounds
+  // so a long clip's nearby end counts. Then resolve overlaps at the new location.
+  const loose=graph.nodes.filter(n=>!layoutIds.has(n.id)).map(node=>{
+    const rect=rectangle(node);
+    let nearest=anchors[0],distance=Infinity,centerDistance=Infinity;
+    for(const anchor of anchors){
+      const r=anchor.rect;
+      const gap=Math.max(rect.left-r.right,r.left-rect.right,0)**2+Math.max(rect.top-r.bottom,r.top-rect.bottom,0)**2;
+      const center=(rect.left+rect.right-r.left-r.right)**2+(rect.top+rect.bottom-r.top-r.bottom)**2;
+      if(gap<distance||gap===distance&&center<centerDistance){nearest=anchor;distance=gap;centerDistance=center;}
+    }
+    return {...node,x:node.x+nearest.after.x-nearest.before.x,y:node.y+nearest.after.y-nearest.before.y};
+  });
+  // Reserve clear preferred positions first, so resolving one collision does
+  // not push another clip away from its existing neighbors.
+  for(const node of loose){
+    const rect=rectangle(node);
+    if(occupied.some(other=>overlaps(rect,other)))displaced.push(node);
+    else {positioned.set(node.id,node);occupied.push(rect);}
+  }
+  for(const node of displaced){
+    const rect=rectangle(node),point=nearestFreePosition(rect,occupied);
+    const next={...node,x:node.x+point.x-rect.left,y:point.y};
+    positioned.set(node.id,next);occupied.push(rectangle(next));
+  }
+  const moved=new Set(graph.nodes.filter(n=>{const p=positioned.get(n.id)!;return n.x!==p.x||n.y!==p.y;}).map(n=>n.id));
+  const groups=graph.groups?.map(group=>{
+    if(!group.bounds||!group.nodeIds.some(id=>moved.has(id)))return group;
+    const shifts=group.nodeIds.filter(id=>byId.has(id)).map(id=>({x:positioned.get(id)!.x-byId.get(id)!.x,y:positioned.get(id)!.y-byId.get(id)!.y})),shift=shifts[0];
+    return {...group,bounds:shifts.every(p=>p.x===shift.x&&p.y===shift.y)
+      ?{...group.bounds,x:group.bounds.x+shift.x,y:group.bounds.y+shift.y}:undefined};
+  });
+  return {...graph,nodes:graph.nodes.map(n=>positioned.get(n.id)!),edges:graph.edges.map(e=>{
+    if(!e.points?.length)return e;
+    if(linked.has(e.from)&&linked.has(e.to))return {...e,points:undefined};
+    if(e.from!==e.to||!moved.has(e.from))return e;
+    const before=byId.get(e.from)!,after=positioned.get(e.from)!;
+    return {...e,points:e.points.map(p=>({...p,x:p.x+after.x-before.x,y:p.y+after.y-before.y}))};
+  }),groups:groups?.some((g,i)=>g!==graph.groups![i])?groups:graph.groups};
 }
 export function createNode(kind: Exclude<NodeKind, 'source'>, referenceId?: string): { node: StoryNode; item: Interstitial } {
   const id = freshId(), itemId = freshId();

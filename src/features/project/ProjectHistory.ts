@@ -18,6 +18,7 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
     if(!a || !b) return {label:'Create story flow'};
     if(b.nodes.length>a.nodes.length)return {label:'Add clips'};
     if(b.nodes.length<a.nodes.length)return {label:'Remove clips'};
+    if(a.entryId!==b.entryId)return {label:'Change start video'};
     if(!same(a.templates,b.templates))return {label:'Save group template'};
     if(!same(a.groups,b.groups))return {label:(b.groups?.length??0)>(a.groups?.length??0)?'Group clips':(b.groups?.length??0)<(a.groups?.length??0)?'Ungroup clips':'Edit group'};
     if(!same(a.edges,b.edges))return {label:'Edit connections'};

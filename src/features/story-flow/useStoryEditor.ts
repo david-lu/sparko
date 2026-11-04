@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { playableResult, type Interstitial } from '../../../shared/interstitials';
 import type { ProjectController } from '../project/ProjectController';
 import type { InterstitialController } from '../interstitials/InterstitialController';
@@ -10,14 +10,20 @@ import { conditionsFor, normalizeConditions, setBehavior } from './behaviors';
 import type { StoryCondition } from './model';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { AssetGenerationController } from '../project/AssetGenerationController';
+import { joinClips, joinProblems } from './joinClips';
 export type LibrarySelection = { type: 'asset' | 'generation' | 'job'; id: string };
 
 export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],projects:ProjectController,jobs:InterstitialController,player:VideoPlayerController) {
   const [librarySelection, setLibrarySelection] = useState<LibrarySelection | null>(null);
+  const [clipDrag,setClipDrag]=useState<{id:string;overStart:boolean}|null>(null);
   const [assetJobs] = useState(() => new AssetGenerationController(projects));
   useEffect(() => assetJobs.watch(), [assetJobs]);
   const [selected,setSelection]=useState<string[]>([]),[selectedGroupId,setSelectedGroupId]=useState<string|null>(null),[selectedEdge,setSelectedEdge]=useState<string|null>(null),[connecting,setConnecting]=useState<{from:string;edgeId?:string}|null>(null);
   const [notice,setNotice]=useState(''),[focusRevision,setFocusRevision]=useState(0),[inspectorRevision,setInspectorRevision]=useState(0);
+  const joinedClip=useRef<string|null>(null);
+  useEffect(()=>{const id=joinedClip.current;if(!id)return;joinedClip.current=null;
+    const frame=requestAnimationFrame(()=>player.seekFlowScene(id,0));return()=>cancelAnimationFrame(frame);
+  },[graph,player]);
   const activationRevision=projects.getSnapshot().activationRevision;
   const selectedGroup=graph?.groups?.find(g=>g.id===selectedGroupId);
   const setSelected=(value:string[]|((ids:string[])=>string[]))=>{setLibrarySelection(null);setSelectedGroupId(null);setSelection(value);};
@@ -26,6 +32,28 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   const selectConnection=(id:string)=>{setSelectedEdge(id);setSelected([]);jobs.select(null);setInspectorRevision(n=>n+1);};
   useEffect(()=>{setSelection(ids=>ids.filter(id=>graph?.nodes.some(n=>n.id===id)));setSelectedGroupId(id=>graph?.groups?.some(g=>g.id===id)?id:null);setSelectedEdge(id=>graph?.edges.some(e=>e.id===id)?id:null);setConnecting(null);},[graph?.entryId,graph?.nodes.length,graph?.groups?.length,projects.getSnapshot().historyRevision]);
   const change=(next:StoryGraph,added:Interstitial[]=[])=>{player.pause();projects.updateStoryFlow(next,added);};
+  const setStartVideo=(id:string)=>{
+    const current=projects.getSnapshot().project?.storyFlow;
+    if(!current||projects.getSnapshot().busy||current.entryId===id||!current.nodes.some(n=>n.id===id))return;
+    projects.endHistoryGroup();change({...current,entryId:id});projects.endHistoryGroup();
+    setNotice('Start video updated. Playback begins here.');
+  };
+  const setStartAsset=async(assetId:string)=>{
+    const state=projects.getSnapshot(),project=state.project;
+    if(!project?.storyFlow||state.busy)throw new Error('Wait for the current operation to finish.');
+    const asset=project.library?.find(a=>a.assetId===assetId);
+    if(!asset||!['video','generated'].includes(asset.kind))throw new Error('Choose a video from Library.');
+    const matches=project.storyFlow.nodes.filter(n=>{
+      const item=project.interstitials.find(i=>i.id===n.interstitialId),result=item&&playableResult(item);
+      return n.source?.assetId===assetId||result?.assetId===assetId||result?.fullAssetId===assetId;
+    });
+    if(matches.length>1)throw new Error('Several timeline clips use this video. Drag the specific clip from the timeline.');
+    if(matches.length){setStartVideo(matches[0].id);return;}
+    player.pause();projects.endHistoryGroup();
+    const ids=await projects.importLibraryAsset(assetId,undefined,true);projects.endHistoryGroup();
+    if(!ids?.length)throw new Error(projects.getSnapshot().error??'Unable to add the start video.');
+    setNotice('Video added to the timeline as the start.');
+  };
   const selectGroup=(id:string,next=graph)=>{const group=next?.groups?.find(g=>g.id===id);if(!group)return;setLibrarySelection(null);setSelectedGroupId(id);setSelection(group.nodeIds);setSelectedEdge(null);jobs.select(null);setInspectorRevision(n=>n+1);};
   const patchGroup=(id:string,patch:Partial<Pick<StoryGroup,'name'|'color'|'bounds'>>)=>{if(graph)change({...graph,groups:graph.groups?.map(g=>g.id===id?{...g,...patch,name:patch.name?.trim().slice(0,200)||g.name}:g)});};
   const createGroup=(ids:string[],bounds?:GroupBounds,name=`Group ${(graph?.groups?.length??0)+1}`)=>{if(!graph)return;const result=groupClips(graph,ids,name,'blue',bounds);if(!result.group)return;change(result.graph);selectGroup(result.group.id,result.graph);setNotice('Group created. Drag its header to move it. Right-click for group actions.');};
@@ -86,6 +114,18 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     const frame=atFrame??(session?.sceneId===id?session.frame:0),result=splitClip(graph,items,id,frame);
     if(result.graph===graph){setNotice('Place the playhead inside a clip to split it.');return false;}
     change(autoLayout(result.graph,[...items,...result.items]),result.items);setSelected([id]);setNotice('Clip split. Media is preserved; outgoing connections follow the second half.');return true;};
+  const projectBusy=projects.getSnapshot().busy;
+  const joinReasons=useMemo(()=>[...(graph?joinProblems(graph,items,selected):['Open a project and select at least two clips to join.']),
+    ...(projectBusy?['Wait for the current project operation to finish before joining clips.']:[])],[graph,items,selected,projectBusy]);
+  const join=()=>{
+    if(joinReasons.length||!graph)return joinReasons;
+    const result=joinClips(graph,items,selected);if(!result.ok)return result.reasons;
+    joinedClip.current=result.nodeId;
+    projects.endHistoryGroup();change(result.graph);projects.endHistoryGroup();
+    select(result.nodeId,null);setConnecting(null);setFocusRevision(n=>n+1);
+    setNotice(`${result.count} clips joined. The clip spans the first start through the last end, including footage between trims. Undo restores the original clips.`);
+    return null;
+  };
   const insertTemplate=(template:string|StoryTemplate,connectionId?:string,placement?:{x:number;y:number},fromId?:string)=>{if(!graph)return;const t=typeof template==='string'?makePreset(template):template;
     const result=instantiateTemplate(graph,t,items,connectionId,placement);
     if(fromId&&!connectionId){
@@ -111,6 +151,6 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice('Added clip from the library.');}
   };
   return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
-    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,selectLibrary,assetJobs};
+    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,selectLibrary,assetJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons};
 }
 export type StoryEditor=ReturnType<typeof useStoryEditor>;

@@ -34,7 +34,7 @@ import WindowMenu from './WindowMenu';
 import ShortcutSettings from './ShortcutSettings';
 import HelpTutorial from './HelpTutorial';
 import Preferences from './Preferences';
-import { pinchZoomPreference, savedPinchZoomSensitivity } from '../shared/preferences';
+import { pinchZoomPreference, savedPinchZoomSensitivity, playheadTimePreference, savedPlayheadTimeMode } from '../shared/preferences';
 import { formatShortcut, useShortcuts, type ShortcutId } from '../shared/shortcuts';
 import DropdownMenu from '../shared/DropdownMenu';
 import ModalBackdrop from '../shared/ModalBackdrop';
@@ -81,6 +81,8 @@ export default function App() {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [preview, setPreview] = useState(false);
   useEffect(() => { setPreview(false); }, [projectState.activationRevision]);
+  const [playheadTimeMode, setPlayheadTimeMode] = useState(savedPlayheadTimeMode);
+  useEffect(() => { try { localStorage.setItem(playheadTimePreference, playheadTimeMode); } catch { /* Apply without persistence. */ } }, [playheadTimeMode]);
   const [pinchZoomSensitivity, setPinchZoomSensitivity] = useState(savedPinchZoomSensitivity);
   useEffect(() => { try { localStorage.setItem(pinchZoomPreference, String(pinchZoomSensitivity)); } catch { /* Apply without persistence. */ } }, [pinchZoomSensitivity]);
   const keys=useShortcuts();
@@ -343,7 +345,7 @@ export default function App() {
   const clipControls = (id: SceneId) => panelTimeline && <CallResponseControls flow={panelTimeline.flow}
     selectedSceneId={id} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)}
     onSelectEdge={panelTimeline.onSelectEdge} />;
-  const storyCanvasElement = storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight} collapsed={timelineCollapsed} onCollapsed={setTimelineCollapsed} pinchZoomSensitivity={pinchZoomSensitivity}/>:undefined;
+  const storyCanvasElement = storyGraph&&flow?<StoryCanvas key={`${source.id}:${projectState.activationRevision}`} editor={storyEditor} flow={flow} session={player.flow} height={actualTimelineHeight} maxHeight={maxTimelineHeight} onHeight={setTimelineHeight} collapsed={timelineCollapsed} onCollapsed={setTimelineCollapsed} pinchZoomSensitivity={pinchZoomSensitivity} playheadTimeMode={playheadTimeMode} sourceDuration={info?.duration}/>:undefined;
   const playerElement = <Player source={source} empty={!projectState.source||storyGraph?.nodes.length===0} info={info} thumbnails={thumbnails} thumbnailsFailed={thumbnailsFailed} interstitials={interstitialState.items} selectedId={interstitialState.selectedId} composition={composition}
           preview={preview}
           callResponse={flowTimeline}
@@ -397,7 +399,7 @@ export default function App() {
     <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) void projects.importProject(file); event.target.value = ''; }} />
     {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
     {helpOpen && <HelpTutorial onClose={()=>setHelpOpen(false)}/>}
-    {preferencesOpen && <Preferences pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} onClose={()=>setPreferencesOpen(false)}/>}
+    {preferencesOpen && <Preferences playheadTimeMode={playheadTimeMode} onPlayheadTimeMode={setPlayheadTimeMode} pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} onClose={()=>setPreferencesOpen(false)}/>}
     {closePrompt && <ModalBackdrop labelledBy="close-project-title" onCancel={()=>{if(!projectState.busy)setClosePrompt(false);}}><div className="project-card">
       <h2 id="close-project-title">Save changes before closing?</h2>
       <p className="hint">Changes to {projectState.project?.name || 'this project'} have not been saved to a project file.</p>

@@ -13,6 +13,7 @@
 .inspector-clip-meta>span{overflow:hidden;text-overflow:ellipsis}
 .inspector-entry{display:flex;align-items:center;gap:4px;flex:none;padding:3px;background:transparent;color:var(--muted);font-size:10px}
 .inspector-entry[aria-pressed=true]{color:var(--accent)}
+.inspector-entry:not(button){color:var(--accent)}
 .inspector-property{display:grid;grid-template-columns:var(--property-label) minmax(0,1fr);align-items:center;gap:6px;min-height:28px;margin:0;font-size:11px}
 .inspector-property>span{color:var(--text-secondary)}
 .inspector-property input,.inspector-property select,.inspector-rule-heading input{width:100%;min-width:0;height:24px;padding:2px 5px;border:1px solid transparent;border-radius:3px;background:var(--input);font-size:11px;color:var(--accent)}

@@ -69,7 +69,7 @@ export class ProjectController {
   async importVideos(files: File[], position?: { x: number; y: number }) {
     return this.importClips(files.map(file => ({ file })), position);
   }
-  async importLibraryAsset(assetId: string, position?: { x: number; y: number }) {
+  async importLibraryAsset(assetId: string, position?: { x: number; y: number }, asStart = false) {
     const kind = this.state.project?.library?.find(item => item.assetId === assetId)?.kind;
     if (this.state.busy || (kind !== 'video' && kind !== 'generated')) return;
     const projectId = this.state.project?.id;
@@ -77,10 +77,10 @@ export class ProjectController {
       const asset = await readAsset(assetId);
       if (this.state.project?.id !== projectId) return;
       if (!asset) { this.update({ error: 'The saved video is missing.' }); return; }
-      return this.importClips([{ file: new File([asset.blob], asset.name, { type: asset.blob.type }), assetId }], position);
+      return this.importClips([{ file: new File([asset.blob], asset.name, { type: asset.blob.type }), assetId }], position, asStart);
     } catch (error) { this.update({ error: storageError(error) }); }
   }
-  private async importClips(entries: { file: File; assetId?: string }[], position?: { x: number; y: number }) {
+  private async importClips(entries: { file: File; assetId?: string }[], position?: { x: number; y: number }, asStart = false) {
     const initial = this.state.project; if (!initial?.storyFlow || !entries.length) return;
     return this.task('Importing videos', async signal => {
       if (initial.storyFlow!.nodes.length + entries.length > 1000) throw new Error('A project can contain up to 1,000 clips.');
@@ -110,7 +110,7 @@ export class ProjectController {
       const graph = current.storyFlow!, origin = position ?? { x: 40, y: Math.max(90, ...graph.nodes.map(n => n.y)) + 145 };
       nodes.forEach((node, index) => { node.x = origin.x; node.y = origin.y + index * 145; });
       const interstitials = [...current.interstitials, ...added];
-      const next = reconnectClipReferences({ ...graph, entryId: graph.entryId || nodes[0].id, nodes: [...graph.nodes, ...nodes] }, interstitials, added);
+      const next = reconnectClipReferences({ ...graph, entryId: asStart ? nodes[0].id : graph.entryId || nodes[0].id, nodes: [...graph.nodes, ...nodes] }, interstitials, added);
       const firstSource = !current.source.assetId ? nodes.find(node => node.source) : undefined;
       const project = { ...current, storyFlow: next, interstitials,
         source: firstSource ? { name: firstSource.name, assetId: firstSource.source!.assetId, originalAssetId: firstSource.source!.originalAssetId } : current.source, updatedAt: Date.now() };
