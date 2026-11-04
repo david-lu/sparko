@@ -16,7 +16,7 @@ for(const width of [1440,390])test(`sample group frames fit their clips when ope
       const clips=await Promise.all(group.nodeIds.map((id:string)=>page.locator(`[data-node-id="${id}"]`).boundingBox()));
       const left=Math.min(...clips.map(c=>c!.x)),right=Math.max(...clips.map(c=>c!.x+c!.width)),top=Math.min(...clips.map(c=>c!.y)),bottom=Math.max(...clips.map(c=>c!.y+c!.height));
       expect(left-frame.x).toBeCloseTo(18,0);expect(frame.x+frame.width-right).toBeCloseTo(18,0);
-      expect(top-frame.y).toBeCloseTo(38,0);expect(frame.y+frame.height-bottom).toBeCloseTo(28,0);
+      expect(top-frame.y).toBeCloseTo(64,0);expect(frame.y+frame.height-bottom).toBeCloseTo(28,0);
     }
   };
   await checkFrames();await page.screenshot({path:`test-results/group-sizing-${width}.png`,fullPage:true});
@@ -51,7 +51,12 @@ test('templates stay grouped, move their clips and bends together, and support r
   const copy = page.getByRole('button', { name: 'Select group Scene group copy', exact: true }); await copy.click({ button: 'right' });
   await page.getByRole('menuitem', { name: /Remove group/ }).click(); await expect(page.locator('.story-group')).toHaveCount(1); await expect(page.locator('.story-clip')).toHaveCount(9);
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(page.locator('.story-group')).toHaveCount(2);
-  await fit(page); await header.click({button:'right'}); await page.getByRole('menuitem', { name: 'Save group as template', exact: true }).click(); await page.getByRole('button',{name:'Save template',exact:true}).click();
+  await fit(page);
+  // Tall arrangements retain readable clip spacing. Pan to the first header
+  // if fitting centers part of it above the viewport.
+  const headerTop=(await header.boundingBox())!.y,canvasTop=(await page.locator('.story-scroll').boundingBox())!.y;
+  if(headerTop<canvasTop+8){await page.locator('.story-scroll').hover({position:{x:20,y:20}});await page.mouse.wheel(0,headerTop-canvasTop-16);}
+  await header.click({button:'right'}); await page.getByRole('menuitem', { name: 'Save group as template', exact: true }).click(); await page.getByRole('button',{name:'Save template',exact:true}).click();
   project = await saved(page); expect(project.storyFlow.templates[0]).toMatchObject({ name: 'Scene group', color: 'green' });
   await page.getByRole('button', { name: 'Add template Scene group', exact: true }).dragTo(page.locator('.story-scroll'), { force: true, targetPosition: { x: 140, y: 320 } });
   await expect(page.locator('.story-group')).toHaveCount(3); await expect(page.locator('.story-clip')).toHaveCount(13); await fit(page);

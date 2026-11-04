@@ -22,7 +22,9 @@ export function fitCamera(bounds: {left:number;right:number;top:number;bottom:nu
     const a=clips[i],b=clips[j],distance=Math.abs(a.top-b.top);
     if(distance&&a.left<b.right&&b.left<a.right)minimumRowScale=Math.max(minimumRowScale,Math.min(1,(CLIP_HEIGHT+24)/distance));
   }
-  const rowScale=Math.max(minimumRowScale,Math.min(1,Math.max(1,height-CLIP_HEIGHT-(groups?100:64))/Math.max(1,bounds.bottom-bounds.top)));
+  // Group headers need 64px above clips, plus a 12px viewport inset. Keep
+  // symmetrical space so fitting still centers the clip arrangement.
+  const rowScale=Math.max(minimumRowScale,Math.min(1,Math.max(1,height-CLIP_HEIGHT-(groups?152:64))/Math.max(1,bounds.bottom-bounds.top)));
   return { zoom,rowScale,x:width/2-(bounds.left+bounds.right)/2*zoom,y:(height-CLIP_HEIGHT)/2-(bounds.top+bounds.bottom)/2*rowScale };
 }
 

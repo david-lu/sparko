@@ -18,8 +18,8 @@ describe('clip groups and reusable templates', () => {
     const {graph,a,b,items}=setup();a.node.conditional=true;
     graph.edges[1].points=[{id:'far-bend',x:5000,y:-4000}];
     const grouped=groupClips(graph,[a.node.id,b.node.id],'Tight').graph,group=grouped.groups![0];
-    expect(groupFrame(grouped,group,items,{x:10,y:20,zoom:1,rowScale:1})).toEqual({left:-38,top:72,width:608,height:142});
-    expect(groupFrame(grouped,group,items,{x:10,y:20,zoom:.05,rowScale:.2})).toEqual({left:-9.5,top:0,width:64.6,height:142});
+    expect(groupFrame(grouped,group,items,{x:10,y:20,zoom:1,rowScale:1})).toEqual({left:-38,top:46,width:608,height:168});
+    expect(groupFrame(grouped,group,items,{x:10,y:20,zoom:.05,rowScale:.2})).toEqual({left:-9.5,top:-26,width:64.6,height:168});
   });
   it('persists empty drawn frames through regrouping, clip deletion, layout and archives', async () => {
     const {graph,source,items}=setup(),bounds={x:-620,y:-180,width:320,height:180};
