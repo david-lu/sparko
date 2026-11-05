@@ -28,7 +28,10 @@ for(const width of [1440,390])test(`opening and reopening fit every clip and sta
     const first=page.locator('[data-node-id=opening]');await expect(first.locator('.story-playhead')).toBeVisible();
     await expect(first.locator('.story-filmstrip')).toHaveAttribute('aria-valuenow','0');await expect(page.getByRole('button',{name:'Play video',exact:true})).toBeVisible();
     expect(await first.locator('.story-playhead').evaluate(el=>(el as HTMLElement).style.left)).toBe('0%');
-    const point=page.locator('[data-reroute-id=bend]');await expect(point).toBeVisible();
+    // Overview hides editing handles; selecting the wire reveals them without refitting.
+    const fitted=await canvasState(page),point=page.locator('[data-reroute-id=bend]');await expect(point).toHaveCount(0);
+    await page.locator('[data-edge-id=route] .story-edge-hit').press('Enter');await expect(point).toBeVisible();
+    expect(await canvasState(page)).toEqual(fitted);
     expect(await point.evaluate(el=>{const p=el.getBoundingClientRect(),r=el.closest('.story-scroll')!.getBoundingClientRect();return p.x>=r.x&&p.right<=r.right&&p.y>=r.y&&p.bottom<=r.bottom;})).toBe(true);
   };
   await page.getByLabel('Choose project file',{exact:true}).setInputFiles(file);await check();

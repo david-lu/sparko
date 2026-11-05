@@ -31,8 +31,11 @@ for (const width of [1440, 390]) test(`zoomed-out clips stay contained and fades
   await page.setViewportSize({ width, height: 1000 });
   await openBranches(page);
   const canvas = page.locator('.story-scroll');
+  // Fit can start below icon detail on narrow viewports with non-overlay scrollbars.
+  while (Number(await canvas.getAttribute('data-zoom')) < .25) await page.getByRole('button', { name: 'Zoom in story' }).click();
   while (Number(await canvas.getAttribute('data-zoom')) > .25) await page.getByRole('button', { name: 'Zoom out story' }).click();
   const graph = (await readProject(page)).storyFlow;
+  await expect(page.locator('.story-clip[data-detail=icon]')).toHaveCount(5);
   await expect(page.locator('.story-crossfade')).toHaveCount(0);
   await expect(page.locator('.conditional-output>span').first()).toBeHidden();
   await expect(page.locator('.story-clip-title small').first()).toBeHidden();
