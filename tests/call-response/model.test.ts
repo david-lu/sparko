@@ -155,7 +155,7 @@ describe('call-response example playback', () => {
   it('follows the question into an indefinite wait and records loop traversals', () => {
     const flow = createTestFlow();
     const state = advanceSession(flow, startSession(flow, true), 24 * 14);
-    expect(state).toMatchObject({ sceneId: 'wait', loopIteration: 4, frame: 24, playing: true, outcome: null });
+    expect(state).toMatchObject({ sceneId: 'wait', loopIteration: 4, frame: 42, playing: true, outcome: null });
     expect(state.traversedEdgeIds).toEqual(['intro-call', 'call-wait', 'wait-loop']);
   });
 

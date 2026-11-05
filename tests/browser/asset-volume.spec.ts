@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect, openVideo, readProject, saveAndReopen, type Page } from './fixtures';
 import { wavFixture } from '../fixtures/audio';
+import { writeClipMetadata } from '../../src/media/clipMetadata';
+import { clipMetadata } from '../fixtures/clip-metadata';
 
 async function holdAsset(page: Page, assetId: string) {
   await page.evaluate(async assetId => {
@@ -12,6 +14,42 @@ async function holdAsset(page: Page, assetId: string) {
     (window as any).releaseAsset = () => { assets.open = open; release(); };
   }, assetId);
 }
+
+for (const width of [1440, 390]) test(`saved loops use volume without a second audio toggle at ${width}px`, async ({ page }) => {
+  await page.addInitScript(() => {
+    const createGain = AudioContext.prototype.createGain;
+    (window as any).volumeGains = [];
+    AudioContext.prototype.createGain = function () {
+      const gain = createGain.call(this), entry = { gain, active: true };
+      const disconnect = gain.disconnect.bind(gain);
+      gain.disconnect = () => { entry.active = false; disconnect(); };
+      (window as any).volumeGains.push(entry); return gain;
+    };
+  });
+  const metadata = { ...clipMetadata, clip: { ...clipMetadata.clip, loop: true }, settings: { ...clipMetadata.settings, loopAudio: false } };
+  const blob = await writeClipMetadata(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')], { type: 'video/mp4' }), metadata, new AbortController().signal);
+  await page.setViewportSize({ width, height: 1000 }); await page.goto('/');
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'Legacy loop.mp4', mimeType: 'video/mp4', buffer: Buffer.from(await blob.arrayBuffer()) });
+  await expect(page.locator('.story-clip')).toHaveCount(1);
+  await page.locator('.story-clip-title').click();
+  expect((await readProject(page)).interstitials[0].loopAudio).toBe(false);
+  await expect(page.getByRole('checkbox', { name: 'Play generated clip audio' })).toHaveCount(0);
+  await page.locator('.inspector-output>summary').click();
+  await expect(page.locator('.interstitial-preview video')).toHaveJSProperty('muted', false);
+  const slider = page.getByRole('slider', { name: 'Asset volume', exact: true });
+  await slider.fill('35');
+  await page.getByRole('button', { name: 'Play', exact: true }).press('Enter');
+  const gainIs = (value: number) => page.evaluate(value => (window as any).volumeGains.some((entry: any) => entry.active && Math.abs(entry.gain.gain.value - value) < .001), value);
+  await expect.poll(() => gainIs(.35)).toBe(true);
+  await page.getByRole('button', { name: 'Mute asset', exact: true }).click(); await expect(slider).toHaveValue('0');
+  await expect.poll(() => gainIs(0)).toBe(true);
+  await page.getByRole('button', { name: 'Unmute asset', exact: true }).click(); await expect(slider).toHaveValue('35');
+  await expect.poll(() => gainIs(.35)).toBe(true);
+  await expect(page.locator('.interstitial-preview video')).toHaveJSProperty('muted', false);
+  await slider.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `test-results/loop-volume-${width}.png`, fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+});
 
 for (const width of [1440, 390]) test(`asset volume edits playback and downloads while base previews and layout stay unchanged at ${width}px`, async ({ page }) => {
   await page.addInitScript(() => {

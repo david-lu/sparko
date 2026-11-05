@@ -143,21 +143,17 @@ export default function InterstitialEditor({ selected, controller, engine, info,
       min={0} max={MASK_TRANSITION.maxMs} step={50} onChange={videoMaskTransitionMs => controller.edit(selected.id, { videoMaskTransitionMs, videoMaskCurve: undefined })} />
     <p className="hint">Changing a duration resets that mask to a simple ramp. Set it to 0 for a hard boundary.</p></details>
     </>}
-    {kind === 'idle' && <label className="interstitial-option"><input type="checkbox" checked={!!selected.loopAudio}
-      disabled={!!currentResult && !currentResult.fullAssetId && currentResult.reference?.mode === 'loop'}
-      onChange={event => controller.edit(selected.id, { loopAudio: event.target.checked })} /> Play generated clip audio</label>}
-    {kind === 'idle' && currentResult && !currentResult.fullAssetId && currentResult.reference?.mode === 'loop' && <p className="hint">Regenerate the loop to make its audio available.</p>}
     {controller.hasLinkedDuration(selected.id) && <p className="hint">Shared duration for all response branches. Changes apply to their next generation.</p>}
     <p className="hint reference-plan">{comfyPlan ? `${comfyPlan.insertion.duration.toFixed(3)}s generated · ${((comfyPlan.prefixFrames + comfyPlan.suffixFrames) / TIMELINE_FPS).toFixed(3)}s reference footage` : '\u00a0'}</p>
   </>;
   const output = <>{resultDetails}{currentResult&&promptDetails}{fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
     downloadAsset={downloadAsset && { ...downloadAsset, volume: assetVolume(projects?.getSnapshot().project?.library, downloadAsset.assetId), assetId: currentResult?.fullAssetId ?? downloadAsset.assetId }}
     heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
-    active={active} muted={(kind === 'idle' || method === 'comfy-loop') && !selected.loopAudio} onPlay={onPreviewPlay} />}</>;
+    active={active} onPlay={onPreviewPlay} />}</>;
   const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>
     <fieldset>
       {!compact && <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>}
-      <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} instructions={selected.loraInstructions} strength={selected.loraStrength} loras={projects?.getSnapshot().project?.loras} onChange={(lora, loraInstructions, loraStrength) => controller.edit(selected.id, { lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => controller.edit(selected.id, { loraStrength })}/>
+      <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} instructions={selected.loraInstructions} strength={selected.loraStrength} loras={projects?.getSnapshot().project?.loras} onChange={(lora, loraInstructions, loraStrength) => controller.edit(selected.id, { lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => controller.edit(selected.id, { loraStrength })} turbo={selected.turbo} onTurboChange={turbo => controller.edit(selected.id, { turbo })}/>
       <div className="field inspector-prompt">
         <div className="prompt-field-heading">
           <label htmlFor={promptId}>Prompt</label>

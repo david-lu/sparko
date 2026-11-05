@@ -1,21 +1,21 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { FlowEdge, PlaybackSession, TimelineScene } from '../../src/features/call-response/model';
 
-async function setup(page: Page, { retry = false, mismatch = false, native = false, references = false } = {}) {
+async function setup(page: Page, { retry = false, mismatch = false, native = false, references = false, loopColors = false } = {}) {
   await page.route('**/__flow-buffering', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><div style="position:relative;width:640px;height:480px"><video muted playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain"></video></div>' }));
   await page.goto('/__flow-buffering');
-  return page.evaluate(async ({ retry, mismatch, native, references }) => {
+  return page.evaluate(async ({ retry, mismatch, native, references, loopColors }) => {
     const { AudioBufferSource, BufferTarget, CanvasSource, Mp4OutputFormat, Output } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const { FlowPlayback } = await import('/src/features/call-response/FlowPlayback.ts' as string);
     const { createTestFlow, addAnswer } = await import('/src/features/call-response/model.ts' as string);
     const { assets } = await import('/src/features/project/assets.ts' as string);
-    const make = async (color: string, duration: number, rate: number, height = 96, fps = 24) => {
+    const make = async (color: string, duration: number, rate: number, height = 96, fps = 24, loopColors = false) => {
       const canvas = new OffscreenCanvas(160, height), ctx = canvas.getContext('2d')!;
       const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
       const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 }), audio = new AudioBufferSource({ codec: 'pcm-f32' });
       output.addVideoTrack(video, { frameRate: fps }); output.addAudioTrack(audio); await output.start();
       await Promise.all([
-        (async () => { for (let frame = 0; frame < duration * fps; frame++) { ctx.fillStyle = color; ctx.fillRect(0, 0, 160, height); for (let bit = 0; bit < 5; bit++) { ctx.fillStyle = (frame % 24) & (1 << bit) ? '#fff' : '#000'; ctx.fillRect(bit * 5, 0, 5, 10); } await video.add(frame / fps, 1 / fps); } video.close(); })(),
+        (async () => { for (let frame = 0; frame < duration * fps; frame++) { ctx.fillStyle = loopColors ? frame < duration * fps / 2 ? '#00ee00' : '#ee0000' : color; ctx.fillRect(0, 0, 160, height); for (let bit = 0; bit < 5; bit++) { ctx.fillStyle = (frame % 24) & (1 << bit) ? '#fff' : '#000'; ctx.fillRect(bit * 5, 0, 5, 10); } await video.add(frame / fps, 1 / fps); } video.close(); })(),
         (async () => { const samples = new AudioBuffer({ sampleRate: rate, numberOfChannels: 2, length: duration * rate }); for (let channel = 0; channel < 2; channel++) { const data = samples.getChannelData(channel); for (let i = 0; i < data.length; i++) data[i] = .05 * Math.sin(i / rate * 2 * Math.PI * 440); } await audio.add(samples); audio.close(); })(),
       ]);
       await output.finalize(); const asset = await assets.save(new Blob([output.target.buffer], { type: 'video/mp4' }), color); await assets.open(asset.id); return asset;
@@ -25,7 +25,7 @@ async function setup(page: Page, { retry = false, mismatch = false, native = fal
     const colors: Record<string, string> = { intro: '#ee0000', call: '#eeee00', wait: '#444444', correct: '#00ee00', incorrect: '#0000ee', continue: '#ee0000', [third.sceneId]: '#ee00ee' };
     for (const scene of flow.scenes) {
       const generated = !['intro', 'continue'].includes(scene.id);
-      const source = !generated ? original : await make(colors[scene.id], references ? 2 : 1, scene.id === 'correct' ? 32000 : 44100, mismatch ? 100 : 96);
+      const source = !generated ? original : await make(colors[scene.id], references ? 2 : 1, scene.id === 'correct' ? 32000 : 44100, mismatch ? 100 : 96, 24, loopColors && scene.id === 'wait');
       const inFrame = scene.id === 'continue' ? 24 : generated && references ? 12 : 0;
       scene.clip = { ...scene.clip, assetId: source.id, inFrame, outFrame: inFrame + 24 };
       if (generated) scene.generated = { url: assets.url(source.id), start: inFrame / 24, duration: 1, totalDuration: references ? 2 : 1 };
@@ -45,7 +45,7 @@ async function setup(page: Page, { retry = false, mismatch = false, native = fal
     }, { width: 160, height: 96, duration: 2, fps: 25, codec: 'avc', hasAudio: true }, false, true, 4);
     (window as any).flowBufferTest = state;
     return { thirdId: third.id, thirdScene: third.sceneId };
-  }, { retry, mismatch, native, references });
+  }, { retry, mismatch, native, references, loopColors });
 }
 const read = (page: Page) => page.evaluate(() => { const s = (window as any).flowBufferTest; return { ...s.playback.session, encoded: s.encoded, activeTime: s.playback.playback.decks.layers.at(-1)?.time, sourceTime: s.playback.sourceTime, buffering: s.buffering, error: s.error, loads: s.loadstarts, seeks: s.seeks, waiting: s.waiting, scenes: s.scenes }; });
 const fast = { timeout: 15_000, intervals: [50, 100, 150] };
@@ -59,6 +59,64 @@ const activePixel = async (page: Page, x = 0, y = 48) => {
     return [...ctx.getImageData((img.width - 160 * scale) / 2 + x * scale, (img.height - 96 * scale) / 2 + y * scale, 1, 1).data];
   }, { base64: screenshot.toString('base64'), x, y });
 };
+
+test('loop picture and sound fade independently while retaining the incoming decoder across repeats', async ({ page }) => {
+  await setup(page, { loopColors: true });
+  for (const { video, audio } of [{ video: 12, audio: 4 }, { video: 4, audio: 12 }, { video: 0, audio: 12 }, { video: 12, audio: 0 }]) {
+    await page.evaluate(({ video, audio }) => {
+      const s = (window as any).flowBufferTest;
+      s.flow = { ...s.flow, storyGraph: true, scenes: s.flow.scenes.map((scene: TimelineScene) => ({ ...scene, volume: .4,
+        storyNode: { id: scene.id, name: scene.label, kind: scene.id === 'wait' ? 'looped' : 'simple', x: 0, y: 0, loopCount: 0,
+          loopVideoCrossfade: video / 24, loopAudioCrossfade: audio / 24 } })),
+        edges: [...s.flow.edges.filter((e: FlowEdge) => e.id !== 'wait-loop'), { id: 'wait-loop', from: 'wait', to: 'wait', when: 'repeat', label: 'Repeat', transitionFrames: 0 }] };
+      s.playback.setFlow(s.flow); s.playback.seekScene('wait', 18);
+    }, { video, audio });
+    await expect.poll(async () => (await read(page)).buffering).toBe(false);
+    const layers = await page.evaluate(() => (window as any).flowBufferTest.playback.playback.decks.layers.map((l: any) => ({ opacity: l.opacity, gain: l.gain, time: l.time, volume: l.source.volume })));
+    expect(layers).toEqual([
+      { opacity: 1, gain: audio === 12 ? .5 : 1, time: .75, volume: .4 },
+      { opacity: video === 12 ? .5 : 0, gain: audio === 12 ? .5 : 0, time: .25, volume: .4 },
+    ]);
+    const pixel = await activePixel(page, 80);
+    if (video === 12) { expect(pixel[0]).toBeGreaterThan(90); expect(pixel[0]).toBeLessThan(150); expect(pixel[1]).toBeGreaterThan(90); expect(pixel[1]).toBeLessThan(150); }
+    else { expect(pixel[0]).toBeGreaterThan(200); expect(pixel[1]).toBeLessThan(20); }
+  }
+  await page.evaluate(() => {
+    const s = (window as any).flowBufferTest, player = s.playback.playback, changed = player.changed;
+    s.flow.scenes.find((scene: TimelineScene) => scene.id === 'wait').storyNode.loopAudioCrossfade = .25;
+    s.playback.setFlow(s.flow); s.playback.setSettings({ volume: 1, muted: false, speed: 1 });
+    s.loopEvents = []; s.loopBuffers = [];
+    player.changed = (session: PlaybackSession, buffering: boolean, error?: string) => {
+      const decks = player.decks;
+      if (session.playing && session.visit > 0 && buffering) s.loopBuffers.push({ visit: session.visit, frame: session.frame });
+      if (!buffering && session.playing) s.loopEvents.push({ visit: session.visit, frame: session.frame,
+        layers: decks.layers.map((l: any) => ({ key: l.key, time: l.time, opacity: l.opacity, gain: l.gain,
+          volume: decks.audio.voices.get(l.key)?.gain.gain.value })) });
+      changed(session, buffering, error);
+    };
+    s.playback.seekScene('wait', 12, true);
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).flowBufferTest.loopEvents.some((e: any) => e.visit >= 3)), fast).toBe(true);
+  const events = await page.evaluate(() => { const s = (window as any).flowBufferTest; s.playback.pause(); return s.loopEvents; });
+  const overlaps = events.filter((e: any) => e.frame >= 19 && e.frame <= 23 && e.layers.length === 2);
+  expect(overlaps.length).toBeGreaterThan(3);
+  expect(overlaps.some((e: any) => e.frame === 23)).toBe(true);
+  for (const event of overlaps) {
+    expect(event.layers[0].gain + event.layers[1].gain).toBeCloseTo(1);
+    expect(event.layers[0].volume + event.layers[1].volume).toBeCloseTo(.4, 2);
+    // AudioParam values advance on the audio render clock between JS reads.
+    for (const layer of event.layers) expect(layer.volume).toBeCloseTo(layer.gain * .4, 1);
+  }
+  for (const visit of [1, 2, 3]) {
+    const first = events.find((e: any) => e.visit === visit);
+    expect(first.frame).toBeGreaterThanOrEqual(12); expect(first.frame).toBeLessThan(15);
+    expect(first.layers[0].key).toBe(`wait:${visit % 3}:body`);
+    expect(first.layers[0].time).toBeGreaterThanOrEqual(.5);
+  }
+  expect((await read(page)).error).toBe('');
+  expect(await page.evaluate(() => (window as any).flowBufferTest.loopBuffers)).toEqual([]);
+  await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
+});
 
 test('independent story fades blend pixels and audio gains on their own timelines', async ({ page }) => {
   await setup(page, { native: true, references: true });
@@ -136,7 +194,7 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await blend()).layers).toMatchObject([
     { clip: 'call:0:body', opacity: 1, volume: .5, muted: false },
-    { clip: 'wait:1:reference', opacity: .5, volume: 0, muted: true },
+    { clip: 'wait:1:reference', opacity: .5, volume: .5, muted: false },
   ]);
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('correct', 2));
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
@@ -170,13 +228,15 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
     await page.evaluate(({ scene, frame }) => (window as any).flowBufferTest.playback.seekScene(scene, frame), { scene, frame });
     await expect.poll(async () => (await read(page)).buffering).toBe(false);
     const rendered = await blend();
-    expect(rendered.layers).toHaveLength(1);
-    expect(rendered.layers[0]).toMatchObject({ opacity: 1, volume: scene === 'wait' ? 0 : 1, muted: scene === 'wait' });
+    const weight = scene === 'wait' ? Math.max(0, (frame - 18) / 6) : 0;
+    expect(rendered.layers).toHaveLength(weight ? 2 : 1);
+    expect(rendered.layers[0]).toMatchObject({ opacity: 1, volume: 1 - weight, muted: false });
+    if (weight) expect(rendered.layers[1]).toMatchObject({ opacity: weight, volume: weight, muted: false });
   }
   await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 23); p.branch('wait', 'incorrect'); p.pause(); });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await blend()).layers).toMatchObject([
-    { clip: 'wait:0:body', muted: true, opacity: 1 },
+    { clip: 'wait:0:body', muted: false, opacity: 1 },
     { clip: 'incorrect:1:body', muted: true, opacity: 0 },
   ]);
   await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 22); p.branch('wait', 'incorrect'); p.pause(); });
@@ -249,17 +309,17 @@ test('idle loops and branches reuse generated media without encoding the source'
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
 
-for (const loopAudio of [false, true]) test(`Idle ${loopAudio ? 'with' : 'without'} source audio stays buffered across repeated loop boundaries`, async ({ page }) => {
+for (const volume of [0, 1]) test(`Idle at volume ${volume} stays buffered across repeated loop boundaries`, async ({ page }) => {
   await setup(page, { references: true });
-  await page.evaluate(loopAudio => {
+  await page.evaluate(volume => {
     const state = (window as any).flowBufferTest;
     const idle = state.flow.scenes.find((scene: { id: string }) => scene.id === 'wait');
-    idle.loopAudio = loopAudio;
+    idle.volume = volume;
     // The saved finished loop is gray; the full original is green.
     idle.generated.fullAssetId = state.flow.scenes.find((scene: { id: string }) => scene.id === 'correct').clip.assetId;
     state.playback.setFlow(state.flow);
     state.playback.seekScene('wait', 0);
-  }, loopAudio);
+  }, volume);
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await activePixel(page, 80))[1]).toBeGreaterThan(180);
   await page.evaluate(() => {
@@ -279,7 +339,9 @@ for (const loopAudio of [false, true]) test(`Idle ${loopAudio ? 'with' : 'withou
     state.playback.pause();
     return state.loopEvents as { visit: number; frame: number; buffering: boolean }[];
   });
-  expect(events.filter(event => event.visit > 0 && event.frame < 2 && event.buffering)).toEqual([]);
+  const boundaries = events.filter(event => event.visit > 0 && event.frame < 8);
+  expect(boundaries.length).toBeGreaterThan(0);
+  expect(boundaries.filter(event => event.buffering)).toEqual([]);
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
 

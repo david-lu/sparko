@@ -49,6 +49,8 @@ export type InterstitialSettings = {
   loraInstructions?: string;
   /** Copied on creation or LoRA selection; missing values retain the legacy strength of 1. */
   loraStrength?: number;
+  /** Stack the H3 Turbo adapter with the optional character/style LoRA. Off for older projects. */
+  turbo?: boolean;
   /** Ordered H3 references, addressed as <Picture 1>, <Picture 2>, etc. */
   imageReferences?: ImageReference[];
   /** Zero-based Picture indexes used as first/last-frame guides when footage is disabled. */
@@ -64,6 +66,7 @@ export type InterstitialSettings = {
   enable_prompt_expansion: boolean;
   continuity?: string;
   dialogue?: string;
+  /** Legacy metadata only; playback uses asset volume instead. */
   loopAudio?: boolean;
   /** Read-only compatibility with retired FILM masks; new generations use pin curves. */
   maskInjection?: MaskInjection;
@@ -104,8 +107,9 @@ export type Interstitial = InterstitialSettings & {
 };
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
-export const interstitialSettings = ({ lora, loraInstructions, loraStrength, useStartVideoAsset, useEndVideoAsset, startVideoAsset, endVideoAsset, start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
-  ({ ...(lora !== undefined ? { lora } : {}), ...(loraInstructions !== undefined ? { loraInstructions } : {}), ...(loraStrength !== undefined ? { loraStrength } : {}), start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
+// Keep Turbo's off value explicit so undo can clear a previously enabled setting.
+export const interstitialSettings = ({ lora, loraInstructions, loraStrength, turbo, useStartVideoAsset, useEndVideoAsset, startVideoAsset, endVideoAsset, start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
+  ({ ...(lora !== undefined ? { lora } : {}), ...(loraInstructions !== undefined ? { loraInstructions } : {}), ...(loraStrength !== undefined ? { loraStrength } : {}), turbo: turbo === true, start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
     ...(useStartVideoAsset !== undefined ? { useStartVideoAsset } : {}), ...(useEndVideoAsset !== undefined ? { useEndVideoAsset } : {}),
     ...(startVideoAsset ? { startVideoAsset: { ...startVideoAsset } } : {}), ...(endVideoAsset ? { endVideoAsset: { ...endVideoAsset } } : {}),
     ...(imageReferences?.length ? { imageReferences: imageReferences.map(image => ({ ...image })) } : {}),

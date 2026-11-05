@@ -89,18 +89,19 @@ describe('call-response generation sequence', () => {
   it('keeps active inputs fixed and uses the newest edits for pending clips without duplicate submissions', async () => {
     const first = deferred<GenerationJob>();
     vi.mocked(getInterstitialJob).mockReturnValueOnce(first.promise);
+    controller.edit(ids[0], { turbo: true });
     const run = controller.generateAll(media, info);
     await vi.waitFor(() => expect(item(0).phase).toBe('queued'));
     const submitted = item(0).generationSettings!;
-    controller.edit(ids[0], { prompt: 'Use this on the next call render', method: 'comfy' });
-    controller.edit(ids[1], { prompt: 'A quiet waiting loop', start_range: 3, end_range: 3, duration: 7, method: 'comfy' });
+    controller.edit(ids[0], { prompt: 'Use this on the next call render', method: 'comfy', turbo: false });
+    controller.edit(ids[1], { prompt: 'A quiet waiting loop', start_range: 3, end_range: 3, duration: 7, method: 'comfy', turbo: true });
     controller.edit(ids[2], { duration: 8, enable_prompt_expansion: true });
     await controller.generateAll(media, info);
     await controller.generate(ids[2], media, info);
     expect(generateInterstitial).toHaveBeenCalledTimes(1);
     expect(vi.mocked(generateInterstitial).mock.calls[0][0]).toMatchObject(JSON.parse(JSON.stringify(submitted)));
     first.resolve(completed('render-1')); await run;
-    expect(vi.mocked(generateInterstitial).mock.calls[1][0]).toMatchObject({ prompt: 'A quiet waiting loop', start_range: 3, end_range: 3, duration: 7, method: 'comfy' });
+    expect(vi.mocked(generateInterstitial).mock.calls[1][0]).toMatchObject({ prompt: 'A quiet waiting loop', start_range: 3, end_range: 3, duration: 7, method: 'comfy', turbo: true });
     expect(vi.mocked(generateInterstitial).mock.calls[2][0]).toMatchObject({ duration: 8, enable_prompt_expansion: true });
     expect(vi.mocked(generateInterstitial).mock.calls[3][0].duration).toBe(8);
     expect(item(0).generationSettings).toEqual(submitted);

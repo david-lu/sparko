@@ -26,6 +26,7 @@ const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uui
 const settingsSchema = z.object({
   ...videoReferenceSettings,
   ...loraSettings,
+  turbo: z.boolean().optional(),
   imageReferences: imageReferencesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),
@@ -63,6 +64,7 @@ const projectSchema = z.object({
       return true;
     }), 'Invalid folder hierarchy.').optional(),
   loras: projectLorasSchema.optional(),
+  assetAliases: z.record(z.uuid(), z.uuid()).optional(),
   assetGenerations: z.array(assetGenerationSchema).max(1000).refine(items => new Set(items.map(g => g.id)).size === items.length, 'Duplicate generations.').optional(),
   library: z.array(z.object({ assetId: z.uuid(), originalAssetId: z.uuid().optional(), name: z.string().min(1).max(1000),
     kind: z.enum(['video', 'generated', 'subtitle', 'image', 'audio']), folderId: z.uuid().optional(), generationId: z.uuid().optional(), width: number.int().optional(), height: number.int().optional(), duration: number.positive().optional(), inFrame: number.int().optional(), outFrame: number.int().positive().optional(), volume: z.number().min(0).max(1).optional(),
@@ -97,8 +99,11 @@ const manifestSchema = z.object({ format: z.literal('sparko-project'), version: 
 type Progress = (message: string, fraction: number) => void;
 
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
+  const supplied = new Set(assets.map(asset => asset.id));
   const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.assetGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
-    ...project, interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
+    ...project,
+    assetAliases: project.assetAliases ? Object.fromEntries(Object.entries(project.assetAliases).filter(([, id]) => supplied.has(id))) : undefined,
+    interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
       generationSettings: item.generationSettings ? interstitialSettings(item.generationSettings) : undefined,
       result: item.result ? { ...item.result, url: `asset:${item.result.assetId}` } : undefined,
       previousResult: item.previousResult ? { ...item.previousResult, url: `asset:${item.previousResult.assetId}` } : undefined,
@@ -108,7 +113,6 @@ export async function packProject(project: Project, assets: Asset[], signal: Abo
   if (total > MAX_BYTES) throw new Error('Project files currently support up to 8 GB of media.');
   const manifestText = JSON.stringify(manifest);
   if (new Blob([manifestText]).size > MAX_MANIFEST) throw new Error('Project metadata exceeds 8 MB.');
-  const supplied = new Set(assets.map(asset => asset.id));
   if (assetIds(project).some(id => !supplied.has(id))) throw new Error('A project asset is missing. Export was cancelled.');
   const writer = new ZipWriter(new BlobWriter('application/zip'), { level: 0, useWebWorkers: false });
   let written = 0;
@@ -148,6 +152,9 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const total = descriptions.reduce((sum, asset) => sum + asset.size, 0);
     if (total > MAX_BYTES) throw new Error('This project exceeds the 8 GB import limit.');
     const remap = new Map(descriptions.map(asset => [asset.id, crypto.randomUUID()]));
+    // MP4 provenance retains its original IDs. Keep every earlier ID mapped directly to the new local asset.
+    const assetAliases = Object.fromEntries([...remap, ...Object.entries(project.assetAliases ?? {})
+      .filter(([, id]) => remap.has(id)).map(([alias, id]) => [alias, remap.get(id)!])]);
     const remapAssetSettings = (settings: import('../../../shared/asset-generation').AssetSettings) => ({ ...settings, references: settings.references.map(ref => ({ ...ref, assetId: remap.get(ref.assetId)! })) });
     const remapSettings = (settings: Parameters<typeof interstitialSettings>[0]) => ({ ...interstitialSettings(settings),
       startVideoAsset: settings.startVideoAsset ? { ...settings.startVideoAsset, assetId: remap.get(settings.startVideoAsset.assetId)! } : undefined,
@@ -168,7 +175,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
       assets.push({ id: remap.get(asset.id)!, name: asset.name, blob }); read += blob.size;
     }
     return { project: {
-      ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(),
+      ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(), assetAliases,
       library: project.library?.map(item => ({ ...item, assetId: remap.get(item.assetId)!, originalAssetId: item.originalAssetId ? remap.get(item.originalAssetId)! : undefined })),
       assetGenerations: project.assetGenerations?.map(g => ({ ...g, settings: remapAssetSettings(g.settings), submitted: g.submitted ? remapAssetSettings(g.submitted) : undefined,
         selectedAssetId: g.selectedAssetId ? remap.get(g.selectedAssetId)! : undefined,

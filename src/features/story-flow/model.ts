@@ -19,6 +19,8 @@ export type StoryNode = {
   crossfadeStart?: number; crossfadeEnd?: number;
   /** Zero waits for Continue; positive counts complete iterations. */
   loopCount: number;
+  /** Independent repeat overlaps in seconds; zero makes a hard cut for that channel. */
+  loopVideoCrossfade?: number; loopAudioCrossfade?: number;
   loop?: boolean; conditional?: boolean; conditions?: StoryCondition[]; defaultConditionId?: string;
 };
 export type FadeChannel = 'video' | 'audio';
@@ -113,6 +115,8 @@ export function reachableNodes(graph: StoryGraph) {
 }
 type LayoutRect = {left:number;right:number;top:number;bottom:number};
 const overlaps=(a:LayoutRect,b:LayoutRect)=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom;
+// Distances use visible clip edges in canvas units (pixels at 100% zoom).
+const MAX_LOOSE_GAP = 600, LOOSE_GAP = 104;
 /** Find the closest free position, leaving a little room around a displaced clip. */
 function nearestFreePosition(rect:LayoutRect,occupied:LayoutRect[]) {
   const padding=24,width=rect.right-rect.left,height=rect.bottom-rect.top;
@@ -139,7 +143,7 @@ function nearestFreePosition(rect:LayoutRect,occupied:LayoutRect[]) {
 }
 export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHeight=360): StoryGraph {
   if(!graph.nodes.length)return graph;
-  const grouped=graph.groups?.some(g=>g.nodeIds.length),padding=24,gap=grouped?160:104;
+  const grouped=graph.groups?.some(g=>g.nodeIds.length),padding=24,gap=grouped?160:LOOSE_GAP;
   // Connected paths can share a column; branches retain their vertical rows.
   // Loose clips do not participate in packing.
   const columnHeight=Math.max(CLIP_HEIGHT,viewportHeight-(grouped?100:64));
@@ -218,7 +222,8 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
   const anchors=order.map(id=>({before:byId.get(id)!,after:positioned.get(id)!,rect:rectangle(byId.get(id)!)}));
   const occupied=[...positioned.values()].map(rectangle),displaced:StoryNode[]=[];
   // Follow the nearest clip in the original layout, using visible media bounds
-  // so a long clip's nearby end counts. Then resolve overlaps at the new location.
+  // so a long clip's nearby end counts. Bring distant outliers back alongside
+  // that anchor, then resolve overlaps without displacing nearby loose clips.
   const loose=graph.nodes.filter(n=>!layoutIds.has(n.id)).map(node=>{
     const rect=rectangle(node);
     let nearest=anchors[0],distance=Infinity,centerDistance=Infinity;
@@ -228,18 +233,27 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
       const center=(rect.left+rect.right-r.left-r.right)**2+(rect.top+rect.bottom-r.top-r.bottom)**2;
       if(gap<distance||gap===distance&&center<centerDistance){nearest=anchor;distance=gap;centerDistance=center;}
     }
-    return {...node,x:node.x+nearest.after.x-nearest.before.x,y:node.y+nearest.after.y-nearest.before.y};
+    const next={...node,x:node.x+(nearest.after.x-nearest.before.x),y:node.y+(nearest.after.y-nearest.before.y)};
+    const distant=distance>MAX_LOOSE_GAP**2;
+    if(distant){
+      const r=nearest.rect;
+      const dx=rect.left>r.right?rect.left-r.right:rect.right<r.left?rect.right-r.left:0;
+      const dy=rect.top>r.bottom?rect.top-r.bottom:rect.bottom<r.top?rect.bottom-r.top:0;
+      const scale=1-LOOSE_GAP/Math.sqrt(distance);
+      next.x-=dx*scale;next.y-=dy*scale;
+    }
+    return {node:next,distant};
   });
   // Reserve clear preferred positions first, so resolving one collision does
   // not push another clip away from its existing neighbors.
-  for(const node of loose){
+  for(const {node,distant} of loose){
     const rect=rectangle(node);
-    if(occupied.some(other=>overlaps(rect,other)))displaced.push(node);
+    if(distant||occupied.some(other=>overlaps(rect,other)))displaced.push(node);
     else {positioned.set(node.id,node);occupied.push(rect);}
   }
   for(const node of displaced){
     const rect=rectangle(node),point=nearestFreePosition(rect,occupied);
-    const next={...node,x:node.x+point.x-rect.left,y:node.y+point.y-rect.top};
+    const next={...node,x:node.x+(point.x-rect.left),y:node.y+(point.y-rect.top)};
     positioned.set(node.id,next);occupied.push(rectangle(next));
   }
   const moved=new Set(graph.nodes.filter(n=>{const p=positioned.get(n.id)!;return n.x!==p.x||n.y!==p.y;}).map(n=>n.id));
@@ -262,7 +276,7 @@ export function createNode(kind: Exclude<NodeKind, 'source'>, referenceId?: stri
   const name = kind === 'simple' ? 'New scene' : kind === 'looped' ? 'Waiting loop' : 'Choose a path';
   return { node: { id, name, kind, loop:kind==='looped',conditional:kind==='conditional',interstitialId: itemId, referenceId, x: 40, y: 90, loopCount: 0 },
     item: { id: itemId, label: name, kind: 'regular', time: 0, phase: 'draft', method: kind === 'simple' ? 'comfy-extend' : 'comfy-loop',
-      duration: kind === 'simple' ? 6 : 4, start_range: 2, end_range: 2, prompt: '', enable_prompt_expansion: false, loopAudio: true } };
+      duration: kind === 'simple' ? 6 : 4, start_range: 2, end_range: 2, prompt: '', enable_prompt_expansion: false } };
 }
 /** Legacy interaction sections become ordinary editable frames around their generated clips. */
 function legacyGroups(project:Project,nodes:StoryNode[]):StoryGroup[] {
@@ -324,7 +338,7 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
     const source = node.source ?? { assetId: result?.assetId ?? sourceAssetId, inFrame: result ? start+bounds.inFrame : 0, outFrame: result ? start+bounds.outFrame : 1 };
     return { id:node.id, label:item?.label ?? node.name, role:node.kind === 'source' ? 'source':'call', dialogue:item?.dialogue ?? '', interstitialId:node.interstitialId,
       draft:!node.source && !result, plannedFrames:bounds.outFrame-bounds.inFrame, generated:result,
-      sourceTime:item?.time, loopAudio:item?.loopAudio ?? true, storyNode:node,
+      sourceTime:item?.time, storyNode:node,
       clip:behaviors(node).loop || behaviors(node).conditional ? { id:node.id, ...source, kind:'idle', repeat:'until-answer',exitAt:'loop-boundary' } : { id:node.id,...source,kind:node.kind === 'source' ? 'video':'call' } };
   });
   // Drafts hold a reference frame, following the generation dependency rather than a fixed role name.

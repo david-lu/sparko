@@ -40,7 +40,7 @@ export default function ConnectionInspector({ editor, connection, info }: {edito
         })}</dl><p className="hint">Times are positions in each saved video.</p>
         {transition.frames<Math.round(duration*fps)&&<p className="hint">Shortened to fit the available footage without overlapping another fade.</p>}
       </>:<><strong>{label} · {self?'Seamless repeat':duration===0?'Cut':draft?'Ready after generation':'Cut · no matching reference'}</strong>
-        <p className="hint">{self?'Repeats play without a crossfade.':duration===0?'Playback changes clips directly.':draft?'The saved reference footage will determine the overlap when generation finishes.':'The saved reference does not meet this cut. Regenerate using the connected clips, or keep a cut.'}</p></>}
+        <p className="hint">{self?'Set the repeat crossfade in the clip’s Loop settings.':duration===0?'Playback changes clips directly.':draft?'The saved reference footage will determine the overlap when generation finishes.':'The saved reference does not meet this cut. Regenerate using the connected clips, or keep a cut.'}</p></>}
       </div>)}
     </section>
 

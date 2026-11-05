@@ -64,7 +64,7 @@ function idleTransition(flow: CallResponseFlow, edge: FlowEdge, requestedFrames:
   const contextFrames = enteringIdle ? idlePrefix ? Math.floor(idlePrefix.start * flow.fps + 1e-6) : Infinity
     : Math.floor(after.generated.start * flow.fps + 1e-6);
   const frames = Math.max(0, Math.min(Math.floor(requestedFrames), sceneFrames(before), sceneFrames(after), contextFrames));
-  // Both fades finish at their cut; Idle repeats do not fade.
+  // Entry and exit fades finish at their cut. Repeats use the clip's own overlap.
   return frames ? { before, after, startFrame: -frames, frames } : undefined;
 }
 
@@ -74,7 +74,7 @@ function candidateTransition(flow: CallResponseFlow, edge: FlowEdge, frames: num
   return idleTransition(flow, edge, frames) ?? referenceTransition(flow, edge, frames);
 }
 
-/** Fade through Idle's reference sections at entry and exit; repeats stay untouched. */
+/** Connection fades use reference sections; repeat fades are handled by playback. */
 export function flowTransition(flow: CallResponseFlow, edge: FlowEdge, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES, channel: FadeChannel = 'video') {
   const transition = candidateTransition(flow, edge, crossfadeFrames, channel);
   if (!transition) return;

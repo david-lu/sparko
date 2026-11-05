@@ -19,6 +19,7 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   validateMaskTransitionMs(videoMaskTransitionMs, 'Video mask transition');
   for (const curve of [item.audioMaskCurve, item.videoMaskCurve]) if (curve) maskCurveSchema.parse(curve);
   const query = new URLSearchParams();
+  if (item.turbo) query.set('turbo', 'true');
   if (item.resolution === '2k') query.set('resolution', '2k');
   if (item.imageReferences?.length) query.set('imageReferences', 'true');
   const startImageIndex = item.useInputReference === false ? item.startImageIndex : undefined;
@@ -59,6 +60,7 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   body.set('before', String(range.insertAt)); body.set('after', String(range.after));
   body.set('duration', String(item.duration)); body.set('prompt', item.prompt);
   body.set('mode', range.mode);
+  if (item.turbo) body.set('turbo', 'true');
   if (item.lora) { body.set('lora', item.lora); body.set('loraStrength', String(item.loraStrength ?? 1)); }
   if (range.mode === 'loop') body.set('loopImageGuide', String(startImageIndex !== undefined));
   body.set('maskInjection', clipMaskInjection(item));

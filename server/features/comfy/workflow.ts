@@ -8,7 +8,7 @@ import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 import { CLIP_METADATA_TAG, serializeClipMetadata, type ClipOrigin } from '../../../shared/clip-metadata.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown>; _meta?: Record<string, unknown> }>;
-export type BridgeInput = { clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
+export type BridgeInput = { clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Separately encoded references stay frozen outside their soft transitions.
@@ -43,6 +43,7 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   const before = prefixFrames ? add('before', 'VHS_LoadVideoFFmpeg', loader(0, prefixFrames)) : undefined;
   const after = suffixFrames ? add('after', 'VHS_LoadVideoFFmpeg', loader(prefixFrames, suffixFrames)) : undefined;
   let model = add('model', 'UNETLoader', { unet_name: COMFY_MODELS.diffusion, weight_dtype: 'default' });
+  if (input.turbo) model = add('turbo_lora', 'LoraLoaderModelOnly', { model, lora_name: COMFY_MODELS.turboLora, strength_model: 1 });
   if (input.lora) {
     if (!isLoraFilename(input.lora)) throw new Error('Resolve the Comfy LoRA to an imported model filename before generating.');
     model = add('lora', 'LoraLoaderModelOnly', { model, lora_name: input.lora, strength_model: loraStrengthSchema.parse(input.loraStrength ?? LORA_STRENGTH.default) });
@@ -112,8 +113,8 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   }
   const noise = add('noise', 'RandomNoise', { noise_seed: seed });
   const guider = add('guider', 'BasicGuider', { model: shifted, conditioning: positive });
-  const sampler = add('sampler', 'KSamplerSelect', { sampler_name: COMFY.sampler });
-  const sigmas = add('schedule', 'BasicScheduler', { model: shifted, scheduler: 'simple', steps: COMFY.steps, denoise: 1 });
+  const sampler = add('sampler', 'KSamplerSelect', { sampler_name: input.turbo ? COMFY.turboSampler : COMFY.sampler });
+  const sigmas = add('schedule', 'BasicScheduler', { model: shifted, scheduler: 'simple', steps: input.turbo ? COMFY.turboSteps : COMFY.steps, denoise: 1 });
   const sample = add('sample', 'SamplerCustomAdvanced', { noise, guider, sampler, sigmas, latent_image: joint });
   const streams = add('streams', 'LTXVSeparateAVLatent', { av_latent: sample });
   const images = add('decode_video', 'VAEDecode', { samples: streams, vae });

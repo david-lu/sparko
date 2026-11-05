@@ -22,7 +22,7 @@ import { inspectAsset, mediaKind, mediaFile, type LibraryFile } from './libraryF
 import type { LibraryAsset, LibraryFolder } from './types';
 import type { AssetGeneration } from '../../../shared/asset-generation';
 import { readClipMetadata } from '../../media/clipMetadata';
-import { reconnectClipReferences, restoreClip } from '../interstitials/clipMetadata';
+import { resolveClipReferences, restoreClip } from '../interstitials/clipMetadata';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
   busy: boolean; message: string; progress: number | null; error: string | null;
@@ -113,7 +113,8 @@ export class ProjectController {
       const graph = current.storyFlow!, origin = position ?? { x: 40, y: Math.max(90, ...graph.nodes.map(n => n.y)) + 145 };
       nodes.forEach((node, index) => { node.x = origin.x; node.y = origin.y + index * 145; });
       const interstitials = [...current.interstitials, ...added];
-      const next = reconnectClipReferences({ ...graph, entryId: asStart ? nodes[0].id : graph.entryId || nodes[0].id, nodes: [...graph.nodes, ...nodes] }, interstitials, added);
+      const next = { ...graph, entryId: asStart ? nodes[0].id : graph.entryId || nodes[0].id, nodes: [...graph.nodes, ...nodes] };
+      resolveClipReferences(next, interstitials, added, current.assetAliases);
       const firstSource = !current.source.assetId ? nodes.find(node => node.source) : undefined;
       const project = { ...current, storyFlow: next, interstitials,
         source: firstSource ? { name: firstSource.name, assetId: firstSource.source!.assetId, originalAssetId: firstSource.source!.originalAssetId } : current.source, updatedAt: Date.now() };

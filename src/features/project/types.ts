@@ -20,6 +20,8 @@ export type Project = {
   library?: LibraryAsset[];
   libraryFolders?: LibraryFolder[];
   assetGenerations?: AssetGeneration[];
+  /** Original asset IDs mapped to this project's local IDs, for portable video references. */
+  assetAliases?: Record<string, string>;
   loras?: ProjectLora[];
   subtitle: { name: string; assetId: string } | null;
   analysis: AnalysisState;

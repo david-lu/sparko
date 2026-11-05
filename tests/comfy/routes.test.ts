@@ -29,6 +29,18 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it('validates Turbo at preflight and submission, including explicit false', async () => {
+    comfy.check.mockResolvedValue({ ready: true });
+    await request(app).get('/api/comfy/status?turbo=true&imageGuides=true').expect(200);
+    expect(comfy.check).toHaveBeenCalledWith('standard', undefined, true, true, false, true);
+    await request(app).get('/api/comfy/status?turbo=invalid').expect(400);
+    for (const turbo of ['true', 'false']) {
+      await submit('1.625', '1.625', 'Turbo scene', { turbo }).expect(202);
+      expect(comfy.submit.mock.calls.at(-1)![1].turbo).toBe(turbo === 'true');
+    }
+    for (const turbo of ['', '1', 'yes']) await submit('1.625', '1.625', 'Invalid Turbo', { turbo }).expect(400);
+    expect(comfy.submit).toHaveBeenCalledTimes(2);
+  });
   it('passes validated clip provenance with all generation fields and rejects invalid metadata before submitting', async () => {
     const clipOrigin = clipOriginSchema.parse(clipMetadata);
     await submit('1.625', '1.625', 'Exact prompt', { clipOrigin: JSON.stringify(clipOrigin), mode: 'custom', resolution: 'native',

@@ -31,7 +31,7 @@ export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrame
         onChange={event => onCrossfadeFrames(Number(event.target.value))} />
       <small>Saved with this project. Limited to reference overlap.</small>
     </label>}
-    {perClip && <p className="hint" style={{padding:'6px 10px'}}>Click a crossfade button on a connection to edit it.</p>}
+    {perClip && <p className="hint" style={{padding:'6px 10px'}}>Edit connection fades on their wires, and repeat fades in the clip’s Loop settings.</p>}
     <button role="menuitemcheckbox" aria-checked={matchFraming} onClick={() => onMatchFraming(!matchFraming)}
       title="Match generated clips to the parent frame with a small center crop (up to 5%). Larger aspect differences keep the full image.">
       <Check size={14} style={{ visibility: matchFraming ? 'visible' : 'hidden' }} />Match generated framing

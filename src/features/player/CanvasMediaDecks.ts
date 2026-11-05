@@ -48,8 +48,8 @@ export class CanvasMediaDecks {
     let deck = this.decks.get(clip.key);
     if (deck && deck.source !== clip.source.url) { deck.decoder.dispose(); this.decks.delete(clip.key); deck = undefined; }
     if (!deck) {
-      // An Idle loop with its source audio needs two decoders per visit:
-      // finished video plus raw audio, for both the current and next visit.
+      // Keep overlapping visits plus the following repeat warm, with room for
+      // connection fades and clips that carry audio from a separate source.
       if (this.decks.size >= 4) {
         const unused = [...this.decks].filter(([key]) => !this.active.has(key)).sort((a, b) => a[1].used - b[1].used)[0];
         if (unused) { unused[1].decoder.dispose(); this.decks.delete(unused[0]); }

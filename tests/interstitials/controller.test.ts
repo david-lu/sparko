@@ -354,7 +354,7 @@ describe('interstitial lifecycle', () => {
     const original = await readyScene(), before = edits();
     await controller.remove(original.id);
     await controller.restoreEdits(before, undefined, new AbortController().signal);
-    expect(controller.getSnapshot().items[0]).toEqual(original);
+    expect(controller.getSnapshot().items[0]).toEqual({ ...original, turbo: false });
     expect(controller.getSnapshot().selectedId).toBe(original.id);
     expect(generateInterstitial).toHaveBeenCalledTimes(1);
   });

@@ -79,6 +79,8 @@ describe('project LoRAs', () => {
     expect(jobs.add(3, 10)).toMatchObject({ lora: 'changed.safetensors', loraStrength: 0 });
     const submitted = { ...item, lora: address, generationSettings: interstitialSettings({ ...item, lora: address }) };
     expect(hasUnsubmittedChanges(submitted)).toBe(false);
+    expect(hasUnsubmittedChanges({ ...submitted, turbo: false })).toBe(false);
+    expect(hasUnsubmittedChanges({ ...submitted, turbo: true })).toBe(true);
     expect(hasUnsubmittedChanges({ ...submitted, loraInstructions: 'Enhancement only' })).toBe(false);
     submitted.lora = 'override.safetensors';
     expect(hasUnsubmittedChanges(submitted)).toBe(true);
@@ -110,6 +112,7 @@ describe('project LoRAs', () => {
 
   it('round-trips assignments, overrides, submitted inputs and templates and keeps project edits undoable', async () => {
     const project = empty(), { item, node } = createNode('simple');
+    item.turbo = true;
     item.lora = 'override.safetensors'; item.loraStrength = 0; item.loraInstructions = 'Use a custom trigger'; item.generationSettings = interstitialSettings({ ...item, lora: address, loraInstructions: 'Submitted guidance', loraStrength: 1.4 });
     project.loras = [entry]; project.interstitials = [item];
     project.storyFlow = { ...project.storyFlow!, entryId: node.id, nodes: [node], templates: [{ id: 'template', name: 'Saved', entryId: node.id,
@@ -119,6 +122,9 @@ describe('project LoRAs', () => {
     expect(result.project.loras).toEqual([entry]);
     expect(result.project.interstitials[0].lora).toBe(item.lora);
     expect(result.project.interstitials[0].loraStrength).toBe(0);
+    expect(result.project.interstitials[0].turbo).toBe(true);
+    expect(result.project.interstitials[0].generationSettings?.turbo).toBe(true);
+    expect(Object.values(result.project.storyFlow!.templates[0].settings)[0].turbo).toBe(true);
     expect(result.project.interstitials[0].generationSettings?.loraStrength).toBe(1.4);
     expect(result.project.interstitials[0].loraInstructions).toBe(item.loraInstructions);
     expect(result.project.interstitials[0].generationSettings?.loraInstructions).toBe('Submitted guidance');

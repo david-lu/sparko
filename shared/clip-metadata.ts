@@ -15,6 +15,7 @@ const range = z.object({ inFrame: frame, outFrame: frame }).refine(v => v.outFra
 export const clipSettingsSchema = z.object({
   ...videoReferenceSettings,
   ...loraSettings,
+  turbo: z.boolean().optional(),
   imageReferences: imageReferencesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),
@@ -33,7 +34,7 @@ export const clipOriginSchema = z.object({
   format: z.literal('sparko-clip'), version: z.literal(1), fps: z.literal(TIMELINE_FPS), id: z.uuid(),
   createdAt: z.iso.datetime(),
   clip: z.object({ nodeId: id.optional(), name: z.string().max(1000), time: seconds,
-    loop: z.boolean(), conditional: z.boolean(), loopCount: frame.max(10_000), trim: range.optional(),
+    loop: z.boolean(), conditional: z.boolean(), loopCount: frame.max(10_000), loopVideoCrossfade: seconds.optional(), loopAudioCrossfade: seconds.optional(), trim: range.optional(),
     conditions: z.array(z.object({ id, label: z.string().max(200), values: z.array(z.string().max(200)).max(100) })).max(100).optional(),
     defaultConditionId: id.optional(),
   }),

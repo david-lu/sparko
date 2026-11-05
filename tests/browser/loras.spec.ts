@@ -119,10 +119,12 @@ test('generation submits the selected LoRA and cancellation of link validation n
   await page.route('**/api/comfy/interstitials', route => { submitted = route.request().postData() ?? ''; return route.fulfill({ status: 503, json: { error: 'Test stopped before a paid generation.' } }); });
   await page.getByRole('slider', { name: 'LoRA strength', exact: true }).press('Home');
   await expect(strength(page)).toHaveValue('0');
+  await page.getByRole('switch', { name: 'Turbo', exact: true }).check();
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect.poll(() => submitted).toContain(filename);
   expect(submitted).toContain('name="lora"');
   expect(submitted).toMatch(/name="loraStrength"\r?\n\r?\n0\r?\n/);
+  expect(submitted).toMatch(/name="turbo"\r?\n\r?\ntrue\r?\n/);
   expect((await readProject(page)).interstitials[0].generationSettings.loraStrength).toBe(0);
   await strength(page).fill('1.25');
   expect((await readProject(page)).interstitials[0].generationSettings.loraStrength).toBe(0);
@@ -187,4 +189,62 @@ test('enhancement uses the selected LoRA instructions and ignores late results a
   finish(); await expect(prompt).toHaveValue(before);
   await addDraft(page, 'New default strength');
   await expect(strength(page)).toHaveValue('0');
+});
+
+for (const width of [1440, 390, 320]) test(`Turbo persists and keeps video controls stable through generation at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
+  await setup(page); await addDraft(page, 'Turbo scene');
+  await page.getByLabel('Video prompt', { exact: true }).fill('Sema waves');
+  const turbo = page.getByRole('switch', { name: 'Turbo', exact: true });
+  await expect(selection(page)).toHaveValue(''); await expect(strength(page)).toHaveCount(0);
+  await expect(turbo).not.toBeChecked(); await turbo.focus(); await turbo.press('Space'); await expect(turbo).toBeChecked();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(turbo).not.toBeChecked();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(turbo).toBeChecked();
+  const controls = () => page.locator('.interstitial-editor').evaluate(el => {
+    const top = el.getBoundingClientRect().top;
+    return ['.generation-lora select', '.generation-turbo', 'textarea', '.interstitial-resolution', '.interstitial-time-fields', 'button[type=submit]', '.task-status'].map(selector => {
+      const rect = el.querySelector(selector)!.getBoundingClientRect(); return { top: rect.top - top, height: rect.height, width: rect.width };
+    });
+  });
+  const positions = await controls();
+  let complete = false, submissions = 0;
+  const preflights: (string | null)[] = [];
+  await page.route('**/api/comfy/status*', route => {
+    preflights.push(new URL(route.request().url()).searchParams.get('turbo'));
+    return route.fulfill({ json: { ready: true } });
+  });
+  await page.route('**/api/comfy/interstitials', async route => {
+    submissions++;
+    const form = await new Response(Uint8Array.from(route.request().postDataBuffer()!), { headers: { 'Content-Type': route.request().headers()['content-type'] } }).formData();
+    expect(form.get('turbo')).toBe(submissions === 1 ? 'true' : null);
+    expect(form.has('lora')).toBe(false);
+    expect(JSON.parse(form.get('clipOrigin') as string).settings.turbo).toBe(submissions === 1);
+    if (submissions > 1) return route.fulfill({ status: 503, json: { error: 'Test generation unavailable.' } });
+    return route.fulfill({ status: 202, json: { requestId: 'turbo-test-job', status: 'IN_QUEUE', insertion: { start: 0, duration: 4, totalDuration: 4 } } });
+  });
+  await page.route('**/api/comfy/jobs/turbo-test-job/events', route => route.fulfill({ contentType: 'text/event-stream', body: 'event: progress\ndata: {"type":"progress","progressDetails":{"stage":"Generating video and audio","step":2,"steps":4}}\n\n' }));
+  await page.route('**/api/comfy/jobs/turbo-test-job', route => route.fulfill({ json: complete
+    ? { requestId: 'turbo-test-job', status: 'COMPLETED', videoUrl: 'https://example.test/turbo.mp4' }
+    : { requestId: 'turbo-test-job', status: 'IN_PROGRESS' } }));
+  await page.route('https://example.test/turbo.mp4', route => route.fulfill({ contentType: 'video/mp4', path: 'tests/fixtures/interstitial-reference.mp4' }));
+  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Generating…', exact: true })).toBeDisabled();
+  await expect.poll(() => submissions).toBe(1); expect(preflights).toEqual(['true']);
+  expect(await controls()).toEqual(positions);
+  await turbo.uncheck(); expect(await controls()).toEqual(positions);
+  await expect(page.locator('.interstitial-edited')).toBeVisible();
+  expect((await readProject(page)).interstitials[0].generationSettings.turbo).toBe(true);
+  await page.locator('.generation-turbo').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `test-results/turbo-rendering-${width}.png` });
+  complete = true;
+  await expect.poll(async () => (await readProject(page)).interstitials[0].phase, { timeout: 60_000 }).toBe('ready');
+  expect(await controls()).toEqual(positions);
+  await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+  await expect(page.locator('.task-status')).toContainText('Test generation unavailable.');
+  expect(preflights).toEqual(['true', null]); expect(await controls()).toEqual(positions);
+  await turbo.check(); await saveAndReopen(page);
+  await page.locator('.story-clip.type-simple .story-clip-title').click();
+  await expect(turbo).toBeChecked(); await expect(selection(page)).toHaveValue(''); await expect(strength(page)).toHaveCount(0);
+  expect((await readProject(page)).interstitials[0].turbo).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
