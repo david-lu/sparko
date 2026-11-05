@@ -29,6 +29,7 @@ for (const width of [1440, 390]) test(`selection highlights draft and saved refe
   });
   await page.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'References.sparko', mimeType: 'application/zip', buffer: Buffer.from(bytes) });
   await expect(page.locator('.story-clip')).toHaveCount(6); await fitAll(page);
+  await expect(page.locator('.story-reference-section')).toHaveCount(0);
   const clip = (id: string) => page.locator(`[data-node-id="${id}"]`);
   const ranges = () => page.locator('.story-reference-highlight').evaluateAll(nodes => nodes.map(node => ({
     clip: node.closest('.story-clip')!.getAttribute('data-node-id'), side: node.getAttribute('data-side'),
@@ -54,15 +55,19 @@ for (const width of [1440, 390]) test(`selection highlights draft and saved refe
     { clip: 'Previous still', side: 'start', start: 1, end: 2 }, { clip: 'Following video', side: 'end', start: 0, end: 1 },
   ];
   await expect.poll(ranges).toEqual(savedRanges);
+  await expect(clip(readyId).locator('.story-reference-section')).toHaveCount(2);
   await page.getByLabel('start_range', { exact: true }).fill('4');
   await expect.poll(ranges).toEqual(savedRanges);
   await page.locator('.story-canvas').screenshot({ path: `test-results/reference-saved-${width}.png` });
   // The overlays must let pointer scrubbing through and disappear when the source is selected.
   await clip('Following video').locator('.story-filmstrip').click({ position: { x: 4, y: 35 } });
   await expect(clip('Following video')).toHaveClass(/selected/); await expect(page.locator('.story-reference-highlight')).toHaveCount(0);
+  await expect(page.locator('.story-reference-section')).toHaveCount(0);
   await page.getByRole('button', { name: 'Library asset Saved generation', exact: true }).click();
   await expect.poll(ranges).toEqual(savedRanges);
+  await expect(clip(readyId).locator('.story-reference-section')).toHaveCount(2);
   await saveAndReopen(page); await fitAll(page);
+  await expect(page.locator('.story-reference-section')).toHaveCount(0);
   await clip(readyId).locator('.story-clip-title').click(); await expect.poll(ranges).toEqual(savedRanges);
   expect(errors).toEqual([]);
 });
