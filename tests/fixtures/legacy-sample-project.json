@@ -1,0 +1,1189 @@
+{
+  "id": "draft:ccae5433-cce8-4a8d-b74f-3384fc3c89b2",
+  "name": "sample3",
+  "updatedAt": 1792346132541,
+  "callResponse": {
+    "version": 2,
+    "fps": 24,
+    "entrySceneId": "intro",
+    "interstitial": {
+      "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41",
+      "kind": "call-response",
+      "label": "Untitled",
+      "time": 147.29166666666666,
+      "clipIds": [
+        "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:call",
+        "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:wait",
+        "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:correct",
+        "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:incorrect"
+      ],
+      "brief": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+      "linkResponseDurations": false
+    },
+    "scenes": [
+      {
+        "id": "intro",
+        "label": "Source · before",
+        "role": "source",
+        "dialogue": "",
+        "draft": false,
+        "plannedFrames": 144,
+        "clip": {
+          "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:intro",
+          "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+          "inFrame": 0,
+          "outFrame": 3535,
+          "kind": "video"
+        }
+      },
+      {
+        "id": "call",
+        "label": "Call",
+        "role": "call",
+        "dialogue": "What do you think?",
+        "draft": false,
+        "plannedFrames": 144,
+        "clip": {
+          "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:call",
+          "assetId": "e5c97695-f4a3-4a6e-8cfd-affcbe8f076d",
+          "inFrame": 39,
+          "outFrame": 175,
+          "kind": "call"
+        },
+        "interstitialId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:call"
+      },
+      {
+        "id": "wait",
+        "label": "Idle",
+        "role": "wait",
+        "dialogue": "",
+        "draft": false,
+        "plannedFrames": 48,
+        "clip": {
+          "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:wait",
+          "assetId": "0bdaf83c-9720-414f-ba6d-d25c983af689",
+          "inFrame": 0,
+          "outFrame": 97,
+          "kind": "idle",
+          "repeat": "until-answer",
+          "exitAt": "loop-boundary"
+        },
+        "interstitialId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:wait"
+      },
+      {
+        "id": "correct",
+        "label": "Graphical Processing Unit",
+        "role": "response",
+        "dialogue": "",
+        "draft": true,
+        "plannedFrames": 144,
+        "clip": {
+          "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:correct",
+          "assetId": "0bdaf83c-9720-414f-ba6d-d25c983af689",
+          "inFrame": 96,
+          "outFrame": 97,
+          "kind": "response",
+          "outcome": "correct"
+        },
+        "interstitialId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:correct"
+      },
+      {
+        "id": "incorrect",
+        "label": "Generic Production Usage",
+        "role": "response",
+        "dialogue": "",
+        "draft": true,
+        "plannedFrames": 144,
+        "clip": {
+          "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:incorrect",
+          "assetId": "0bdaf83c-9720-414f-ba6d-d25c983af689",
+          "inFrame": 96,
+          "outFrame": 97,
+          "kind": "response",
+          "outcome": "incorrect"
+        },
+        "interstitialId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:incorrect"
+      },
+      {
+        "id": "continue",
+        "label": "Source · after",
+        "role": "source",
+        "dialogue": "",
+        "draft": false,
+        "plannedFrames": 144,
+        "clip": {
+          "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:continue",
+          "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+          "inFrame": 3535,
+          "outFrame": 8495,
+          "kind": "video"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "intro-call",
+        "from": "intro",
+        "to": "call",
+        "when": "ended",
+        "label": "Next",
+        "transitionFrames": 6
+      },
+      {
+        "id": "call-wait",
+        "from": "call",
+        "to": "wait",
+        "when": "ended",
+        "label": "Listen",
+        "transitionFrames": 6
+      },
+      {
+        "id": "wait-loop",
+        "from": "wait",
+        "to": "wait",
+        "when": "pending",
+        "label": "No answer · repeat",
+        "transitionFrames": 0
+      },
+      {
+        "id": "wait-correct",
+        "from": "wait",
+        "to": "correct",
+        "when": "correct",
+        "label": "Graphical Processing Unit",
+        "transitionFrames": 6
+      },
+      {
+        "id": "wait-incorrect",
+        "from": "wait",
+        "to": "incorrect",
+        "when": "incorrect",
+        "label": "Generic Production Usage",
+        "transitionFrames": 6
+      },
+      {
+        "id": "correct-continue",
+        "from": "correct",
+        "to": "continue",
+        "when": "ended",
+        "label": "Rejoin",
+        "transitionFrames": 6
+      },
+      {
+        "id": "incorrect-continue",
+        "from": "incorrect",
+        "to": "continue",
+        "when": "ended",
+        "label": "Rejoin",
+        "transitionFrames": 6
+      }
+    ],
+    "interaction": {
+      "question": "What does GPU stand For?",
+      "waitSceneId": "wait",
+      "answers": [
+        {
+          "id": "correct",
+          "label": "Graphical Processing Unit",
+          "sceneId": "correct",
+          "values": []
+        },
+        {
+          "id": "incorrect",
+          "label": "Generic Production Usage",
+          "sceneId": "incorrect",
+          "values": []
+        }
+      ],
+      "fallbackAnswerId": null
+    }
+  },
+  "callResponses": [
+    {
+      "version": 2,
+      "fps": 24,
+      "entrySceneId": "intro",
+      "interstitial": {
+        "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41",
+        "kind": "call-response",
+        "label": "Untitled",
+        "time": 147.29166666666666,
+        "clipIds": [
+          "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:call",
+          "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:wait",
+          "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:correct",
+          "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:incorrect"
+        ],
+        "brief": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "linkResponseDurations": false
+      },
+      "scenes": [
+        {
+          "id": "intro",
+          "label": "Source · before",
+          "role": "source",
+          "dialogue": "",
+          "draft": false,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:intro",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 0,
+            "outFrame": 3535,
+            "kind": "video"
+          }
+        },
+        {
+          "id": "call",
+          "label": "Call",
+          "role": "call",
+          "dialogue": "What do you think?",
+          "draft": false,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:call",
+            "assetId": "e5c97695-f4a3-4a6e-8cfd-affcbe8f076d",
+            "inFrame": 39,
+            "outFrame": 175,
+            "kind": "call"
+          },
+          "interstitialId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:call"
+        },
+        {
+          "id": "wait",
+          "label": "Idle",
+          "role": "wait",
+          "dialogue": "",
+          "draft": false,
+          "plannedFrames": 48,
+          "clip": {
+            "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:wait",
+            "assetId": "0bdaf83c-9720-414f-ba6d-d25c983af689",
+            "inFrame": 0,
+            "outFrame": 97,
+            "kind": "idle",
+            "repeat": "until-answer",
+            "exitAt": "loop-boundary"
+          },
+          "interstitialId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:wait"
+        },
+        {
+          "id": "correct",
+          "label": "Graphical Processing Unit",
+          "role": "response",
+          "dialogue": "",
+          "draft": true,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:correct",
+            "assetId": "0bdaf83c-9720-414f-ba6d-d25c983af689",
+            "inFrame": 96,
+            "outFrame": 97,
+            "kind": "response",
+            "outcome": "correct"
+          },
+          "interstitialId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:correct"
+        },
+        {
+          "id": "incorrect",
+          "label": "Generic Production Usage",
+          "role": "response",
+          "dialogue": "",
+          "draft": true,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:incorrect",
+            "assetId": "0bdaf83c-9720-414f-ba6d-d25c983af689",
+            "inFrame": 96,
+            "outFrame": 97,
+            "kind": "response",
+            "outcome": "incorrect"
+          },
+          "interstitialId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:incorrect"
+        },
+        {
+          "id": "continue",
+          "label": "Source · after",
+          "role": "source",
+          "dialogue": "",
+          "draft": false,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:clip:continue",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 3535,
+            "outFrame": 8495,
+            "kind": "video"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "intro-call",
+          "from": "intro",
+          "to": "call",
+          "when": "ended",
+          "label": "Next",
+          "transitionFrames": 6
+        },
+        {
+          "id": "call-wait",
+          "from": "call",
+          "to": "wait",
+          "when": "ended",
+          "label": "Listen",
+          "transitionFrames": 6
+        },
+        {
+          "id": "wait-loop",
+          "from": "wait",
+          "to": "wait",
+          "when": "pending",
+          "label": "No answer · repeat",
+          "transitionFrames": 0
+        },
+        {
+          "id": "wait-correct",
+          "from": "wait",
+          "to": "correct",
+          "when": "correct",
+          "label": "Graphical Processing Unit",
+          "transitionFrames": 6
+        },
+        {
+          "id": "wait-incorrect",
+          "from": "wait",
+          "to": "incorrect",
+          "when": "incorrect",
+          "label": "Generic Production Usage",
+          "transitionFrames": 6
+        },
+        {
+          "id": "correct-continue",
+          "from": "correct",
+          "to": "continue",
+          "when": "ended",
+          "label": "Rejoin",
+          "transitionFrames": 6
+        },
+        {
+          "id": "incorrect-continue",
+          "from": "incorrect",
+          "to": "continue",
+          "when": "ended",
+          "label": "Rejoin",
+          "transitionFrames": 6
+        }
+      ],
+      "interaction": {
+        "question": "What does GPU stand For?",
+        "waitSceneId": "wait",
+        "answers": [
+          {
+            "id": "correct",
+            "label": "Graphical Processing Unit",
+            "sceneId": "correct",
+            "values": []
+          },
+          {
+            "id": "incorrect",
+            "label": "Generic Production Usage",
+            "sceneId": "incorrect",
+            "values": []
+          }
+        ],
+        "fallbackAnswerId": null
+      }
+    },
+    {
+      "version": 2,
+      "fps": 24,
+      "entrySceneId": "intro",
+      "interstitial": {
+        "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7",
+        "kind": "call-response",
+        "label": "Untitled",
+        "time": 206.25,
+        "clipIds": [
+          "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:call",
+          "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:wait",
+          "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:correct",
+          "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:incorrect"
+        ],
+        "brief": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "linkResponseDurations": false
+      },
+      "scenes": [
+        {
+          "id": "intro",
+          "label": "Source · before",
+          "role": "source",
+          "dialogue": "",
+          "draft": false,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:intro",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 0,
+            "outFrame": 4950,
+            "kind": "video"
+          }
+        },
+        {
+          "id": "call",
+          "label": "Call",
+          "role": "call",
+          "dialogue": "What do you think?",
+          "draft": false,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:call",
+            "assetId": "20a21013-62fe-45f4-8023-c94d0dd8fc3b",
+            "inFrame": 56,
+            "outFrame": 260,
+            "kind": "call"
+          },
+          "interstitialId": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:call"
+        },
+        {
+          "id": "wait",
+          "label": "Idle",
+          "role": "wait",
+          "dialogue": "",
+          "draft": false,
+          "plannedFrames": 48,
+          "clip": {
+            "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:wait",
+            "assetId": "585a3ed8-b8e0-4f81-88d4-ae223c2849b5",
+            "inFrame": 0,
+            "outFrame": 63,
+            "kind": "idle",
+            "repeat": "until-answer",
+            "exitAt": "loop-boundary"
+          },
+          "interstitialId": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:wait"
+        },
+        {
+          "id": "correct",
+          "label": "Green",
+          "role": "response",
+          "dialogue": "",
+          "draft": false,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:correct",
+            "assetId": "83b66082-449a-431d-9b4c-77abf1cf911d",
+            "inFrame": 39,
+            "outFrame": 170,
+            "kind": "response",
+            "outcome": "correct"
+          },
+          "interstitialId": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:correct"
+        },
+        {
+          "id": "incorrect",
+          "label": "Pink",
+          "role": "response",
+          "dialogue": "",
+          "draft": false,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:incorrect",
+            "assetId": "a35ca82d-671d-483f-8ec4-ddaf89d90661",
+            "inFrame": 39,
+            "outFrame": 170,
+            "kind": "response",
+            "outcome": "incorrect"
+          },
+          "interstitialId": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:incorrect"
+        },
+        {
+          "id": "continue",
+          "label": "Source · after",
+          "role": "source",
+          "dialogue": "",
+          "draft": false,
+          "plannedFrames": 144,
+          "clip": {
+            "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:clip:continue",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 4950,
+            "outFrame": 8495,
+            "kind": "video"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "intro-call",
+          "from": "intro",
+          "to": "call",
+          "when": "ended",
+          "label": "Next",
+          "transitionFrames": 6
+        },
+        {
+          "id": "call-wait",
+          "from": "call",
+          "to": "wait",
+          "when": "ended",
+          "label": "Listen",
+          "transitionFrames": 6
+        },
+        {
+          "id": "wait-loop",
+          "from": "wait",
+          "to": "wait",
+          "when": "pending",
+          "label": "No answer · repeat",
+          "transitionFrames": 0
+        },
+        {
+          "id": "wait-correct",
+          "from": "wait",
+          "to": "correct",
+          "when": "correct",
+          "label": "Green",
+          "transitionFrames": 6
+        },
+        {
+          "id": "wait-incorrect",
+          "from": "wait",
+          "to": "incorrect",
+          "when": "incorrect",
+          "label": "Pink",
+          "transitionFrames": 6
+        },
+        {
+          "id": "correct-continue",
+          "from": "correct",
+          "to": "continue",
+          "when": "ended",
+          "label": "Rejoin",
+          "transitionFrames": 6
+        },
+        {
+          "id": "incorrect-continue",
+          "from": "incorrect",
+          "to": "continue",
+          "when": "ended",
+          "label": "Rejoin",
+          "transitionFrames": 6
+        }
+      ],
+      "interaction": {
+        "question": "What color are flamingos?",
+        "waitSceneId": "wait",
+        "answers": [
+          {
+            "id": "correct",
+            "label": "Green",
+            "sceneId": "correct",
+            "color": {
+              "hue": 108,
+              "saturation": 100
+            },
+            "values": []
+          },
+          {
+            "id": "incorrect",
+            "label": "Pink",
+            "sceneId": "incorrect",
+            "color": {
+              "hue": 355,
+              "saturation": 100
+            },
+            "values": []
+          }
+        ],
+        "fallbackAnswerId": null
+      }
+    }
+  ],
+  "source": {
+    "name": "sample.mp4",
+    "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439"
+  },
+  "interstitials": [
+    {
+      "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41",
+      "label": "Untitled",
+      "time": 147.29166666666666,
+      "kind": "call-response",
+      "method": "comfy",
+      "maskInjection": "standard",
+      "start_range": 2,
+      "end_range": 2,
+      "prompt": "",
+      "duration": 6,
+      "enable_prompt_expansion": false,
+      "phase": "draft"
+    },
+    {
+      "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:call",
+      "label": "Call",
+      "time": 147.29166666666666,
+      "groupId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41",
+      "method": "comfy-extend",
+      "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+      "maskInjection": "standard",
+      "start_range": 2,
+      "end_range": 2,
+      "prompt": "integrated_multimodal_description: [Shot 1] In the same continuous shot, the girl on the left turns toward the camera and points at the audience. The girl (S1) says once: <d>[English] Hello loyal viewer! Do you know what GPU stands for?</d> She then closes her mouth and waits silently. Keep the same background, framing, character placement, and lighting, with smooth motion and no cuts or jumps.\noverall_soundscape: Quiet, steady ambient sound. After the single spoken line, only ambient sound continues.\nnon_diegetic_music: N/A",
+      "duration": 5,
+      "enable_prompt_expansion": false,
+      "generationSettings": {
+        "method": "comfy-extend",
+        "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "maskInjection": "standard",
+        "start_range": 2,
+        "end_range": 2,
+        "prompt": "integrated_multimodal_description: [Shot 1] In the same continuous shot, the girl on the left turns toward the camera and points at the audience. The girl (S1) says once: <d>[English] Hello loyal viewer! Do you know what GPU stands for?</d> She then closes her mouth and waits silently. Keep the same background, framing, character placement, and lighting, with smooth motion and no cuts or jumps.\noverall_soundscape: Quiet, steady ambient sound. After the single spoken line, only ambient sound continues.\nnon_diegetic_music: N/A",
+        "duration": 5,
+        "enable_prompt_expansion": false
+      },
+      "requestMethod": "comfy-extend",
+      "requestPrompt": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.\n\nintegrated_multimodal_description: [Shot 1] In the same continuous shot, the girl on the left turns toward the camera and points at the audience. The girl (S1) says once: <d>[English] Hello loyal viewer! Do you know what GPU stands for?</d> She then closes her mouth and waits silently. Keep the same background, framing, character placement, and lighting, with smooth motion and no cuts or jumps.\noverall_soundscape: Quiet, steady ambient sound. After the single spoken line, only ambient sound continues.\nnon_diegetic_music: N/A",
+      "requestReference": {
+        "mode": "extend",
+        "before": {
+          "sceneId": "intro",
+          "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+          "inFrame": 0,
+          "outFrame": 3535
+        }
+      },
+      "requestInsertion": {
+        "start": 1.625,
+        "duration": 5.666666666666667,
+        "totalDuration": 7.291666666666667
+      },
+      "phase": "ready",
+      "requestId": "7e8bc3c9-8632-4db9-b0f6-f9fae7caad63",
+      "result": {
+        "url": "asset:e5c97695-f4a3-4a6e-8cfd-affcbe8f076d",
+        "assetId": "e5c97695-f4a3-4a6e-8cfd-affcbe8f076d",
+        "start": 1.625,
+        "duration": 5.666666666666667,
+        "totalDuration": 7.291666666666667,
+        "reference": {
+          "mode": "extend",
+          "before": {
+            "sceneId": "intro",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 0,
+            "outFrame": 3535
+          }
+        }
+      }
+    },
+    {
+      "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:wait",
+      "label": "Idle",
+      "time": 147.29166666666666,
+      "groupId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41",
+      "method": "comfy-loop",
+      "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+      "maskInjection": "standard",
+      "start_range": 2,
+      "end_range": 2,
+      "prompt": "A quiet seamless waiting loop. Begin and end in exactly the supplied listening pose. Use subtle breathing and a small blink, with minimal movement. No dialogue, no new action, no camera movement. Match the first and last frames.",
+      "duration": 4,
+      "enable_prompt_expansion": false,
+      "generationSettings": {
+        "method": "comfy-loop",
+        "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "maskInjection": "standard",
+        "start_range": 2,
+        "end_range": 2,
+        "prompt": "A quiet seamless waiting loop. Begin and end in exactly the supplied listening pose. Use subtle breathing and a small blink, with minimal movement. No dialogue, no new action, no camera movement. Match the first and last frames.",
+        "duration": 4,
+        "enable_prompt_expansion": false
+      },
+      "requestMethod": "comfy-loop",
+      "requestPrompt": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.\n\nA quiet seamless waiting loop. Begin and end in exactly the supplied listening pose. Use subtle breathing and a small blink, with minimal movement. No dialogue, no new action, no camera movement. Match the first and last frames.\n\nThe character stays silent with their mouth closed throughout the generated loop. No speech, dialogue or lip movement. Only subtle ambient sound.",
+      "requestReference": {
+        "mode": "loop",
+        "before": {
+          "sceneId": "call",
+          "assetId": "e5c97695-f4a3-4a6e-8cfd-affcbe8f076d",
+          "inFrame": 39,
+          "outFrame": 175
+        },
+        "after": {
+          "sceneId": "call",
+          "assetId": "e5c97695-f4a3-4a6e-8cfd-affcbe8f076d",
+          "inFrame": 39,
+          "outFrame": 175
+        }
+      },
+      "requestInsertion": {
+        "start": 1.625,
+        "duration": 4.041666666666667,
+        "totalDuration": 7.291666666666667
+      },
+      "phase": "ready",
+      "requestId": "f661a2bc-ca4e-466e-8fd5-a00e99d6deb4",
+      "result": {
+        "url": "asset:0bdaf83c-9720-414f-ba6d-d25c983af689",
+        "assetId": "0bdaf83c-9720-414f-ba6d-d25c983af689",
+        "fullAssetId": "6a065cf0-6e9f-410a-a67c-45bb7ee4ef13",
+        "fullRange": {
+          "start": 1.625,
+          "duration": 4.041666666666667,
+          "totalDuration": 7.291666666666667
+        },
+        "start": 0,
+        "duration": 4.041666666666667,
+        "totalDuration": 4.041666666666667,
+        "reference": {
+          "mode": "loop",
+          "before": {
+            "sceneId": "call",
+            "assetId": "e5c97695-f4a3-4a6e-8cfd-affcbe8f076d",
+            "inFrame": 39,
+            "outFrame": 175
+          },
+          "after": {
+            "sceneId": "call",
+            "assetId": "e5c97695-f4a3-4a6e-8cfd-affcbe8f076d",
+            "inFrame": 39,
+            "outFrame": 175
+          }
+        }
+      }
+    },
+    {
+      "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:correct",
+      "label": "Graphical Processing Unit",
+      "time": 147.29166666666666,
+      "groupId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41",
+      "method": "comfy",
+      "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+      "maskInjection": "vignette",
+      "start_range": 2,
+      "end_range": 2,
+      "prompt": "integrated_multimodal_description: [Shot 1] The girl on the left (S1) says once: <d>[English] That's right GPU stands for Graphical Processing Unit! Well done!</d> After the line, she closes her mouth and smoothly returns to the ongoing activity in silence. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. Only scripted dialogue is spoken, once each. After speaking, the character closes their mouth and remains silent. English speech only.\noverall_soundscape: Quiet electronic room ambience and soft keyboard tapping.\nnon_diegetic_music: N/A",
+      "duration": 7,
+      "enable_prompt_expansion": false,
+      "generationSettings": {
+        "method": "comfy",
+        "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "maskInjection": "vignette",
+        "start_range": 2,
+        "end_range": 2,
+        "prompt": "integrated_multimodal_description: [Shot 1] The girl on the left (S1) says once: <d>[English] That's right GPU stands for Graphical Processing Unit! Well done!</d> After the line, she closes her mouth and smoothly returns to the ongoing activity in silence. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. Only scripted dialogue is spoken, once each. After speaking, the character closes their mouth and remains silent. English speech only.\noverall_soundscape: Quiet electronic room ambience and soft keyboard tapping.\nnon_diegetic_music: N/A",
+        "duration": 7,
+        "enable_prompt_expansion": false
+      },
+      "requestMethod": "comfy",
+      "requestPrompt": "integrated_multimodal_description: [Shot 1] The girl on the left (S1) says once: <d>[English] That's right GPU stands for Graphical Processing Unit! Well done!</d> After the line, she closes her mouth and smoothly returns to the ongoing activity in silence. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. Only scripted dialogue is spoken, once each. After speaking, the character closes their mouth and remains silent. English speech only.\noverall_soundscape: Quiet electronic room ambience and soft keyboard tapping.\nnon_diegetic_music: N/A",
+      "requestReference": {
+        "before": {
+          "sceneId": "wait",
+          "assetId": "6a065cf0-6e9f-410a-a67c-45bb7ee4ef13",
+          "inFrame": 39,
+          "outFrame": 136
+        },
+        "after": {
+          "sceneId": "continue",
+          "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+          "inFrame": 3535,
+          "outFrame": 8495
+        }
+      },
+      "requestInsertion": {
+        "start": 1.625,
+        "duration": 7.583333333333333,
+        "totalDuration": 10.833333333333334
+      },
+      "phase": "ready",
+      "requestId": "39820232-ba8d-46f3-889a-8148a9049851",
+      "result": {
+        "url": "asset:612e0a32-a47c-4191-ab0a-a6ceb8131c88",
+        "assetId": "612e0a32-a47c-4191-ab0a-a6ceb8131c88",
+        "start": 1.625,
+        "duration": 7.583333333333333,
+        "totalDuration": 10.833333333333334,
+        "reference": {
+          "before": {
+            "sceneId": "wait",
+            "assetId": "6a065cf0-6e9f-410a-a67c-45bb7ee4ef13",
+            "inFrame": 39,
+            "outFrame": 136
+          },
+          "after": {
+            "sceneId": "continue",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 3535,
+            "outFrame": 8495
+          }
+        }
+      }
+    },
+    {
+      "id": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41:incorrect",
+      "label": "Generic Production Usage",
+      "time": 147.29166666666666,
+      "groupId": "c4ebdde3-b0c5-4ecd-a523-9736c9313f41",
+      "method": "comfy",
+      "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+      "maskInjection": "vignette",
+      "start_range": 2,
+      "end_range": 2,
+      "prompt": "integrated_multimodal_description: [Shot 1] The girl on the left (S1) says once: <d>[English] Actually that is not quite right. GPU stands for Graphical Processing Unit!</d> She then closes her mouth and smoothly returns to the ongoing activity, remaining silent for the rest of the shot. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. Only scripted dialogue is spoken, once each. After speaking, the character closes their mouth and remains silent. English speech only.\noverall_soundscape: Soft machinery ambience and light keyboard tapping.\nnon_diegetic_music: N/A",
+      "duration": 7,
+      "enable_prompt_expansion": false,
+      "generationSettings": {
+        "method": "comfy",
+        "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "maskInjection": "vignette",
+        "start_range": 2,
+        "end_range": 2,
+        "prompt": "integrated_multimodal_description: [Shot 1] The girl on the left (S1) says once: <d>[English] Actually that is not quite right. GPU stands for Graphical Processing Unit!</d> She then closes her mouth and smoothly returns to the ongoing activity, remaining silent for the rest of the shot. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. Only scripted dialogue is spoken, once each. After speaking, the character closes their mouth and remains silent. English speech only.\noverall_soundscape: Soft machinery ambience and light keyboard tapping.\nnon_diegetic_music: N/A",
+        "duration": 7,
+        "enable_prompt_expansion": false
+      },
+      "requestMethod": "comfy",
+      "requestPrompt": "integrated_multimodal_description: [Shot 1] The girl on the left (S1) says once: <d>[English] Actually that is not quite right. GPU stands for Graphical Processing Unit!</d> She then closes her mouth and smoothly returns to the ongoing activity, remaining silent for the rest of the shot. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. Only scripted dialogue is spoken, once each. After speaking, the character closes their mouth and remains silent. English speech only.\noverall_soundscape: Soft machinery ambience and light keyboard tapping.\nnon_diegetic_music: N/A",
+      "requestReference": {
+        "before": {
+          "sceneId": "wait",
+          "assetId": "6a065cf0-6e9f-410a-a67c-45bb7ee4ef13",
+          "inFrame": 39,
+          "outFrame": 136
+        },
+        "after": {
+          "sceneId": "continue",
+          "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+          "inFrame": 3535,
+          "outFrame": 8495
+        }
+      },
+      "requestInsertion": {
+        "start": 1.625,
+        "duration": 7.583333333333333,
+        "totalDuration": 10.833333333333334
+      },
+      "phase": "ready",
+      "requestId": "a9efaec3-018f-41e3-87b2-63a48aa30a1a",
+      "result": {
+        "url": "asset:df23a617-d561-4d27-ab7b-ccc49749df52",
+        "assetId": "df23a617-d561-4d27-ab7b-ccc49749df52",
+        "start": 1.625,
+        "duration": 7.583333333333333,
+        "totalDuration": 10.833333333333334,
+        "reference": {
+          "before": {
+            "sceneId": "wait",
+            "assetId": "6a065cf0-6e9f-410a-a67c-45bb7ee4ef13",
+            "inFrame": 39,
+            "outFrame": 136
+          },
+          "after": {
+            "sceneId": "continue",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 3535,
+            "outFrame": 8495
+          }
+        }
+      }
+    },
+    {
+      "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7",
+      "label": "Untitled",
+      "time": 206.25,
+      "kind": "call-response",
+      "method": "comfy",
+      "maskInjection": "standard",
+      "start_range": 2,
+      "end_range": 2,
+      "prompt": "",
+      "duration": 6,
+      "enable_prompt_expansion": false,
+      "phase": "draft"
+    },
+    {
+      "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:call",
+      "label": "Call",
+      "time": 206.25,
+      "groupId": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7",
+      "method": "comfy-extend",
+      "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+      "maskInjection": "standard",
+      "start_range": 3,
+      "end_range": 2,
+      "prompt": "The cyborg points at the viewer and asks, \"But enough about my evil plan. I want to know from you what colors are flamingos?\". the he pauses for 2 seconds. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. English speech only.",
+      "duration": 8.401,
+      "enable_prompt_expansion": false,
+      "generationSettings": {
+        "method": "comfy-extend",
+        "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "maskInjection": "standard",
+        "start_range": 3,
+        "end_range": 2,
+        "prompt": "The cyborg points at the viewer and asks, \"But enough about my evil plan. I want to know from you what colors are flamingos?\". the he pauses for 2 seconds. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. English speech only.",
+        "duration": 8.401,
+        "enable_prompt_expansion": false
+      },
+      "requestMethod": "comfy-extend",
+      "requestReference": {
+        "mode": "extend",
+        "before": {
+          "sceneId": "intro",
+          "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+          "inFrame": 0,
+          "outFrame": 4950
+        }
+      },
+      "requestInsertion": {
+        "start": 2.3333333333333335,
+        "duration": 8.5,
+        "totalDuration": 10.833333333333334
+      },
+      "phase": "ready",
+      "requestId": "20cef137-1be7-4bcf-a1ad-2088043f477d",
+      "result": {
+        "url": "asset:20a21013-62fe-45f4-8023-c94d0dd8fc3b",
+        "assetId": "20a21013-62fe-45f4-8023-c94d0dd8fc3b",
+        "start": 2.3333333333333335,
+        "duration": 8.5,
+        "totalDuration": 10.833333333333334,
+        "reference": {
+          "mode": "extend",
+          "before": {
+            "sceneId": "intro",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 0,
+            "outFrame": 4950
+          }
+        }
+      }
+    },
+    {
+      "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:wait",
+      "label": "Idle",
+      "time": 206.25,
+      "groupId": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7",
+      "method": "comfy-loop",
+      "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+      "loopAudio": false,
+      "maskInjection": "standard",
+      "start_range": 1.625,
+      "end_range": 1.625,
+      "prompt": "The cyborg keeps his mouth closed while pointing at the viewer, making a small repeating hand motion that returns to the starting pose. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting. background must stay the same.",
+      "duration": 2,
+      "enable_prompt_expansion": false,
+      "generationSettings": {
+        "method": "comfy-loop",
+        "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "loopAudio": false,
+        "maskInjection": "standard",
+        "start_range": 1.625,
+        "end_range": 1.625,
+        "prompt": "The cyborg keeps his mouth closed while pointing at the viewer, making a small repeating hand motion that returns to the starting pose. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. no jumps in particle effects. background must stay the same.",
+        "duration": 2,
+        "enable_prompt_expansion": false
+      },
+      "requestMethod": "comfy-loop",
+      "requestPrompt": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.\n\nThe cyborg keeps his mouth closed while pointing at the viewer, making a small repeating hand motion that returns to the starting pose. Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. no jumps in particle effects. background must stay the same.\n\nThe character stays silent with their mouth closed throughout the generated loop. No speech, dialogue or lip movement. Only subtle ambient sound.",
+      "requestReference": {
+        "mode": "loop",
+        "before": {
+          "sceneId": "call",
+          "assetId": "20a21013-62fe-45f4-8023-c94d0dd8fc3b",
+          "inFrame": 56,
+          "outFrame": 260
+        },
+        "after": {
+          "sceneId": "call",
+          "assetId": "20a21013-62fe-45f4-8023-c94d0dd8fc3b",
+          "inFrame": 56,
+          "outFrame": 260
+        }
+      },
+      "requestInsertion": {
+        "start": 1.625,
+        "duration": 2.625,
+        "totalDuration": 5.875
+      },
+      "phase": "ready",
+      "requestId": "0469c570-60fb-4570-91f0-6fb6b92769b6",
+      "result": {
+        "url": "asset:5febf0fb-4063-4b9a-9900-27c7b402e253",
+        "assetId": "5febf0fb-4063-4b9a-9900-27c7b402e253",
+        "fullAssetId": "12b340a5-fcc9-4fc9-bc87-c8ff38f9cce4",
+        "fullRange": {
+          "start": 1.625,
+          "duration": 2.625,
+          "totalDuration": 5.875
+        },
+        "start": 0,
+        "duration": 2.625,
+        "totalDuration": 2.625,
+        "reference": {
+          "mode": "loop",
+          "before": {
+            "sceneId": "call",
+            "assetId": "20a21013-62fe-45f4-8023-c94d0dd8fc3b",
+            "inFrame": 56,
+            "outFrame": 260
+          },
+          "after": {
+            "sceneId": "call",
+            "assetId": "20a21013-62fe-45f4-8023-c94d0dd8fc3b",
+            "inFrame": 56,
+            "outFrame": 260
+          }
+        }
+      }
+    },
+    {
+      "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:correct",
+      "label": "Green",
+      "time": 206.25,
+      "groupId": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7",
+      "method": "comfy",
+      "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+      "maskInjection": "standard",
+      "start_range": 2,
+      "end_range": 2,
+      "prompt": "The cyborg says, \"hmmmm I don't know if they are actually green but whatever\". Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting. English speech only.",
+      "duration": 5,
+      "enable_prompt_expansion": false,
+      "generationSettings": {
+        "method": "comfy",
+        "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "maskInjection": "standard",
+        "start_range": 2,
+        "end_range": 2,
+        "prompt": "The cyborg says, \"hmmmm I don't know if they are actually green but whatever\". Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting. English speech only.",
+        "duration": 5,
+        "enable_prompt_expansion": false
+      },
+      "requestMethod": "comfy",
+      "requestPrompt": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.\n\nThe cyborg says, \"hmmmm I don't know if they are actually green but whatever\". Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting. English speech only.",
+      "requestReference": {
+        "before": {
+          "sceneId": "wait",
+          "assetId": "5febf0fb-4063-4b9a-9900-27c7b402e253",
+          "inFrame": 0,
+          "outFrame": 63
+        },
+        "after": {
+          "sceneId": "continue",
+          "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+          "inFrame": 4950,
+          "outFrame": 8495
+        }
+      },
+      "requestInsertion": {
+        "start": 1.625,
+        "duration": 5.458333333333333,
+        "totalDuration": 8.708333333333334
+      },
+      "phase": "ready",
+      "requestId": "44852181-e59c-47c9-80a8-d2e5c6ea1380",
+      "result": {
+        "url": "asset:abb0034a-ab7a-4fc8-84a2-93b58e649893",
+        "assetId": "abb0034a-ab7a-4fc8-84a2-93b58e649893",
+        "start": 1.625,
+        "duration": 5.458333333333333,
+        "totalDuration": 8.708333333333334,
+        "reference": {
+          "before": {
+            "sceneId": "wait",
+            "assetId": "5febf0fb-4063-4b9a-9900-27c7b402e253",
+            "inFrame": 0,
+            "outFrame": 63
+          },
+          "after": {
+            "sceneId": "continue",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 4950,
+            "outFrame": 8495
+          }
+        }
+      }
+    },
+    {
+      "id": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7:incorrect",
+      "label": "Pink",
+      "time": 206.25,
+      "groupId": "401acdf8-3d39-4d86-9c21-19d3e56bf8c7",
+      "method": "comfy",
+      "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+      "maskInjection": "standard",
+      "start_range": 2,
+      "end_range": 2,
+      "prompt": "The cyborg says, \"that's right flamingos are pink with this knowledge victory will be mine\". Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting. English speech only.",
+      "duration": 5,
+      "enable_prompt_expansion": false,
+      "generationSettings": {
+        "method": "comfy",
+        "continuity": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.",
+        "maskInjection": "standard",
+        "start_range": 2,
+        "end_range": 2,
+        "prompt": "The cyborg says, \"that's right flamingos are pink with this knowledge victory will be mine\". Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting. English speech only.",
+        "duration": 5,
+        "enable_prompt_expansion": false
+      },
+      "requestMethod": "comfy",
+      "requestPrompt": "Continue the same shot with the same character identity, voice, clothing, lighting, background and camera. Preserve screen positions and gaze. Use natural continuous movement with no cuts or new objects.\n\nThe cyborg says, \"that's right flamingos are pink with this knowledge victory will be mine\". Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting. English speech only.",
+      "requestReference": {
+        "before": {
+          "sceneId": "wait",
+          "assetId": "5febf0fb-4063-4b9a-9900-27c7b402e253",
+          "inFrame": 0,
+          "outFrame": 63
+        },
+        "after": {
+          "sceneId": "continue",
+          "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+          "inFrame": 4950,
+          "outFrame": 8495
+        }
+      },
+      "requestInsertion": {
+        "start": 1.625,
+        "duration": 5.458333333333333,
+        "totalDuration": 8.708333333333334
+      },
+      "phase": "ready",
+      "requestId": "1bd57fa3-ab17-42f3-80b9-cea40d6946e2",
+      "result": {
+        "url": "asset:76da28f4-59eb-4e19-a712-682da98bf9cb",
+        "assetId": "76da28f4-59eb-4e19-a712-682da98bf9cb",
+        "start": 1.625,
+        "duration": 5.458333333333333,
+        "totalDuration": 8.708333333333334,
+        "reference": {
+          "before": {
+            "sceneId": "wait",
+            "assetId": "5febf0fb-4063-4b9a-9900-27c7b402e253",
+            "inFrame": 0,
+            "outFrame": 63
+          },
+          "after": {
+            "sceneId": "continue",
+            "assetId": "efc24775-afdd-4104-95d9-b4e1e90bc439",
+            "inFrame": 4950,
+            "outFrame": 8495
+          }
+        }
+      }
+    }
+  ],
+  "subtitle": null,
+  "analysis": {
+    "slice": {
+      "start": 0,
+      "end": 10
+    },
+    "provider": "openai",
+    "instructions": "",
+    "result": null
+  },
+  "crossfadeFrames": 14
+}

@@ -6,7 +6,6 @@ import type { PlaybackLayer } from '../../src/features/player/CanvasMediaDecks';
 import { flowTransition } from '../../src/features/call-response/transitions';
 import { createNode, edge, migrateGraph, runtimeFlow, splitClip, type StoryGraph } from '../../src/features/story-flow/model';
 import { readFile } from 'node:fs/promises';
-import { ZipReader, Uint8ArrayReader, TextWriter } from '@zip.js/zip.js';
 import { projectFlows, type Project } from '../../src/features/project/types';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -183,10 +182,7 @@ describe('canvas flow playback', () => {
     player.dispose();
   });
   it('matches every fade window and video timestamp in the original saved Sparko example',async()=>{
-    const zip=new ZipReader(new Uint8ArrayReader(await readFile('examples/sample.sparko')));
-    const manifest=(await zip.getEntries()).find(e=>e.filename==='project.json')!;
-    if(manifest.directory)throw new Error('Sample project manifest must be a file.');
-    const project=JSON.parse(await manifest.getData!(new TextWriter())).project as Project;await zip.close();
+    const project=JSON.parse(await readFile('tests/fixtures/legacy-sample-project.json','utf8')) as Project;
     const flows=projectFlows(project),duration=Math.max(...flows.flatMap(f=>f.scenes.filter(s=>s.clip.kind==='video').map(s=>s.clip.outFrame)))/24;
     const legacy=composeFlows(flows,project.interstitials,project.source.assetId!,duration)!;
     const graph=runtimeFlow(migrateGraph(project,duration),project.interstitials,project.source.assetId!,duration);

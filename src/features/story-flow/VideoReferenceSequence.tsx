@@ -26,9 +26,9 @@ export default function VideoReferenceSequence({ projects, label, clips, onChang
         <button type="button" className="icon-button small" aria-label={`Move ${clip.name} earlier`} disabled={!index} onClick={() => move(index, -1)}><ArrowUp size={12}/></button>
         <button type="button" className="icon-button small" aria-label={`Move ${clip.name} later`} disabled={index === clips.length - 1} onClick={() => move(index, 1)}><ArrowDown size={12}/></button>
       </div></div>}
-      {clip.kind === 'image' ? <label className="inspector-property"><span>Image duration (s)</span><input type="number" min={1 / TIMELINE_FPS} step={1 / TIMELINE_FPS} aria-label={`${label} ${clip.name} duration`} value={(clip.outFrame - clip.inFrame) / TIMELINE_FPS} onChange={e => {
-        const frames = Math.round(e.target.valueAsNumber * TIMELINE_FPS);
-        if (Number.isSafeInteger(frames) && frames > 0) update(index, { outFrame: clip.inFrame + frames });
+      {clip.kind === 'image' ? <label className="inspector-property"><span>Image duration (s)</span><input type="number" title={`Minimum: 1 frame (1/${TIMELINE_FPS} second). Arrow keys adjust one frame.`} min={1 / TIMELINE_FPS} step={1 / TIMELINE_FPS} aria-label={`${label} ${clip.name} duration`} value={(clip.outFrame - clip.inFrame) / TIMELINE_FPS} onChange={e => {
+        const frames = Math.max(1, Math.round(e.target.valueAsNumber * TIMELINE_FPS));
+        if (Number.isSafeInteger(frames)) update(index, { outFrame: clip.inFrame + frames });
       }}/></label> : <div className="range-fields">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'In (s)' : 'Out (s)'}</span><input
         aria-label={`${label} video ${clips.length > 1 ? `${index + 1} ` : ''}${field === 'inFrame' ? 'in' : 'out'}`} type="number" min={0} step={1 / TIMELINE_FPS} value={clip[field] / TIMELINE_FPS} onChange={e => {
           const frame = Math.round(e.target.valueAsNumber * TIMELINE_FPS), media = library.find(asset => asset.assetId === clip.assetId);
