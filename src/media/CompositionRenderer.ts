@@ -140,9 +140,9 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
                 const timestamp = from - origin + sample.timestamp - sourceStart;
                 if (timestamp > cursor + 1 / raw.sampleRate) await silence(cursor, timestamp);
                 sample.setTimestamp(Math.max(cursor, timestamp));
-                const volume = audioVolume(segment.source.volume);
-                const adjusted = volume === 1 ? sample : scaleAudioSample(sample, volume);
-                try { await normalizedAudio.add(adjusted); } finally { if (adjusted !== sample) adjusted.close(); }
+                  const volume = audioVolume(segment.source.volume);
+                  const adjusted = volume === 1 ? sample : scaleAudioSample(sample, volume);
+                  try { await normalizedAudio.add(adjusted); } finally { if (adjusted !== sample) adjusted.close(); }
                 cursor = sample.timestamp + sample.duration;
               } finally { sample.close(); }
             } finally { raw.close(); }

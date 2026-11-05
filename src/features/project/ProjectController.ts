@@ -1,3 +1,5 @@
+import { H3_MODEL_ID, projectLoraAddress, projectLoraStrength, saveProjectLora, type ProjectLora } from '../../../shared/loras';
+import { generationModel } from '../../../shared/generation-models';
 import type { MediaInfo, MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
 import { canPlaySourceVideo, prepareSourceVideo } from '../../media/prepareVideo';
@@ -155,6 +157,11 @@ export class ProjectController {
   editAssets(change: (project: Project) => Project, record = true) {
     if (this.state.project) { this.save(change(this.state.project), record); this.update({ dirty: true }); }
   }
+  setLora(entry: ProjectLora, previousModel?: string) {
+    if (!generationModel(entry.model)?.supportsLora) throw new Error('This model does not support LoRAs in the current generation integration.');
+    this.editAssets(project => ({ ...project, loras: saveProjectLora(project.loras, entry, previousModel) }));
+  }
+  removeLora(model: string) { this.editAssets(project => ({ ...project, loras: project.loras?.filter(lora => lora.model !== model) })); }
   async importAssets(entries: LibraryFile[], folderId?: string, onProgress?: (message: string) => void) {
     const initial = this.state.project;
     if (!initial || !entries.length) return [];
@@ -185,6 +192,7 @@ export class ProjectController {
     return added;
   }
   private save(project: Project, record = true) {
+    this.interstitials.setDefaultLora(projectLoraAddress(project.loras, H3_MODEL_ID), projectLoraStrength(project.loras, H3_MODEL_ID));
     for (const generation of project.assetGenerations ?? []) this.generationStates.set(generation.id, generation);
     project = { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
     if (record && this.state.project?.id === project.id) this.history.record(this.state.project, project);
@@ -518,7 +526,7 @@ export class ProjectController {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
           ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, storyFlow: target.storyFlow, library: target.library, libraryFolders: target.libraryFolders,
-            assetGenerations: target.assetGenerations?.map(g => ({ phase: 'draft' as const, versions: [], ...this.generationStates.get(g.id), ...g })), subtitle: target.subtitle, crossfadeFrames: target.crossfadeFrames } : {}),
+            loras: target.loras, assetGenerations: target.assetGenerations?.map(g => ({ phase: 'draft' as const, versions: [], ...this.generationStates.get(g.id), ...g })), subtitle: target.subtitle, crossfadeFrames: target.crossfadeFrames } : {}),
           interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() }, false);
       }
       this.interstitials.setStoryGraph(this.state.project?.storyFlow,this.state.project?.source.assetId,this.storyDuration);

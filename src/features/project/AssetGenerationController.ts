@@ -1,3 +1,4 @@
+import { projectLoraAddress, projectLoraStrength } from '../../../shared/loras';
 import { generationBusy, validateAssetSettings, type AssetGeneration } from '../../../shared/asset-generation';
 import { request, appHeaders } from '../../shared/api';
 import { imageDataUrl } from '../interstitials/image-references';
@@ -13,7 +14,9 @@ export class AssetGenerationController {
   constructor(private projects: ProjectController) {}
   private get(id: string) { return this.projects.getSnapshot().project?.assetGenerations?.find(g => g.id === id); }
   edit(id: string, patch: Partial<AssetGeneration>, record = true) {
-    this.projects.editAssets(project => ({ ...project, assetGenerations: project.assetGenerations?.map(g => g.id === id ? { ...g, ...patch } : g) }), record);
+    this.projects.editAssets(project => ({ ...project, assetGenerations: project.assetGenerations?.map(g => g.id === id ? { ...g, ...patch,
+      ...(patch.settings && patch.settings.model !== g.settings.model ? { settings: { ...patch.settings, lora: projectLoraAddress(project.loras, patch.settings.model), loraInstructions: undefined, loraStrength: projectLoraStrength(project.loras, patch.settings.model) } } : {}),
+    } : g) }), record);
   }
   watch() {
     const check = () => {

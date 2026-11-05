@@ -3,10 +3,11 @@ import { comfyBridgePlan, validateComfyResolution, type ComfyMode } from '../../
 import { validateMaskTransitionMs, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { audioCurveSpans, videoCurvePoints, videoTransitionPoints } from './mask-transition.js';
 import { maskCurveSchema, type MaskCurve } from '../../../shared/mask-curves.js';
+import { isLoraFilename, loraStrengthSchema, LORA_STRENGTH } from '../../../shared/loras.js';
 import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown> }>;
-export type BridgeInput = { before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
+export type BridgeInput = { lora?: string | null; loraStrength?: number; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Separately encoded references stay frozen outside their soft transitions.
@@ -40,7 +41,11 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
     frame_load_cap: frames, start_time: skip / TIMELINE_FPS, format: 'None' });
   const before = prefixFrames ? add('before', 'VHS_LoadVideoFFmpeg', loader(0, prefixFrames)) : undefined;
   const after = suffixFrames ? add('after', 'VHS_LoadVideoFFmpeg', loader(prefixFrames, suffixFrames)) : undefined;
-  const model = add('model', 'UNETLoader', { unet_name: COMFY_MODELS.diffusion, weight_dtype: 'default' });
+  let model = add('model', 'UNETLoader', { unet_name: COMFY_MODELS.diffusion, weight_dtype: 'default' });
+  if (input.lora) {
+    if (!isLoraFilename(input.lora)) throw new Error('Resolve the Comfy LoRA to an imported model filename before generating.');
+    model = add('lora', 'LoraLoaderModelOnly', { model, lora_name: input.lora, strength_model: loraStrengthSchema.parse(input.loraStrength ?? LORA_STRENGTH.default) });
+  }
   const clip = add('text_encoder', 'CLIPLoader', { clip_name: COMFY_MODELS.textEncoder, type: 'minimax', device: 'default' });
   const vae = add('video_vae', 'VAELoader', { vae_name: COMFY_MODELS.videoVae });
   const audioVae = add('audio_vae', 'VAELoader', { vae_name: COMFY_MODELS.audioVae });

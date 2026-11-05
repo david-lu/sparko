@@ -1,8 +1,13 @@
 import { COMFY } from '../../../shared/constants.js';
 import { HttpError } from '../../shared/http.js';
 import { comfyRequestError } from './errors.js';
+import { randomUUID } from 'node:crypto';
+
+export type ComfySocket = Pick<WebSocket, 'addEventListener' | 'removeEventListener' | 'close' | 'readyState'>;
+export type ComfySocketFactory = (url: URL) => ComfySocket;
 
 function context(path: string, options: RequestInit) {
+  if (path.startsWith('/api/assets')) return { operation: 'checking the LoRA model', recovery: 'Check the imported model name and try again.' };
   if (path === '/api/object_info') return { operation: 'checking available models', recovery: 'Retry the connection check.' };
   if (path === '/api/v2/assets') return { operation: 'uploading the reference video', recovery: 'Retry uploading the reference.' };
   if (path === '/api/v2/jobs' && options.method === 'POST') return { operation: 'submitting the generation', recovery: 'The job may have been accepted. Check Comfy job history before generating again.' };
@@ -24,15 +29,28 @@ export class ComfyClient {
   message(value: unknown) {
     let message = typeof value === 'string' ? value : 'The Comfy request failed.';
     if (this.key) message = message.split(this.key).join('[redacted]');
-    return message.replace(/https?:\/\/\S+/gi, '[URL]').replace(/(?:Bearer\s+|comfyui-)[^\s,;]+/gi, '[redacted]').slice(0, 1200);
+    return message.replace(/(?:https?|wss?):\/\/\S+/gi, '[URL]').replace(/(?:Bearer\s+|comfyui-)[^\s,;]+/gi, '[redacted]').slice(0, 1200);
   }
-  async response(path: string, options: RequestInit = {}): Promise<Response> {
+  private endpoint() {
     if (this.testMode) throw new HttpError(503, 'Live Comfy requests are disabled in the test server.');
     if (!this.key) throw new HttpError(503, 'COMFY_CLOUD_API_KEY is missing. Add it to .env and restart the server.');
     // Invalid optional Comfy settings must not prevent the app server from starting.
     let base: URL;
     try { base = new URL(this.baseUrl); } catch { throw new HttpError(503, 'COMFY_BASE_URL must be a valid HTTPS endpoint.'); }
     if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) throw new HttpError(503, 'COMFY_BASE_URL must be an HTTPS endpoint without credentials or query parameters.');
+    return base;
+  }
+  progressSocket(connect: ComfySocketFactory): ComfySocket | undefined {
+    const base = this.endpoint();
+    // The legacy authenticated socket is Cloud-specific. Other v2 deployments
+    // continue using their portable SSE endpoint.
+    if (this.baseUrl !== COMFY.baseUrl) return;
+    const url = new URL('/ws', base); url.protocol = 'wss:';
+    url.searchParams.set('clientId', randomUUID()); url.searchParams.set('token', this.key);
+    return connect(url);
+  }
+  async response(path: string, options: RequestInit = {}): Promise<Response> {
+    this.endpoint();
     let response: Response;
     try {
       response = await this.transport(this.baseUrl + path, { ...options, redirect: 'error',

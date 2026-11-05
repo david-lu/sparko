@@ -1,4 +1,5 @@
 import './styles.css';
+import type { ProjectController } from '../project/ProjectController';
 import { useRef, type ReactNode } from 'react';
 import { ArrowLeft, Clapperboard, Repeat2, Sparkles, Trash2 } from 'lucide-react';
 import { formatTime, type AppStatus } from '../../../shared/contracts';
@@ -35,7 +36,8 @@ function RemoveInterstitialButton({ item, controller, disabled = false, onRemove
     }}><Trash2 size={14} /></button>;
 }
 
-export default function InterstitialPanel({ items, selectedId, controller, engine, info, status, active, onAddRegular, onAddCallResponse, onSelect, onRemove, onPreviewPlay, connectedIds = [], callResponse, groups = callResponse ? [callResponse] : [], renderClipControls }: {
+export default function InterstitialPanel({ items, selectedId, controller, projects, engine, info, status, active, onAddRegular, onAddCallResponse, onSelect, onRemove, onPreviewPlay, connectedIds = [], callResponse, groups = callResponse ? [callResponse] : [], renderClipControls }: {
+  projects?: ProjectController;
   items: Interstitial[]; selectedId: string | null; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null; status: AppStatus | null;
   active: boolean; onAddRegular: () => void; onAddCallResponse: () => void; onSelect: (id: string | null) => void; onPreviewPlay: () => void;
   connectedIds?: string[];
@@ -54,7 +56,7 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
   </div>;
   if (callResponse && renderClipControls && (callResponse.selectedInterstitial || members.some(scene => scene.interstitialId === selectedId || scene.id === callResponse.selectedSceneId))) {
     return <CallResponsePanel value={callResponse} items={items} onBack={() => onSelect(null)} renderControls={renderClipControls}
-      controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />;
+      projects={projects} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />;
   }
   if (!selected) return <div className="panel-content interstitial-panel">
     <div className="panel-intro"><h2>Videos</h2><InterstitialHelp /></div>
@@ -100,6 +102,6 @@ export default function InterstitialPanel({ items, selectedId, controller, engin
       {selected.phase === 'draft' && <span className="interstitial-draft">Draft</span>}
       <RemoveInterstitialButton item={selected} controller={controller} onRemove={onRemove} disabled={connectedIds.includes(selected.id)} />
     </div>
-    <InterstitialEditor selected={selected} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />
+    <InterstitialEditor projects={projects} selected={selected} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />
   </div>;
 }

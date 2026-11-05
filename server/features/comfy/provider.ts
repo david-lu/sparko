@@ -1,3 +1,4 @@
+import { resolveComfyLora } from './loras.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { GenerationEvent, GenerationJob } from '../../../shared/contracts.js';
@@ -5,7 +6,8 @@ import { readServerEvents } from '../../../shared/server-events.js';
 import { COMFY_MODELS } from '../../../shared/constants.js';
 import { comfyBridgePlan, validateComfyResolution } from '../../../shared/comfy.js';
 import { HttpError } from '../../shared/http.js';
-import { ComfyClient } from './client.js';
+import { ComfyClient, type ComfySocketFactory } from './client.js';
+import { readComfyNodeEvents } from './node-progress.js';
 import { bridgeWorkflow, type BridgeInput } from './workflow.js';
 import { type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { generationProgress, progressSchema } from './progress.js';
@@ -19,7 +21,8 @@ const jobSchema = statusSchema.extend({ id, progress: progressSchema.nullable().
 });
 export type ComfyReadiness = { ready: boolean; message?: string };
 export interface ComfyProvider {
-  check(maskInjection?: MaskInjection, resolution?: GenerationResolution, imageReferences?: boolean, imageGuides?: boolean): Promise<ComfyReadiness>;
+  resolveLora(address: string): Promise<string>;
+  check(maskInjection?: MaskInjection, resolution?: GenerationResolution, imageReferences?: boolean, imageGuides?: boolean, lora?: boolean): Promise<ComfyReadiness>;
   submit(file: Blob | undefined, input: BridgeInput, images?: Blob[]): Promise<GenerationJob>;
   status(requestId: string): Promise<GenerationJob>;
   events(requestId: string, signal: AbortSignal): AsyncIterable<GenerationEvent>;
@@ -27,19 +30,19 @@ export interface ComfyProvider {
   assetUrl(assetId: string): Promise<string>;
 }
 
-export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fetch = fetch): ComfyProvider {
+export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fetch = fetch, connect: ComfySocketFactory = url => new WebSocket(url)): ComfyProvider {
   const client = new ComfyClient(env, transport);
   const partnerKey = env.COMFY_CLOUD_API_KEY || env.COMFY_API_KEY || '';
   const checks = new Map<string, { promise: Promise<ComfyReadiness>; at: number }>();
-  const check = (_legacyMaskInjection: MaskInjection = 'standard', resolution: GenerationResolution = 'native', imageReferences = false, imageGuides = false) => {
+  const check = (_legacyMaskInjection: MaskInjection = 'standard', resolution: GenerationResolution = 'native', imageReferences = false, imageGuides = false, lora = false) => {
     if (!client.configured) return Promise.resolve({ ready: false, message: 'Add COMFY_CLOUD_API_KEY to .env and restart the server.' });
-    const key = `${resolution}:${imageReferences}:${imageGuides}`, cached = checks.get(key);
+    const key = `${resolution}:${imageReferences}:${imageGuides}:${lora}`, cached = checks.get(key);
     if (cached && Date.now() - cached.at < 60_000) return cached.promise;
     const promise = (async () => {
       const nodes = await client.call<Record<string, { input?: { required?: Record<string, unknown[]> } }>>('/api/object_info', { signal: AbortSignal.timeout(15_000) });
       const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, mode: 'bridge', duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, resolution }, 0, undefined, imageReferences || imageGuides ? ['preflight-image'] : []);
       // The hard mask is also used when transitions or both references are off.
-      const missing = [...new Set([...Object.values(graph).map(node => node.class_type), 'MVEx_FrameRangeMask', ...(imageGuides ? ['MiniMaxH3AddGuide'] : [])])].filter(name => !nodes[name]);
+      const missing = [...new Set([...Object.values(graph).map(node => node.class_type), 'MVEx_FrameRangeMask', ...(imageGuides ? ['MiniMaxH3AddGuide'] : []), ...(lora ? ['LoraLoaderModelOnly'] : [])])].filter(name => !nodes[name]);
       if (missing.length) return { ready: false, message: `Comfy is missing required nodes: ${missing.join(', ')}.` };
       const models = [['UNETLoader', 'unet_name', COMFY_MODELS.diffusion], ['CLIPLoader', 'clip_name', COMFY_MODELS.textEncoder], ['VAELoader', 'vae_name', COMFY_MODELS.videoVae], ['VAELoader', 'vae_name', COMFY_MODELS.audioVae]];
       if (resolution === '2k') models.push(['MinimaxHailuo03RegenerateNode', 'model', COMFY_MODELS.regeneration]);
@@ -69,8 +72,25 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       ...(data.progress ? generationProgress(data.progress) : {}) };
   };
   return {
-    check, status,
+    check, status, resolveLora: address => resolveComfyLora(client, address),
     async *events(requestId, signal) {
+      id.parse(requestId); signal.throwIfAborted();
+      let nodeProgress = false;
+      try {
+        const socket = client.progressSocket(connect);
+        if (socket) {
+          for await (const event of readComfyNodeEvents(socket, requestId, signal)) {
+            nodeProgress ||= event.type === 'progress';
+            yield event;
+          }
+          return;
+        }
+      } catch {
+        signal.throwIfAborted();
+        // Socket access is optional. Clear stale steps and resume portable v2 SSE;
+        // the browser's v2 polling still owns completion, errors and output retrieval.
+        if (nodeProgress) yield { type: 'progress', progressDetails: { stage: 'Generating scene' } };
+      }
       const response = await client.response(`/api/v2/jobs/${encodeURIComponent(id.parse(requestId))}/events`, { signal, headers: { Accept: 'text/event-stream' } });
       if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) {
         await response.body?.cancel();
@@ -89,12 +109,13 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       }
     },
     async submit(file, input, images = []) {
+      if (input.lora) input = { ...input, lora: await resolveComfyLora(client, input.lora) };
       if (images.length > IMAGE_REFERENCE.maxCount || images.some(image => image.type !== 'image/jpeg' || !image.size || image.size > IMAGE_REFERENCE.maxBytes)) throw new HttpError(400, 'Use up to 9 prepared JPEG image references, each smaller than 1 MB.');
       const imageLoop = input.mode === 'loop' && !input.before && !input.after && input.loopImageGuide !== false && images.length > 0;
       const imageGuides = imageLoop || input.startImageIndex !== undefined || input.endImageIndex !== undefined;
       // Validate image guides before uploading assets or submitting a paid job.
       bridgeWorkflow('validation-video', input, 0, undefined, images.map((_, index) => `validation-image-${index}`));
-      const readiness = await check('standard', input.resolution, images.length > 0, imageGuides);
+      const readiness = await check('standard', input.resolution, images.length > 0, imageGuides, !!input.lora);
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
       const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
       validateComfyResolution(plan,input.resolution);

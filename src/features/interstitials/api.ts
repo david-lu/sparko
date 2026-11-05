@@ -58,6 +58,7 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   body.set('before', String(range.insertAt)); body.set('after', String(range.after));
   body.set('duration', String(item.duration)); body.set('prompt', item.prompt);
   body.set('mode', range.mode);
+  if (item.lora) { body.set('lora', item.lora); body.set('loraStrength', String(item.loraStrength ?? 1)); }
   if (range.mode === 'loop') body.set('loopImageGuide', String(startImageIndex !== undefined));
   body.set('maskInjection', clipMaskInjection(item));
   body.set('audioMaskTransitionMs', String(audioMaskTransitionMs));

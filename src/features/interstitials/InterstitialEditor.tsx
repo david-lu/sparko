@@ -1,3 +1,5 @@
+import GenerationLora from '../project/GenerationLora';
+import { H3_MODEL_ID, generationLoraInstructions } from '../../../shared/loras';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Clapperboard, RotateCcw } from 'lucide-react';
 import { COMFY, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
@@ -24,6 +26,7 @@ import { hasNoVideoInput } from './api';
 import MaskCurveEditor from './MaskCurveEditor';
 import { maskCurveSchema } from '../../../shared/mask-curves';
 import type { ProjectController } from '../project/ProjectController';
+import { showErrorToast } from '../../shared/toasts';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -37,29 +40,30 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const dependency = controller.dependency(selected.id);
   useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId)]);
   const kind = controller.clipKind(selected.id);
+  const loraInstructions = generationLoraInstructions(selected, projects?.getSnapshot().project?.loras, H3_MODEL_ID);
   const [enhancing, setEnhancing] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
   useEffect(() => { setAddingImages(false); }, [selected.id, controller]);
-  const [enhancementError, setEnhancementError] = useState('');
   const enhancement = useRef<AbortController | null>(null);
   const referenceKey = JSON.stringify(dependency?.reference);
   useEffect(() => {
-    setEnhancing(false); setEnhancementError('');
+    setEnhancing(false);
     return () => { enhancement.current?.abort(); enhancement.current = null; };
-  }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey, selected.imageReferences, selected.startImageIndex, selected.endImageIndex]);
+  }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey, selected.imageReferences, selected.startImageIndex, selected.endImageIndex, selected.lora, loraInstructions]);
   const enhance = async () => {
     if (enhancement.current || !status?.providers.openai || !selected.prompt.trim()) return;
     const operation = new AbortController(); enhancement.current = operation;
-    setEnhancing(true); setEnhancementError('');
+    setEnhancing(true);
     try {
-      const result = await enhancePrompt(selected, kind, dependency?.reference, engine, info, operation.signal);
+      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal);
       const current = controller.getSnapshot().items.find(item => item.id === selected.id);
-      if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt
+      if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt && current.lora === selected.lora
+        && generationLoraInstructions(current, projects?.getSnapshot().project?.loras, H3_MODEL_ID) === loraInstructions
         && JSON.stringify(current.imageReferences ?? []) === JSON.stringify(selected.imageReferences ?? [])) {
         controller.edit(selected.id, { prompt: result.prompt });
       }
     } catch (error) {
-      if (!operation.signal.aborted && enhancement.current === operation) setEnhancementError(error instanceof Error ? error.message : 'Prompt enhancement failed. Try again.');
+      if (!operation.signal.aborted && enhancement.current === operation) showErrorToast('Video prompt enhancement failed', error instanceof Error ? error.message : 'Try again.', selected.label);
     } finally {
       if (enhancement.current === operation) { enhancement.current = null; setEnhancing(false); }
     }
@@ -106,11 +110,11 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     : dependency.reference?.before ? `Uses the ending of ${dependency.label}.`
     : dependency.reference?.after ? `Uses the beginning of ${dependency.label}.` : 'Generates from the prompt without reference footage.' : '';
   const message = selected.error || validationError || dependency?.blocked || (status && !status.providers.comfy ? 'Comfy Cloud is not connected.' : '')
-    || (busy ? phaseLabel(selected) : enhancing ? 'Enhancing prompt…' : enhancementError)
+    || (busy ? phaseLabel(selected) : enhancing ? 'Enhancing prompt…' : '')
     || (dependency?.stale ? 'References changed · regenerate to match' : '')
     || (sequenced ? 'Waiting in sequence' : selected.phase === 'cancelled' ? 'Cancelled' : !selected.prompt.trim() ? 'Add a prompt to generate' : changed ? 'Settings edited · ready to regenerate' : currentResult ? 'Video ready' : 'Ready to generate');
   const messages = [...new Set([message, referenceDescription, dependency?.stale && 'The saved video uses different references. Regenerate to match the current connections.',
-    dependency?.blocked, ...(dependency?.issues ?? []).map(issue => issue.message), selected.error, validationError, enhancementError,
+    dependency?.blocked, ...(dependency?.issues ?? []).map(issue => issue.message), selected.error, validationError,
     busy && changed && 'This render uses the submitted settings. Your edits apply to the next generation.'].filter((value): value is string => !!value))];
   const progress = selected.phase === 'rendering' ? renderingProgress(selected) : selected.progress;
   const timeFields = <>
@@ -153,6 +157,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>
     <fieldset>
       {!compact && <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>}
+      <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} instructions={selected.loraInstructions} strength={selected.loraStrength} loras={projects?.getSnapshot().project?.loras} onChange={(lora, loraInstructions, loraStrength) => controller.edit(selected.id, { lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => controller.edit(selected.id, { loraStrength })}/>
       <div className="field inspector-prompt">
         <div className="prompt-field-heading">
           <label htmlFor={promptId}>Prompt</label>
@@ -163,7 +168,6 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         <textarea id={promptId} aria-label="Video prompt" rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
         {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
       </div>
-      {!compact && <><div className="interstitial-enhancement-feedback">{enhancementError && <p className="inline-error" role="alert">{enhancementError}</p>}</div></>}
       <details className="inspector-group inspector-references-panel" open><summary>References<span>Optional</span></summary><div className="inspector-group-body">
         {generationSettings}
         <ImageReferences key={`images:${selected.id}`} projects={projects} value={selected.imageReferences} onBusyChange={setAddingImages} onChange={imageReferences => {
@@ -208,7 +212,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         else if (!retryChecking) void controller.resume(selected.id);
       }}>{retryChecking ? 'Regenerate' : 'Check result'}</button>}</div>
     </div>
-    {compact && <GenerationFeedback busy={busy} message={message} messages={messages} error={!!(selected.error || validationError || enhancementError || dependency?.blocked)} progress={progress} onCancel={() => void controller.cancel(selected.id)} />}
+    {compact && <GenerationFeedback busy={busy} message={message} messages={messages} error={!!(selected.error || validationError || dependency?.blocked)} progress={progress} onCancel={() => void controller.cancel(selected.id)} />}
     {!compact && status && !status.providers.comfy && <p className="hint interstitial-action-hint">Comfy Cloud is not connected.</p>}
   </form>;
   return <div className={`interstitial-editor${compact ? ' interstitial-editor-compact' : ''}`} data-project-edit>

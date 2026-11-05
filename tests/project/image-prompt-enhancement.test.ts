@@ -14,6 +14,16 @@ const input = (model = 'nano-banana-pro') => ({ settings: { ...newAssetGeneratio
 beforeEach(() => { vi.resetAllMocks(); respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt }) }); });
 
 describe('model-specific image prompt enhancement', () => {
+  it('passes LoRA guidance as separate context and validates its length', async () => {
+    const enhance = createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt;
+    await enhance({ ...input(), loraInstructions: 'Include the exact trigger Sema.' });
+    const args = respond.mock.calls[0][0];
+    expect(JSON.parse(args.input[0].content[0].text)).toMatchObject({ draft: prompt, loraInstructions: 'Include the exact trigger Sema.' });
+    expect(args.instructions).toContain('Preserve exact trigger words');
+    respond.mockClear();
+    await expect(enhance({ ...input(), loraInstructions: 'x'.repeat(4001) })).rejects.toThrow();
+    expect(respond).not.toHaveBeenCalled();
+  });
   it.each(ASSET_MODELS.filter(m => m.kind === 'image'))('uses the official guide for $name', async model => {
     const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(input(model.id));
     expect(result).toEqual({ prompt, model: model.id, guideUrl: IMAGE_PROMPT_GUIDES[model.id].url });

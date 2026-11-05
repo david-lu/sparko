@@ -24,6 +24,10 @@ beforeEach(() => {
 const body = () => JSON.parse(vi.mocked(request).mock.calls[0][1]!.body as string);
 
 describe('prompt enhancement references', () => {
+  it('sends LoRA instructions as separate enhancement context without changing the draft', async () => {
+    await enhancePrompt({ ...item, loraInstructions: 'Use Sema in the prompt.' }, 'interstitial', undefined, null, null, new AbortController().signal);
+    expect(body()).toMatchObject({ prompt: item.prompt, loraInstructions: 'Use Sema in the prompt.' });
+  });
   it('anchors a response to the last Idle frame and the first continuation frame', async () => {
     const signal = new AbortController().signal;
     await enhancePrompt(item, 'response', reference, engine, info, signal);

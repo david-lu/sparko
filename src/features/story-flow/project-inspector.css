@@ -11,8 +11,8 @@
 .project-entry-preview>div{display:grid;gap:4px;min-width:0}
 .project-entry-preview strong{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .project-entry-preview span{font-size:10px;color:var(--muted)}
-.project-entry-instruction{display:block;margin-top:8px;height:30px;font-size:10px;line-height:15px;color:var(--muted)}
-.project-entry-feedback{height:45px;line-height:15px;margin:5px 0;color:var(--accent);overflow:auto;font-size:10px}
+.project-entry-instruction{display:block;margin-top:8px;height:30px;font-size:10px;line-height:15px;color:var(--muted);overflow:auto}
+.project-entry-instruction.has-error{color:var(--accent)}
 .project-entry-reveal{width:100%;font-size:11px;min-height:28px}
 .project-inspector-summary{margin:16px 0 0;padding-top:10px;border-top:1px solid var(--line);display:grid;gap:8px}
 .project-inspector-summary>div{display:flex;justify-content:space-between;gap:8px}

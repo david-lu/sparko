@@ -78,7 +78,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
     finally { setBusy(false); }
   };
   const create = (kind: MediaKind, target: string | undefined) => {
-    const generation = newAssetGeneration(kind, target);
+    const generation = newAssetGeneration(kind, target, project?.loras);
     editor.projects.editAssets(p => ({ ...p, assetGenerations: [...p.assetGenerations ?? [], generation] }));
     editor.selectLibrary({ type: 'generation', id: generation.id }); setFolderId(target); setMenu(null);
     if (target) setCollapsed(old => new Set([...old].filter(id => id !== target)));
@@ -104,7 +104,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
     importDestination.current = target; setMenu(null); (directory ? folderInput : input).current?.click();
   };
   const editImage = (asset: LibraryAsset) => {
-    const draft = newAssetGeneration('image', asset.folderId); draft.name = `${asset.name} edit`.slice(0, 1000);
+    const draft = newAssetGeneration('image', asset.folderId, project?.loras); draft.name = `${asset.name} edit`.slice(0, 1000);
     draft.settings.references = [{ assetId: asset.assetId, name: asset.name, kind: 'image' }];
     editor.projects.editAssets(p => ({ ...p, assetGenerations: [...p.assetGenerations ?? [], draft] }));
     editor.selectLibrary({ type: 'generation', id: draft.id }); setFolderId(draft.folderId); setMenu(null);

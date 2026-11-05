@@ -39,6 +39,7 @@ import { pinchZoomPreference, savedPinchZoomSensitivity, playheadTimePreference,
 import { formatShortcut, useShortcuts, type ShortcutId } from '../shared/shortcuts';
 import DropdownMenu from '../shared/DropdownMenu';
 import ModalBackdrop from '../shared/ModalBackdrop';
+import ToastStack from '../shared/ToastStack';
 
 // Fast Refresh preserves useState, including instances with obsolete controller methods.
 // Reload saved project state when a controller changes during local development.
@@ -394,7 +395,7 @@ export default function App() {
         {playerElement}
       </section><Activity mode={preview ? 'hidden' : 'visible'}><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Workspace panels">
         {storyGraph?<WorkspacePanels workspace={workspace} inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} create={<StoryAddClips editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={resetWorkspace}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
-        <InterstitialPanel items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
+        <InterstitialPanel projects={projects} items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
           callResponse={panelTimeline} groups={groupTimelines}
           renderClipControls={clipControls}
           connectedIds={groupTimelines.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []))}
@@ -403,6 +404,7 @@ export default function App() {
     </main></>}
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) openFile(file); event.target.value = ''; }} />
     <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) void projects.importProject(file); event.target.value = ''; }} />
+    <ToastStack/>
     {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
     {helpOpen && <HelpTutorial onClose={()=>setHelpOpen(false)}/>}
     {preferencesOpen && <Preferences playheadTimeMode={playheadTimeMode} onPlayheadTimeMode={setPlayheadTimeMode} pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} onClose={()=>setPreferencesOpen(false)}/>}

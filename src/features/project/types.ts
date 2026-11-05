@@ -1,3 +1,4 @@
+import type { ProjectLora } from '../../../shared/loras';
 import type { CaptionResult, Provider, Slice } from '../../../shared/contracts';
 import type { Interstitial } from '../../../shared/interstitials';
 import type { CallResponseFlow } from '../call-response/model';
@@ -19,6 +20,7 @@ export type Project = {
   library?: LibraryAsset[];
   libraryFolders?: LibraryFolder[];
   assetGenerations?: AssetGeneration[];
+  loras?: ProjectLora[];
   subtitle: { name: string; assetId: string } | null;
   analysis: AnalysisState;
 };

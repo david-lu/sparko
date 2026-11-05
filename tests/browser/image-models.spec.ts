@@ -16,7 +16,7 @@ async function importImage(page: Page, name = 'Reference.png') {
   await expect(page.getByRole('button', { name: `Library asset ${name}`, exact: true })).toBeVisible();
   return file;
 }
-const positions = (page: Page) => page.locator('.asset-inspector').evaluate(root => ['.prompt-field-heading', 'textarea', '.asset-input', 'button[type=submit]', '.asset-enhancement-feedback'].map(selector => { const r = root.querySelector(selector)!.getBoundingClientRect(); return { y: r.top - root.getBoundingClientRect().top, height: r.height }; }));
+const positions = (page: Page) => page.locator('.asset-inspector').evaluate(root => ['.prompt-field-heading', 'textarea', '.asset-input', 'button[type=submit]'].map(selector => { const r = root.querySelector(selector)!.getBoundingClientRect(); return { y: r.top - root.getBoundingClientRect().top, height: r.height }; }));
 
 for (const width of [1440, 390]) test(`image enhancement follows the selected model and keeps the Inspector stable at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await setup(page); await importImage(page); await create(page);
@@ -39,8 +39,16 @@ for (const width of [1440, 390]) test(`image enhancement follows the selected mo
   await page.unroute('**/api/image-prompts/enhance');
   await page.route('**/api/image-prompts/enhance', route => route.fulfill({ status: 502, json: { error } }));
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
-  await expect(page.locator('.asset-enhancement-feedback')).toHaveText(error);
+  const toast = page.getByRole('alert').filter({ hasText: 'Image prompt enhancement failed' });
+  await expect(toast).toContainText(error); await expect(toast).toBeInViewport();
+  const toolbar = (await page.locator('.menubar').boundingBox())!;
+  expect((await toast.boundingBox())!.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height);
+  await expect(page.locator('.asset-inspector')).not.toContainText(error);
   await expect(prompt).toHaveValue(enhanced); expect(await positions(page)).toEqual(before);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  await page.screenshot({ path: `test-results/enhancement-toast-${width}.png` });
+  await toast.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
+  await expect(toast).toHaveCount(0); expect(await positions(page)).toEqual(before);
   await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeEnabled();
   await expect(page.getByRole('link', { name: 'Nano Banana Pro prompt guide ↗', exact: true })).toHaveAttribute('href', /google/);
   await page.locator('.asset-inspector').screenshot({ path: `test-results/image-model-enhancement-${width}.png` });
@@ -69,11 +77,12 @@ test('enhancement ignores late results after changing model, draft, references, 
     if (change === 'cancel') await page.getByRole('button', { name: 'Cancel prompt enhancement', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeEnabled(); finish();
     await expect(prompt).toHaveValue(change === 'model' ? 'Original brief' : 'My revised brief');
+    await expect(page.getByRole('alert')).toHaveCount(0);
   }
   await page.unroute('**/api/image-prompts/enhance');
   await page.route('**/api/image-prompts/enhance', route => route.fulfill({ status: 502, json: { error: 'Please retry enhancement.' } }));
   const before = await positions(page); await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
-  await expect(page.locator('.asset-enhancement-feedback')).toContainText('Please retry'); expect(await positions(page)).toEqual(before);
+  await expect(page.getByRole('alert')).toContainText('Please retry'); expect(await positions(page)).toEqual(before);
   await expect(prompt).toHaveValue('My revised brief');
 });
 

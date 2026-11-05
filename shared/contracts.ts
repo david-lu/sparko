@@ -41,7 +41,7 @@ export type GenerationProgress = {
   nodesTotal?: number;
 };
 export type GenerationEvent =
-  | { type: 'progress'; progress: number; progressDetails: GenerationProgress }
+  | { type: 'progress'; progress?: number; progressDetails: GenerationProgress; source?: 'comfy-websocket' }
   | { type: 'status'; status: 'IN_QUEUE' | 'IN_PROGRESS'; queuePosition?: number }
   | { type: 'refresh' };
 export type GenerationJob = {

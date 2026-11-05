@@ -133,7 +133,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     const internal=graph.edges.filter(e=>remap.has(e.from)&&remap.has(e.to)),rows=[...chosen.map(n=>n.y),...internal.flatMap(e=>(e.points??[]).map(p=>p.y))];
     const offsetY=selectedGroup?Math.max(...rows)-Math.min(...rows)+200:160;
     const nodes=chosen.map(originalNode=>{const n={...originalNode,conditions:conditionsFor(graph,originalNode)};const original=items.find(i=>i.id===n.interstitialId);const itemId=original?freshId():undefined;
-      if(original){const result=playableResult(original);added.push({...original,id:itemId!,label:`${original.label} copy`,phase:result?'ready':'draft',result,requestPrompt:result?.prompt??(original.phase==='ready'?original.requestPrompt:undefined),requestId:undefined,previousResult:undefined,error:undefined});}
+      if(original){const result=playableResult(original);added.push({...original,lora:original.lora??null,id:itemId!,label:`${original.label} copy`,phase:result?'ready':'draft',result,requestPrompt:result?.prompt??(original.phase==='ready'?original.requestPrompt:undefined),requestId:undefined,previousResult:undefined,error:undefined});}
       return {...n,id:remap.get(n.id)!,name:`${n.name} copy`,interstitialId:itemId,referenceId:remap.get(n.referenceId??'')??n.referenceId,y:n.y+offsetY};});
     const edges=internal.map(e=>({...e,conditionId:e.event==='answer'?e.conditionId??e.id:undefined,id:freshId(),from:remap.get(e.from)!,to:remap.get(e.to)!,points:e.points?.map(p=>({...p,id:freshId(),y:p.y+offsetY}))}));
     const groups=copyGroups(graph,remap,offsetY),next={...graph,nodes:[...graph.nodes,...nodes],edges:[...graph.edges,...edges],groups:[...(graph.groups??[]),...groups]};

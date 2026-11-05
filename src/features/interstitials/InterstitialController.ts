@@ -1,3 +1,4 @@
+import { loraAddressSchema, loraInstructionsSchema, loraStrengthSchema, LORA_STRENGTH } from '../../../shared/loras';
 import { storyGenerationItem } from '../story-flow/referenceInputs';
 import { behaviors } from '../story-flow/behaviors';
 import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
@@ -33,6 +34,14 @@ export class InterstitialController {
   private story?: {graph:StoryGraph;assetId:string;duration:number};
   generationItem(item: Interstitial) { return this.story ? storyGenerationItem(item, this.story.graph.nodes.find(node => node.interstitialId === item.id)) : item; }
   setStoryGraph(graph:StoryGraph|undefined,assetId='',duration=0) { this.story=graph?{graph,assetId,duration}:undefined;if(graph)this.linkedDurationIds=[]; }
+  private defaultLora: string | null = null;
+  private defaultLoraStrength = LORA_STRENGTH.default;
+  setDefaultLora(address: string | null, strength = LORA_STRENGTH.default) { this.defaultLora = address; this.defaultLoraStrength = loraStrengthSchema.parse(strength); }
+  private withLoraDefault(item: Interstitial): Interstitial {
+    if (item.lora !== undefined) return item;
+    if (item.result || item.generationSettings) return { ...item, lora: null };
+    return { ...item, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined };
+  }
   private sourceId = '';
   private linkedDurationIds: string[] = [];
   private callResponse?: CallResponseFlow;
@@ -55,7 +64,7 @@ export class InterstitialController {
     this.update({ items: this.state.items.map(item => item.id === id ? { ...item, ...patch } : item).sort((a, b) => a.time - b.time) }, true);
   }
   load(sourceId: string, items?: Interstitial[], linkedDurationIds: string[] = [], callResponse?: CallResponseFlow | CallResponseFlow[]) {
-    this.story=undefined;
+    this.story=undefined; this.setDefaultLora(null);
     this.dispose(); this.sourceId = sourceId;
     this.retained.clear();
     this.callResponses = Array.isArray(callResponse) ? callResponse : callResponse ? [callResponse] : [];
@@ -99,7 +108,7 @@ export class InterstitialController {
     this.callResponses = flow ? [...this.callResponses.filter(group => group.interstitial.id !== flow.interstitial.id), flow] : [];
     if (!flow) { this.linkedDurationIds = []; return; }
     this.linkedDurationIds = responseInterstitialIds(flow);
-    const added = flow.scenes.filter(scene => scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({ ...draftClip(flow, scene),
+    const added = flow.scenes.filter(scene => scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({ ...draftClip(flow, scene), lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined,
       ...(scene.clip.kind === 'response' && flow.interstitial.linkResponseDurations !== false ? { duration: this.state.items.find(item => responseInterstitialIds(flow).includes(item.id))?.duration ?? 6 } : {}) }));
     const items = [...this.state.items, ...added].map(item => {
       const scene = flow.scenes.find(scene => scene.interstitialId === item.id);
@@ -132,7 +141,7 @@ export class InterstitialController {
     const anchor = Math.max(0, Math.min(frameTime(duration, fps), frameTime(time, fps)));
     const existing = this.state.items.find(item => !item.groupId && item.kind !== 'call-response' && Math.abs(item.time - anchor) < 0.5 / fps);
     if (existing) { this.select(existing.id); return existing; }
-    const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor,
+    const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
       enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, maskInjection: 'standard', audioMaskTransitionMs: MASK_TRANSITION.defaultMs, videoMaskTransitionMs: MASK_TRANSITION.defaultMs, resolution: 'native', method: 'comfy', prompt: '', phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
@@ -146,11 +155,16 @@ export class InterstitialController {
     const label = name.trim().slice(0, 1000) || 'Untitled';
     if (this.state.items.some(item => item.id === id && item.label !== label)) this.patch(id, { label });
   }
-  ensureItem(item: Interstitial) { if (!this.state.items.some(current => current.id === item.id)) this.update({ items: [...this.state.items, item] }, true); }
+  ensureItem(item: Interstitial) { if (!this.state.items.some(current => current.id === item.id)) this.update({ items: [...this.state.items, this.withLoraDefault(item)] }, true); }
   edit(id: string, values: Partial<InterstitialSettings>) {
     const item = this.state.items.find(item => item.id === id);
     // The editor always stays usable. Jobs and media retain the inputs they were submitted with.
     if (!item) return;
+    if (values.lora !== undefined && values.lora !== null) values = { ...values, lora: loraAddressSchema.parse(values.lora) };
+    // A new LoRA must not retain the previous selection’s custom instructions.
+    if (values.lora !== undefined && values.lora !== item.lora) values = { ...values, loraInstructions: values.loraInstructions, loraStrength: values.loraStrength };
+    if (values.loraStrength !== undefined) values = { ...values, loraStrength: loraStrengthSchema.parse(values.loraStrength) };
+    if (values.loraInstructions !== undefined) values = { ...values, loraInstructions: loraInstructionsSchema.parse(values.loraInstructions) };
     if (values.duration !== undefined && this.hasLinkedDuration(id)) {
       const linked = this.flowFor(id) ? responseInterstitialIds(this.flowFor(id)!) : this.linkedDurationIds;
       this.update({ items: this.state.items.map(current => current.id === id ? { ...current, ...values }
@@ -276,11 +290,14 @@ export class InterstitialController {
   }
   private async poll(id: string, requestId: string, signal: AbortSignal, submittedInsertion?: InsertionRange) {
     const stream = new AbortController(), streamSignal = AbortSignal.any([signal, stream.signal]);
-    let liveRevision = 0;
+    let liveRevision = 0, nodeProgress = false;
     void watchComfyJob(requestId, streamSignal, event => {
       if (streamSignal.aborted) return;
       liveRevision++;
-      if (event.type === 'progress') this.patch(id, { phase: 'rendering', progress: event.progress, progressDetails: event.progressDetails, queuePosition: undefined });
+      if (event.type === 'progress') {
+        nodeProgress = event.source === 'comfy-websocket';
+        this.patch(id, { phase: 'rendering', progress: event.progress, progressDetails: event.progressDetails, queuePosition: undefined });
+      }
       if (event.type === 'status') this.patch(id, { phase: event.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: event.queuePosition,
         ...(event.status === 'IN_QUEUE' ? { progress: undefined, progressDetails: undefined } : {}) });
     });
@@ -302,7 +319,9 @@ export class InterstitialController {
       }
       // Discard a snapshot requested before a newer live update, however long the request took.
       // A subsequent poll still reconciles the state, including when the stream is silent.
-      if (revisionAtRequest === liveRevision) this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition,
+      // Cloud's v2 snapshot can lag or omit the node fields. Keep native node
+      // events until the stream falls back; terminal job states above always win.
+      if (revisionAtRequest === liveRevision && !nodeProgress) this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition,
         // Cloud polling can return progress:null throughout a running job. An absent
         // snapshot must not erase progress received from its live stream.
         ...(job.status === 'IN_QUEUE' ? { progress: undefined, progressDetails: undefined }

@@ -156,7 +156,7 @@ describe('Comfy Cloud v2 adapter', () => {
       event('progress', { value: .9, current_node: 'decode_video', step: null, steps: null }) +
       event('status', { status: 'succeeded', outputs: [{ url: 'https://signed.example/file' }] }),
       { headers: { 'Content-Type': 'text/event-stream' } }));
-    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret-key' }, transport);
+    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret-key' }, transport, () => { throw new Error('Socket unavailable'); });
     const events = await collect(provider.events('comfy-job-123', new AbortController().signal));
     expect(events).toEqual([
       { type: 'status', status: 'IN_QUEUE', queuePosition: 2 },
@@ -171,7 +171,7 @@ describe('Comfy Cloud v2 adapter', () => {
   it('does not mistake a stream error or a truncated catalog for a completed job', async () => {
     const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response('event: error\ndata: {"error":{"message":"secret-key"}}\n\n', { headers: { 'Content-Type': 'text/event-stream' } }))
       .mockResolvedValueOnce(new Response('{'));
-    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret-key' }, transport);
+    const provider = createComfyProvider({ COMFY_CLOUD_API_KEY: 'secret-key' }, transport, () => { throw new Error('Socket unavailable'); });
     await expect(collect(provider.events('comfy-job-123', new AbortController().signal))).rejects.toThrow('Comfy progress stream disconnected.');
     expect(await provider.check()).toMatchObject({ ready: false });
     expect((await provider.check()).message).not.toContain('missing required nodes');

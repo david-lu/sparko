@@ -20,6 +20,15 @@ beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
 
 describe('interstitial prompt enhancement', () => {
+  it.each(['interstitial', 'call', 'idle', 'response'] as const)('supplies LoRA guidance alongside the draft for %s', async kind => {
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('Sema waves.') }) });
+    const loraInstructions = 'Name Sema and use her canonical description.';
+    await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind, loraInstructions });
+    const options = respond.mock.calls[0][0];
+    expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ draft: input.prompt, loraInstructions });
+    expect(options.instructions).toContain('Preserve exact trigger words');
+    expect(options.instructions).not.toContain(loraInstructions);
+  });
   it('respects selected endpoint pictures and leaves optional images unanchored for prompt-only loops', async () => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('A gentle movement.') }) });
     const enhance = createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt;
@@ -263,6 +272,13 @@ describe('prompt enhancement API', () => {
     const response = await send({ ...body, apiKey: 'ignored', sourceUrl: 'https://ignored.example' }).expect(200);
     expect(enhancePrompt).toHaveBeenCalledWith({ ...body, signal: expect.any(AbortSignal) });
     expect(response.body.prompt).toContain('no cuts or position jumps');
+  });
+  it('validates and forwards optional LoRA instructions', async () => {
+    await send({ ...body, loraInstructions: '  Name Sema.  ' }).expect(200);
+    expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ loraInstructions: 'Name Sema.' }));
+    enhancePrompt.mockClear();
+    for (const loraInstructions of ['x'.repeat(4001), 123, {}]) await send({ ...body, loraInstructions }).expect(400);
+    expect(enhancePrompt).not.toHaveBeenCalled();
   });
   it('accepts a short Idle loop and retains compatibility with legacy dialogue settings', async () => {
     await send({ ...body, kind: 'idle', duration: 2, continuity: 'Keep the room and character.', dialogue: '' }).expect(200);

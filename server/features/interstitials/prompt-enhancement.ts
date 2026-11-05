@@ -1,5 +1,6 @@
 import type { Express } from 'express';
 import { z } from 'zod';
+import { loraInstructionsSchema } from '../../../shared/loras.js';
 import { AI_MODELS, INTERSTITIAL } from '../../../shared/constants.js';
 import type { PromptClipKind, PromptEnhancement } from '../../../shared/contracts.js';
 import type { AIClients } from '../../shared/ai-clients.js';
@@ -50,6 +51,7 @@ const inputSchema = z.object({
   duration: z.number().finite().min(INTERSTITIAL.minStartRange).max(INTERSTITIAL.maxDuration),
   kind: z.enum(['interstitial', 'call', 'idle', 'response']).default('interstitial'),
   target: z.literal('continuity').optional(),
+  loraInstructions: loraInstructionsSchema.optional(),
   continuity: z.string().max(4000).optional(), dialogue: z.string().max(4000).optional(),
   referenceFrames: z.array(z.string().max(350_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/)).max(2).default([]),
   imageReferences: z.array(z.string().max(32_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/)).max(9).optional(),
@@ -103,12 +105,14 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
       const response = await openai.responses.create({
         model: AI_MODELS.promptEnhancement, store: false, max_output_tokens: 2500, reasoning: { effort: 'low' },
         instructions: (isContinuity ? continuityInstructions : promptInstructions[input.kind]) + '\nAttached H3 image references are labeled <Picture 1>, <Picture 2>, etc. Preserve these exact tags and the roles requested by the user in the rewritten prompt. They guide identity or style; they do not request cuts or replace connected video boundaries. Unlabeled video boundary frames are context only and have no <Picture N> tag.'
+          + (input.loraInstructions ? '\nUse loraInstructions as additional guidance for the selected LoRA. Incorporate its trigger words, character descriptions and usage guidance into the enhanced prompt where relevant. Preserve exact trigger words. Keep the user’s requested action, dialogue and reference roles, and follow the required prompt format and clip constraints.' : '')
           + (!isContinuity && loopImage
             ? `\nThis is an image-only loop. <Picture ${guides.start! + 1}> is the shared first-frame and last-frame anchor. Explicitly begin and end at its same pose, composition, lighting and background. Any movement must return smoothly to that pose before the loop repeats. Other pictures supply only their requested subject or style guidance; never use another picture as a different ending.`
             : !isContinuity ? [guides.start !== undefined ? `\n<Picture ${guides.start + 1}> anchors the first frame. Begin in its pose and composition.` : '', guides.end !== undefined ? `\n<Picture ${guides.end + 1}> anchors the last frame. End in its pose and composition.` : ''].join('') : ''),
         input: [{ role: 'user', content: [
           { type: 'input_text', text: JSON.stringify({ draft: isContinuity ? stripSharedContinuity(input.prompt)
             : input.kind === 'idle' ? stripSpeechDirections(stripContinuity(input.prompt)) : stripContinuity(input.prompt), kind: input.kind, duration: input.duration,
+            loraInstructions: input.loraInstructions,
             sharedContinuity: input.kind === 'idle' ? input.continuity && stripSpeechDirections(input.continuity) : input.continuity,
             separateDialogue: input.kind === 'idle' || isContinuity ? undefined : input.dialogue }) },
           ...input.referenceFrames.map(image_url => ({ type: 'input_image' as const, image_url, detail: 'low' as const })),

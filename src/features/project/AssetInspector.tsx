@@ -1,3 +1,4 @@
+import GenerationLora from './GenerationLora';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Image, Music, Sparkles } from 'lucide-react';
 import { ASSET_MODELS, assetModel, generationBusy, newAssetGeneration, validateAssetSettings, type AssetSettings, type MediaKind } from '../../../shared/asset-generation';
@@ -59,7 +60,7 @@ export default function AssetInspector({ editor, status }: { editor: StoryEditor
   const editImage = () => {
     if (!asset) return;
     if (generation) { update({ prompt: '', references: [{ assetId: asset.assetId, name: asset.name, kind: 'image' }] }); return; }
-    const draft = newAssetGeneration('image', asset.folderId);
+    const draft = newAssetGeneration('image', asset.folderId, project?.loras);
     draft.name = `${asset.name} edit`.slice(0, 1000); draft.settings.references = [{ assetId: asset.assetId, name: asset.name, kind: 'image' }];
     editor.projects.editAssets(p => ({ ...p, assetGenerations: [...p.assetGenerations ?? [], draft] })); editor.selectLibrary({ type: 'generation', id: draft.id });
   };
@@ -79,11 +80,12 @@ export default function AssetInspector({ editor, status }: { editor: StoryEditor
     {generation && settings && model && <form onSubmit={e => { e.preventDefault(); if (!enhancement.enhancing && !missingReferences.length) void editor.assetJobs.generate(generation.id); }}>
       <details className="inspector-group" open><summary>Generation<span>fal</span></summary>
         <label className="inspector-property"><span>Model</span><select aria-label="Generation model" value={model.id} onChange={e => { const next = assetModel(e.target.value)!; update({ model: next.id, resolution: (next.resolutions.includes(settings.resolution) ? settings.resolution : next.resolutions[0] || '1K') as AssetSettings['resolution'], count: 1 }); }}>{ASSET_MODELS.filter(m => m.kind === generation.kind).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
+        <GenerationLora key={`${generation.id}:${model.id}`} model={model.id} value={settings.lora} instructions={settings.loraInstructions} strength={settings.loraStrength} loras={project?.loras} onChange={(lora, loraInstructions, loraStrength) => update({ lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => update({ loraStrength })}/>
         <div className="field inspector-prompt"><div className="prompt-field-heading"><label htmlFor={promptId}>Prompt</label>
           {kind === 'image' && <EnhancePromptActions promptId={promptId} enhancing={enhancement.enhancing} enabled={!busy && !validation && !missingReferences.length} connected={!!status?.providers.openai}
             description={`Enhance with OpenAI following ${IMAGE_PROMPT_GUIDES[model.id]?.title}`} onEnhance={() => void enhancement.enhance()} onCancel={enhancement.cancel}/>}
         </div><textarea id={promptId} aria-label="Generation prompt" rows={4} value={settings.prompt} maxLength={8000} placeholder={settings.references.length ? 'Describe the result or the changes to make…' : `Describe the ${kind} to create…`} onChange={e => update({ prompt: e.target.value })}/>
-          {kind === 'image' && <><a className="asset-prompt-guide" href={IMAGE_PROMPT_GUIDES[model.id]?.url} target="_blank" rel="noreferrer">{model.name} prompt guide ↗</a><div className="asset-enhancement-feedback" role="status" title={enhancement.error}>{enhancement.error}</div></>}
+          {kind === 'image' && <a className="asset-prompt-guide" href={IMAGE_PROMPT_GUIDES[model.id]?.url} target="_blank" rel="noreferrer">{model.name} prompt guide ↗</a>}
         </div>
         {(model.inputs.length > 0 || settings.references.length > 0) && <details className="inspector-group" open><summary>Reference assets<span>Optional</span></summary><AssetInput key={`${generation.id}:${model.id}`} projects={editor.projects} value={settings.references} kinds={model.inputs} onChange={references => update({ references })}/><p className="hint asset-capabilities">Accepts {model.inputs.join(', ')}{model.kind === 'video' ? ' · First image sets the start frame.' : ''}</p></details>}
         {kind !== 'audio' && <label className="inspector-property"><span>Aspect ratio</span><select aria-label="Generation aspect ratio" value={settings.aspectRatio} onChange={e => update({ aspectRatio: e.target.value as AssetSettings['aspectRatio'] })}>{(kind === 'video' ? ['16:9', '9:16', '1:1'] : ['16:9', '9:16', '1:1', '4:3', '3:4']).map(r => <option key={r}>{r}</option>)}</select></label>}
