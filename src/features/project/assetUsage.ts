@@ -1,3 +1,5 @@
+import { videoAssets } from '../../../shared/video-references';
+import { referenceClips } from '../../../shared/reference-clips';
 import type { Project } from './types';
 
 export type AssetUse = { owner: string; role: string };
@@ -10,17 +12,14 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     const node = project.storyFlow?.nodes.find(n => n.interstitialId === item.id), owner = node?.name ?? item.label;
     for (const [settings, prefix] of [[item, ''], [item.generationSettings, 'Submitted ']] as const) {
       for (const ref of settings?.imageReferences ?? []) add(ref.assetId, owner, `${prefix}image input`);
-      add(settings?.startVideoAsset?.assetId, owner, `${prefix}start video input`);
-      add(settings?.endVideoAsset?.assetId, owner, `${prefix}end video input`);
+      for (const side of ['start', 'end'] as const) for (const ref of videoAssets(settings ?? {}, side)) add(ref.assetId, owner, `${prefix}${side} video input`);
     }
     for (const result of [item.result, item.previousResult]) {
       add(result?.assetId, owner, node ? 'Timeline generated footage' : 'Generated output');
       add(result?.fullAssetId, owner, 'Full generated output');
-      add(result?.reference?.before?.assetId, owner, 'Rendered start reference');
-      add(result?.reference?.after?.assetId, owner, 'Rendered end reference');
+      for (const side of ['before', 'after'] as const) for (const ref of referenceClips(result?.reference, side)) add(ref.assetId, owner, `Rendered ${side === 'before' ? 'start' : 'end'} reference`);
     }
-    add(item.requestReference?.before?.assetId, owner, 'Submitted start reference');
-    add(item.requestReference?.after?.assetId, owner, 'Submitted end reference');
+    for (const side of ['before', 'after'] as const) for (const ref of referenceClips(item.requestReference, side)) add(ref.assetId, owner, `Submitted ${side === 'before' ? 'start' : 'end'} reference`);
   }
   for (const g of project.assetGenerations ?? []) {
     for (const ref of g.settings.references) add(ref.assetId, g.name, `${g.kind} generation input`);
@@ -31,7 +30,7 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     for (const node of template.nodes) add(node.source?.assetId, template.name, 'Template footage');
     for (const settings of Object.values(template.settings)) {
       for (const ref of settings.imageReferences ?? []) add(ref.assetId, template.name, 'Template image input');
-      add(settings.startVideoAsset?.assetId, template.name, 'Template start input'); add(settings.endVideoAsset?.assetId, template.name, 'Template end input');
+      for (const side of ['start', 'end'] as const) for (const ref of videoAssets(settings, side)) add(ref.assetId, template.name, `Template ${side} input`);
     }
   }
   for (const flow of project.callResponses ?? (project.callResponse ? [project.callResponse] : [])) for (const scene of flow.scenes) add(scene.clip.assetId, scene.label, 'Timeline footage');

@@ -1,3 +1,4 @@
+import { referenceClips, referenceWindow } from '../../../shared/reference-clips';
 import { BufferTarget, Mp4OutputFormat, Output } from 'mediabunny';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { comfyDimensions } from '../../../shared/comfy';
@@ -9,38 +10,55 @@ import type { TimelineSegment } from '../../media/TimelineComposition';
 import { assets } from '../project/assets';
 
 export function referenceTiming(item: Interstitial, input: GenerationReference) {
-  const before = input.before ? Math.min(input.before.outFrame - input.before.inFrame, Math.ceil(item.start_range * TIMELINE_FPS)) : 0;
+  const length = (side: 'before' | 'after') => referenceClips(input, side).reduce((sum, clip) => sum + clip.outFrame - clip.inFrame, 0);
+  const before = Math.min(length('before'), Math.ceil(item.start_range * TIMELINE_FPS));
   const after = input.mode === 'loop' && !input.before && !input.after || input.mode === 'extend' || input.mode === 'custom' && !input.after ? 0
-    : Math.min(input.after && input.mode !== 'loop' ? input.after.outFrame - input.after.inFrame : Infinity, Math.ceil((input.mode === 'loop' ? item.start_range : item.end_range) * TIMELINE_FPS));
+    : Math.min(input.after && input.mode !== 'loop' ? length('after') : Infinity, Math.ceil((input.mode === 'loop' ? item.start_range : item.end_range) * TIMELINE_FPS));
   return { before, after, time: before / TIMELINE_FPS, duration: (before + after) / TIMELINE_FPS };
 }
 
 /** Crop both reference windows to the project's H3 canvas before concatenating them. */
 export async function generationSource(item: Interstitial, input: GenerationReference, signal: AbortSignal, canvas?: Pick<MediaInfo, 'width' | 'height'> | null) {
   const timing = referenceTiming(item, input);
-  const first = input.before ?? input.after;
+  const first = referenceClips(input, 'before')[0] ?? referenceClips(input, 'after')[0];
   if (!first) throw new Error('No reference footage to prepare.');
-  const before = await assets.open(first.assetId);
+  const openedAssets = new Map<string, Awaited<ReturnType<typeof assets.open>>>();
+  const open = async (id: string) => {
+    let asset = openedAssets.get(id); if (!asset) { asset = await assets.open(id); openedAssets.set(id, asset); } return asset;
+  };
+  const before = await open(first.assetId);
   signal.throwIfAborted();
-  const media = new MediaEngine({ id: first.assetId, name: 'Reference clip', url: before.url });
+  const media = new MediaEngine({ id: first.assetId, name: 'Reference clip', url: before.url, kind: first.kind ?? (before.asset.blob.type.startsWith('image/') ? 'image' : undefined) });
   const abort = () => media.dispose(); signal.addEventListener('abort', abort, { once: true });
   let info;
   try { info = await media.inspect(); signal.throwIfAborted(); }
   finally { signal.removeEventListener('abort', abort); media.dispose(); }
   const dimensions = comfyDimensions(canvas?.width ?? info.width, canvas?.height ?? info.height, item.resolution);
   const referenceInfo = { ...info, ...dimensions, duration: timing.duration };
-  const after = input.mode !== 'loop' && input.after ? await assets.open(input.after.assetId) : before;
-  signal.throwIfAborted();
-  const segments: TimelineSegment[] = [
-    ...(input.before && timing.before ? [{ id: 'before', kind: 'source' as const, label: 'Previous clip', source: { id: input.before.assetId, name: 'Previous clip', url: before.url },
-      sourceStart: (input.before.outFrame - timing.before) / TIMELINE_FPS, startFrame: 0, endFrame: timing.before }] : []),
-    ...(timing.after ? [{ id: 'after', kind: 'source' as const, label: 'Return context', source: { id: input.mode === 'loop' ? first.assetId : input.after?.assetId ?? first.assetId, name: 'Return context', url: after.url },
-      sourceStart: (input.mode === 'loop' ? first.outFrame - 1 : input.after?.inFrame ?? first.outFrame - 1) / TIMELINE_FPS, startFrame: timing.before, endFrame: timing.before + timing.after, still: !input.after || input.mode === 'loop' },
-    ] : []),
-  ];
+  const segments: TimelineSegment[] = [];
+  let cursor = 0;
+  const append = async (clips: typeof first[], side: string, still = false) => {
+    for (const [index, clip] of clips.entries()) {
+      const opened = await open(clip.assetId); signal.throwIfAborted();
+      const image = clip.kind === 'image' || opened.asset.blob.type.startsWith('image/');
+      const frames = still ? timing.after : clip.outFrame - clip.inFrame;
+      segments.push({ id: `${side}:${index}`, kind: 'source', label: opened.asset.name,
+        source: { id: clip.assetId, assetId: clip.assetId, name: opened.asset.name, url: opened.url, ...(image ? { kind: 'image' } : {}) },
+        sourceStart: image ? 0 : clip.inFrame / TIMELINE_FPS, startFrame: cursor, endFrame: cursor + frames,
+        still: still || image, muted: still || image });
+      cursor += frames;
+    }
+  };
+  await append(referenceWindow(referenceClips(input, 'before'), timing.before, 'before'), 'before');
+  if (timing.after) {
+    if (input.mode === 'loop' || !input.after) {
+      const last = referenceClips(input, 'before').at(-1) ?? first;
+      await append([{ ...last, inFrame: last.outFrame - 1 }], 'after', true);
+    } else await append(referenceWindow(referenceClips(input, 'after'), timing.after, 'after'), 'after');
+  }
   const engine: Pick<MediaEngine, 'exportMp4'> = { exportMp4: async (slice, options = {}) => {
     const target = new BufferTarget(), output = new Output({ target, format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-    await renderComposition({ info: referenceInfo, fps: TIMELINE_FPS, segments }, output,
+    await renderComposition({ info: referenceInfo, fps: TIMELINE_FPS, segments, crossfade: false }, output,
       { ...slice, signal, frame: options.frame ?? { ...dimensions, fit: 'cover' }, onProgress: options.onProgress });
     return new Blob([target.buffer!], { type: 'video/mp4' });
   } };

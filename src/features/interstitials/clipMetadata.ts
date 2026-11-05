@@ -1,3 +1,5 @@
+import { videoAssets } from '../../../shared/video-references';
+import { referenceClips, setReferenceClips } from '../../../shared/reference-clips';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { clipOriginSchema, type ClipMetadata, type ClipOrigin } from '../../../shared/clip-metadata';
 import { interstitialSettings, playableResult, type GenerationReference, type Interstitial, type InterstitialResult } from '../../../shared/interstitials';
@@ -12,7 +14,7 @@ export function captureClipOrigin(item: Interstitial, reference: GenerationRefer
     const source = graph?.nodes.find(n => n.id === ref.sceneId);
     const saved = items.find(i => i.id === source?.interstitialId);
     const renderId = saved && playableResult(saved)?.metadata?.id;
-    return { ...ref, name: source?.name ?? saved?.label ?? 'Saved reference clip', ...(renderId ? { renderId } : {}) };
+    return { ...ref, name: source?.name ?? saved?.label ?? [...videoAssets(item, 'start'), ...videoAssets(item, 'end')].find(asset => asset.assetId === ref.assetId)?.name ?? 'Saved reference clip', ...(renderId ? { renderId } : {}) };
   };
   return clipOriginSchema.parse({ format: 'sparko-clip', version: 1, fps: TIMELINE_FPS, id: freshId(), createdAt: new Date().toISOString(),
     clip: { ...(node ? { nodeId: node.id } : {}), name: item.label, time: item.time,
@@ -21,6 +23,8 @@ export function captureClipOrigin(item: Interstitial, reference: GenerationRefer
       ...(node?.loopAudioCrossfade !== undefined ? { loopAudioCrossfade: node.loopAudioCrossfade } : {}),
       ...(node && graph ? { conditions: conditionsFor(graph, node) } : {}), ...(node?.defaultConditionId ? { defaultConditionId: node.defaultConditionId } : {}) },
     settings: interstitialSettings(item), references: { mode: reference?.mode ?? 'custom',
+      ...(reference?.beforeClips ? { beforeClips: reference.beforeClips.map(describe) } : {}),
+      ...(reference?.afterClips ? { afterClips: reference.afterClips.map(describe) } : {}),
       ...(reference?.before ? { before: describe(reference.before) } : {}), ...(reference?.after ? { after: describe(reference.after) } : {}) },
   });
 }
@@ -31,7 +35,7 @@ export function restoreClip(metadata: ClipMetadata, assetId: string, duration: n
     || metadata.media.start + metadata.media.duration > duration + 1 / TIMELINE_FPS) return;
   // A standalone MP4 carries provenance, but not its attached reference files.
   const id = freshId(), nodeId = freshId(), settings = interstitialSettings({ ...metadata.settings, imageReferences: undefined,
-    startVideoAsset: undefined, endVideoAsset: undefined, useStartVideoAsset: false, useEndVideoAsset: false });
+    startVideoAssets: undefined, endVideoAssets: undefined, startVideoAsset: undefined, endVideoAsset: undefined, useStartVideoAsset: false, useEndVideoAsset: false });
   const result: InterstitialResult = { url: `asset:${assetId}`, assetId, ...metadata.media, prompt: metadata.prompt, metadata,
     reference: { mode: metadata.references.mode ?? 'custom' } };
   return {
@@ -52,18 +56,22 @@ export function resolveClipReferences(graph: StoryGraph, items: Interstitial[], 
     if (!metadata || !node) continue;
     const reference: GenerationReference = { mode: metadata.references.mode ?? 'custom' };
     for (const side of ['before', 'after'] as const) {
-      const saved = metadata.references[side]; if (!saved) continue;
-      const assetId = assetAliases?.[saved.assetId] ?? saved.assetId;
-      const candidates = flow.scenes.filter(scene => {
-        if (scene.id === node.id || scene.draft) return false;
-        const range = sceneMediaRange(scene, flow.fps);
-        return (range.assetId === assetId || !!saved.renderId && scene.generated?.metadata?.id === saved.renderId)
-          && Math.round(range.start * flow.fps) === saved.inFrame && Math.round(range.end * flow.fps) === saved.outFrame;
-      });
-      const exact = candidates.find(scene => scene.id === saved.sceneId), match = exact ?? (candidates.length === 1 ? candidates[0] : undefined);
-      if (!match) continue;
-      const range = sceneMediaRange(match, flow.fps);
-      reference[side] = { sceneId: match.id, assetId: range.assetId, inFrame: saved.inFrame, outFrame: saved.outFrame };
+      const resolved: NonNullable<GenerationReference['before']>[] = [];
+      const savedClips = referenceClips(metadata.references, side);
+      for (const saved of savedClips) {
+        const assetId = assetAliases?.[saved.assetId] ?? saved.assetId;
+        const candidates = flow.scenes.filter(scene => {
+          if (scene.id === node.id || scene.draft) return false;
+          const range = sceneMediaRange(scene, flow.fps);
+          return (range.assetId === assetId || !!saved.renderId && scene.generated?.metadata?.id === saved.renderId)
+            && Math.round(range.start * flow.fps) === saved.inFrame && Math.round(range.end * flow.fps) === saved.outFrame;
+        });
+        const exact = candidates.find(scene => scene.id === saved.sceneId), match = exact ?? (candidates.length === 1 ? candidates[0] : undefined);
+        if (!match) continue;
+        const range = sceneMediaRange(match, flow.fps);
+        resolved.push({ sceneId: match.id, assetId: range.assetId, inFrame: saved.inFrame, outFrame: saved.outFrame, ...(saved.kind ? { kind: saved.kind } : {}) });
+      }
+      if (resolved.length === savedClips.length) setReferenceClips(reference, side, resolved);
     }
     item.result = { ...item.result!, reference };
   }

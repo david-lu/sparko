@@ -10,7 +10,7 @@ export type NodeKind = 'source' | 'simple' | 'looped' | 'conditional';
 export type StoryCondition = { id: string; label: string; values: string[] };
 export type StoryNode = {
   id: string; name: string; kind: NodeKind; x: number; y: number;
-  source?: { assetId: string; originalAssetId?:string; duration?:number; inFrame: number; outFrame: number };
+  source?: { kind?: 'image'; assetId: string; originalAssetId?:string; duration?:number; inFrame: number; outFrame: number };
   /** Edit range relative to the generated body, leaving the cached output intact. */
   trim?: { inFrame: number; outFrame: number };
   interstitialId?: string;

@@ -55,7 +55,9 @@ export class CanvasFlowPlayback {
     const sourceFootage = assetId === this.source.assetId;
     const url = sourceFootage ? this.source.url : assets.url(assetId);
     if (!url) throw new Error('This scene’s media is not available.');
-    const source = { ...(sourceFootage ? this.source : { id: assetId, assetId, name: scene.label, url }), volume: scene.volume };
+    const source = { ...(sourceFootage ? this.source : { id: assetId, assetId, name: scene.label, url }), volume: scene.volume, kind: this.flow.scenes.find(s => s.storyNode?.source?.assetId === assetId && s.storyNode.source.kind === 'image')?.storyNode?.source?.kind ?? (sourceFootage ? this.source.kind : undefined) };
+    if (source.kind === 'image') return { key: `${scene.id}:${visit}:body`, sourceFootage: true,
+      source: { ...source, kind: 'image' }, time: 0, still: true, muted: true };
     if(this.flow.storyGraph){
       const range=sceneMediaRange(scene,this.flow.fps),bodyStart=range.start;
       const mediaDuration=range.total??(sourceFootage?this.info.duration:scene.clip.outFrame/this.flow.fps);

@@ -13,7 +13,7 @@ export class CompositionAudioCrossfade {
   private async samples(segment: TimelineSegment, transition: CompositionTransition) {
     const length = Math.round((transition.endFrame - transition.startFrame) / this.fps * RATE);
     const planes = Array.from({ length: CHANNELS }, () => new Float32Array(length));
-    if (segment.still || segment.muted || segment.source.volume === 0) return planes;
+    if (segment.source.kind === 'image' || segment.still || segment.muted || segment.source.volume === 0) return planes;
     const track = await this.inputFor(segment).getPrimaryAudioTrack();
     if (!track) return planes;
     if (!await track.canDecode()) throw new Error(`Unable to decode audio in ${segment.label}.`);

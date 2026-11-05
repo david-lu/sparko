@@ -1,10 +1,13 @@
-import { AudioBufferSink, VideoSampleSink, type Input, type VideoSample, type WrappedAudioBuffer } from 'mediabunny';
+import { AudioBufferSink, VideoSampleSink, type Input, VideoSample, type WrappedAudioBuffer } from 'mediabunny';
 import { openInput, type MediaSource } from '../../media/media';
+import { loadStillImage } from '../../media/stillImage';
 import { resampledAudio } from '../../media/ResampledAudio';
 
 /** Sequential, bounded decode queues. Seeking discards the old iterator and its frames. */
 export class FrameDecoder {
-  private input: Input;
+  private input?: Input;
+  private image?: VideoSample;
+  private lifecycle = new AbortController();
   private videoSink?: VideoSampleSink;
   private audioSink?: AudioBufferSink;
   private videoIterator?: AsyncGenerator<VideoSample, void, unknown>;
@@ -26,11 +29,18 @@ export class FrameDecoder {
   hasAudio = false;
   error?: Error;
   constructor(source: MediaSource, time: number, private audioSampleRate: number) {
+    if (source.kind === 'image') {
+      void loadStillImage(source, this.lifecycle.signal).then(image => {
+        try { if (!this.disposed) this.image = new VideoSample(image, { timestamp: 0, duration: 1 }); }
+        finally { image.close(); }
+      }).catch(error => { if (!this.disposed) this.error = error; });
+      return;
+    }
     this.input = openInput(source); this.requested = time;
     void this.open().catch(error => { if (!this.disposed) this.error = error; });
   }
   private async open() {
-    const [video, audio] = await Promise.all([this.input.getPrimaryVideoTrack(), this.input.getPrimaryAudioTrack()]);
+    const [video, audio] = await Promise.all([this.input!.getPrimaryVideoTrack(), this.input!.getPrimaryAudioTrack()]);
     if (!video || !await video.canDecode()) throw new Error('This browser cannot decode this video.');
     if (audio && !await audio.canDecode()) throw new Error('This browser cannot decode this audio.');
     const [first, duration, width, height] = await Promise.all([video.getFirstTimestamp(), video.computeDuration(), video.getDisplayWidth(), video.getDisplayHeight()]);
@@ -86,6 +96,7 @@ export class FrameDecoder {
   }
   at(time: number) {
     if (this.error) throw this.error;
+    if (this.image) return this.image;
     this.requested = time;
     if (!this.initialized) return;
     const target = this.clamp(time), last = this.frames.at(-1);
@@ -100,11 +111,11 @@ export class FrameDecoder {
     return !this.hasAudio || time < 0 || time >= this.duration || this.audioEnded
       || this.audio.some(sample => sample.timestamp + sample.duration > time);
   }
-  get bufferedEnd() { const last = this.frames.at(-1); return last ? last.timestamp + last.duration : this.start; }
+  get bufferedEnd() { if (this.image) return Infinity; const last = this.frames.at(-1); return last ? last.timestamp + last.duration : this.start; }
   dispose() {
     this.disposed = true; this.generation++;
     this.frames.forEach(frame => frame.close()); this.frames = []; this.audio = [];
     void this.videoIterator?.return().catch(() => undefined); void this.audioIterator?.return().catch(() => undefined);
-    this.input.dispose();
+    this.lifecycle.abort(); this.image?.close(); this.input?.dispose();
   }
 }

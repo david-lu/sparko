@@ -1,8 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Combine, Copy, Flag, Hand, GitBranch, GripVertical, ImageOff, LayoutTemplate, Maximize, Minus, Plus, Repeat2, Scissors, SquareDashed, Trash2, Upload } from 'lucide-react';
+import { videoAssets } from '../../../shared/video-references';
+import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
 import { TIMELINE_FPS } from '../../../shared/constants';
-import { isGenerating } from '../../../shared/interstitials';
+import { isGenerating, playableResult } from '../../../shared/interstitials';
 import { formatTime } from '../../../shared/contracts';
 import type { CallResponseFlow, PlaybackSession } from '../call-response/model';
 import { sceneFrames } from '../call-response/model';
@@ -25,6 +27,7 @@ import { STORY_DRAG_TYPE, readLibraryDrag, type LibraryItem } from './libraryDra
 import { edgeVelocity, fitCamera, gridSpacing, minimumRowScale, toScreen, toWorld, zoomAt, type Camera, type Point } from './viewport';
 import { linkGeometry } from './links';
 import { connectionReference } from './references';
+import { referenceHighlights } from './referenceHighlights';
 import { connectionColor, transitionRegions } from './transitionRegions';
 import { sceneMediaRange, playheadTime } from './mediaRange';
 import { clipTrimRange, trimClip, trimPreviewScene, type TrimSide } from './trimming';
@@ -45,7 +48,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     ...graph.nodes.flatMap(node=>{
       const saved=editor.items.find(item=>item.id===node.interstitialId); if(!saved)return [];
       const item=storyGenerationItem(saved,node);
-      return [...(item.imageReferences??[]).map(ref=>ref.assetId),item.useInputReference&&item.useStartVideoAsset?item.startVideoAsset?.assetId:undefined,item.useOutputReference&&item.useEndVideoAsset&&item.method!=='comfy-loop'?item.endVideoAsset?.assetId:undefined];
+      return [...(item.imageReferences??[]).map(ref=>ref.assetId),...(item.useInputReference&&item.useStartVideoAsset?videoAssets(item,'start').map(ref=>ref.assetId):[]),...(item.useOutputReference&&item.useEndVideoAsset&&item.method!=='comfy-loop'?videoAssets(item,'end').map(ref=>ref.assetId):[])];
     }),
   ]);
   const [camera,setCamera]=useState<Camera>({x:0,y:0,zoom:1,rowScale:1}),cameraRef=useRef(camera),[size,setSize]=useState({width:800,height:280}),[drag,setDrag]=useState<Record<string,Point>|null>(null);
@@ -79,7 +82,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const dragPreview=useMemo(()=>{
     if(!libraryDrag)return [];
     if('kind' in libraryDrag){const {node,item}=createNode(libraryDrag.kind);return [{...node,x:0,y:0,duration:nodeDuration(node,[item])}];}
-    if('assetId' in libraryDrag){const asset=library?.find(a=>a.assetId===libraryDrag.assetId);return asset?.duration?[{id:asset.assetId,name:asset.name,kind:'source',x:0,y:0,duration:((asset.outFrame??asset.duration*TIMELINE_FPS)-(asset.inFrame??0))/TIMELINE_FPS}]:[];}
+    if('assetId' in libraryDrag){const asset=library?.find(a=>a.assetId===libraryDrag.assetId);return asset && (asset.duration || asset.kind === 'image')?[{id:asset.assetId,name:asset.name,kind:'source',x:0,y:0,duration:((asset.outFrame??(asset.duration??DEFAULT_IMAGE_DURATION)*TIMELINE_FPS)-(asset.inFrame??0))/TIMELINE_FPS}]:[];}
     return templatePreview?.graph.nodes.map(n=>({...n,duration:nodeDuration(n,templatePreview.items)}))??[];
   },[libraryDrag,templatePreview,library]);
   useEffect(()=>{
@@ -91,19 +94,23 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const hovering=useRef(false);
   const reached=useMemo(()=>reachableNodes(graph),[graph]);
   const orphaned=graph.nodes.filter(node=>!reached.has(node.id));
-  const previewNodes=graph.nodes.map(node=>trimPreview?.node.id===node.id?trimPreview.node:node);
+  const previewNodes=useMemo(()=>graph.nodes.map(node=>trimPreview?.node.id===node.id?trimPreview.node:node),[graph.nodes,trimPreview]);
   const durations=Object.fromEntries(previewNodes.map(n=>[n.id,nodeDuration(n,editor.items)]));
-  const layouts=Object.fromEntries(previewNodes.map(n=>[n.id,nodeMediaLayout(n,editor.items)]));
+  const layouts=useMemo(()=>Object.fromEntries(previewNodes.map(n=>[n.id,nodeMediaLayout(n,editor.items)])),[previewNodes,editor.items]);
+  const previewFlow=useMemo(()=>trimPreview?{...flow,scenes:flow.scenes.map(scene=>scene.id===trimPreview.node.id?trimPreviewScene(scene,trimPreview.node,editor.items):scene)}:flow,[flow,trimPreview,editor.items]);
   const references=useMemo(()=>Object.fromEntries(graph.edges.map(edge=>[edge.id,connectionReference(flow,flow.edges.find(e=>e.id===edge.id)!)])),[flow,graph.edges]);
   const connectionColors=Object.fromEntries(graph.edges.map(edge=>[edge.id,connectionColor({
     mismatch:references[edge.id].state==='mismatch',selected:editor.selectedEdge===edge.id,hovered:hoveredConnection===edge.id,
     traversed:!!session?.traversedEdgeIds.includes(edge.id),dropTarget:dropConnection?.id===edge.id,
   })]));
-  const regions=useMemo(()=>{
-    const preview=trimPreview?{...flow,scenes:flow.scenes.map(scene=>scene.id===trimPreview.node.id?trimPreviewScene(scene,trimPreview.node,editor.items):scene)}:flow;
-    const ranges=Object.fromEntries(graph.nodes.map(node=>{const n=trimPreview?.node.id===node.id?trimPreview.node:node;return [n.id,nodeMediaLayout(n,editor.items)];}));
-    return transitionRegions(preview,graph.edges,ranges);
-  },[flow,graph.nodes,graph.edges,editor.items,trimPreview]);
+  const regions=useMemo(()=>transitionRegions(previewFlow,graph.edges,layouts),[previewFlow,graph.edges,layouts]);
+  const assetAliases=editor.projects.getSnapshot().project?.assetAliases;
+  const highlights=useMemo(()=>{
+    const selectedGenerations=editor.items.filter(item=>graph.nodes.some(node=>node.interstitialId===item.id&&editor.selected.includes(node.id))
+      ||editor.librarySelections.some(selection=>selection.type==='job'?selection.id===item.id:selection.type==='asset'&&[playableResult(item)?.assetId,playableResult(item)?.fullAssetId].includes(selection.id)));
+    return referenceHighlights(previewFlow,selectedGenerations.map(item=>({item,node:graph.nodes.find(node=>node.interstitialId===item.id),
+      reference:playableResult(item)?undefined:editor.jobs.dependency(item.id)?.reference})),layouts,assetAliases);
+  },[previewFlow,graph.nodes,editor.items,editor.selected,editor.librarySelections,editor.jobs,layouts,assetAliases]);
   const clipLeft=(n:StoryNode)=>n.x-layouts[n.id].before*PIXELS_PER_SECOND;
   const clipRight=(n:StoryNode)=>n.x+(layouts[n.id].body+layouts[n.id].after)*PIXELS_PER_SECOND;
   const rowBounds=(n:StoryNode)=>({left:clipLeft(n),right:clipRight(n),top:n.y,...nodeVisualBounds(graph,n)});
@@ -292,7 +299,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
     event.preventDefault();event.stopPropagation();editor.select(node.id,null);
     const duration=trimSourceDuration(node),range=clipTrimRange(node,editor.items,duration),current=side==='start'?range.inFrame:range.outFrame;
-    const frame=event.key==='Home'?(side==='start'?0:range.inFrame+1):event.key==='End'?(side==='start'?range.outFrame-1:range.totalFrames)
+    const frame=event.key==='Home'?(side==='start'?0:range.inFrame+1):event.key==='End'?(side==='start'?range.outFrame-1:Number.isFinite(range.totalFrames)?range.totalFrames:range.outFrame)
       :current+(event.key==='ArrowLeft'?-1:1)*(event.shiftKey?10:1);
     commitTrim(node,trimClip(node,editor.items,side,frame,duration));
   };
@@ -500,7 +507,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       const point=localPoint({x:e.clientX,y:e.clientY}),groupId=!id&&!edgeId?((e.target as Element).closest<HTMLElement>('[data-group-id]')?.dataset.groupId??groupViews.find(g=>point.x>=g.left&&point.x<=g.left+g.width&&point.y>=g.top&&point.y<=g.top+g.height)?.group.id):undefined;
       if(groupId)editor.selectGroup(groupId);setContext({id,groupId,edgeId,pointId,selectionIds:editor.selected,x:e.clientX,y:e.clientY,point:toWorld(localPoint({x:e.clientX,y:e.clientY}),cameraRef.current)});
     }}>
-      {!nodes.length&&!graph.groups?.length&&!fileDrag&&!groupTool&&<div className="story-empty"><Upload size={22}/><strong>Drop video files here</strong><span>Each video becomes a separate clip.</span><button className="button small" onClick={()=>videoInput.current?.click()}>Import videos</button></div>}
+      {!nodes.length&&!graph.groups?.length&&!fileDrag&&!groupTool&&<div className="story-empty"><Upload size={22}/><strong>Drop videos or images here</strong><span>Each file becomes a separate clip.</span><button className="button small" onClick={()=>videoInput.current?.click()}>Import videos or images</button></div>}
       {fileDrag&&dropPoint&&<div className="story-file-drop" style={{left:dropPoint.x,top:dropPoint.y}}><Upload size={14}/><span>Import clips here</span></div>}
       <div className="story-world">
         {groupViews.map(({group,left,top,width,height})=><div key={group.id} data-group-id={group.id} className={`story-group ${editor.selectedGroup?.id===group.id?'selected':''}`}
@@ -551,7 +558,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
             <button className="story-clip-title" title={`${scene.label} · ${durations[node.id].toFixed(2)} seconds · Drag title to move`} onPointerDown={e=>dragTitle(e,node)} onClick={e=>{if(e.detail===0)editor.select(node.id);}}><span>{behaviors(node).loop&&<Repeat2 size={11}/>} {behaviors(node).conditional&&<GitBranch size={11}/>}{scene.label}</span><small>{durations[node.id].toFixed(1)}s</small></button>
             <ContentIssues className="story-clip-issues" issues={issues} label={`${scene.label} errors`} />
             <div className="story-filmstrip" role="slider" tabIndex={0} aria-label={`Scrub ${scene.label}`} aria-valuemin={0} aria-valuemax={sceneFrames(scene)/flow.fps} aria-valuenow={active?session.frame/flow.fps:0} onPointerDown={e=>scrub(e,node)} onKeyDown={e=>scrubKey(e,node)}>
-              {scene.draft||mediaError?<div className="story-unavailable-thumbnail" role="img" aria-label={mediaError?'Video unavailable: missing media':'Video unavailable: not generated yet'} title={mediaError||'Not generated yet. Generate this clip in the Inspector.'}><ImageOff size={18} strokeWidth={1.5} aria-hidden/>{clipWidth>=90&&<span aria-hidden>{mediaError?'Media unavailable':'Not generated'}</span>}</div>:url?<VideoFilmstrip assetId={assetId} url={url} start={start-layout.before} end={start+layout.body+layout.after}/>:<ClipLoading message="Loading clip"/>}
+              {scene.draft||mediaError?<div className="story-unavailable-thumbnail" role="img" aria-label={mediaError?'Video unavailable: missing media':'Video unavailable: not generated yet'} title={mediaError||'Not generated yet. Generate this clip in the Inspector.'}><ImageOff size={18} strokeWidth={1.5} aria-hidden/>{clipWidth>=90&&<span aria-hidden>{mediaError?'Media unavailable':'Not generated'}</span>}</div>:url?<VideoFilmstrip kind={node.source?.kind} assetId={assetId} url={url} start={start-layout.before} end={start+layout.body+layout.after}/>:<ClipLoading message="Loading clip"/>}
               {scene.generated&&<>
                 {layout.before>0&&<span className="story-reference-section opening" role="img" aria-label={`Opening reference: ${layout.before.toFixed(3)} seconds`} style={{left:0,width:`${layout.before/layout.total*100}%`}} title="Opening reference · Used to match the previous clip">{layout.before*PIXELS_PER_SECOND*zoom>24&&<b>REF</b>}</span>}
                 <span className="story-generated-section" role="img" aria-label={`Generated section: ${layout.body.toFixed(3)} seconds`} style={{left:`${layout.before/layout.total*100}%`,width:`${layout.body/layout.total*100}%`}} title="Generated section · Played in the story">{layout.body*PIXELS_PER_SECOND*zoom>70&&<b>GENERATED</b>}</span>
@@ -576,6 +583,14 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
                   </span>;
                 });
               })}
+              {(highlights[node.id]??[]).map((highlight,index)=>{
+                const label=`${highlight.side==='start'?'Start':'End'} reference for ${highlight.label}: ${highlight.mediaStart.toFixed(3)}–${highlight.mediaEnd.toFixed(3)} seconds${highlight.held?' · held final frame':''}`;
+                return <span key={`${highlight.generationId}:${highlight.side}:${index}`} className={`story-reference-highlight ${highlight.side}`} role="img" aria-label={label}
+                  data-generation-id={highlight.generationId} data-side={highlight.side} data-media-start={highlight.mediaStart} data-media-end={highlight.mediaEnd}
+                  style={{left:`${highlight.start/layout.total*100}%`,width:`${(highlight.end-highlight.start)/layout.total*100}%`}}>
+                  {(highlight.end-highlight.start)*PIXELS_PER_SECOND*zoom>65&&<b aria-hidden>{highlight.side==='start'?'START REF':'END REF'}</b>}
+                </span>;
+              })}
               {item&&isGenerating(item)&&<ClipJobStatus label={scene.label} message={phaseLabel(item)}/>}
               {item?.phase==='error'&&<span className="story-clip-error" title={item.error}>Failed · Retry in inspector</span>}
               {cutTool&&<span className="story-cut-surface" onPointerMove={e=>{const bounds=e.currentTarget.getBoundingClientRect();setCutPreview({id:node.id,frame:Math.max(0,Math.min(sceneFrames(scene),frameAt(node,e.clientX,bounds)))});}} onPointerLeave={()=>setCutPreview(null)}/>}
@@ -584,7 +599,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
             {selected&&!panTool&&!spaceHeld&&!cutTool&&!groupTool&&(['start','end'] as const).map(side=><button key={side} type="button" role="slider" className={`story-trim-handle ${side}`}
               data-active={trimPreview?.node.id===node.id&&trimPreview.side===side||undefined}
               style={{left:`${(layout.before+(side==='end'?layout.body:0))/layout.total*100}%`}} aria-label={`Trim ${side} of ${scene.label}`}
-              aria-orientation="horizontal" aria-valuemin={side==='start'?0:(range.inFrame+1)/flow.fps} aria-valuemax={(side==='start'?range.outFrame-1:range.totalFrames)/flow.fps}
+              aria-orientation="horizontal" aria-valuemin={side==='start'?0:(range.inFrame+1)/flow.fps} aria-valuemax={Number.isFinite(range.totalFrames) || side==='start' ? (side==='start'?range.outFrame-1:range.totalFrames)/flow.fps : undefined}
               aria-valuenow={(side==='start'?range.inFrame:range.outFrame)/flow.fps} aria-valuetext={`${((side==='start'?range.inFrame:range.outFrame)/flow.fps).toFixed(3)} seconds`}
               title={`Drag to trim ${side}. Arrow keys adjust one frame; Shift adjusts ten. Home/End reach the available limits.`}
               onPointerDown={event=>dragTrim(event,node,side)} onKeyDown={event=>trimKey(event,node,side)}/>) }
@@ -610,8 +625,8 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
         {marquee&&<div className="story-marquee" style={{left:Math.min(marquee.start.x,marquee.end.x)*zoom+camera.x,top:Math.min(marquee.start.y,marquee.end.y)*camera.rowScale+camera.y,width:Math.abs(marquee.end.x-marquee.start.x)*zoom,height:Math.abs(marquee.end.y-marquee.start.y)*camera.rowScale}}/>}
       </div>
     </div>
-    <input ref={videoInput} hidden multiple type="file" accept="video/*,.mkv,.mov,.webm,.mp4" aria-label="Import videos onto timeline" onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value='';void editor.importVideos(files);}}/>
-    <div className="story-status"><span role="status">{trimPreview?`Trim ${trimPreview.side} · ${nodeDuration(trimPreview.node,editor.items).toFixed(3)} s · Release to apply · Escape cancels`:dropTarget?(fileDrag?'Release to import video clips here':libraryDrag&&'assetId' in libraryDrag?'Release to add a separate clip':dropTarget==='canvas'?'Release to place here':dropConnection?'Release to replace transition and connect both sides':'Release to attach to this clip'):libraryDrag?'Drag onto the timeline · Escape cancels':wire?'Drop onto a clip to connect · Escape cancels':editor.connecting?'Choose a destination input · Escape cancels':groupTool?'Draw group · Drag a frame · Release to create · Esc cancels':panTool?`Hand tool · Drag anywhere to pan · ${shortcuts.title('select')}`:cutTool?`Cut tool · Click a filmstrip to split · ${shortcuts.title('select')}`:editor.notice||`Drag to select · Space + drag to pan · ${shortcuts.title('fit')} · Right-click for group actions`}</span><span>{graph.nodes.length} clips · Blue: reference · Purple: generated</span></div>
+    <input ref={videoInput} hidden multiple type="file" accept="video/*,image/*,.mkv,.mov,.webm,.mp4" aria-label="Import videos onto timeline" onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value='';void editor.importVideos(files);}}/>
+    <div className="story-status"><span role="status">{trimPreview?`Trim ${trimPreview.side} · ${nodeDuration(trimPreview.node,editor.items).toFixed(3)} s · Release to apply · Escape cancels`:dropTarget?(fileDrag?'Release to import clips here':libraryDrag&&'assetId' in libraryDrag?'Release to add a separate clip':dropTarget==='canvas'?'Release to place here':dropConnection?'Release to replace transition and connect both sides':'Release to attach to this clip'):libraryDrag?'Drag onto the timeline · Escape cancels':wire?'Drop onto a clip to connect · Escape cancels':editor.connecting?'Choose a destination input · Escape cancels':groupTool?'Draw group · Drag a frame · Release to create · Esc cancels':panTool?`Hand tool · Drag anywhere to pan · ${shortcuts.title('select')}`:cutTool?`Cut tool · Click a filmstrip to split · ${shortcuts.title('select')}`:editor.notice||`Drag to select · Space + drag to pan · ${shortcuts.title('fit')} · Right-click for group actions`}</span><span>{graph.nodes.length} clips · {Object.keys(highlights).length?'Blue: start ref · Green: end ref':'Blue: reference · Purple: generated'}</span></div>
     {context&&createPortal(<div ref={menu} className="story-context-menu" role="menu" aria-label={context.templates?"Add template":context.groupId?"Group actions":context.edgeId?"Connection actions":context.id?"Clip actions":"Timeline actions"} style={{left:context.x,top:context.y}} onKeyDown={e=>{
       if(e.key==='Escape'){e.preventDefault();setContext(null);scroll.current?.focus({preventScroll:true});}
       if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const buttons=Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')),index=buttons.indexOf(document.activeElement as HTMLButtonElement);buttons[e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}

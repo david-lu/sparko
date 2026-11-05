@@ -17,8 +17,8 @@ const MAX_BYTES = 8 * 1024 ** 3;
 const MAX_MANIFEST = 8 * 1024 ** 2;
 const number = z.number().finite().nonnegative();
 const text = z.string().max(50_000);
-const clipReferenceSchema = z.object({ sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
-const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge', 'custom']).optional(), before: clipReferenceSchema.optional(), after: clipReferenceSchema.optional() });
+const clipReferenceSchema = z.object({ kind: z.literal('image').optional(), sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
+const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge', 'custom']).optional(), before: clipReferenceSchema.optional(), after: clipReferenceSchema.optional(), beforeClips: z.array(clipReferenceSchema).max(1000).optional(), afterClips: z.array(clipReferenceSchema).max(1000).optional() });
 const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(), prompt:z.string().max(8000).optional(), metadata: clipMetadataSchema.optional(),
   fullRange: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
     .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid full video boundaries.').optional(),
@@ -158,13 +158,18 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const assetAliases = Object.fromEntries([...remap, ...Object.entries(project.assetAliases ?? {})
       .filter(([, id]) => remap.has(id)).map(([alias, id]) => [alias, remap.get(id)!])]);
     const remapAssetSettings = (settings: import('../../../shared/asset-generation').AssetSettings) => ({ ...settings, references: settings.references.map(ref => ({ ...ref, assetId: remap.get(ref.assetId)! })) });
+    const remapVideo = (ref: import('../../../shared/video-references').VideoAssetReference) => ({ ...ref, assetId: remap.get(ref.assetId)! });
     const remapSettings = (settings: Parameters<typeof interstitialSettings>[0]) => ({ ...interstitialSettings(settings),
+      startVideoAssets: settings.startVideoAssets?.map(remapVideo), endVideoAssets: settings.endVideoAssets?.map(remapVideo),
       startVideoAsset: settings.startVideoAsset ? { ...settings.startVideoAsset, assetId: remap.get(settings.startVideoAsset.assetId)! } : undefined,
       endVideoAsset: settings.endVideoAsset ? { ...settings.endVideoAsset, assetId: remap.get(settings.endVideoAsset.assetId)! } : undefined,
       ...(settings.imageReferences?.length ? { imageReferences: settings.imageReferences.map(image => ({ ...image, assetId: remap.get(image.assetId)! })) } : {}),
     });
-    const remapReference = (input?: z.infer<typeof generationReferenceSchema>) => input ? { mode: input.mode, before: input.before ? { ...input.before, ...(input.before.sceneId.startsWith('asset:') ? { sceneId: `asset:${remap.get(input.before.assetId)}` } : {}), assetId: remap.get(input.before.assetId)! } : undefined,
-      after: input.after ? { ...input.after, ...(input.after.sceneId.startsWith('asset:') ? { sceneId: `asset:${remap.get(input.after.assetId)}` } : {}), assetId: remap.get(input.after.assetId)! } : undefined } : undefined;
+    const remapClip = (clip: z.infer<typeof clipReferenceSchema>) => ({ ...clip,
+      ...(clip.sceneId.startsWith('asset:') ? { sceneId: `asset:${remap.get(clip.assetId)}` } : {}), assetId: remap.get(clip.assetId)! });
+    const remapReference = (input?: z.infer<typeof generationReferenceSchema>) => input ? { ...input,
+      before: input.before && remapClip(input.before), after: input.after && remapClip(input.after),
+      beforeClips: input.beforeClips?.map(remapClip), afterClips: input.afterClips?.map(remapClip) } : undefined;
     const assets: Asset[] = []; let read = 0;
     for (const asset of descriptions) {
       signal.throwIfAborted();

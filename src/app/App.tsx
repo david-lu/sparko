@@ -412,7 +412,7 @@ export default function App() {
           engine={engine} info={info} status={status} active onAddRegular={addInterstitial} onAddCallResponse={addCallResponse} onSelect={selectInterstitial} onRemove={removeInterstitial} onPreviewPlay={() => controller.pause()} /></>}
       </aside></Activity></div>}</WorkspaceLockContext.Provider>
     </main></>}
-    <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,.mkv" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) openFile(file); event.target.value = ''; }} />
+    <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,image/*,.mkv" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) openFile(file); event.target.value = ''; }} />
     <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) void projects.importProject(file); event.target.value = ''; }} />
     <ToastStack/>
     {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}

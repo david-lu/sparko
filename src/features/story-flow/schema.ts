@@ -9,7 +9,7 @@ import { maskCurveSchema } from '../../../shared/mask-curves';
 const id=z.string().min(1).max(200), text=z.string().max(8000), seconds=z.number().finite().min(0).max(1e8);
 export const storyNodeSchema=z.object({id,name:z.string().max(1000),kind:z.enum(['source','simple','looped','conditional']),
   x:z.number().finite(),y:z.number().finite(),
-  source:z.object({assetId:z.uuid(),originalAssetId:z.uuid().optional(),duration:z.number().finite().positive().optional(),inFrame:z.number().int().min(0),outFrame:z.number().int().positive()}).refine(s=>s.outFrame>s.inFrame).optional(),
+  source:z.object({kind:z.literal('image').optional(),assetId:z.uuid(),originalAssetId:z.uuid().optional(),duration:z.number().finite().positive().optional(),inFrame:z.number().int().min(0),outFrame:z.number().int().positive()}).refine(s=>s.outFrame>s.inFrame).optional(),
   trim:z.object({inFrame:z.number().int().min(0),outFrame:z.number().int().positive()}).refine(s=>s.outFrame>s.inFrame).optional(),
   interstitialId:id.optional(),referenceId:id.optional(),crossfadeStart:seconds.optional(),crossfadeEnd:seconds.optional(),loopCount:z.number().int().min(0).max(10000),
   loopVideoCrossfade:seconds.optional(),loopAudioCrossfade:seconds.optional(),loop:z.boolean().optional(),conditional:z.boolean().optional(),defaultConditionId:id.optional(),conditions:z.array(z.object({id,label:z.string().max(200),values:z.array(z.string().max(200)).max(100)})).max(100).optional()

@@ -14,6 +14,7 @@ import type { StoryEditor } from './useStoryEditor';
 import ConnectionInspector from './ConnectionInspector';
 import GeneratedVideoInfo from './GeneratedVideoInfo';
 import GroupInspector from './GroupInspector';
+import { referenceClips } from '../../../shared/reference-clips';
 import { connectedReferences, storyGenerationItem } from './referenceInputs';
 import './inspector.css';
 import { useShortcuts } from '../../shared/shortcuts';
@@ -57,8 +58,11 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   const savedItem = items.find(i => i.id === node.interstitialId), item = savedItem && storyGenerationItem(savedItem, node);
   const duration = nodeDuration(node, items), behavior=behaviors(node), conditions=conditionsFor(graph,node);
   const maxLoopFade = Math.floor(duration * TIMELINE_FPS / 2) / TIMELINE_FPS;
-  const refs = connectedReferences(graph, node.id);
-  const referenceLabel = (ids: string[]) => ids.length === 1 ? nameOf(ids[0]) : ids.length ? `${ids.length} connected clips` : 'Not connected';
+  const refs = connectedReferences(graph, node.id), dependency = item && editor.jobs.dependency(item.id);
+  const referenceIds = (side: 'before' | 'after', fallback: string[]) => {
+    const clips = referenceClips(dependency?.reference, side); return clips.length ? clips.map(clip => clip.sceneId) : fallback;
+  };
+  const referenceLabel = (ids: string[]) => ids.length ? ids.map(nameOf).join(' → ') : 'Not connected';
   return <div className="story-inspector clip-inspector" data-project-edit>
     <div className="inspector-clip-heading">
       <label className="sr-only" htmlFor="story-clip-name">Clip name</label>
@@ -70,11 +74,11 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       </div>
     </div>
     <div className="inspector-clip-meta">
-      <span>{duration.toFixed(2)} s · {item ? playableResult(item) ? 'Generated' : 'Draft' : 'Source'}{editor.selected.length > 1 ? ` · ${editor.selected.length} selected` : ''}</span>
+      <span>{duration.toFixed(2)} s · {item ? playableResult(item) ? 'Generated' : 'Draft' : node.source?.kind === 'image' ? 'Still image · silent' : 'Source'}{editor.selected.length > 1 ? ` · ${editor.selected.length} selected` : ''}</span>
       {node.source && <ContentIssues label="Source video errors" issues={assets.error(node.source.assetId) ? [{ key: 'source', title: 'Source video unavailable', message: assets.error(node.source.assetId)! }] : []} />}
       {graph.entryId===node.id&&<span className="inspector-entry" title="The experience starts with this video"><Flag size={11}/>Start video</span>}
     </div>
-    <VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={node.source?.assetId ?? (item && playableResult(item)?.assetId)}/>
+    {node.source?.kind !== 'image' && <VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={node.source?.assetId ?? (item && playableResult(item)?.assetId)}/>}
     <BehaviorSection key={`loop:${node.id}`} name="Loop" enabled={behavior.loop} onToggle={enabled=>editor.toggleBehavior(node.id,'loop',enabled)} help={!item && <LoopReferenceHelp />}>
       <label className="inspector-property"><span>Loop count</span><input aria-label="Loop count" type="number" min={0} max={10000} value={node.loopCount} title="0 repeats until a condition matches or Continue is pressed." onChange={e=>Number.isFinite(e.target.valueAsNumber)&&editor.patch(node.id,{loopCount:Math.max(0,Math.min(10000,Math.round(e.target.valueAsNumber)))})}/></label>
       <p className="inspector-behavior-hint">{node.loopCount?`Play up to ${node.loopCount} times; a choice can exit sooner.`:behavior.conditional?'Repeat until a condition matches.':'Repeat until Continue is pressed.'}</p>
@@ -96,14 +100,18 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <p className="hint">Drag each labeled output on the clip to its destination.</p>
     </BehaviorSection>
     {item && <InterstitialEditor key={item.id} projects={editor.projects} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
-      generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} issues={editor.jobs.dependency(item.id)?.issues} labels={{ start: referenceLabel(refs.input), end: referenceLabel(refs.output) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
+      generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} issues={editor.jobs.dependency(item.id)?.issues} labels={{ start: referenceLabel(referenceIds('before', refs.input)), end: referenceLabel(referenceIds('after', refs.output)) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
       resultDetails={<GeneratedVideoInfo item={item} node={node} nodes={graph.nodes} items={items} assetAliases={editor.projects.getSnapshot().project?.assetAliases} onSelectReference={editor.revealClip} />} />}
-    {node.source && <div className="inspector-source-range">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'Source in' : 'Source out'}</span><input type="number" step={1 / TIMELINE_FPS} min={field === 'inFrame' ? 0 : (node.source!.inFrame + 1) / TIMELINE_FPS} max={field === 'inFrame' ? (node.source!.outFrame - 1) / TIMELINE_FPS : node.source!.duration ?? info?.duration}
+    {node.source?.kind === 'image' && <label className="inspector-property"><span>Duration (s)</span><input aria-label="Image duration" type="number" min={1 / TIMELINE_FPS} step={1 / TIMELINE_FPS} value={Number(duration.toFixed(3))} onChange={e => {
+      const frames = Math.round(e.target.valueAsNumber * TIMELINE_FPS);
+      if (Number.isSafeInteger(frames) && frames > 0) editor.patch(node.id, { source: { ...node.source!, outFrame: node.source!.inFrame + frames } });
+    }}/></label>}
+    {node.source && node.source.kind !== 'image' && <div className="inspector-source-range">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'Source in' : 'Source out'}</span><input type="number" step={1 / TIMELINE_FPS} min={field === 'inFrame' ? 0 : (node.source!.inFrame + 1) / TIMELINE_FPS} max={field === 'inFrame' ? (node.source!.outFrame - 1) / TIMELINE_FPS : node.source!.duration ?? info?.duration}
       value={Number((node.source![field] / TIMELINE_FPS).toFixed(3))} onChange={e => {
         const frame = Math.round(e.target.valueAsNumber * TIMELINE_FPS);
         if (Number.isFinite(frame)) editor.patch(node.id, { source: { ...node.source!, [field]: field === 'inFrame' ? Math.max(0, Math.min(node.source!.outFrame - 1, frame)) : Math.max(node.source!.inFrame + 1, Math.min(Math.floor((node.source!.duration ?? info?.duration ?? Infinity) * TIMELINE_FPS), frame)) } });
       }} /></label>)}</div>}
     {node.trim && <div className="inspector-trim"><span>Trim: {(node.trim.inFrame / TIMELINE_FPS).toFixed(2)}–{(node.trim.outFrame / TIMELINE_FPS).toFixed(2)} s</span><button className="text-button" onClick={() => editor.patch(node.id, { trim: undefined })}>Restore full clip</button></div>}
-    <AssetVolumeControl projects={editor.projects} assetId={node.source?.assetId ?? (item && playableResult(item)?.assetId)}/>
+    {node.source?.kind !== 'image' && <AssetVolumeControl projects={editor.projects} assetId={node.source?.assetId ?? (item && playableResult(item)?.assetId)}/>}
   </div>;
 }
