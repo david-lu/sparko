@@ -6,7 +6,7 @@ import type { StoryGraph } from '../story-flow/model';
 import type { AssetGeneration } from '../../../shared/asset-generation';
 
 export type Asset = { id: string; name: string; blob: Blob };
-export type LibraryAsset = { assetId: string; originalAssetId?: string; name: string; kind: 'video' | 'generated' | 'image' | 'audio'; folderId?: string; generationId?: string; width?: number; height?: number; duration?: number; inFrame?: number; outFrame?: number; volume?: number };
+export type LibraryAsset = { assetId: string; originalAssetId?: string; normalizedFps?: number; name: string; kind: 'video' | 'generated' | 'image' | 'audio'; folderId?: string; generationId?: string; width?: number; height?: number; duration?: number; inFrame?: number; outFrame?: number; volume?: number };
 export type LibraryFolder = { id: string; name: string; parentId?: string };
 export type AnalysisState = { slice: Slice; provider: Provider; instructions: string; result: CaptionResult | null };
 export type Project = {

@@ -25,6 +25,7 @@ import ProjectInspector from './ProjectInspector';
 import ContentIssues from '../../shared/ContentIssues';
 import { assets } from '../project/assets';
 import { useAssetAvailability } from '../project/useAssetAvailability';
+import VideoFrameRate from '../project/VideoFrameRate';
 
 function ClipName({ value, onSave }: { value: string; onSave: (name: string) => void }) {
   const [name, setName] = useState(value);
@@ -45,7 +46,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   if (editor.librarySelection?.type === 'asset' || editor.librarySelection?.type === 'generation') return <AssetInspector editor={editor} status={status}/>;
   if (editor.librarySelection?.type === 'job') {
     const job = items.find(i => i.id === editor.librarySelection!.id);
-    if (job) return <div className="story-inspector clip-inspector" data-project-edit><h2>{job.label}</h2><InterstitialEditor projects={editor.projects} compact selected={job} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}/><AssetVolumeControl projects={editor.projects} assetId={playableResult(job)?.assetId}/></div>;
+    if (job) return <div className="story-inspector clip-inspector" data-project-edit><h2>{job.label}</h2><VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={playableResult(job)?.assetId}/><InterstitialEditor projects={editor.projects} compact selected={job} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}/><AssetVolumeControl projects={editor.projects} assetId={playableResult(job)?.assetId}/></div>;
   }
   if (!graph) return null;
   const node = graph.nodes.find(n => n.id === editor.selectedId), connection = graph.edges.find(e => e.id === editor.selectedEdge);
@@ -73,6 +74,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       {node.source && <ContentIssues label="Source video errors" issues={assets.error(node.source.assetId) ? [{ key: 'source', title: 'Source video unavailable', message: assets.error(node.source.assetId)! }] : []} />}
       {graph.entryId===node.id&&<span className="inspector-entry" title="The experience starts with this video"><Flag size={11}/>Start video</span>}
     </div>
+    <VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={node.source?.assetId ?? (item && playableResult(item)?.assetId)}/>
     <BehaviorSection key={`loop:${node.id}`} name="Loop" enabled={behavior.loop} onToggle={enabled=>editor.toggleBehavior(node.id,'loop',enabled)} help={!item && <LoopReferenceHelp />}>
       <label className="inspector-property"><span>Loop count</span><input aria-label="Loop count" type="number" min={0} max={10000} value={node.loopCount} title="0 repeats until a condition matches or Continue is pressed." onChange={e=>Number.isFinite(e.target.valueAsNumber)&&editor.patch(node.id,{loopCount:Math.max(0,Math.min(10000,Math.round(e.target.valueAsNumber)))})}/></label>
       <p className="inspector-behavior-hint">{node.loopCount?`Play up to ${node.loopCount} times; a choice can exit sooner.`:behavior.conditional?'Repeat until a condition matches.':'Repeat until Continue is pressed.'}</p>

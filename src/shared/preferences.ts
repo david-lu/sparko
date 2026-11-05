@@ -10,6 +10,13 @@ export function savedDefaultTurbo(): boolean {
   catch { return defaultTurboEnabled; }
 }
 
+export const convertImportedVideoPreference = 'sparko:convert-imported-video-24fps';
+export const defaultConvertImportedVideo = false;
+export function savedConvertImportedVideo(): boolean {
+  try { return localStorage.getItem(convertImportedVideoPreference) === 'true'; }
+  catch { return defaultConvertImportedVideo; }
+}
+
 export type PlayheadTimeMode = 'internal' | 'elapsed';
 export const playheadTimePreference = 'sparko:playhead-time';
 export const defaultPlayheadTimeMode: PlayheadTimeMode = 'internal';

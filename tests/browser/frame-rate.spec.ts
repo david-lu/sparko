@@ -172,7 +172,7 @@ test('prepares a large source at the configured height limit while preserving as
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { Input, BlobSource, ALL_FORMATS, Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
-    const { prepareVideo } = await import('/src/media/prepareVideo.ts' as string);
+    const { prepareVideo, prepareSourceVideo } = await import('/src/media/prepareVideo.ts' as string);
     const canvas = new OffscreenCanvas(1920, 1440), ctx = canvas.getContext('2d')!;
     ctx.fillStyle = '#123456'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
@@ -181,14 +181,22 @@ test('prepares a large source at the configured height limit while preserving as
     for (let frame = 0; frame < 50; frame++) await video.add(frame / 25, 1 / 25);
     video.close(); await output.finalize();
     const progress: number[] = [];
-    const blob = await prepareVideo(new Blob([output.target.buffer], { type: 'video/mp4' }), new AbortController().signal, (value: number) => progress.push(value));
+    const original = new Blob([output.target.buffer], { type: 'video/mp4' }), signal = new AbortController().signal;
+    const normalized = await prepareSourceVideo(original, signal, () => undefined, true);
+    const normalInput = new Input({ source: new BlobSource(normalized), formats: ALL_FORMATS });
+    let normalizedSize;
+    try { const track = await normalInput.getPrimaryVideoTrack(); normalizedSize = [await track.getDisplayWidth(), await track.getDisplayHeight()]; }
+    finally { normalInput.dispose(); }
+    const reused = await prepareSourceVideo(normalized, signal, () => undefined, true) === normalized;
+    const blob = await prepareVideo(original, signal, (value: number) => progress.push(value));
     const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
     try {
       const track = await input.getPrimaryVideoTrack();
-      return { width: await track.getDisplayWidth(), height: await track.getDisplayHeight(), fps: (await track.computePacketStats()).averagePacketRate, progress };
+      return { width: await track.getDisplayWidth(), height: await track.getDisplayHeight(), fps: (await track.computePacketStats()).averagePacketRate, progress, normalizedSize, reused };
     } finally { input.dispose(); }
   });
   expect(result).toMatchObject({ width: 1792, height: 1344 });
+  expect(result.normalizedSize).toEqual([1920, 1440]); expect(result.reused).toBe(true);
   expect(result.fps).toBeCloseTo(24, 5);
   expect(result.progress[0]).toBe(0);
   expect(result.progress.length).toBeLessThanOrEqual(101);

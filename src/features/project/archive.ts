@@ -67,7 +67,7 @@ const projectSchema = z.object({
   loras: projectLorasSchema.optional(),
   assetAliases: z.record(z.uuid(), z.uuid()).optional(),
   assetGenerations: z.array(assetGenerationSchema).max(1000).refine(items => new Set(items.map(g => g.id)).size === items.length, 'Duplicate generations.').optional(),
-  library: z.array(z.object({ assetId: z.uuid(), originalAssetId: z.uuid().optional(), name: z.string().min(1).max(1000),
+  library: z.array(z.object({ assetId: z.uuid(), originalAssetId: z.uuid().optional(), normalizedFps: z.number().finite().min(1).max(240).optional(), name: z.string().min(1).max(1000),
     kind: z.enum(['video', 'generated', 'subtitle', 'image', 'audio']), folderId: z.uuid().optional(), generationId: z.uuid().optional(), width: number.int().optional(), height: number.int().optional(), duration: number.positive().optional(), inFrame: number.int().optional(), outFrame: number.int().positive().optional(), volume: z.number().min(0).max(1).optional(),
   }).refine(item => item.outFrame === undefined || item.outFrame > (item.inFrame ?? 0), 'Invalid library clip boundaries.')).max(2000)
     .refine(items => new Set(items.map(item => item.assetId)).size === items.length, 'Duplicate library assets.')

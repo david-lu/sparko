@@ -35,7 +35,7 @@ import WindowMenu from './WindowMenu';
 import ShortcutSettings from './ShortcutSettings';
 import HelpTutorial from './HelpTutorial';
 import Preferences from './Preferences';
-import { pinchZoomPreference, savedPinchZoomSensitivity, playheadTimePreference, savedPlayheadTimeMode, defaultTurboPreference, savedDefaultTurbo } from '../shared/preferences';
+import { pinchZoomPreference, savedPinchZoomSensitivity, playheadTimePreference, savedPlayheadTimeMode, defaultTurboPreference, savedDefaultTurbo, convertImportedVideoPreference, savedConvertImportedVideo } from '../shared/preferences';
 import { formatShortcut, useShortcuts, type ShortcutId } from '../shared/shortcuts';
 import DropdownMenu from '../shared/DropdownMenu';
 import ModalBackdrop from '../shared/ModalBackdrop';
@@ -92,6 +92,11 @@ export default function App() {
     interstitials.setDefaultTurbo(defaultTurbo);
     try { localStorage.setItem(defaultTurboPreference, String(defaultTurbo)); } catch { /* Apply without persistence. */ }
   }, [interstitials, defaultTurbo]);
+  const [convertImportedVideo, setConvertImportedVideo] = useState(savedConvertImportedVideo);
+  useEffect(() => {
+    projects.setConvertImportedVideo(convertImportedVideo);
+    try { localStorage.setItem(convertImportedVideoPreference, String(convertImportedVideo)); } catch { /* Apply without persistence. */ }
+  }, [projects, convertImportedVideo]);
   const keys=useShortcuts();
   const shortcutHint = (id: ShortcutId) => {
     const binding = keys.bindings[id].find(Boolean);
@@ -412,7 +417,7 @@ export default function App() {
     <ToastStack/>
     {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
     {helpOpen && <HelpTutorial onClose={()=>setHelpOpen(false)}/>}
-    {preferencesOpen && <Preferences playheadTimeMode={playheadTimeMode} onPlayheadTimeMode={setPlayheadTimeMode} pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} defaultTurbo={defaultTurbo} onDefaultTurbo={setDefaultTurbo} onClose={()=>setPreferencesOpen(false)}/>}
+    {preferencesOpen && <Preferences playheadTimeMode={playheadTimeMode} onPlayheadTimeMode={setPlayheadTimeMode} pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} defaultTurbo={defaultTurbo} onDefaultTurbo={setDefaultTurbo} convertImportedVideo={convertImportedVideo} onConvertImportedVideo={setConvertImportedVideo} onClose={()=>setPreferencesOpen(false)}/>}
     {closePrompt && <ModalBackdrop labelledBy="close-project-title" onCancel={()=>{if(!projectState.busy)setClosePrompt(false);}}><div className="project-card">
       <h2 id="close-project-title">Save changes before closing?</h2>
       <p className="hint">Changes to {projectState.project?.name || 'this project'} have not been saved to a project file.</p>

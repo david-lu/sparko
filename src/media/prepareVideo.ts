@@ -3,13 +3,13 @@ import { TIMELINE_FPS, VIDEO_PREPARATION } from '../../shared/constants';
 import { ensureAac } from './media';
 
 /** Check the entire presentation clock, not just an average that can hide variable frame rates. */
-async function hasProjectClock(track: InputVideoTrack, signal: AbortSignal) {
+async function hasFrameClock(track: InputVideoTrack, fps: number, signal: AbortSignal) {
   const frames = new Set<number>();
   for await (const packet of new EncodedPacketSink(track).packets(undefined, undefined, { metadataOnly: true })) {
     signal.throwIfAborted();
-    const frame = Math.round(packet.timestamp * TIMELINE_FPS);
-    if (frame < 0 || Math.abs(packet.timestamp - frame / TIMELINE_FPS) > 1e-6
-      || Math.abs(packet.duration - 1 / TIMELINE_FPS) > 1e-6 || frames.has(frame)) return false;
+    const frame = Math.round(packet.timestamp * fps);
+    if (frame < 0 || Math.abs(packet.timestamp - frame / fps) > 1e-6
+      || Math.abs(packet.duration - 1 / fps) > 1e-6 || frames.has(frame)) return false;
     frames.add(frame);
   }
   return frames.size > 0 && frames.has(0) && [...frames].every(frame => frame < frames.size);
@@ -28,13 +28,24 @@ export async function canPlaySourceVideo(blob: Blob, signal: AbortSignal): Promi
   } finally { input.dispose(); }
 }
 
-/** Keep decodable source media intact, with conversion only as a compatibility fallback. */
-export async function prepareSourceVideo(blob: Blob, signal: AbortSignal, onProgress: (progress: number) => void): Promise<Blob> {
+/** Optional import normalization preserves resolution; compatibility fallback keeps its size limit. */
+export async function prepareSourceVideo(blob: Blob, signal: AbortSignal, onProgress: (progress: number) => void, convertTo24Fps = false): Promise<Blob> {
+  if (convertTo24Fps) return convertVideoFrameRate(blob, TIMELINE_FPS, signal, onProgress);
   return await canPlaySourceVideo(blob, signal) ? blob : prepareVideo(blob, signal, onProgress, false);
 }
 
 /** Prepare a durable 24 fps working file. Compatible files are returned unchanged. */
-export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: (progress: number) => void, reuseCompatible = true): Promise<Blob> {
+export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: (progress: number) => void, reuseCompatible = true, maxHeight: number = VIDEO_PREPARATION.maxHeight): Promise<Blob> {
+  return convertVideo(blob, TIMELINE_FPS, signal, onProgress, reuseCompatible, maxHeight);
+}
+
+/** Change frame cadence without changing playback speed, resolution, or the audio clock. */
+export async function convertVideoFrameRate(blob: Blob, fps: number, signal: AbortSignal, onProgress: (progress: number) => void): Promise<Blob> {
+  if (!Number.isFinite(fps) || fps < 1 || fps > 240) throw new Error('Choose a frame rate between 1 and 240 fps.');
+  return convertVideo(blob, fps, signal, onProgress, true, 0);
+}
+
+async function convertVideo(blob: Blob, fps: number, signal: AbortSignal, onProgress: (progress: number) => void, reuseCompatible: boolean, maxHeight: number): Promise<Blob> {
   signal.throwIfAborted();
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   let conversion: Conversion | undefined;
@@ -50,15 +61,15 @@ export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: 
     if (!video) throw new Error('This file has no video track.');
     const audio = await input.getPrimaryAudioTrack();
     if (reuseCompatible && await input.getFormat() instanceof Mp4InputFormat && await video.getCodec() === 'avc'
-      && (!audio || await audio.getCodec() === 'aac') && await hasProjectClock(video, signal)) return blob;
+      && (!audio || await audio.getCodec() === 'aac') && await hasFrameClock(video, fps, signal)) return blob;
     signal.throwIfAborted();
     reportProgress(0);
     await ensureAac();
     signal.throwIfAborted();
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory', metadataFormat: 'mdta' }) });
     conversion = await Conversion.init({ input, output, tracks: 'primary', trim: { start: 0 },
-      video: { codec: 'avc', frameRate: TIMELINE_FPS, forceTranscode: true, keyFrameInterval: 1, quality: new Quality('high'),
-        ...(VIDEO_PREPARATION.maxHeight > 0 && await video.getDisplayHeight() > VIDEO_PREPARATION.maxHeight ? { height: VIDEO_PREPARATION.maxHeight } : {}) },
+      video: { codec: 'avc', frameRate: fps, forceTranscode: true, keyFrameInterval: 1, quality: new Quality('high'),
+        ...(maxHeight > 0 && await video.getDisplayHeight() > maxHeight ? { height: maxHeight } : {}) },
       audio: { codec: 'aac' },
     });
     signal.throwIfAborted();
@@ -68,7 +79,7 @@ export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: 
     conversion.onProgress = reportProgress;
     await conversion.execute();
     signal.throwIfAborted();
-    if (!output.target.buffer) throw new Error('The 24 fps conversion produced no video.');
+    if (!output.target.buffer) throw new Error('The frame-rate conversion produced no video.');
     return new Blob([output.target.buffer], { type: 'video/mp4' });
   } finally {
     signal.removeEventListener('abort', abort);
