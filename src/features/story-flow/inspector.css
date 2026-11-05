@@ -89,6 +89,9 @@
 .clip-inspector .generated-video-bar{margin:8px 0;height:7px}
 .clip-inspector .generated-video-info dl{margin:8px 0}
 .clip-inspector .generated-video-info dl>div{margin:8px 0;padding-left:6px}
+.generated-video-info .generated-reference-videos>div{border:0;padding:0;display:grid;grid-template-columns:70px minmax(0,1fr);gap:6px;align-items:start}
+.generated-reference-videos dt{padding-top:7px}.generated-reference-videos dd{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;column-gap:6px;margin:0;font:11px var(--font-sans,sans-serif)}.generated-reference-name{padding-top:7px;overflow-wrap:anywhere}.generated-reference-videos dd small{grid-column:1/-1;margin-top:2px}
+.generated-reference-videos .generated-reference-select{min-height:30px;padding:5px 8px;gap:5px;border:1px solid var(--accent);border-radius:4px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600;white-space:nowrap}.generated-reference-videos .generated-reference-select:hover{background:var(--accent);color:var(--accent-ink)}
 .clip-inspector .generated-play-range{padding-top:8px;gap:4px}
 .clip-inspector .interstitial-preview{margin-top:8px;padding-top:8px}
 @container(max-width:280px){.story-inspector.clip-inspector{--property-label:63px;padding-inline:7px}.inspector-options button{font-size:9px;padding-inline:2px}.inspector-clip-tools .icon-button.small{width:22px;min-width:22px}}

@@ -28,6 +28,7 @@ const maskCurve = z.preprocess(value => {
   try { return JSON.parse(value); } catch { return value; }
 }, maskCurveSchema.optional());
 const schema = z.object({ lora: loraAddressSchema.optional(),
+  turbo: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
   clipOrigin: z.preprocess(value => {
     if (typeof value !== 'string' || new TextEncoder().encode(value).length > MAX_CLIP_METADATA_BYTES) return value;
     try { return JSON.parse(value); } catch { return value; }
@@ -63,7 +64,8 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     const images = z.enum(['true', 'false']).optional().parse(req.query.imageReferences) === 'true';
     const imageLoop = z.enum(['true', 'false']).optional().parse(req.query.imageLoop) === 'true';
     const imageGuides = imageLoop || z.enum(['true', 'false']).optional().parse(req.query.imageGuides) === 'true';
-    res.json(await provider().check('standard', resolution, ...(imageGuides ? [true, true] as const : images ? [true] as const : [])));
+    const turbo = z.enum(['true', 'false']).optional().parse(req.query.turbo) === 'true';
+    res.json(await provider().check('standard', resolution, ...(turbo ? [images || imageGuides, imageGuides, false, true] as const : imageGuides ? [true, true] as const : images ? [true] as const : [])));
   });
   app.post('/api/comfy/interstitials', authenticate, requireComfy, ...receive('video'), async (req, res) => {
     const parsed = schema.parse(req.body);

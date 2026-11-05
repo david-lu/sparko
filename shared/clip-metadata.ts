@@ -15,6 +15,7 @@ const range = z.object({ inFrame: frame, outFrame: frame }).refine(v => v.outFra
 export const clipSettingsSchema = z.object({
   ...videoReferenceSettings,
   ...loraSettings,
+  turbo: z.boolean().optional(),
   imageReferences: imageReferencesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),

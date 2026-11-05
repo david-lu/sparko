@@ -113,6 +113,8 @@ export function reachableNodes(graph: StoryGraph) {
 }
 type LayoutRect = {left:number;right:number;top:number;bottom:number};
 const overlaps=(a:LayoutRect,b:LayoutRect)=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom;
+// Distances use visible clip edges in canvas units (pixels at 100% zoom).
+const MAX_LOOSE_GAP = 600, LOOSE_GAP = 104;
 /** Find the closest free position, leaving a little room around a displaced clip. */
 function nearestFreePosition(rect:LayoutRect,occupied:LayoutRect[]) {
   const padding=24,width=rect.right-rect.left,height=rect.bottom-rect.top;
@@ -139,7 +141,7 @@ function nearestFreePosition(rect:LayoutRect,occupied:LayoutRect[]) {
 }
 export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHeight=360): StoryGraph {
   if(!graph.nodes.length)return graph;
-  const grouped=graph.groups?.some(g=>g.nodeIds.length),padding=24,gap=grouped?160:104;
+  const grouped=graph.groups?.some(g=>g.nodeIds.length),padding=24,gap=grouped?160:LOOSE_GAP;
   // Connected paths can share a column; branches retain their vertical rows.
   // Loose clips do not participate in packing.
   const columnHeight=Math.max(CLIP_HEIGHT,viewportHeight-(grouped?100:64));
@@ -218,7 +220,8 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
   const anchors=order.map(id=>({before:byId.get(id)!,after:positioned.get(id)!,rect:rectangle(byId.get(id)!)}));
   const occupied=[...positioned.values()].map(rectangle),displaced:StoryNode[]=[];
   // Follow the nearest clip in the original layout, using visible media bounds
-  // so a long clip's nearby end counts. Then resolve overlaps at the new location.
+  // so a long clip's nearby end counts. Bring distant outliers back alongside
+  // that anchor, then resolve overlaps without displacing nearby loose clips.
   const loose=graph.nodes.filter(n=>!layoutIds.has(n.id)).map(node=>{
     const rect=rectangle(node);
     let nearest=anchors[0],distance=Infinity,centerDistance=Infinity;
@@ -228,18 +231,27 @@ export function autoLayout(graph: StoryGraph, items: Interstitial[], viewportHei
       const center=(rect.left+rect.right-r.left-r.right)**2+(rect.top+rect.bottom-r.top-r.bottom)**2;
       if(gap<distance||gap===distance&&center<centerDistance){nearest=anchor;distance=gap;centerDistance=center;}
     }
-    return {...node,x:node.x+nearest.after.x-nearest.before.x,y:node.y+nearest.after.y-nearest.before.y};
+    const next={...node,x:node.x+(nearest.after.x-nearest.before.x),y:node.y+(nearest.after.y-nearest.before.y)};
+    const distant=distance>MAX_LOOSE_GAP**2;
+    if(distant){
+      const r=nearest.rect;
+      const dx=rect.left>r.right?rect.left-r.right:rect.right<r.left?rect.right-r.left:0;
+      const dy=rect.top>r.bottom?rect.top-r.bottom:rect.bottom<r.top?rect.bottom-r.top:0;
+      const scale=1-LOOSE_GAP/Math.sqrt(distance);
+      next.x-=dx*scale;next.y-=dy*scale;
+    }
+    return {node:next,distant};
   });
   // Reserve clear preferred positions first, so resolving one collision does
   // not push another clip away from its existing neighbors.
-  for(const node of loose){
+  for(const {node,distant} of loose){
     const rect=rectangle(node);
-    if(occupied.some(other=>overlaps(rect,other)))displaced.push(node);
+    if(distant||occupied.some(other=>overlaps(rect,other)))displaced.push(node);
     else {positioned.set(node.id,node);occupied.push(rect);}
   }
   for(const node of displaced){
     const rect=rectangle(node),point=nearestFreePosition(rect,occupied);
-    const next={...node,x:node.x+point.x-rect.left,y:node.y+point.y-rect.top};
+    const next={...node,x:node.x+(point.x-rect.left),y:node.y+(point.y-rect.top)};
     positioned.set(node.id,next);occupied.push(rectangle(next));
   }
   const moved=new Set(graph.nodes.filter(n=>{const p=positioned.get(n.id)!;return n.x!==p.x||n.y!==p.y;}).map(n=>n.id));

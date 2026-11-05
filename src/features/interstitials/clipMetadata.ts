@@ -2,7 +2,7 @@ import { TIMELINE_FPS } from '../../../shared/constants';
 import { clipOriginSchema, type ClipMetadata, type ClipOrigin } from '../../../shared/clip-metadata';
 import { interstitialSettings, playableResult, type GenerationReference, type Interstitial, type InterstitialResult } from '../../../shared/interstitials';
 import { behaviors, conditionsFor } from '../story-flow/behaviors';
-import { edge, freshId, runtimeFlow, withReferenceFade, type StoryGraph, type StoryNode } from '../story-flow/model';
+import { freshId, runtimeFlow, type StoryGraph, type StoryNode } from '../story-flow/model';
 import { sceneMediaRange } from '../story-flow/mediaRange';
 
 export function captureClipOrigin(item: Interstitial, reference: GenerationReference | undefined, graph?: StoryGraph, items: Interstitial[] = []): ClipOrigin {
@@ -41,31 +41,27 @@ export function restoreClip(metadata: ClipMetadata, assetId: string, duration: n
   };
 }
 
-/** Match identities AND ranges. Never guess by filename or replace an existing route. */
-export function reconnectClipReferences(graph: StoryGraph, items: Interstitial[], imported: Interstitial[]): StoryGraph {
+/** Resolve saved reference identities and ranges for playback; importing never edits graph connections. */
+export function resolveClipReferences(graph: StoryGraph, items: Interstitial[], imported: Interstitial[], assetAliases?: Record<string, string>): void {
   const flow = runtimeFlow(graph, items, '', 0);
-  let edges = [...graph.edges];
   for (const item of imported) {
     const metadata = item.result?.metadata, node = graph.nodes.find(n => n.interstitialId === item.id);
     if (!metadata || !node) continue;
     const reference: GenerationReference = { mode: metadata.references.mode ?? 'custom' };
     for (const side of ['before', 'after'] as const) {
       const saved = metadata.references[side]; if (!saved) continue;
+      const assetId = assetAliases?.[saved.assetId] ?? saved.assetId;
       const candidates = flow.scenes.filter(scene => {
         if (scene.id === node.id || scene.draft) return false;
         const range = sceneMediaRange(scene, flow.fps);
-        return (range.assetId === saved.assetId || !!saved.renderId && scene.generated?.metadata?.id === saved.renderId)
+        return (range.assetId === assetId || !!saved.renderId && scene.generated?.metadata?.id === saved.renderId)
           && Math.round(range.start * flow.fps) === saved.inFrame && Math.round(range.end * flow.fps) === saved.outFrame;
       });
       const exact = candidates.find(scene => scene.id === saved.sceneId), match = exact ?? (candidates.length === 1 ? candidates[0] : undefined);
       if (!match) continue;
       const range = sceneMediaRange(match, flow.fps);
       reference[side] = { sceneId: match.id, assetId: range.assetId, inFrame: saved.inFrame, outFrame: saved.outFrame };
-      const from = side === 'before' ? match.id : node.id, to = side === 'before' ? node.id : match.id;
-      const source = graph.nodes.find(n => n.id === from)!;
-      if (!behaviors(source).conditional && !edges.some(e => e.from === from)) edges.push(withReferenceFade(edge(from, to), graph.nodes));
     }
     item.result = { ...item.result!, reference };
   }
-  return { ...graph, edges };
 }

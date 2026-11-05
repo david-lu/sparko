@@ -157,7 +157,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>
     <fieldset>
       {!compact && <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>}
-      <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} instructions={selected.loraInstructions} strength={selected.loraStrength} loras={projects?.getSnapshot().project?.loras} onChange={(lora, loraInstructions, loraStrength) => controller.edit(selected.id, { lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => controller.edit(selected.id, { loraStrength })}/>
+      <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} instructions={selected.loraInstructions} strength={selected.loraStrength} loras={projects?.getSnapshot().project?.loras} onChange={(lora, loraInstructions, loraStrength) => controller.edit(selected.id, { lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => controller.edit(selected.id, { loraStrength })} turbo={selected.turbo} onTurboChange={turbo => controller.edit(selected.id, { turbo })}/>
       <div className="field inspector-prompt">
         <div className="prompt-field-heading">
           <label htmlFor={promptId}>Prompt</label>

@@ -14,6 +14,7 @@ export const TIMELINE_FPS = 24;
 export const INTERSTITIAL_CROSSFADE_FRAMES = 14;
 export const COMFY_MODELS = {
   diffusion: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+  turboLora: 'minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors',
   textEncoder: 'qwen3vl_32b_minimax_h3_int8_convrot.safetensors',
   videoVae: 'minimax_h3_video_vae_fp16.safetensors',
   audioVae: 'minimax_h3_audio_vae_fp32.safetensors',
@@ -23,6 +24,8 @@ export const COMFY = {
   baseUrl: 'https://cloud.comfy.org', maxDimension: 1344, maxShortEdge: 768, minRegenerationFrames: 107, minContextFrames: 39,
   maxFrames: 362, frameGroup: 17, firstFrames: 5, steps: 20,
   sampler: 'res_multistep', shiftVideo: 12, shiftAudio: 3,
+  // LightX2V Ref2VA Turbo: Euler/simple, 4 steps, the same 12/3 shifts.
+  turboSteps: 4, turboSampler: 'euler',
   audioLatentsPerSecond: 40,
 } as const;
 export const MASK_TRANSITION = { defaultMs: 500, maxMs: 4000 } as const;

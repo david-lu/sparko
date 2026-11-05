@@ -10,6 +10,38 @@ const inspect=(page:Page)=>page.locator('.story-scroll').evaluate(el=>{
     overlaps:boxes.flatMap((a,i)=>boxes.slice(i+1).filter(b=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top)).length};
 });
 
+for(const width of [1440,390])test(`Auto layout brings distant clips closer only on request, with undo at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:1000});await page.goto('/');
+  await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');
+  await expect(page.locator('.story-clip')).toHaveCount(1);
+  const bytes=await page.evaluate(async()=>{
+    const {readActiveProject,readAsset}=await import('/src/features/project/database.ts' as string),{packProject}=await import('/src/features/project/archive.ts' as string);
+    const project=await readActiveProject(),original=project.storyFlow.nodes[0];
+    project.storyFlow={version:1,entryId:'entry',templates:[],nodes:[
+      {...original,id:'entry',name:'Main timeline',x:40,y:90},
+      {...original,id:'end',name:'Next scene',x:272,y:90},
+      {...original,id:'nearby',name:'Nearby clip',x:272,y:190},
+      {...original,id:'outlier',name:'Distant clip',x:9000,y:9000},
+    ],edges:[{id:'connection',from:'entry',to:'end',event:'next',label:'Next',values:[]}]};
+    const archive=await packProject(project,[await readAsset(project.source.assetId)],new AbortController().signal,()=>{});
+    return [...new Uint8Array(await archive.arrayBuffer())];
+  });
+  await page.getByLabel('Choose project file').setInputFiles({name:'Distant clip.sparko',mimeType:'application/zip',buffer:Buffer.from(bytes)});
+  await expect(page.locator('.story-clip')).toHaveCount(4);
+  const original=(await saved(page)).storyFlow;
+  expect(original.nodes.find((n:any)=>n.id==='outlier')).toMatchObject({x:9000,y:9000});
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();
+  const arranged=(await saved(page)).storyFlow,outlier=arranged.nodes.find((n:any)=>n.id==='outlier');
+  expect(outlier.x).toBeLessThan(600);expect(outlier.y).toBeLessThan(400);
+  expect(arranged.nodes.find((n:any)=>n.id==='nearby')).toEqual(original.nodes.find((n:any)=>n.id==='nearby'));
+  expect(arranged.edges).toEqual(original.edges);expect(arranged.entryId).toBe(original.entryId);
+  await fitAll(page);expect(await inspect(page)).toMatchObject({withinWidth:true,centered:true,overlaps:0});
+  await page.screenshot({path:`test-results/distant-clips-${width}.png`,fullPage:true});
+  await page.getByRole('button',{name:'Auto layout',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(arranged);
+  await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(original);
+  await page.getByRole('button',{name:'Redo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(arranged);
+});
+
 for(const width of [1440,390])test(`auto layout clears compressed conditional rows and their output labels at ${width}px without Fit`,async({page})=>{
   await page.setViewportSize({width,height:1000});await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();
   await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);

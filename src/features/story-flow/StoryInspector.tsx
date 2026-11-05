@@ -86,7 +86,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
     </BehaviorSection>
     {item && <InterstitialEditor key={item.id} projects={editor.projects} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
       generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} issues={editor.jobs.dependency(item.id)?.issues} labels={{ start: referenceLabel(refs.input), end: referenceLabel(refs.output) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
-      resultDetails={<GeneratedVideoInfo item={item} node={node} nodes={graph.nodes} items={items} />} />}
+      resultDetails={<GeneratedVideoInfo item={item} node={node} nodes={graph.nodes} items={items} assetAliases={editor.projects.getSnapshot().project?.assetAliases} onSelectReference={editor.revealClip} />} />}
     {node.source && <div className="inspector-source-range">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'Source in' : 'Source out'}</span><input type="number" step={1 / TIMELINE_FPS} min={field === 'inFrame' ? 0 : (node.source!.inFrame + 1) / TIMELINE_FPS} max={field === 'inFrame' ? (node.source!.outFrame - 1) / TIMELINE_FPS : node.source!.duration ?? info?.duration}
       value={Number((node.source![field] / TIMELINE_FPS).toFixed(3))} onChange={e => {
         const frame = Math.round(e.target.valueAsNumber * TIMELINE_FPS);

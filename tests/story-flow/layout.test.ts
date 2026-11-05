@@ -15,6 +15,15 @@ function expectNoOverlap(g:StoryGraph,items:Interstitial[]=[]){
     expect(a.right<=b.left||b.right<=a.left||a.top+CLIP_HEIGHT<=b.top||b.top+CLIP_HEIGHT<=a.top).toBe(true);
   }
 }
+function distance(g: StoryGraph, a: string, b: string) {
+  const boxes = g.nodes.map(node => {
+    const media = nodeMediaLayout(node, []), visual = nodeVisualBounds(g, node);
+    return { id: node.id, left: node.x - media.before * 32, right: node.x + (media.body + media.after) * 32 + visual.rightOverflow,
+      top: node.y + visual.topOffset, bottom: node.y + visual.bottomOffset };
+  });
+  const x = boxes.find(n => n.id === a)!, y = boxes.find(n => n.id === b)!;
+  return Math.hypot(Math.max(x.left - y.right, y.left - x.right, 0), Math.max(x.top - y.bottom, y.top - x.bottom, 0));
+}
 function expectFittedWithoutOverlap(g:StoryGraph,items:Interstitial[],height:number,width=1000,inside=true){
   const boxes=rects(g,items),bounds={left:Math.min(...boxes.map(b=>b.left)),right:Math.max(...boxes.map(b=>b.right)),top:Math.min(...boxes.map(b=>b.top)),bottom:Math.max(...boxes.map(b=>b.top))};
   const camera=fitCamera(bounds,width,height,2,!!g.groups?.length,boxes);
@@ -27,6 +36,17 @@ function expectFittedWithoutOverlap(g:StoryGraph,items:Interstitial[],height:num
 }
 
 describe('automatic clip layout',()=>{
+  it.each([[9000,90],[-9000,90],[40,9000],[40,-9000],[9000,9000],[-9000,-9000]])('brings an outlier at (%i, %i) close without displacing nearby clips', (x,y)=>{
+    const original=graph([{...clip('entry'),x:40,y:90},{...clip('end'),x:272,y:90},
+      {...clip('outlier'),x,y},{...clip('nearby'),x:272,y:190}]);
+    original.edges=[edge('entry','end')];
+    const result=autoLayout(original,[]);
+    expect(result.nodes[3]).toEqual(original.nodes[3]);
+    expect(Math.min(distance(result,'entry','outlier'),distance(result,'end','outlier'))).toBeLessThanOrEqual(150);
+    expect(result.edges).toEqual(original.edges);expect(result.entryId).toBe(original.entryId);
+    expect(result.nodes.map(({x,y,...n})=>n)).toEqual(original.nodes.map(({x,y,...n})=>n));
+    expectNoOverlap(result);expect(autoLayout(result,[])).toEqual(result);
+  });
   it.each([false,true])('keeps short destinations compact beside a tall conditional (grouped %s)',grouped=>{
     const choice={...clip('choice'),conditional:true,conditions:Array.from({length:10},(_,i)=>({id:`c-${i}`,label:`Choice ${i}`,values:[]}))};
     const original=graph([choice,clip('upper'),clip('middle'),clip('lower')]);
@@ -62,15 +82,15 @@ describe('automatic clip layout',()=>{
     expect((lower.y-upper.y)*camera.rowScale+boxes[2].topOffset-boxes[1].bottomOffset).toBeGreaterThanOrEqual(24);
     expect(autoLayout(result,[],height)).toEqual(result);
   });
-  it('moves loose clips only when they collide with conditional outputs, and preserves clear neighbors',()=>{
+  it('clears conditional outputs and brings distant loose clips closer',()=>{
     const conditional={...clip('entry'),conditional:true,x:40,y:129,conditions:Array.from({length:8},(_,i)=>({id:`c-${i}`,label:`Choice ${i}`,values:[]}))};
     const original=graph([conditional,{...clip('collision',1),x:180,y:230},{...clip('clear'),x:1000,y:600}]);
     const result=autoLayout(original,[]),a=result.nodes[0],b=result.nodes[1],av=nodeVisualBounds(result,a),bv=nodeVisualBounds(result,b);
-    expect(result.nodes[2]).toEqual(original.nodes[2]);expect(b).not.toEqual(original.nodes[1]);
+    expect(distance(result,'entry','clear')).toBeCloseTo(104);expect(b).not.toEqual(original.nodes[1]);
     expect(a.x+128+av.rightOverflow<=b.x||b.x+32<=a.x||a.y+av.bottomOffset<=b.y+bv.topOffset||b.y+bv.bottomOffset<=a.y+av.topOffset).toBe(true);
     expect(autoLayout(result,[])).toEqual(result);
   });
-  it.each([180,280,480])('moves a disconnected composition with its entry while preserving relative positions at %ipx',height=>{
+  it.each([180,280,480])('moves nearby loose clips with the entry and pulls in distant outliers at %ipx',height=>{
     const original=graph([
       {...clip('right'),x:1000,y:90},
       {...clip('middle-bottom'),x:500,y:300},
@@ -78,7 +98,8 @@ describe('automatic clip layout',()=>{
       {...clip('middle-top'),x:500,y:90},
     ]);
     const result=autoLayout(original,[],height);
-    expect(result.nodes).toEqual(original.nodes.map(n=>({...n,x:n.x-960})));
+    expect(result.nodes.filter(n=>n.id!=='left')).toEqual(original.nodes.filter(n=>n.id!=='left').map(n=>({...n,x:n.x-960})));
+    expect(distance(result,'right','left')).toBeCloseTo(104);
     expect(autoLayout(result,[],height)).toEqual(result);
   });
   it.each([180,280,480])('brings nearby loose clips along when a distant path is laid out at %ipx',height=>{
@@ -119,7 +140,7 @@ describe('automatic clip layout',()=>{
     expect(result.nodes[2]).toEqual({...original.nodes[2],x:220,y:190});
     expectNoOverlap(result);expect(autoLayout(result,[])).toEqual(result);
   });
-  it.each([180,280,480])('preserves loose clips around and in gaps within the new layout at %ipx',height=>{
+  it.each([180,280,480])('preserves nearby loose clips and gaps while bringing distant clips closer at %ipx',height=>{
     const loose=[{...clip('before'),x:-300,y:40},{...clip('gap',1),x:190,y:90},
       {...clip('above'),x:60,y:-20},{...clip('below'),x:50,y:180},{...clip('far'),x:1000,y:500}];
     const original=graph([
@@ -128,13 +149,14 @@ describe('automatic clip layout',()=>{
     original.edges=[edge('start','end')];
     const result=autoLayout(original,[],height);
     expect(result.nodes[0]).toMatchObject({x:40,y:90});expect(result.nodes[1]).toMatchObject({x:272,y:90});
-    expect(result.nodes.slice(2)).toEqual(loose);
+    expect(result.nodes.slice(2,-1)).toEqual(loose.slice(0,-1));
+    expect(distance(result,'end','far')).toBeCloseTo(104);
     expect(result.entryId).toBe(original.entryId);expect(result.edges).toEqual(original.edges);
     expect(autoLayout(result,[],height)).toEqual(result);expectNoOverlap(result);
   });
-  it('moves only a colliding loose clip to the closest clear position',()=>{
+  it('moves only a colliding nearby clip to the closest clear position',()=>{
     const original=graph([{...clip('start'),x:40,y:90},{...clip('end'),x:272,y:90},
-      {...clip('collision'),x:100,y:100},{...clip('clear'),x:1000,y:800}]);
+      {...clip('collision'),x:100,y:100},{...clip('clear'),x:700,y:350}]);
     original.edges=[edge('start','end')];
     const result=autoLayout(original,[]);
     expect(result.nodes[2]).toEqual({...original.nodes[2],y:190});expect(result.nodes[3]).toEqual(original.nodes[3]);
@@ -198,12 +220,13 @@ describe('automatic clip layout',()=>{
     expect(result.nodes.map(({x,y,...n})=>n)).toEqual(original.nodes.map(({x,y,...n})=>n));
     expectNoOverlap(result);expect(autoLayout(result,[])).toEqual(result);
   });
-  it('leaves an unconnected member of a connected group in place',()=>{
+  it('brings a distant group member closer without changing group membership',()=>{
     const original=graph([{...clip('start'),x:40,y:90},{...clip('end'),x:328,y:90},{...clip('loose'),x:1600,y:800}]);
     original.edges=[edge('start','end')];
     original.groups=[{id:'group',name:'Mixed',nodeIds:original.nodes.map(n=>n.id),color:'blue'}];
     const result=autoLayout(original,[]);
-    expect(result.nodes[2]).toEqual(original.nodes[2]);expect(result.groups).toEqual(original.groups);expectNoOverlap(result);
+    expect(distance(result,'end','loose')).toBeCloseTo(104);expect(result.groups).toEqual(original.groups);expectNoOverlap(result);
+    expect(autoLayout(result,[])).toEqual(result);
   });
   it('keeps branches, merging inputs, cycles, isolated clips and grouped members separate',()=>{
     const original=graph(Array.from({length:16},(_,i)=>({...clip(`clip-${i}`,2+i%5),x:i<11?0:4000,y:i<11?0:1000+i*120})));

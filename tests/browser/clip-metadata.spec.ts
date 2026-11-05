@@ -1,16 +1,17 @@
 import { readFile } from 'node:fs/promises';
-import { test, expect, readProject, saveAndReopen, fitAll, type Page } from './fixtures';
+import { test, expect, openVideo, readProject, saveAndReopen, fitAll, type Page } from './fixtures';
 import { writeClipMetadata, readClipMetadata } from '../../src/media/clipMetadata';
 import { clipMetadata } from '../fixtures/clip-metadata';
 import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output } from 'mediabunny';
 
-async function video() {
-  const blob = await writeClipMetadata(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')], { type: 'video/mp4' }), clipMetadata, new AbortController().signal);
+async function video(metadata = clipMetadata) {
+  const blob = await writeClipMetadata(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')], { type: 'video/mp4' }), metadata, new AbortController().signal);
   return Buffer.from(await blob.arrayBuffer());
 }
 async function drop(page: Page, bytes: Buffer) {
   const dataTransfer = await page.evaluateHandle(bytes => { const data = new DataTransfer(); data.items.add(new File([Uint8Array.from(bytes)], 'portable.mp4', { type: 'video/mp4' })); return data; }, [...bytes]);
-  await page.locator('.story-scroll').dispatchEvent('drop', { dataTransfer, clientX: 150, clientY: 180 });
+  const bounds = (await page.locator('.story-scroll').boundingBox())!;
+  await page.locator('.story-scroll').dispatchEvent('drop', { dataTransfer, clientX: bounds.x + Math.min(150, bounds.width / 2), clientY: bounds.y + Math.min(80, bounds.height / 2) });
   await dataTransfer.dispose();
 }
 for (const width of [1440, 390]) test(`dropping a portable video restores an interstitial and keeps loading layout stable at ${width}px`, async ({ page }) => {
@@ -38,6 +39,7 @@ for (const width of [1440, 390]) test(`dropping a portable video restores an int
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Opening video');
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Ending video');
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Original clip is not in this project');
+  await expect(page.getByRole('button', { name: /Select (start|end) reference video/ })).toHaveCount(0);
   const downloadEvent = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click();
   const download = await downloadEvent, saved = await readClipMetadata(new Blob([await readFile((await download.path())!)]), new AbortController().signal);
   expect(saved).toEqual(clipMetadata);
@@ -50,6 +52,61 @@ for (const width of [1440, 390]) test(`dropping a portable video restores an int
   await saveAndReopen(page); await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
   expect((await readProject(page)).interstitials.every((i: any) => i.result.metadata.references.before.name === 'Opening video')).toBe(true);
   expect(errors).toEqual([]);
+});
+
+for (const width of [1440, 390]) test(`imported scene references stay disconnected and can be selected from the inspector at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await openVideo(page);
+  await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles({ name: 'Ending shot.mp4', mimeType: 'video/mp4', buffer: await readFile('tests/fixtures/interstitial-reference.mp4') });
+  await expect(page.locator('.story-clip.type-source')).toHaveCount(2);
+  const original = await readProject(page), [before, after] = original.storyFlow.nodes;
+  const reference = (node: typeof before) => ({ sceneId: node.id, assetId: node.source.assetId, name: node.name,
+    inFrame: node.source.inFrame, outFrame: node.source.outFrame });
+  const metadata = { ...clipMetadata, references: { mode: 'custom' as const, before: reference(before), after: reference(after) } };
+  // The MP4 was rendered before reopening the project, which replaces its local asset IDs.
+  await saveAndReopen(page);
+  const reopened = await readProject(page);
+  expect(reopened.storyFlow.nodes[0].source.assetId).not.toBe(before.source.assetId);
+  await drop(page, await video(metadata));
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  const imported = await readProject(page);
+  expect(imported.storyFlow.edges).toEqual(original.storyFlow.edges);
+  expect(imported.storyFlow.entryId).toBe(original.storyFlow.entryId);
+  expect(imported.interstitials[0].result.reference).toMatchObject({ before: { sceneId: before.id }, after: { sceneId: after.id } });
+  expect(imported.interstitials[0].result.reference.after.assetId).toBe(reopened.storyFlow.nodes[1].source.assetId);
+  expect(imported.interstitials[0].result.metadata).toEqual(metadata);
+  const generated = imported.storyFlow.nodes.find((n: { interstitialId?: string }) => n.interstitialId === imported.interstitials[0].id);
+  const showReferences = async () => {
+    await fitAll(page); await page.locator(`[data-node-id="${generated.id}"] .story-clip-title`).click();
+    await page.locator('.inspector-output>summary').click();
+  };
+  await showReferences();
+  const names = page.locator('.generated-reference-videos');
+  await expect(names.locator('video')).toHaveCount(0);
+  await expect(names).toContainText('Start video'); await expect(names).toContainText('End video');
+  await expect(names).toContainText(before.name); await expect(names).toContainText(after.name);
+  await names.scrollIntoViewIfNeeded();
+  const bounds = await names.boundingBox(); expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+  await page.screenshot({ path: `test-results/generated-references-${width}.png` });
+  await page.getByRole('button', { name: 'Select start reference video', exact: true }).click();
+  await expect(page.locator('.story-clip.selected')).toHaveAttribute('data-node-id', before.id);
+  await expect(page.getByLabel('Clip name', { exact: true })).toHaveValue(before.name);
+  await showReferences();
+  await page.getByRole('button', { name: 'Select end reference video', exact: true }).click();
+  await expect(page.locator('.story-clip.selected')).toHaveAttribute('data-node-id', after.id);
+  await expect(page.getByLabel('Clip name', { exact: true })).toHaveValue(after.name);
+  expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
+  await page.getByRole('button', { name: 'Library asset Across the doorway', exact: true }).dblclick();
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
+  expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
+  await saveAndReopen(page);
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
+  expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
 });
 
 test('opening a portable video directly restores it; ordinary and invalid metadata files remain sources', async ({ page }) => {
