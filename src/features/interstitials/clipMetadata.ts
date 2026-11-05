@@ -17,6 +17,8 @@ export function captureClipOrigin(item: Interstitial, reference: GenerationRefer
   return clipOriginSchema.parse({ format: 'sparko-clip', version: 1, fps: TIMELINE_FPS, id: freshId(), createdAt: new Date().toISOString(),
     clip: { ...(node ? { nodeId: node.id } : {}), name: item.label, time: item.time,
       ...(node ? behaviors(node) : { loop: reference?.mode === 'loop', conditional: false }), loopCount: node?.loopCount ?? 0,
+      ...(node?.loopVideoCrossfade !== undefined ? { loopVideoCrossfade: node.loopVideoCrossfade } : {}),
+      ...(node?.loopAudioCrossfade !== undefined ? { loopAudioCrossfade: node.loopAudioCrossfade } : {}),
       ...(node && graph ? { conditions: conditionsFor(graph, node) } : {}), ...(node?.defaultConditionId ? { defaultConditionId: node.defaultConditionId } : {}) },
     settings: interstitialSettings(item), references: { mode: reference?.mode ?? 'custom',
       ...(reference?.before ? { before: describe(reference.before) } : {}), ...(reference?.after ? { after: describe(reference.after) } : {}) },
@@ -35,6 +37,7 @@ export function restoreClip(metadata: ClipMetadata, assetId: string, duration: n
   return {
     node: { id: nodeId, name: metadata.clip.name, kind: 'simple', interstitialId: id, x: 0, y: 0,
       loop: metadata.clip.loop, conditional: metadata.clip.conditional, loopCount: metadata.clip.loopCount,
+      loopVideoCrossfade: metadata.clip.loopVideoCrossfade, loopAudioCrossfade: metadata.clip.loopAudioCrossfade,
       conditions: metadata.clip.conditions, defaultConditionId: metadata.clip.defaultConditionId, trim: metadata.clip.trim },
     item: { ...settings, id, label: metadata.clip.name, time: metadata.clip.time, phase: 'ready', result,
       generationSettings: settings, requestPrompt: metadata.prompt, requestInsertion: metadata.media },

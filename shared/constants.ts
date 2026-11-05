@@ -12,6 +12,7 @@ export const MAX_ANALYSIS_SECONDS = 120;
 export const TIMELINE_FPS = 24;
 // Closest whole-frame dissolve to 0.6 seconds on the 24 fps edit grid.
 export const INTERSTITIAL_CROSSFADE_FRAMES = 14;
+export const LOOP_CROSSFADE_SECONDS = .25;
 export const COMFY_MODELS = {
   diffusion: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
   turboLora: 'minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors',

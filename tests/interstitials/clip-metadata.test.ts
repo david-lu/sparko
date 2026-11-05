@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { restoreClip, resolveClipReferences } from '../../src/features/interstitials/clipMetadata';
+import { captureClipOrigin, restoreClip, resolveClipReferences } from '../../src/features/interstitials/clipMetadata';
 import type { StoryGraph, StoryNode } from '../../src/features/story-flow/model';
 import { packProject, unpackProject } from '../../src/features/project/archive';
 import { assetIds, emptyAnalysis, type Project } from '../../src/features/project/types';
@@ -9,6 +9,14 @@ const assetId = '44444444-4444-4444-8444-444444444444';
 const source = (side: 'before' | 'after'): StoryNode => { const ref = clipMetadata.references[side]!; return { id: ref.sceneId, name: ref.name, kind: 'source', source: { assetId: ref.assetId, inFrame: ref.inFrame, outFrame: ref.outFrame }, x: 0, y: 0, loopCount: 0 }; };
 const graph = (nodes: StoryNode[]): StoryGraph => ({ version: 1, entryId: nodes[0].id, nodes, edges: [], templates: [] });
 describe('restoring generated clips', () => {
+  it('preserves separate loop fade durations in submitted metadata and restored MP4s', () => {
+    const metadata = parseClipMetadata(serializeClipMetadata({ ...clipMetadata,
+      clip: { ...clipMetadata.clip, loop: true, loopVideoCrossfade: 0, loopAudioCrossfade: .75 } }))!;
+    const restored = restoreClip(metadata, assetId, 4)!;
+    expect(restored.node).toMatchObject({ loopVideoCrossfade: 0, loopAudioCrossfade: .75 });
+    const origin = captureClipOrigin(restored.item, undefined, graph([restored.node]), [restored.item]);
+    expect(origin.clip).toMatchObject({ loopVideoCrossfade: 0, loopAudioCrossfade: .75 });
+  });
   it('retains Turbo when restoring a generated MP4 and its submitted settings', () => {
     const metadata = parseClipMetadata(serializeClipMetadata({ ...clipMetadata, settings: { ...clipMetadata.settings, turbo: true } }))!;
     const restored = restoreClip(metadata, assetId, 4)!;

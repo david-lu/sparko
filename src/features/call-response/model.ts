@@ -1,6 +1,7 @@
 import { playableResult, type CallResponseInterstitial, type Interstitial, type InterstitialResult } from '../../../shared/interstitials';
+import { LOOP_CROSSFADE_SECONDS } from '../../../shared/constants';
 import type { AnswerColor } from './colors';
-import type { StoryNode } from '../story-flow/model';
+import type { FadeChannel, StoryNode } from '../story-flow/model';
 import { behaviors } from '../story-flow/behaviors';
 export type { AnswerColor } from './colors';
 export { answerColor, answerColorStyle } from './colors';
@@ -249,6 +250,13 @@ export function startSession(flow: CallResponseFlow, playing = false): PlaybackS
     loopIteration: 1, outcome: null, answer: '', attempts: 0, visit: 0, lastEdgeId: null, traversedEdgeIds: [] };
 }
 export const sceneFrames = (scene: TimelineScene) => scene.draft ? scene.plannedFrames ?? 144 : scene.clip.outFrame - scene.clip.inFrame;
+/** Both channels meet at the cut; the longer overlap determines the next visit's offset. */
+export function loopCrossfadeFrames(scene: TimelineScene, fps: number, channel?: FadeChannel): number {
+  if (scene.draft || scene.clip.kind !== 'idle') return 0;
+  const frames = (side: FadeChannel) => Math.max(0, Math.min(Math.floor(sceneFrames(scene) / 2),
+    Math.round((scene.storyNode?.[side === 'video' ? 'loopVideoCrossfade' : 'loopAudioCrossfade'] ?? LOOP_CROSSFADE_SECONDS) * fps)));
+  return channel ? frames(channel) : Math.max(frames('video'), frames('audio'));
+}
 export const getScene = (flow: CallResponseFlow, id: SceneId) => flow.scenes.find(scene => scene.id === id)!;
 export const responseInterstitialIds = (flow: CallResponseFlow) => flow.scenes.flatMap(scene => scene.clip.kind === 'response' && scene.interstitialId ? [scene.interstitialId] : []);
 
@@ -279,7 +287,7 @@ export function nextEdge(flow: CallResponseFlow, session: PlaybackSession) {
     ?? (idle ? { id: `idle:${session.sceneId}`, from: session.sceneId, to: session.sceneId, when: 'pending' as const, label: 'No answer · repeat', transitionFrames: 0 } : undefined);
 }
 
-export function advanceSession(flow: CallResponseFlow, session: PlaybackSession, frames: number): PlaybackSession {
+export function advanceSession(flow: CallResponseFlow, session: PlaybackSession, frames: number, crossfade = true): PlaybackSession {
   if (!session.playing || session.finished || !Number.isFinite(frames) || frames <= 0) return session;
   let remaining = Math.floor(frames), state = { ...session };
   while (remaining > 0) {
@@ -292,7 +300,10 @@ export function advanceSession(flow: CallResponseFlow, session: PlaybackSession,
     if (!edge) return { ...state, playing: false, finished: true };
     const looping = edge.to === state.sceneId;
     const enteringWait = getScene(flow, edge.to).clip.kind === 'idle' && !looping;
-    state = { ...state, sceneId: edge.to, frame: 0, visit: state.visit + 1,
+    // The beginning has already played under the outgoing tail. Retain that
+    // position on the next visit so neither picture nor sound jumps backwards.
+    const frame = looping && crossfade ? loopCrossfadeFrames(getScene(flow, state.sceneId), flow.fps) : 0;
+    state = { ...state, sceneId: edge.to, frame, visit: state.visit + 1,
       loopIteration: looping ? state.loopIteration + 1 : 1,
       outcome: enteringWait ? null : state.outcome, outcomeQueuedFrame: enteringWait ? undefined : state.outcomeQueuedFrame,
       answer: enteringWait ? '' : state.answer,

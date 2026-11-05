@@ -19,6 +19,8 @@ export type StoryNode = {
   crossfadeStart?: number; crossfadeEnd?: number;
   /** Zero waits for Continue; positive counts complete iterations. */
   loopCount: number;
+  /** Independent repeat overlaps in seconds; zero makes a hard cut for that channel. */
+  loopVideoCrossfade?: number; loopAudioCrossfade?: number;
   loop?: boolean; conditional?: boolean; conditions?: StoryCondition[]; defaultConditionId?: string;
 };
 export type FadeChannel = 'video' | 'audio';

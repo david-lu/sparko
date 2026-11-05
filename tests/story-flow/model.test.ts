@@ -1,7 +1,7 @@
 import { describe,expect,it } from 'vitest';
 import { autoLayout,connect,createNode,edge,freshId,migrateGraph,nodeDuration,removeNodes,runtimeFlow,splitSource,splitClip,type StoryGraph } from '../../src/features/story-flow/model';
 import { captureTemplate,instantiateTemplate,makePreset } from '../../src/features/story-flow/templates';
-import { advanceSession,answerSession,branchSession,startSession,createTimelineExample } from '../../src/features/call-response/model';
+import { advanceSession,answerSession,branchSession,startSession,createTimelineExample,loopCrossfadeFrames } from '../../src/features/call-response/model';
 import { flowTransition } from '../../src/features/call-response/transitions';
 import { storyDependency } from '../../src/features/story-flow/dependencies';
 import { storyGraphSchema } from '../../src/features/story-flow/schema';
@@ -14,6 +14,32 @@ const project=():Project=>({id:'project',name:'Story',updatedAt:1,source:{name:'
 const initial=()=>migrateGraph(project(),20);
 const ready=(item:ReturnType<typeof createNode>['item'])=>({...item,phase:'ready' as const,result:{assetId:asset,url:`asset:${asset}`,start:2,duration:item.duration,totalDuration:20}});
 describe('story clip graph',()=>{
+  it('keeps independent loop fades through templates, validation and project archives',async()=>{
+    const {node,item}=createNode('looped');node.loopVideoCrossfade=0;node.loopAudioCrossfade=.75;
+    const graph:StoryGraph={version:1,entryId:node.id,nodes:[node],edges:[],templates:[]};
+    const template=captureTemplate(graph,[node.id],[item],'Fading loop')!;
+    graph.templates=[template];
+    const copy=instantiateTemplate(graph,template,[item]);
+    expect(copy.graph.nodes.find(n=>n.id===copy.selectedId)).toMatchObject({loopVideoCrossfade:0,loopAudioCrossfade:.75});
+    const signal=new AbortController().signal,p={...project(),source:{name:'Loop'},storyFlow:graph,interstitials:[item]};
+    const reopened=await unpackProject(await packProject(p,[],signal,()=>undefined),signal,()=>undefined);
+    expect(reopened.project.storyFlow!.nodes[0]).toMatchObject({loopVideoCrossfade:0,loopAudioCrossfade:.75});
+    expect(reopened.project.storyFlow!.templates[0].nodes[0]).toMatchObject({loopVideoCrossfade:0,loopAudioCrossfade:.75});
+    expect(storyGraphSchema.safeParse({...graph,nodes:[{...node,loopAudioCrossfade:-1}]}).success).toBe(false);
+  });
+  it('caps short loop overlaps and exits exactly after the requested number of visits',()=>{
+    const {node,item}=createNode('looped');node.loopCount=3;node.loopVideoCrossfade=9;node.loopAudioCrossfade=0;
+    const graph:StoryGraph={...initial(),entryId:node.id,nodes:[node,...initial().nodes],edges:[]};
+    graph.edges=[edge(node.id,graph.nodes[1].id)];
+    const flow=runtimeFlow(graph,[{...ready(item),result:{...ready(item).result,start:0,duration:.25}}],asset,20);
+    expect(loopCrossfadeFrames(flow.scenes[0],24)).toBe(3);
+    expect(loopCrossfadeFrames(flow.scenes[0],24,'audio')).toBe(0);
+    const session=startSession(flow,true);
+    expect(advanceSession(flow,session,11)).toMatchObject({sceneId:node.id,loopIteration:3,frame:5,elapsedFrames:11});
+    expect(advanceSession(flow,session,12)).toMatchObject({sceneId:graph.nodes[1].id,frame:0,elapsedFrames:12});
+    expect(advanceSession(flow,session,17,false)).toMatchObject({sceneId:node.id,loopIteration:3,frame:5});
+    expect(advanceSession(flow,session,18,false).sceneId).toBe(graph.nodes[1].id);
+  });
   it('splits source ranges without losing frames and keeps the old outgoing route on the second part',()=>{
     const graph=initial(),id=graph.entryId,split=splitSource(graph,id,120);
     expect(split.nodes.map(n=>n.source&&[n.source.inFrame,n.source.outFrame])).toEqual([[0,120],[120,480]]);

@@ -95,6 +95,7 @@ export function joinClips(graph: StoryGraph, items: Interstitial[], ids: string[
   const keepGenerated = !first.source && end.outFrame <= start.bodyStart + start.bodyFrames;
   const trim = { inFrame: start.inFrame - start.bodyStart, outFrame: end.outFrame - start.bodyStart };
   const merged: StoryNode = { ...first, ...behaviors(last), loopCount: last.loopCount,
+    loopVideoCrossfade: last.loopVideoCrossfade, loopAudioCrossfade: last.loopAudioCrossfade,
     conditions: conditionsFor(graph, last), defaultConditionId: last.defaultConditionId,
     crossfadeEnd: last.crossfadeEnd,
     referenceId: selected.has(first.referenceId ?? '') ? undefined : first.referenceId,

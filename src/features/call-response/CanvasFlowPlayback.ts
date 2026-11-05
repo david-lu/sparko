@@ -2,7 +2,7 @@ import { assets } from '../project/assets';
 import { INTERSTITIAL_CROSSFADE_FRAMES } from '../../../shared/constants';
 import type { MediaInfo, MediaSource } from '../../media/media';
 import { CanvasMediaDecks, type PlaybackClip, type PlaybackLayer, type PlaybackSettings } from '../player/CanvasMediaDecks';
-import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, nextEdge, previewScene, sceneFrames, startSession,
+import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, loopCrossfadeFrames, nextEdge, previewScene, sceneFrames, startSession,
   type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
 import { flowTransition } from './transitions';
 import { sceneMediaRange } from '../story-flow/mediaRange';
@@ -31,7 +31,7 @@ export class CanvasFlowPlayback {
       if (this.session.playing && !this.buffering) {
         this.remainder += elapsed * this.flow.fps * this.settings.speed;
         const frames = Math.floor(this.remainder); this.remainder -= frames;
-        if (frames) this.session = advanceSession(this.flow, this.session, frames);
+        if (frames) this.session = advanceSession(this.flow, this.session, frames, this.crossfade);
       }
       this.render(); this.animation = requestAnimationFrame(tick);
     };
@@ -44,6 +44,9 @@ export class CanvasFlowPlayback {
   requestPictureInPicture() { return this.decks.requestPictureInPicture(); }
   private clip(session: PlaybackSession, frame = session.frame + this.remainder): PlaybackClip {
     const scene = getScene(this.flow, session.sceneId);
+    // Half-clip overlaps meet back-to-back. A third visit can be prepared while
+    // the current tail and next head are both still being decoded.
+    const visit = session.visit % (scene.clip.kind === 'idle' ? 3 : 2);
     const fullIdle = (this.flow.storyGraph || scene.clip.kind === 'idle') && scene.generated?.fullAssetId && scene.generated.fullRange;
     const context = fullIdle && (frame < 0 || frame >= sceneFrames(scene));
     // Play the saved original range, including its first frame. Older finished
@@ -57,11 +60,13 @@ export class CanvasFlowPlayback {
       const range=sceneMediaRange(scene,this.flow.fps),bodyStart=range.start;
       const mediaDuration=range.total??(sourceFootage?this.info.duration:scene.clip.outFrame/this.flow.fps);
       const raw=scene.draft?bodyStart:bodyStart+frame/this.flow.fps;
-      const time=Math.max(0,Math.min(Math.max(0,mediaDuration-1/this.flow.fps),raw));
-      return {key:`${scene.id}:${session.visit%2}:body`,sourceFootage,source,
+      // The last frame still contains playable audio. Hold/mute only outside
+      // the media, not during the fractional frame leading into a repeat.
+      const time=raw>=0&&raw<mediaDuration?raw:Math.max(0,Math.min(Math.max(0,mediaDuration-1/this.flow.fps),raw));
+      return {key:`${scene.id}:${visit}:body`,sourceFootage,source,
         time,still:scene.draft||time!==raw,muted:scene.draft||time!==raw};
     }
-    return { key: `${scene.id}:${session.visit % 2}:${context ? 'reference' : 'body'}`, sourceFootage,
+    return { key: `${scene.id}:${visit}:${context ? 'reference' : 'body'}`, sourceFootage,
       muted: !!scene.draft,
       source,
       time: context ? frame < 0 ? scene.generated!.fullRange!.start + frame / this.flow.fps
@@ -89,11 +94,23 @@ export class CanvasFlowPlayback {
     const single = [{ ...currentClip, opacity: 1, gain: currentClip.muted ? 0 : 1,
       musicGain: !this.flow.storyGraph && getScene(this.flow, current.sceneId).clip.kind === 'idle' ? 1 : 0 }];
     if (!this.crossfade) return single;
+    const outgoing = nextEdge(this.flow, current), scene = getScene(this.flow, current.sceneId);
+    if (outgoing?.to === current.sceneId) {
+      const frames = loopCrossfadeFrames(scene, this.flow.fps, channel);
+      const offset = frame - sceneFrames(scene);
+      if (frames && offset >= -frames && offset < 0) {
+        const weight = (offset + frames) / frames, rate = this.flow.fps / frames;
+        const nextClip = this.clip({ ...current, visit: current.visit + 1 }, offset + loopCrossfadeFrames(scene, this.flow.fps));
+        return [{ ...currentClip, opacity: 1, gain: currentClip.muted ? 0 : 1 - weight, gainRate: currentClip.muted ? 0 : -rate,
+          musicGain: single[0].musicGain * (1 - weight) },
+          { ...nextClip, opacity: weight, gain: nextClip.muted ? 0 : weight, gainRate: nextClip.muted ? 0 : rate,
+            musicGain: single[0].musicGain * weight }];
+      }
+    }
     const previous = current.lastEdgeId ? this.flow.edges.find(edge => edge.id === current.lastEdgeId) : undefined;
     const response = this.flow.interaction.answers.find(answer => answer.id === current.outcome)?.sceneId;
     const incoming = current.lastEdgeId ? previous : this.flow.edges.find(edge => edge.to === current.sceneId && edge.from !== edge.to && (!response || edge.from === response))
       ?? this.flow.edges.find(edge => edge.to === current.sceneId && edge.from !== edge.to);
-    const outgoing = nextEdge(this.flow, current);
     for (const [edge, entering] of [[incoming, true], [outgoing, false]] as const) {
       const transition = edge && flowTransition(this.flow, edge, this.crossfadeFrames, channel);
       if (!transition) continue;
@@ -128,7 +145,7 @@ export class CanvasFlowPlayback {
       this.buffering = !this.decks.render(layers, this.session.playing, this.settings,
         layers.reduce((gain, layer) => gain + (layer.musicGain ?? 0), 0));
       if (!this.session.finished) {
-        const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame);
+        const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame, this.crossfade);
         if (!next.finished) {
           const edge = nextEdge(this.flow, this.session);
           const transition = this.crossfade && edge ? (['video', 'audio'] as const)
@@ -138,6 +155,12 @@ export class CanvasFlowPlayback {
             ? Math.max(transition.startFrame, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6))
             : transition?.startFrame ?? 0;
           this.decks.prepare(this.clip(next, prepareFrame));
+          if (this.crossfade && next.sceneId === this.session.sceneId && nextEdge(this.flow, next)?.to === next.sceneId) {
+            const overlap = loopCrossfadeFrames(getScene(this.flow, next.sceneId), this.flow.fps);
+            if (overlap && this.session.frame + this.remainder >= sceneFrames(getScene(this.flow, next.sceneId)) - overlap) {
+              this.decks.prepare(this.clip({ ...next, visit: next.visit + 1 }, 0));
+            }
+          }
         }
       }
       this.changed(this.session, this.buffering);

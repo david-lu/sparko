@@ -45,6 +45,72 @@ const makePlayer = (flow = flowWithReferences()) => new FlowPlayback(flow, { vol
   { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, vi.fn(), undefined, false, true, 4);
 
 describe('canvas flow playback', () => {
+  it('keeps the tail audible through the last fractional frame of a source loop', () => {
+    const graph: StoryGraph = { version: 1, entryId: 'loop', nodes: [{ id: 'loop', name: 'Loop', kind: 'source', loop: true, loopCount: 0, x: 0, y: 0,
+      source: { assetId: 'mock:loop', duration: 1, inFrame: 0, outFrame: 24 } }], edges: [], templates: [] };
+    const player = makePlayer(runtimeFlow(graph, [], 'mock:original', 20));
+    player.seekScene('loop', 23, true); now += 20; tick(now);
+    expect(player.session).toMatchObject({ frame: 23, loopIteration: 1 });
+    expect(layers()).toHaveLength(2);
+    expect(layers()[0]).toMatchObject({ muted: false, still: false });
+    expect(layers()[0].time).toBeCloseTo(23 / 24 + .02);
+    expect(layers()[0].gain + layers()[1].gain).toBeCloseTo(1);
+    player.dispose();
+  });
+  it.each([
+    { video: 12, audio: 4 }, { video: 4, audio: 12 },
+    { video: 0, audio: 12 }, { video: 12, audio: 0 }, { video: 0, audio: 0 },
+  ])('repeats a trimmed full render with independent video $video and audio $audio fades', ({ video, audio }) => {
+    const { node, item } = createNode('looped');
+    node.loopVideoCrossfade = video / 24; node.loopAudioCrossfade = audio / 24;
+    node.trim = { inFrame: 24, outFrame: 72 };
+    const saved = { ...item, phase: 'ready' as const, result: { assetId: 'mock:finished', url: 'blob:finished', start: 0, duration: 4, totalDuration: 4,
+      fullAssetId: 'mock:full', fullRange: { start: 2, duration: 4, totalDuration: 8 } } };
+    const graph: StoryGraph = { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [] };
+    const flow = runtimeFlow(graph, [saved], 'mock:original', 20); flow.scenes[0].volume = .4;
+    const player = makePlayer(flow), overlap = Math.max(video, audio);
+    for (const frame of [42, 46]) {
+      player.seekScene(node.id, frame);
+      const weight = (frames: number) => frames ? Math.max(0, (frame - 48 + frames) / frames) : 0;
+      expect(layers()[0]).toMatchObject({ key: `${node.id}:0:body`, opacity: 1, gain: 1 - weight(audio),
+        source: { assetId: 'mock:full', volume: .4 } });
+      expect(layers()[0].time).toBeCloseTo(3 + frame / 24);
+      if (overlap) {
+        expect(layers()).toHaveLength(2);
+        expect(layers()[1]).toMatchObject({ key: `${node.id}:1:body`, opacity: weight(video), gain: weight(audio),
+          source: { assetId: 'mock:full', volume: .4 } });
+        expect(layers()[1].time).toBeCloseTo(3 + (frame - 48 + overlap) / 24);
+      } else expect(layers()).toHaveLength(1);
+    }
+    player.seekScene(node.id, 47, true); advance();
+    expect(player.session).toMatchObject({ loopIteration: 2, frame: overlap });
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]).toMatchObject({ key: `${node.id}:1:body`, opacity: 1, gain: 1 });
+    expect(layers()[0].time).toBeCloseTo(3 + (overlap + .2) / 24);
+    player.seekScene(node.id, 47, true); player.setCrossfade(false); advance();
+    expect(player.session).toMatchObject({ loopIteration: 2, frame: 0 });
+    expect(layers()).toHaveLength(1);
+    player.dispose();
+  });
+  it('skips repeat fades for drafts, the last counted visit and a queued exit', () => {
+    const { node, item } = createNode('looped'), next = createNode('simple');
+    node.loopCount = 2;
+    const graph: StoryGraph = { version: 1, entryId: node.id, nodes: [node, next.node], edges: [{ ...edge(node.id, next.node.id), crossfade: 0 }], templates: [] };
+    const saved = { ...item, phase: 'ready' as const, result: { assetId: 'mock:loop', url: 'blob:loop', start: 0, duration: 2, totalDuration: 2 } };
+    const draft = makePlayer(runtimeFlow(graph, [item, next.item], 'mock:original', 20));
+    draft.seekScene(node.id, 95, true); expect(layers()).toHaveLength(1); advance();
+    expect(draft.session.frame).toBe(0); draft.dispose();
+    const player = makePlayer(runtimeFlow(graph, [saved, next.item], 'mock:original', 20));
+    player.seekScene(node.id, 47, true); advance();
+    expect(player.session.loopIteration).toBe(2);
+    for (let i = 0; i < 34; i++) advance();
+    expect(player.session.frame).toBe(47); expect(layers()).toHaveLength(1);
+    advance(); expect(player.session.sceneId).toBe(next.node.id);
+    player.seekScene(node.id, 46);
+    expect(layers()).toHaveLength(2);
+    player.branch(node.id, `${node.id}:continue`); expect(layers()).toHaveLength(1);
+    player.dispose();
+  });
   it.each([0, .4, 1])('uses asset volume %s even when a saved loop has the retired mute flag', volume => {
     const { node, item } = createNode('looped');
     const saved = { ...item, loopAudio: false, phase: 'ready' as const,
@@ -377,7 +443,7 @@ describe('canvas flow playback', () => {
     expect(layers()[1].opacity).toBe(0);
     player.dispose();
   });
-  it('caps long fades while keeping the Idle cycle free of fades', () => {
+  it('caps connection fades while keeping the Idle repeat overlap independent', () => {
     const flow = flowWithReferences();
     const incoming = flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!, 48)!;
     const callToIdle = flowTransition(flow, flow.edges.find(edge => edge.id === 'call-wait')!, 48)!;
@@ -392,16 +458,18 @@ describe('canvas flow playback', () => {
     const player = makePlayer(flow); player.setCrossfade(true, 48);
     for (let frame = 0; frame < sceneFrames(getScene(flow, 'wait')); frame++) {
       player.seekScene('wait', frame);
-      expect(layers()).toHaveLength(1);
-      expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1, muted: false });
+      const weight = Math.max(0, (frame - 42) / 6);
+      expect(layers()).toHaveLength(frame < 42 ? 1 : 2);
+      expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1 - weight, muted: false });
+      if (frame >= 42) expect(layers()[1]).toMatchObject({ opacity: weight, gain: weight, muted: false });
     }
     player.seekScene('call', 20); expect(layers()).toHaveLength(1);
     player.seekScene('correct', 60); expect(layers()).toHaveLength(1);
     player.dispose();
   });
-  it('does not fade Idle repeats or advance a fade while either deck buffers', () => {
+  it('retains the incoming loop deck and freezes fades while either deck buffers', () => {
     const player = makePlayer(); player.seekScene('wait', 47, true); advance();
-    expect(player.session).toMatchObject({ sceneId: 'wait', loopIteration: 2 });
+    expect(player.session).toMatchObject({ sceneId: 'wait', loopIteration: 2, frame: 6 });
     expect(layers()).toHaveLength(1);
     expect(layers()[0]).toMatchObject({ gain: 1, muted: false });
     player.seekScene('intro', 68, true); render.mockReturnValue(false); player.play();

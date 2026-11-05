@@ -1,0 +1,38 @@
+import { readFile } from 'node:fs/promises';
+import { test, expect, readProject, saveAndReopen } from './fixtures';
+import { writeClipMetadata } from '../../src/media/clipMetadata';
+import { clipMetadata } from '../fixtures/clip-metadata';
+
+for (const width of [1440, 390]) test(`loop video and audio fades edit independently and persist at ${width}px`, async ({ page }) => {
+  const metadata = { ...clipMetadata, clip: { ...clipMetadata.clip, loop: true } };
+  const blob = await writeClipMetadata(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')], { type: 'video/mp4' }), metadata, new AbortController().signal);
+  await page.setViewportSize({ width, height: 1000 }); await page.goto('/');
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'Loop.mp4', mimeType: 'video/mp4', buffer: Buffer.from(await blob.arrayBuffer()) });
+  await expect(page.locator('.story-clip')).toHaveCount(1); await page.locator('.story-clip-title').click();
+  const video = page.getByRole('spinbutton', { name: 'Loop video crossfade duration', exact: true });
+  const audio = page.getByRole('spinbutton', { name: 'Loop audio crossfade duration', exact: true });
+  await expect(video).toHaveValue('0.25'); await expect(audio).toHaveValue('0.25');
+  await video.fill('0.75'); await video.blur();
+  await expect(audio).toHaveValue('0.25');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(video).toHaveValue('0.25');
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(video).toHaveValue('0.75');
+  await audio.fill('0'); await audio.blur();
+  await expect(video).toHaveValue('0.75');
+  await audio.scrollIntoViewIfNeeded();
+  const below = page.getByRole('region', { name: 'Conditional behavior', exact: true });
+  const position = () => below.evaluate(el => el.getBoundingClientRect().top - el.parentElement!.getBoundingClientRect().top);
+  const idle = await position();
+  await audio.focus(); await expect(page.getByRole('slider', { name: 'Audio fade slider', exact: true })).toBeVisible();
+  expect(await position()).toBe(idle);
+  await audio.blur(); expect(await position()).toBe(idle);
+  await page.screenshot({ path: `test-results/loop-settings-${width}.png`, fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  await expect.poll(async () => (await readProject(page)).storyFlow.nodes[0]).toMatchObject({ loopVideoCrossfade: .75, loopAudioCrossfade: 0 });
+  await saveAndReopen(page); await page.locator('.story-clip-title').click();
+  await expect(video).toHaveValue('0.75'); await expect(audio).toHaveValue('0');
+  await page.getByRole('checkbox', { name: 'Loop', exact: true }).uncheck();
+  await expect(video).toBeHidden(); await expect(audio).toBeHidden();
+  await page.getByRole('checkbox', { name: 'Loop', exact: true }).check();
+  await expect(video).toHaveValue('0.75'); await expect(audio).toHaveValue('0');
+  await audio.fill('999'); await audio.blur(); await expect(audio).toHaveValue('1');
+});
