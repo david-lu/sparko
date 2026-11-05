@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { test, expect, readProject, saveAndReopen, fitAll, type Page } from './fixtures';
 import { writeClipMetadata, readClipMetadata } from '../../src/media/clipMetadata';
 import { clipMetadata } from '../fixtures/clip-metadata';
+import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output } from 'mediabunny';
 
 async function video() {
   const blob = await writeClipMetadata(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')], { type: 'video/mp4' }), clipMetadata, new AbortController().signal);
@@ -63,8 +64,25 @@ test('opening a portable video directly restores it; ordinary and invalid metada
   expect((await readProject(page)).interstitials).toHaveLength(1);
 });
 
-test('metadata preserves real AAC audio and H.264 video packets and survives loop extraction', async ({ page }) => {
+test('a direct Comfy download restores reference identities and the generated section from its saved workflow', async ({ page }) => {
+  const input = new Input({ source: new BlobSource(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')])), formats: ALL_FORMATS });
+  const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat() });
+  try {
+    const prompt = JSON.stringify({ output: { class_type: 'VHS_VideoCombine', inputs: { save_metadata: true }, _meta: { sparko: clipMetadata } } });
+    const conversion = await Conversion.init({ input, output, copy: { mode: 'forced' }, tags: { comment: JSON.stringify({ prompt }) } });
+    await conversion.execute();
+  } finally { input.dispose(); }
   await page.goto('/');
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'comfy-output.mp4', mimeType: 'video/mp4', buffer: Buffer.from(output.target.buffer!) });
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  const project = await readProject(page);
+  expect(project.interstitials[0].result).toMatchObject({ metadata: clipMetadata, start: 1, duration: 2, totalDuration: 4 });
+  expect(project.storyFlow.nodes[0].source).toBeUndefined();
+});
+
+test('metadata survives packet copying, loop extraction, and a volume-adjusted video download', async ({ page }) => {
+  await page.goto('/');
+  const downloadEvent = page.waitForEvent('download');
   const result = await page.evaluate(async metadata => {
     const { Output, BufferTarget, Mp4OutputFormat, CanvasSource, AudioBufferSource, Input, BlobSource, ALL_FORMATS, EncodedPacketSink } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
     const { ensureAac } = await import('/src/media/media.ts' as string); await ensureAac();
@@ -88,9 +106,23 @@ test('metadata preserves real AAC audio and H.264 video packets and survives loo
     const before = await inspect(original), after = await inspect(tagged);
     const loop = await finishLoop(tagged, { url: '', ...metadata.media, metadata }, signal);
     const loopInfo = await inspect(loop.blob);
+    const { assets } = await import('/src/features/project/assets.ts' as string);
+    const { downloadAsset } = await import('/src/features/project/assetExports.ts' as string);
+    const asset = await assets.save(tagged, 'quieter-video.mp4', signal);
+    await downloadAsset({ assetId: asset.id, name: asset.name, kind: 'generated', volume: 0.35 }, signal);
     return { same: JSON.stringify(before.tracks) === JSON.stringify(after.tracks), codecs: after.tracks.map(t => t.codec), comfy: after.tags.raw.prompt,
       metadata: await readClipMetadata(tagged, signal), loop: await readClipMetadata(loop.blob, signal), loopComfy: loopInfo.tags.raw.prompt };
   }, clipMetadata);
   expect(result.same).toBe(true); expect(result.codecs).toEqual(['avc', 'aac']); expect(result.metadata).toEqual(clipMetadata);
   expect(result.loop.media).toEqual({ start: 0, duration: 2, totalDuration: 2 }); expect(result.loopComfy).toBe(result.comfy);
+  const download = await downloadEvent, bytes = await readFile((await download.path())!);
+  const probe = new Input({ source: new BlobSource(new Blob([bytes])), formats: ALL_FORMATS });
+  try { expect(await (await probe.getPrimaryVideoTrack())!.computeDuration()).toBe(clipMetadata.media.totalDuration); }
+  finally { probe.dispose(); }
+  expect(await readClipMetadata(new Blob([bytes]), new AbortController().signal)).toEqual(clipMetadata);
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'quieter-video.mp4', mimeType: 'video/mp4', buffer: bytes });
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  expect((await readProject(page)).interstitials[0].result).toMatchObject({ metadata: clipMetadata, start: 1, duration: 2, totalDuration: 4 });
+  await drop(page, bytes);
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
 });

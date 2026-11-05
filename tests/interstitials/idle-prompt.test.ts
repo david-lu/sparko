@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Interstitial } from '../../shared/interstitials';
 import { generateInterstitial } from '../../src/features/interstitials/api';
 import { request, sendForm } from '../../src/shared/api';
+import { captureClipOrigin } from '../../src/features/interstitials/clipMetadata';
 
 vi.mock('../../src/shared/api', () => ({ request: vi.fn(), sendForm: vi.fn() }));
 
@@ -20,9 +21,11 @@ describe('visible prompts sent to Comfy', () => {
     const engine = { exportMp4: vi.fn(async () => new Blob(['reference'], { type: 'video/mp4' })) };
     const info = { duration: 4, fps: 24, width: 960, height: 544, hasAudio: true, codec: 'avc' };
     const signal = new AbortController().signal;
-    await generateInterstitial(idle, engine, info, signal, () => undefined);
+    const requestOrigin = captureClipOrigin(idle, undefined);
+    await generateInterstitial({ ...idle, requestOrigin }, engine, info, signal, () => undefined);
     const [path, body] = vi.mocked(sendForm).mock.calls[0];
     expect(path).toBe('/api/comfy/interstitials');
+    expect(JSON.parse(body.get('clipOrigin') as string)).toEqual(requestOrigin);
     expect(body.get('mode')).toBe('loop');
     expect(body.get('prompt')).toBe(idle.prompt);
     expect(body.get('prompt')).toContain('cyborg silently points');

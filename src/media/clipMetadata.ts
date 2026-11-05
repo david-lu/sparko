@@ -1,5 +1,5 @@
 import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output } from 'mediabunny';
-import { CLIP_METADATA_TAG, MAX_CLIP_METADATA_BYTES, clipMetadataSchema, parseClipMetadata, type ClipMetadata } from '../../shared/clip-metadata';
+import { CLIP_METADATA_TAG, parseClipMetadata, parseComfyClipMetadata, serializeClipMetadata, type ClipMetadata } from '../../shared/clip-metadata';
 
 export async function readClipMetadata(blob: Blob, signal: AbortSignal): Promise<ClipMetadata | undefined> {
   signal.throwIfAborted();
@@ -7,7 +7,9 @@ export async function readClipMetadata(blob: Blob, signal: AbortSignal): Promise
   const abort = () => input.dispose(); signal.addEventListener('abort', abort, { once: true });
   try {
     const tags = await input.getMetadataTags(); signal.throwIfAborted();
-    return parseClipMetadata(tags.raw?.[CLIP_METADATA_TAG]);
+    // A local tag may describe an extracted loop and takes precedence over the original graph.
+    if (tags.raw?.[CLIP_METADATA_TAG] !== undefined) return parseClipMetadata(tags.raw[CLIP_METADATA_TAG]);
+    return parseComfyClipMetadata(tags.raw?.prompt) ?? parseComfyClipMetadata(tags.comment);
   } catch { signal.throwIfAborted(); return; }
   finally { signal.removeEventListener('abort', abort); input.dispose(); }
 }
@@ -15,8 +17,7 @@ export async function readClipMetadata(blob: Blob, signal: AbortSignal): Promise
 /** Copy encoded packets and all existing tags, including Comfy's graph. Never re-encode. */
 export async function writeClipMetadata(blob: Blob, metadata: ClipMetadata, signal: AbortSignal, onProgress?: (value: number) => void): Promise<Blob> {
   signal.throwIfAborted();
-  const text = JSON.stringify(clipMetadataSchema.parse(metadata));
-  if (new TextEncoder().encode(text).length > MAX_CLIP_METADATA_BYTES) throw new Error('Clip metadata exceeds 256 KB.');
+  const text = serializeClipMetadata(metadata);
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory', metadataFormat: 'mdta' }) });
   let conversion: Conversion | undefined;

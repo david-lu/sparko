@@ -98,7 +98,8 @@ export class ProjectController {
         const asset: Asset = { id: blob === file && entry.assetId || freshId(), name: file.name, blob };
         if (asset.id !== entry.assetId) pending.push(asset);
         openedIds.push(asset.id);
-        const restored = metadata && restoreClip(metadata, asset.id, info.duration);
+        // AAC padding can extend the container beyond the unchanged video frames.
+        const restored = metadata && restoreClip(metadata, asset.id, info.videoDuration ?? info.duration);
         if (restored) { nodes.push(restored.node); added.push(restored.item); continue; }
         const library = initial.library?.find(item => item.assetId === entry.assetId);
         let originalAssetId = library?.originalAssetId;
@@ -595,7 +596,8 @@ export class ProjectController {
       const id = `file:${file.name}:${file.size}:${file.lastModified}`;
       const asset = { id: crypto.randomUUID(), name: file.name, blob: file };
       const metadata = await readClipMetadata(file, signal);
-      const restored = metadata && restoreClip(metadata, asset.id, (await this.validateVideo(file, signal)).duration);
+      const info = metadata && await this.validateVideo(file, signal);
+      const restored = metadata && info && restoreClip(metadata, asset.id, info.videoDuration ?? info.duration);
       const project: Project = restored
         ? { ...this.create({ id, name: file.name, url: '' }), source: { name: file.name }, interstitials: [restored.item],
           storyFlow: { version: 1, entryId: restored.node.id, nodes: [{ ...restored.node, x: 40, y: 90 }], edges: [], templates: [] } }

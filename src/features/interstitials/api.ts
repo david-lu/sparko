@@ -50,6 +50,7 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   if (clip && clip.size > INTERSTITIAL.maxReferenceBytes) throw new Error('The reference clip exceeds 50 MB. Shorten the reference ranges.');
   signal.throwIfAborted();
   const body = new FormData();
+  if (item.requestOrigin) body.set('clipOrigin', JSON.stringify(item.requestOrigin));
   if (images.length) body.set('imageReferences', JSON.stringify(images));
   if (startImageIndex !== undefined) body.set('startImageIndex', String(startImageIndex));
   if (endImageIndex !== undefined) body.set('endImageIndex', String(endImageIndex));

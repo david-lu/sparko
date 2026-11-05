@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createComfyProvider } from '../../server/features/comfy/provider';
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
+import { clipOriginSchema } from '../../shared/clip-metadata';
+import { clipMetadata } from '../fixtures/clip-metadata';
 
 const input = { before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge the scene', width: 960, height: 544, hasAudio: true };
 const catalogFor = (graph: ReturnType<typeof bridgeWorkflow>): Record<string, object> => ({ ...Object.fromEntries(Object.values(graph).map(node => [node.class_type, {}])), MVEx_FrameRangeMask: {} });
@@ -9,6 +11,17 @@ const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body)
 const collect = async <T>(stream: AsyncIterable<T>) => { const items: T[] = []; for await (const item of stream) items.push(item); return items; };
 
 describe('Comfy Cloud v2 adapter', () => {
+  it.each(['native', '2k'] as const)('includes portable clip data in the saved %s workflow without exposing credentials', async resolution => {
+    const clipOrigin = clipOriginSchema.parse(clipMetadata), settings = { ...input, resolution, clipOrigin };
+    const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(catalogFor(bridgeWorkflow('asset', settings, 0))))
+      .mockResolvedValueOnce(reply({ id: 'input-asset' })).mockResolvedValueOnce(reply({ id: 'comfy-job-123', status: 'queued' }));
+    const job = await createComfyProvider({ COMFY_CLOUD_API_KEY: 'private-key' }, transport).submit(new Blob(['video']), settings);
+    const payload = JSON.parse(String(transport.mock.calls.at(-1)![1]!.body));
+    expect(payload.workflow.output._meta.sparko).toEqual({ ...clipOrigin, media: job.insertion, prompt: input.prompt });
+    expect(payload.workflow.output.class_type).toBe(resolution === '2k' ? 'SaveVideo' : 'VHS_VideoCombine');
+    expect(JSON.stringify(payload.workflow)).not.toContain('private-key');
+    expect(payload.extra_data?.extra_pnginfo).toBeUndefined();
+  });
   it('checks loop guides independently and fails before uploading when unavailable', async () => {
     const settings = { ...input, mode: 'loop' as const, before: 0, after: 0 };
     const nodes = { ...catalog, ...catalogFor(bridgeWorkflow(undefined, settings, 0, undefined, ['pose'])) };

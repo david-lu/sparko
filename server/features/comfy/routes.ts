@@ -17,6 +17,7 @@ import { comfyRequestError } from './errors.js';
 import { parseImageReferences } from './image-references.js';
 import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 import { maskCurveSchema } from '../../../shared/mask-curves.js';
+import { clipOriginSchema, MAX_CLIP_METADATA_BYTES } from '../../../shared/clip-metadata.js';
 
 const frameRange = z.coerce.number().finite().min(COMFY.minContextFrames / TIMELINE_FPS).max(4)
   .refine(value => Math.abs(value * TIMELINE_FPS - Math.round(value * TIMELINE_FPS)) < 1e-6, 'Reference ranges must use whole 24 fps frames.');
@@ -27,6 +28,10 @@ const maskCurve = z.preprocess(value => {
   try { return JSON.parse(value); } catch { return value; }
 }, maskCurveSchema.optional());
 const schema = z.object({ lora: loraAddressSchema.optional(),
+  clipOrigin: z.preprocess(value => {
+    if (typeof value !== 'string' || new TextEncoder().encode(value).length > MAX_CLIP_METADATA_BYTES) return value;
+    try { return JSON.parse(value); } catch { return value; }
+  }, clipOriginSchema.optional()),
   loraStrength: z.preprocess(value => typeof value === 'string' && value.trim() ? Number(value) : value, loraStrengthSchema.optional()), before: optionalRange, after: optionalRange,
   mode: z.enum(['bridge', 'extend', 'loop', 'custom']).default('bridge'),
   width: z.coerce.number().int().min(32).max(8192).optional(), height: z.coerce.number().int().min(32).max(8192).optional(),
