@@ -34,7 +34,7 @@ for (const width of [1440, 390]) test(`asset thumbnails and context menus work w
   await expect(audio.getByRole('img', { name: 'Waveform of voice-answer.wav' })).toBeVisible();
 
   await audio.click(); await image.click({ button: 'right' });
-  await expect(actions(page).getByRole('menuitem').allTextContents()).resolves.toEqual(['Open in Inspector', 'Edit image', 'Download', 'Rename asset…', 'Delete asset…']);
+  await expect(actions(page).getByRole('menuitem').allTextContents()).resolves.toEqual(['Open in Inspector', 'Add to timeline', 'Edit image', 'Download', 'Rename asset…', 'Delete asset…']);
   await expect(image).toHaveAttribute('aria-pressed', 'true'); await expect(audio).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByLabel('Asset name', { exact: true })).toHaveValue('Reference.png');
   await page.keyboard.press('Escape'); await expect(image).toBeFocused();
@@ -145,5 +145,5 @@ test('generation menus reflect draft, running, cancelled and completed states', 
   complete = true; await actions(page).getByRole('menuitem', { name: 'Check result', exact: true }).click();
   await expect(generation.locator('.library-thumb')).toHaveAttribute('data-preview-state', 'ready');
   await generation.click({ button: 'right' });
-  expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Open in Inspector', 'Edit image', 'Download selected version', 'Rename generation…', 'Delete generation…']);
+  expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Open in Inspector', 'Add to timeline', 'Edit image', 'Download selected version', 'Rename generation…', 'Delete generation…']);
 });

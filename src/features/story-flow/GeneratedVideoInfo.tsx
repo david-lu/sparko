@@ -47,9 +47,9 @@ export default function GeneratedVideoInfo({ item, node, nodes, items, assetAlia
   </div>))}</dl>;
   if (!range) return <section className="generated-video-info" aria-label="Video breakdown"><h3>Saved video</h3>{seed}{references}<p className="hint">{format(result.duration)} playable loop. Reference timings were not saved with this older render.</p></section>;
   const bounds = generatedBounds(node, result.duration);
-  const sections = [{ id: 'reference', label: 'Opening reference', start: 0, end: range.start, detail: opening.map(ref => `${ref.name}: ${ref.detail}`).join(' → ') },
+  const sections = [{ id: 'reference opening', label: 'Opening reference', start: 0, end: range.start, detail: opening.map(ref => `${ref.name}: ${ref.detail}`).join(' → ') },
     { id: 'generated', label: 'Generated section', start: range.start, end, detail: 'New video created for this clip' },
-    { id: 'reference', label: 'Ending reference', start: end, end: range.totalDuration, detail: ending.map(ref => `${ref.name}: ${ref.detail}`).join(' → ') }].filter(s => s.end - s.start > 1e-6);
+    { id: 'reference ending', label: 'Ending reference', start: end, end: range.totalDuration, detail: ending.map(ref => `${ref.name}: ${ref.detail}`).join(' → ') }].filter(s => s.end - s.start > 1e-6);
   return <section className="generated-video-info" aria-label="Video breakdown"><h3>Video breakdown <span>{format(range.totalDuration)} total</span></h3>
     <p className="hint">{item.phase === 'ready' ? 'Actual timings in the saved video.' : 'Showing the last playable video while its replacement is pending.'}</p>
     {seed}{references}

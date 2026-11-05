@@ -89,7 +89,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
   }, [project?.id]);
   const importFiles = async (entries: LibraryFile[] | Promise<LibraryFile[]>, target?: string) => {
     if (busy) return; setBusy(true); setMessage('Reading files…');
-    try { const added = await editor.projects.importAssets(await entries, target, setMessage); setMessage(`${added.length} assets imported`); if (added[0]) editor.selectLibrary({ type: 'asset', id: added[0].assetId }); }
+    try { const added = await editor.projects.importAssets(await entries, target, setMessage); setMessage(editor.projects.getSnapshot().error || `${added.length} assets imported`); if (added[0]) editor.selectLibrary({ type: 'asset', id: added[0].assetId }); }
     catch (e) { setMessage(e instanceof Error ? e.message : 'Import failed.'); }
     finally { setBusy(false); }
   };
