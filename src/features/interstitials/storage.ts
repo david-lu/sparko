@@ -1,6 +1,6 @@
 import { generationSeedSchema } from '../../../shared/generation-seed';
 import { loraAddressSchema, loraInstructionsSchema, loraStrengthSchema } from '../../../shared/loras';
-import { videoAssetReferenceSchema } from '../../../shared/video-references';
+import { videoAssetReferenceSchema, videoReferenceSettings } from '../../../shared/video-references';
 import { INTERSTITIAL } from '../../../shared/constants';
 import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
 import { maskCurveSchema } from '../../../shared/mask-curves';
@@ -11,7 +11,7 @@ function readReference(value: unknown): GenerationReference | undefined {
   const validClip = (clip: ClipReference | undefined) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
     && Number.isInteger(clip.inFrame) && Number.isInteger(clip.outFrame) && clip.inFrame >= 0 && clip.outFrame > clip.inFrame;
   const input = value as GenerationReference | undefined;
-  return input && (input.before ? validClip(input.before) : input.mode === 'custom' || input.mode === 'loop' && !input.after) && (!input.after || validClip(input.after)) ? input : undefined;
+  return input && [input.beforeClips, input.afterClips].every(clips => clips === undefined || Array.isArray(clips) && clips.length <= 1000 && clips.every(validClip)) && (input.before ? validClip(input.before) : input.mode === 'custom' || input.mode === 'loop' && !input.after) && (!input.after || validClip(input.after)) ? input : undefined;
 }
 
 function readSettings(value: unknown): InterstitialSettings | undefined {
@@ -21,7 +21,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
   if (method !== undefined && method !== 'fal' && !generationMethods.includes(method as InterstitialSettings['method'] & string)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
-  return interstitialSettings({ ...settings, seed: generationSeedSchema.safeParse(settings.seed).data, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
+  return interstitialSettings({ ...settings, startVideoAssets: videoReferenceSettings.startVideoAssets.safeParse(settings.startVideoAssets).data, endVideoAssets: videoReferenceSettings.endVideoAssets.safeParse(settings.endVideoAssets).data, seed: generationSeedSchema.safeParse(settings.seed).data, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
 }
 
 function readResult(value: unknown): InterstitialResult | undefined {
@@ -55,6 +55,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         continuity: typeof item.continuity === 'string' ? item.continuity : undefined, dialogue: typeof item.dialogue === 'string' ? item.dialogue : undefined, loopAudio: typeof item.loopAudio === 'boolean' ? item.loopAudio : undefined,
         useStartVideoAsset: typeof item.useStartVideoAsset === 'boolean' ? item.useStartVideoAsset : undefined,
         useEndVideoAsset: typeof item.useEndVideoAsset === 'boolean' ? item.useEndVideoAsset : undefined,
+        startVideoAssets: videoReferenceSettings.startVideoAssets.safeParse(item.startVideoAssets).data, endVideoAssets: videoReferenceSettings.endVideoAssets.safeParse(item.endVideoAssets).data,
         startVideoAsset: videoAssetReferenceSchema.safeParse(item.startVideoAsset).data,
         endVideoAsset: videoAssetReferenceSchema.safeParse(item.endVideoAsset).data,
         startReferenceType: referenceTypes.includes(item.startReferenceType) ? item.startReferenceType : undefined,

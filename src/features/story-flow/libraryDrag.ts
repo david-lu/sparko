@@ -55,8 +55,8 @@ export function startLibraryDrag(event:DragEvent,payload:LibraryItem,selection?:
   const media='assetId' in payload||'generationId' in payload;
   const items=selection??('generationId' in payload&&payload.generationId?[{type:'generation' as const,id:payload.generationId}]:
     'assetId' in payload&&payload.assetId?[{type:'asset' as const,id:payload.assetId}]:[]);
-  event.dataTransfer.effectAllowed=items.length>1?'move':media?'copyMove':'copy';
-  // Multi-selection is a library move; single media items can also be copied into clips and references.
+  event.dataTransfer.effectAllowed=items.length>1?'copyMove':media?'copyMove':'copy';
+  // Multi-selection can move within Library or copy into reference inputs. Timeline placement uses one item.
   if(items.length<=1)event.dataTransfer.setData(STORY_DRAG_TYPE,JSON.stringify(payload));
   if(media){event.dataTransfer.setData(LIBRARY_MOVE_TYPE,JSON.stringify(items));showLibraryDragImage(event,items.length,thumbnails);}
   // Template and clip placement already draws a zoomed preview in the timeline.

@@ -29,7 +29,7 @@ export const clipSettingsSchema = z.object({
   videoMaskTransitionMs: seconds.int().max(MASK_TRANSITION.maxMs),
   audioMaskCurve: maskCurveSchema.optional(), videoMaskCurve: maskCurveSchema.optional(),
 });
-const reference = z.object({ sceneId: id, assetId: id, name: z.string().max(1000), renderId: z.uuid().optional(),
+const reference = z.object({ kind: z.literal('image').optional(), sceneId: id, assetId: id, name: z.string().max(1000), renderId: z.uuid().optional(),
   inFrame: frame, outFrame: frame }).refine(v => v.outFrame > v.inFrame);
 export const clipOriginSchema = z.object({
   format: z.literal('sparko-clip'), version: z.literal(1), fps: z.literal(TIMELINE_FPS), id: z.uuid(),
@@ -40,7 +40,7 @@ export const clipOriginSchema = z.object({
     defaultConditionId: id.optional(),
   }),
   settings: clipSettingsSchema,
-  references: z.object({ mode: z.enum(['bridge', 'extend', 'loop', 'custom']).optional(), before: reference.optional(), after: reference.optional() }),
+  references: z.object({ mode: z.enum(['bridge', 'extend', 'loop', 'custom']).optional(), before: reference.optional(), after: reference.optional(), beforeClips: z.array(reference).max(1000).optional(), afterClips: z.array(reference).max(1000).optional() }),
 });
 export const clipMetadataSchema = clipOriginSchema.extend({
   prompt: z.string().max(8000), jobId: id.optional(),

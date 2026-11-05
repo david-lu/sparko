@@ -74,7 +74,7 @@ for (const width of [1440, 390]) test(`library selections preview and move toget
   await beginDrag(page, asset(page, 'One.png'), target); await expect(target).toHaveClass(/is-drop-target/);
   expect(await shape()).toEqual(idle);
   const preview = await page.evaluate(() => (window as any).libraryDragImage);
-  expect(preview.text).toBe('4'); expect(preview.thumbnails).toHaveLength(4); expect(preview.effect).toBe('move');
+  expect(preview.text).toBe('4'); expect(preview.thumbnails).toHaveLength(4); expect(preview.effect).toBe('copyMove');
   expect(preview.x).toBe(preview.width / 2); expect(preview.y).toBe(preview.height / 2);
   expect(preview.thumbnails.map((t: any) => [t.x, t.y])).toEqual([[6, 6], [14, 14], [22, 22], [30, 30]]);
   await page.screenshot({ path: `test-results/library-multi-drag-${width}.png`, fullPage: true });

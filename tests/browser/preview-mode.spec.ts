@@ -140,5 +140,5 @@ test('an empty project has a stable disabled preview and can return to editing',
   await expect(seek(page)).toBeDisabled();
   await expect(page.getByText('No video to preview. Add clips in Edit mode.')).toBeVisible();
   await edit(page).click();
-  await expect(page.getByRole('button', { name: 'Import videos', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Import videos or images', exact: true })).toBeVisible();
 });

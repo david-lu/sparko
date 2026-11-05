@@ -71,7 +71,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     const state=projects.getSnapshot(),project=state.project;
     if(!project?.storyFlow||state.busy)throw new Error('Wait for the current operation to finish.');
     const asset=project.library?.find(a=>a.assetId===assetId);
-    if(!asset||!['video','generated'].includes(asset.kind))throw new Error('Choose a video from Library.');
+    if(!asset||!['video','generated','image'].includes(asset.kind))throw new Error('Choose a video or image from Library.');
     const matches=project.storyFlow.nodes.filter(n=>{
       const item=project.interstitials.find(i=>i.id===n.interstitialId),result=item&&playableResult(item);
       return n.source?.assetId===assetId||result?.assetId===assetId||result?.fullAssetId===assetId;
@@ -173,7 +173,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     patch(id,{name:name.trim().slice(0,1000)||'Untitled'});};
   const importVideos=async(files:File[],position?:{x:number;y:number})=>{
     player.pause();const ids=await projects.importVideos(files,position);
-    if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice(`Imported ${ids.length} video${ids.length===1?'':'s'} as separate clips.`);}
+    if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice(`Imported ${ids.length} clip${ids.length===1?'':'s'} as separate clips.`);}
   };
   const addAsset=async(assetId:string,position?:{x:number;y:number})=>{
     player.pause();

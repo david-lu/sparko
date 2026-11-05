@@ -19,6 +19,11 @@
 .inspector-property input,.inspector-property select,.inspector-rule-heading input{width:100%;min-width:0;height:24px;padding:2px 5px;border:1px solid transparent;border-radius:3px;background:var(--input);font-size:11px;color:var(--accent)}
 .inspector-property input:hover,.inspector-property select:hover,.inspector-rule-heading input:hover{border-color:var(--line-strong)}
 .inspector-property input[type=number]{font-family:var(--mono)}
+.video-frame-rate{height:28px}.video-frame-rate output{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}
+.video-frame-rate-value{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}.video-frame-rate-value button{flex:none}
+.frame-rate-dialog{--property-label:80px}.frame-rate-source{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.frame-rate-dialog .hint{margin-top:14px;line-height:1.5}.frame-rate-feedback{height:40px;margin:12px 0;overflow:auto;font-size:11px;color:var(--error,#e7b6ae)}
+.frame-rate-actions{display:flex;justify-content:flex-end;gap:8px}.frame-rate-actions .primary{min-width:150px}
 .inspector-options{display:flex;min-width:0;border:1px solid var(--line);border-radius:3px;overflow:hidden}
 .inspector-options button{flex:1;min-width:0;min-height:24px;padding:2px 4px;background:transparent;color:var(--muted);font-size:10px;white-space:nowrap}
 .inspector-options button+button{border-left:1px solid var(--line)}
@@ -97,3 +102,5 @@
 @container(max-width:280px){.story-inspector.clip-inspector{--property-label:63px;padding-inline:7px}.inspector-options button{font-size:9px;padding-inline:2px}.inspector-clip-tools .icon-button.small{width:22px;min-width:22px}}
 
 .reference-video-toggle{display:flex;align-items:center;gap:5px;font-size:10px;min-height:28px;flex-wrap:wrap}.reference-video-toggle input{accent-color:var(--accent)}.reference-video-toggle small{color:var(--muted);margin-left:auto}.inspector-reference .range-fields{grid-template-columns:1fr;gap:2px;padding:4px 0}
+
+.reference-sequence-clip{min-width:0}.reference-sequence-clip .inspector-reference-heading>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.reference-sequence-clip .inspector-reference-heading>div{display:flex;flex-shrink:0}

@@ -89,7 +89,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
   }, [project?.id]);
   const importFiles = async (entries: LibraryFile[] | Promise<LibraryFile[]>, target?: string) => {
     if (busy) return; setBusy(true); setMessage('Reading files…');
-    try { const added = await editor.projects.importAssets(await entries, target, setMessage); setMessage(`${added.length} assets imported`); if (added[0]) editor.selectLibrary({ type: 'asset', id: added[0].assetId }); }
+    try { const added = await editor.projects.importAssets(await entries, target, setMessage); setMessage(editor.projects.getSnapshot().error || `${added.length} assets imported`); if (added[0]) editor.selectLibrary({ type: 'asset', id: added[0].assetId }); }
     catch (e) { setMessage(e instanceof Error ? e.message : 'Import failed.'); }
     finally { setBusy(false); }
   };
@@ -233,7 +233,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
   };
   const row = (a: LibraryAsset, depth: number) => <button key={a.assetId} style={{ paddingLeft: depth * 12 + 6 }} className={isSelected('asset', a.assetId) ? 'selected' : ''}
     aria-label={`Library asset ${a.name}`} aria-pressed={isSelected('asset', a.assetId)} data-asset-id={a.assetId} data-library-type="asset" data-library-id={a.assetId} draggable
-    onClick={e => choose({ type: 'asset', id: a.assetId }, e)} onDoubleClick={() => { if (a.kind === 'video' || a.kind === 'generated') void editor.addAsset(a.assetId); }}
+    onClick={e => choose({ type: 'asset', id: a.assetId }, e)} onDoubleClick={() => { if (a.kind === 'video' || a.kind === 'generated' || a.kind === 'image') void editor.addAsset(a.assetId); }}
     onContextMenu={e => contextMenu(e, { type: 'asset', id: a.assetId })}
     onDragStart={e => startAssetDrag(e, { type: 'asset', id: a.assetId }, { assetId: a.assetId })}>
     <AssetThumbnail asset={a} kind={a.kind} name={a.name}/>
@@ -325,7 +325,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
       {!multiple && (menuAsset || menuGeneration) && <>
         <button role="menuitem" onClick={() => { if (menu.target.type === 'asset' || menu.target.type === 'generation') choose(menu.target); setMenu(null); }}>Open in Inspector</button>
         {menuOutput && <>
-          {(menuOutput.kind === 'video' || menuOutput.kind === 'generated') && <button role="menuitem" onClick={() => run(() => editor.addAsset(menuOutput.assetId))}>Add to timeline</button>}
+          {(menuOutput.kind === 'video' || menuOutput.kind === 'generated' || menuOutput.kind === 'image') && <button role="menuitem" onClick={() => run(() => editor.addAsset(menuOutput.assetId))}>Add to timeline</button>}
           {menuOutput.kind === 'image' && <button role="menuitem" onClick={() => editImage(menuGeneration ? { ...menuOutput, folderId: menuGeneration.folderId } : menuOutput)}>Edit image</button>}
           <button role="menuitem" onClick={() => run(() => downloadAsset({ ...menuOutput, volume: assetVolume(library, menuOutput.assetId) }))}>Download{menuGeneration ? ' selected version' : ''}</button>
         </>}

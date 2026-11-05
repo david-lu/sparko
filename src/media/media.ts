@@ -4,9 +4,11 @@ import {
 } from 'mediabunny';
 import { validateSlice, type Slice } from '../../shared/contracts';
 import type { ExportFrame } from './videoFraming';
+import { DEFAULT_IMAGE_DURATION, loadStillImage, stillCanvas } from './stillImage';
+import { TIMELINE_FPS } from '../../shared/constants';
 import { audioVolume, scaleAudioSample } from './audioVolume';
 
-export type MediaSource = { id: string; name: string; url: string; file?: File; assetId?: string; volume?: number };
+export type MediaSource = { id: string; name: string; url: string; file?: File; assetId?: string; volume?: number; kind?: 'image'; duration?: number };
 export type MediaInfo = { duration: number; videoDuration?: number; width: number; height: number; codec: string; fps: number; hasAudio: boolean };
 export type Thumbnail = { time: number; url: string };
 type TaskOptions = { signal?: AbortSignal; onProgress?: (progress: number) => void };
@@ -24,6 +26,11 @@ export function openInput(source: MediaSource): Input {
 }
 
 export async function inspectMedia(source: MediaSource): Promise<MediaInfo> {
+  if (source.kind === 'image') {
+    const image = await loadStillImage(source);
+    try { return { duration: source.duration ?? DEFAULT_IMAGE_DURATION, width: image.width, height: image.height, codec: 'image', fps: TIMELINE_FPS, hasAudio: false }; }
+    finally { image.close(); }
+  }
   const input = openInput(source);
   try {
     const video = await input.getPrimaryVideoTrack();
@@ -49,6 +56,11 @@ function jpeg(canvas: HTMLCanvasElement | OffscreenCanvas): string {
 /** Decode the frame displayed at an exact media timestamp. */
 export async function sampleFrame(source: MediaSource, time: number, width = 180, signal?: AbortSignal): Promise<Thumbnail> {
   signal?.throwIfAborted();
+  if (source.kind === 'image') {
+    const image = await loadStillImage(source, signal);
+    try { return { time, url: jpeg(stillCanvas(image, width, Math.max(1, Math.round(width * image.height / image.width)))) }; }
+    finally { image.close(); }
+  }
   const input = openInput(source);
   const abort = () => input.dispose();
   signal?.addEventListener('abort', abort, { once: true });
@@ -67,6 +79,7 @@ export async function sampleFrame(source: MediaSource, time: number, width = 180
 }
 
 export async function sampleFrames(source: MediaSource, slice: Slice, count: number, width = 768, signal?: AbortSignal): Promise<Thumbnail[]> {
+  if (source.kind === 'image') return [await sampleFrame(source, slice.start, width, signal)];
   const input = openInput(source);
   const abort = () => input.dispose();
   signal?.throwIfAborted();
@@ -152,6 +165,7 @@ export async function exportMp4(source: MediaSource, slice: Slice, options: Task
 }
 
 export async function extractAudio(source: MediaSource, slice: Slice, options: TaskOptions = {}): Promise<Blob | null> {
+  if (source.kind === 'image') return null;
   const input = openInput(source);
   try {
     validateSlice(slice, await input.computeDuration(), 120);

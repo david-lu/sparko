@@ -57,7 +57,7 @@ describe('universal asset references', () => {
     expect(dependency().blocked).toContain('following'); expect(dependency().reference?.before?.assetId).toBe(video);
     expect(item.result.reference?.after?.inFrame).toBe(96);
     item.useEndVideoAsset = true; item.endVideoAsset = undefined;
-    expect(dependency().blocked).toBe('Choose a video for the end reference.');
+    expect(dependency().blocked).toBe('Choose videos or images for the end reference.');
   });
   it('round-trips folders, versions, and reference-only assets with remapped identities', async () => {
     const { project, item, image, video, output, generation } = fixture();

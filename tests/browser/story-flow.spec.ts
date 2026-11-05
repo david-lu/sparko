@@ -88,6 +88,8 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await expect(placeholder).toHaveCount(0);await expect(generated.locator('.video-filmstrip img').first()).toBeVisible();expect((await generated.boundingBox())!.height).toBe(draftHeight);
   await expect(generated).toHaveAttribute('data-media-duration','4');await fitAll(page);
   await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0.75');await expect(page.locator('.connection-inspector')).toContainText('Automatic: 75%');
+  await expect(generated.locator('.story-reference-section')).toHaveCount(0);
+  await generated.locator('.story-clip-title').click();
   const sections=await generated.evaluate(el=>{const r=el.querySelector('.story-reference-section')!,g=el.querySelector('.story-generated-section')!;return {reference:r.getBoundingClientRect().width,generated:g.getBoundingClientRect().width,referenceColor:getComputedStyle(r).backgroundColor,generatedColor:getComputedStyle(g).backgroundColor,height:el.getBoundingClientRect().height};});
   expect(sections.reference/sections.generated).toBeCloseTo(.5,1);expect(sections.referenceColor).not.toBe(sections.generatedColor);expect(sections.height).toBe(76);
   await generated.locator('.story-filmstrip').focus();await page.keyboard.press('Home');expect(await generated.locator('.story-playhead').evaluate(el=>(el as HTMLElement).style.left)).toBe('25%');

@@ -5,7 +5,8 @@ import LoopReferenceHelp from './LoopReferenceHelp';
 import { referenceType } from './referenceInputs';
 import AssetInput from '../project/AssetInput';
 import type { ProjectController } from '../project/ProjectController';
-import { TIMELINE_FPS } from '../../../shared/constants';
+import { videoAssets } from '../../../shared/video-references';
+import VideoReferenceSequence from './VideoReferenceSequence';
 import { IMAGE_REFERENCE } from '../../../shared/image-references';
 import ContentIssues, { type ContentIssue } from '../../shared/ContentIssues';
 
@@ -21,7 +22,9 @@ export default function StoryReferences({ item, loop, labels, onChange, projects
       const imageField = side === 'start' ? 'startImageIndex' : 'endImageIndex';
       const range = side === 'start' ? 'start_range' : 'end_range';
       const arbitraryField = side === 'start' ? 'useStartVideoAsset' : 'useEndVideoAsset', assetField = side === 'start' ? 'startVideoAsset' : 'endVideoAsset';
-      const arbitrary = item[arbitraryField], asset = item[assetField];
+      const arbitrary = item[arbitraryField], clips = videoAssets(item, side);
+      const sequenceField = side === 'start' ? 'startVideoAssets' : 'endVideoAssets';
+      const sequenceLabel = clips.map(clip => clip.name).join(' → ');
       const type = referenceType(item, side), index = item[imageField] ?? 0;
       const choose = (value: ReferenceType) => onChange({ [typeField]: value, [videoField]: value === 'video', [imageField]: value === 'image' ? index : undefined });
       return <div className="inspector-reference" role="group" aria-label={`${label} reference`} key={side}>
@@ -30,14 +33,10 @@ export default function StoryReferences({ item, loop, labels, onChange, projects
             {referenceTypes.map(value => <button key={value} type="button" aria-pressed={type === value} onClick={() => choose(value)}>{value === 'none' ? 'None' : value === 'video' ? 'Video' : 'Image'}</button>)}
           </div>
         </div>
-        {type === 'video' && projects && <label className="reference-video-toggle"><input type="checkbox" aria-label={`Use arbitrary ${label.toLowerCase()} video`} checked={!!arbitrary} onChange={e => onChange({ [arbitraryField]: e.target.checked })}/>Choose another video <small>{arbitrary ? 'Library video' : side === 'start' ? 'Previous video' : 'Next video'}</small></label>}
-        {type === 'video' && arbitrary && projects && <><AssetInput key={`${item.id}:${side}:video`} projects={projects} value={asset ? [{ assetId: asset.assetId, name: asset.name, kind: 'video' }] : []} kinds={['video']} multiple={false} label={`${label} video`} onChange={refs => {
-          const ref = refs[0], media = projects.getSnapshot().project?.library?.find(a => a.assetId === ref?.assetId);
-          onChange({ [assetField]: ref && media ? { assetId: ref.assetId, name: ref.name, inFrame: media.inFrame ?? 0, outFrame: media.outFrame ?? Math.max(1, Math.floor((media.duration ?? 1) * TIMELINE_FPS)) } : undefined });
-        }}/>{asset && <div className="range-fields">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'In (s)' : 'Out (s)'}</span><input aria-label={`${label} video ${field === 'inFrame' ? 'in' : 'out'}`} type="number" min={0} step={1 / TIMELINE_FPS} value={asset[field] / TIMELINE_FPS} onChange={e => {
-          const frame = Math.round(e.target.valueAsNumber * TIMELINE_FPS), media = projects.getSnapshot().project?.library?.find(a => a.assetId === asset.assetId);
-          if (Number.isFinite(frame)) onChange({ [assetField]: { ...asset, [field]: field === 'inFrame' ? Math.max(0, Math.min(asset.outFrame - 1, frame)) : Math.max(asset.inFrame + 1, Math.min(Math.floor((media?.duration ?? asset.outFrame / TIMELINE_FPS) * TIMELINE_FPS), frame)) } });
-        }}/></label>)}</div>}</>}
+        {type === 'video' && projects && <label className="reference-video-toggle"><input type="checkbox" aria-label={`Use arbitrary ${label.toLowerCase()} video`} checked={!!arbitrary} onChange={e => onChange({ [arbitraryField]: e.target.checked })}/>Choose other videos / images <small>{arbitrary ? 'Library sequence' : side === 'start' ? 'Previous clips' : 'Next clips'}</small></label>}
+        {type === 'video' && arbitrary && <VideoReferenceSequence key={`${item.id}:${side}:video`} projects={projects} label={label} clips={clips} onChange={next => onChange({
+          [sequenceField]: next, [assetField]: side === 'start' ? next.at(-1) : next[0],
+        })}/>}
         {type === 'image' && <AssetInput key={`${item.id}:${side}:image`} projects={projects} kinds={['image']} multiple={false} label={`${label} reference image`} imageFormats={['image/png', 'image/jpeg', 'image/webp']}
           value={item.imageReferences?.[index] ? [{ ...item.imageReferences[index], kind: 'image' }] : []}
           validate={ref => {
@@ -52,7 +51,7 @@ export default function StoryReferences({ item, loop, labels, onChange, projects
           }}/>}
         {type !== 'image' && <div className="inspector-reference-source">
           {type === 'video' ? <>
-            <span className="inspector-reference-name" title={arbitrary ? asset?.name : labels[side]}>{arbitrary ? asset?.name ?? 'Choose a video above' : labels[side]}</span>
+            <span className="inspector-reference-name" title={arbitrary ? sequenceLabel : labels[side]}>{arbitrary ? sequenceLabel || 'Choose videos or images above' : labels[side]}</span>
             <InterstitialTimeField name={loop ? 'Loop footage' : range} label={`${label} footage`} value={item[range]} min={INTERSTITIAL.minStartRange} max={INTERSTITIAL.maxRange} step={0.025} onChange={value => onChange({ [range]: value })} />
           </> : <span className="hint">{loop ? 'Generate the loop from your prompt.' : `Let the prompt guide the ${side === 'start' ? 'first' : 'last'} frame.`}</span>}
         </div>}
