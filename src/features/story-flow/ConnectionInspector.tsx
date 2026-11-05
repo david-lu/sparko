@@ -32,15 +32,15 @@ export default function ConnectionInspector({ editor, connection, info }: {edito
     <section className="connection-timing" aria-label="Crossfade timing">
       {channels.map(({channel,label,duration,transition})=><div className="connection-channel-timing" key={channel} aria-label={`${label} crossfade timing`}>
       {transition?<><strong>{label} · {seconds(transition.frames/fps)} {channel==='video'?'dissolve':'fade'}</strong>
-        <p className="hint">{after.generated?'Finishes at the cut, before the generated section begins.':before.generated?'Starts at the cut, using the ending reference.':channel==='video'?'Centered on the cut. Missing extra footage holds on its boundary frame.':'Centered on the cut. Missing extra audio is silent.'}</p>
+        <p className="hint">{transition.startFrame+transition.frames===0?'Finishes at the cut, using the incoming clip’s opening footage.':transition.startFrame===0?'Starts at the cut, using the outgoing clip’s ending footage.':channel==='video'?'Centered on the cut. Missing extra footage holds on its boundary frame.':'Centered on the cut. Missing extra audio is silent.'}</p>
         <dl>{[before,after].map((scene,index)=>{
           const range=sceneMediaRange(scene,fps),start=(index===0?range.end:range.start)+transition.startFrame/fps;
-          return <div key={scene.id}><dt>{scene.label}{index===1&&after.generated?' · opening reference':index===0&&before.generated&&!after.generated?' · ending reference':''}</dt>
+          return <div key={scene.id}><dt>{scene.label}{index===1&&after.generated&&transition.startFrame+transition.frames===0?' · opening footage':index===0&&before.generated&&transition.startFrame===0?' · ending footage':''}</dt>
             <dd>{seconds(Math.max(0,start))} – {seconds(Math.min(range.total??Infinity,start+transition.frames/fps))}</dd></div>;
         })}</dl><p className="hint">Times are positions in each saved video.</p>
         {transition.frames<Math.round(duration*fps)&&<p className="hint">Shortened to fit the available footage without overlapping another fade.</p>}
-      </>:<><strong>{label} · {self?'Seamless repeat':duration===0?'Cut':draft?'Ready after generation':'Cut · no matching reference'}</strong>
-        <p className="hint">{self?'Set the repeat crossfade in the clip’s Loop settings.':duration===0?'Playback changes clips directly.':draft?'The saved reference footage will determine the overlap when generation finishes.':'The saved reference does not meet this cut. Regenerate using the connected clips, or keep a cut.'}</p></>}
+      </>:<><strong>{label} · {self?'Seamless repeat':duration===0?'Cut':draft?'Ready after generation':'Cut · no available overlap'}</strong>
+        <p className="hint">{self?'Set the repeat crossfade in the clip’s Loop settings.':duration===0?'Playback changes clips directly.':draft?'The saved footage will determine the overlap when generation finishes.':'There is not enough footage for this overlap.'}</p></>}
       </div>)}
     </section>
 

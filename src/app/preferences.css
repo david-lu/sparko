@@ -5,6 +5,8 @@
 .preferences-card output{min-width:4ch;text-align:right;font-variant-numeric:tabular-nums;color:var(--accent)}
 .preferences-card input[type=range]{display:block;width:100%;margin:0;accent-color:var(--accent)}
 .preferences-card .preference-time-label{margin-top:24px}
+.preferences-card .preference-section{margin-top:24px}
+.preferences-card input[type=checkbox]{accent-color:var(--accent)}
 .preferences-card select{width:100%;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--text);font-size:12px}
 .preference-range-labels{display:flex;justify-content:space-between;margin:7px 0 12px;font-size:10px;color:var(--muted)}
 .preferences-card .hint{line-height:1.5}

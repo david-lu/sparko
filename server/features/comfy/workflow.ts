@@ -8,7 +8,7 @@ import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 import { CLIP_METADATA_TAG, serializeClipMetadata, type ClipOrigin } from '../../../shared/clip-metadata.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown>; _meta?: Record<string, unknown> }>;
-export type BridgeInput = { clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
+export type BridgeInput = { seed?: number; clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Separately encoded references stay frozen outside their soft transitions.
@@ -137,7 +137,7 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   if (input.clipOrigin) {
     // Cloud ignores extra_pnginfo for API callers. Both save nodes embed the
     // API prompt graph, so keep portable clip data on the output node itself.
-    graph.output._meta = { [CLIP_METADATA_TAG]: JSON.parse(serializeClipMetadata({ ...input.clipOrigin, prompt: input.prompt, media: insertion })) };
+    graph.output._meta = { [CLIP_METADATA_TAG]: JSON.parse(serializeClipMetadata({ ...input.clipOrigin, prompt: input.prompt, media: insertion, seed })) };
   }
   return graph;
 }

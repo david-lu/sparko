@@ -131,7 +131,7 @@ describe('reference-based video fades', () => {
     expect(connectionFade(connection, connected.nodes, [item, next.item])).toBe(.75);
     render(item, graph, assetId);
     item.result!.reference!.mode = 'extend';
-    expect(connectionFade(connection, connected.nodes, [item, next.item])).toBe(0);
+    expect(connectionFade(connection, connected.nodes, [item, next.item])).toBe(.375);
   });
 
   it('retains explicit fade edits and cuts when settings change or an existing connection is redirected', () => {

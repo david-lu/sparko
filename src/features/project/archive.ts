@@ -1,3 +1,4 @@
+import { generationSeedSchema } from '../../../shared/generation-seed';
 import { loraSettings, projectLorasSchema } from '../../../shared/loras';
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { z } from 'zod';
@@ -26,7 +27,7 @@ const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uui
 const settingsSchema = z.object({
   ...videoReferenceSettings,
   ...loraSettings,
-  turbo: z.boolean().optional(),
+  turbo: z.boolean().optional(), seed: generationSeedSchema.optional(),
   imageReferences: imageReferencesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),
@@ -78,6 +79,7 @@ const projectSchema = z.object({
     ...settingsSchema.shape, generationSettings: settingsSchema.optional(),
     requestMethod: z.enum([...generationMethods, 'fal']).optional(),
     requestPrompt: z.string().max(8000).optional(),
+    requestSeed: generationSeedSchema.optional(),
     requestReference: generationReferenceSchema.optional(),
     requestOrigin: clipOriginSchema.optional(),
     requestInsertion: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })

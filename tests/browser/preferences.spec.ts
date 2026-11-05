@@ -1,4 +1,4 @@
-import { test, expect, fitAll, type Page } from './fixtures';
+import { test, expect, fitAll, addDraft, addQuestionTemplate, readProject, saveAndReopen, type Page } from './fixtures';
 
 const open=async(page:Page)=>{await page.goto('/'); await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled(); await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);};
 const preferences=async(page:Page)=>{
@@ -12,6 +12,40 @@ const zoom=async(page:Page,delta:number,meta=false)=>{
   const after=(await clip.boundingBox())!;expect((anchor-after.x)/after.width).toBeCloseTo((anchor-before.x)/before.width,3);expect(after.height).toBe(before.height);
   return after.width/before.width;
 };
+
+for (const width of [1440, 390]) test(`Turbo default applies to new clips and templates, persists and resets at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 }); await open(page);
+  await addDraft(page, 'Existing clip');
+  const turbo = page.getByRole('switch', { name: 'Turbo', exact: true });
+  await expect(turbo).not.toBeChecked();
+  let dialog = await preferences(page);
+  const preference = () => dialog.getByRole('switch', { name: 'Enable Turbo by default', exact: true });
+  await expect(preference()).not.toBeChecked();
+  const positions = () => dialog.locator('input, select, footer').evaluateAll(elements => elements.map(element => {
+    const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
+  }));
+  const before = await positions(); await preference().check(); expect(await positions()).toEqual(before);
+  await dialog.screenshot({ path: `test-results/turbo-preferences-${width}.png` });
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(turbo).not.toBeChecked();
+  await addDraft(page, 'Override clip'); await expect(turbo).toBeChecked();
+  await turbo.uncheck(); await expect(turbo).not.toBeChecked();
+  await addQuestionTemplate(page);
+  let project = await readProject(page);
+  expect(project.interstitials.filter((item: any) => !['Existing clip', 'Override clip'].includes(item.label))).toHaveLength(4);
+  expect(project.interstitials.filter((item: any) => !['Existing clip', 'Override clip'].includes(item.label)).every((item: any) => item.turbo)).toBe(true);
+  await saveAndReopen(page);
+  dialog = await preferences(page); await expect(preference()).toBeChecked();
+  await dialog.getByRole('button', { name: 'Reset default', exact: true }).click();
+  await expect(preference()).not.toBeChecked();
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  project = await readProject(page);
+  expect(project.interstitials.filter((item: any) => ['Existing clip', 'Override clip'].includes(item.label)).every((item: any) => item.turbo === false)).toBe(true);
+  expect(project.interstitials.filter((item: any) => !['Existing clip', 'Override clip'].includes(item.label)).every((item: any) => item.turbo)).toBe(true);
+  await addDraft(page, 'Standard clip'); await expect(turbo).not.toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem('sparko:default-turbo'))).toBe('false');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+});
 
 for(const width of [1440,390])test(`pinch sensitivity applies live, persists, and resets without moving controls at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:width===390?844:1000});await open(page);

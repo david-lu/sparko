@@ -35,7 +35,7 @@ import WindowMenu from './WindowMenu';
 import ShortcutSettings from './ShortcutSettings';
 import HelpTutorial from './HelpTutorial';
 import Preferences from './Preferences';
-import { pinchZoomPreference, savedPinchZoomSensitivity, playheadTimePreference, savedPlayheadTimeMode } from '../shared/preferences';
+import { pinchZoomPreference, savedPinchZoomSensitivity, playheadTimePreference, savedPlayheadTimeMode, defaultTurboPreference, savedDefaultTurbo } from '../shared/preferences';
 import { formatShortcut, useShortcuts, type ShortcutId } from '../shared/shortcuts';
 import DropdownMenu from '../shared/DropdownMenu';
 import ModalBackdrop from '../shared/ModalBackdrop';
@@ -87,6 +87,11 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(playheadTimePreference, playheadTimeMode); } catch { /* Apply without persistence. */ } }, [playheadTimeMode]);
   const [pinchZoomSensitivity, setPinchZoomSensitivity] = useState(savedPinchZoomSensitivity);
   useEffect(() => { try { localStorage.setItem(pinchZoomPreference, String(pinchZoomSensitivity)); } catch { /* Apply without persistence. */ } }, [pinchZoomSensitivity]);
+  const [defaultTurbo, setDefaultTurbo] = useState(savedDefaultTurbo);
+  useEffect(() => {
+    interstitials.setDefaultTurbo(defaultTurbo);
+    try { localStorage.setItem(defaultTurboPreference, String(defaultTurbo)); } catch { /* Apply without persistence. */ }
+  }, [interstitials, defaultTurbo]);
   const keys=useShortcuts();
   const shortcutHint = (id: ShortcutId) => {
     const binding = keys.bindings[id].find(Boolean);
@@ -259,7 +264,7 @@ export default function App() {
       if (!picker) return await exportProject();
       const name = `${(projects.getSnapshot().project?.name || 'project').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')}.sparko`;
       const handle = await picker.call(window, { suggestedName: name, types: projectFileTypes });
-      return !!await projects.saveToFile(handle);
+      return !!await projects.saveToFile(handle, true);
     } catch (cause) { if ((cause as DOMException).name !== 'AbortError') setError((cause as Error).message); return false; }
     finally { savePending.current = false; }
   };
@@ -407,7 +412,7 @@ export default function App() {
     <ToastStack/>
     {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
     {helpOpen && <HelpTutorial onClose={()=>setHelpOpen(false)}/>}
-    {preferencesOpen && <Preferences playheadTimeMode={playheadTimeMode} onPlayheadTimeMode={setPlayheadTimeMode} pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} onClose={()=>setPreferencesOpen(false)}/>}
+    {preferencesOpen && <Preferences playheadTimeMode={playheadTimeMode} onPlayheadTimeMode={setPlayheadTimeMode} pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} defaultTurbo={defaultTurbo} onDefaultTurbo={setDefaultTurbo} onClose={()=>setPreferencesOpen(false)}/>}
     {closePrompt && <ModalBackdrop labelledBy="close-project-title" onCancel={()=>{if(!projectState.busy)setClosePrompt(false);}}><div className="project-card">
       <h2 id="close-project-title">Save changes before closing?</h2>
       <p className="hint">Changes to {projectState.project?.name || 'this project'} have not been saved to a project file.</p>

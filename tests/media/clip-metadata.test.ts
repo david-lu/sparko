@@ -30,6 +30,26 @@ async function inspect(blob: Blob) {
   } finally { input.dispose(); }
 }
 describe('portable MP4 clip metadata', () => {
+  it('recovers only the connected sampler seed in older graphs and preserves an explicit seed', async () => {
+    const graph = {
+      sample: { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['actual_noise', 0] } },
+      actual_noise: { class_type: 'RandomNoise', inputs: { noise_seed: 0 } },
+      noise: { class_type: 'RandomNoise', inputs: { noise_seed: 999 } },
+      output: { _meta: { sparko: clipMetadata } },
+    };
+    expect(parseComfyClipMetadata(JSON.stringify(graph))?.seed).toBe(0);
+    expect(parseComfyClipMetadata(JSON.stringify({ ...graph, sample: undefined }))?.seed).toBeUndefined();
+    const local = { ...clipMetadata, seed: Number.MAX_SAFE_INTEGER };
+    expect(await readClipMetadata(await withTags({ raw: { prompt: JSON.stringify(graph), sparko: JSON.stringify(local) } }), signal())).toEqual(local);
+    const other = { ...clipMetadata, id: '44444444-4444-4444-8444-444444444444' };
+    expect(await readClipMetadata(await withTags({ raw: { prompt: JSON.stringify(graph), sparko: JSON.stringify(other) } }), signal())).toEqual(other);
+    graph.output._meta.sparko = local;
+    expect(parseComfyClipMetadata(JSON.stringify(graph))?.seed).toBe(Number.MAX_SAFE_INTEGER);
+  });
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, '123'])('rejects invalid saved seeds (%s)', seed => {
+    expect(parseClipMetadata(JSON.stringify({ ...clipMetadata, seed }))).toBeUndefined();
+    expect(parseClipMetadata(JSON.stringify({ ...clipMetadata, settings: { ...clipMetadata.settings, seed } }))).toBeUndefined();
+  });
   it.each(['prompt', 'comment'] as const)('reads direct Comfy downloads with a %s tag and no local sparko tag', async format => {
     const origin = clipOriginSchema.parse(clipMetadata);
     const graph = bridgeWorkflow('uploaded-reference', { clipOrigin: origin, before: 1.625, after: 1.625, duration: 6,
@@ -37,10 +57,10 @@ describe('portable MP4 clip metadata', () => {
     const prompt = JSON.stringify(graph);
     const blob = await withTags(format === 'prompt' ? { raw: { prompt } } : { comment: JSON.stringify({ prompt }) }, format === 'prompt' ? 'mdta' : 'mdir');
     expect((await inspect(blob)).tags.raw?.sparko).toBeUndefined();
-    expect(await readClipMetadata(blob, signal())).toEqual({ ...origin, prompt: 'Exact submitted prompt', media: comfyBridgePlan(1.625, 1.625, 6).insertion });
+    expect(await readClipMetadata(blob, signal())).toEqual({ ...origin, seed: 1234, prompt: 'Exact submitted prompt', media: comfyBridgePlan(1.625, 1.625, 6).insertion });
     // Loop extraction and local updates must override the original graph's media range.
     const local = await writeClipMetadata(blob, clipMetadata, signal());
-    expect(await readClipMetadata(local, signal())).toEqual(clipMetadata);
+    expect(await readClipMetadata(local, signal())).toEqual({ ...clipMetadata, seed: 1234 });
     const invalidLocal = await withTags({ raw: { prompt, sparko: JSON.stringify({ ...clipMetadata, version: 2 }) } });
     expect(await readClipMetadata(invalidLocal, signal())).toBeUndefined();
   });

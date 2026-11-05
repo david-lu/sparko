@@ -1,5 +1,6 @@
+import { chooseGenerationSeed } from '../../../shared/generation-seed.js';
 import { loraOptions, resolveComfyLora } from './loras.js';
-import { randomInt, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { GenerationEvent, GenerationJob } from '../../../shared/contracts.js';
 import { readServerEvents } from '../../../shared/server-events.js';
@@ -112,6 +113,7 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       }
     },
     async submit(file, input, images = []) {
+      const seed = chooseGenerationSeed(input.seed);
       if (input.lora) input = { ...input, lora: await resolveComfyLora(client, input.lora) };
       if (images.length > IMAGE_REFERENCE.maxCount || images.some(image => image.type !== 'image/jpeg' || !image.size || image.size > IMAGE_REFERENCE.maxBytes)) throw new HttpError(400, 'Use up to 9 prepared JPEG image references, each smaller than 1 MB.');
       const imageLoop = input.mode === 'loop' && !input.before && !input.after && input.loopImageGuide !== false && images.length > 0;
@@ -134,12 +136,12 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
         const body = new FormData(); body.set('content_type', 'image/jpeg'); body.set('file_path', `sparko-image-${randomUUID()}.jpg`); body.set('file', image, 'reference.jpg');
         imageAssetIds.push(z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body })).id);
       }
-      const workflow = bridgeWorkflow(referenceAssetId, input, randomInt(0, 2 ** 48 - 1), undefined, imageAssetIds);
+      const workflow = bridgeWorkflow(referenceAssetId, input, seed, undefined, imageAssetIds);
       // Never automatically retry a paid submission after an ambiguous network error.
       const job = jobSchema.parse(await client.call('/api/v2/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },
         // Partner credentials belong in per-job extra_data, never in the saved graph.
         body: JSON.stringify({ workflow, ...(input.resolution === '2k' ? {extra_data:{api_key_comfy_org:partnerKey}} : {}) }) }));
-      return { requestId: job.id, status: 'IN_QUEUE', insertion: plan.insertion };
+      return { requestId: job.id, status: 'IN_QUEUE', insertion: plan.insertion, seed };
     },
     async cancel(requestId) {
       const path = `/api/v2/jobs/${encodeURIComponent(id.parse(requestId))}`;

@@ -20,16 +20,16 @@ export function connectionReference(flow:CallResponseFlow,edge:FlowEdge):{state:
   if(after.generated && (after.generated.reference?.before || !['custom','loop'].includes(after.generated.reference?.mode ?? ''))){
     const result=after.generated,input=result.reference?.before;
     if(!input)return {state:'unknown',message:'This older render has no saved reference identity to compare.'};
-    if(after.clip.inFrame!==Math.round(result.start*fps))return {state:'mismatch',message:'The destination starts inside its generated section, so its saved opening reference no longer meets this cut. Playback still works.'};
-    if(!matchesReference(input,before,fps,'end'))return {state:'mismatch',message:`${after.label} was generated from ${referenceName(input,flow)}, using the ending at ${(input.outFrame/fps).toFixed(3)} s. The connected clip uses different footage or a different ending. Playback still works.`};
+    if(after.clip.inFrame!==Math.round(result.start*fps))return {state:'mismatch',message:'The destination starts inside its generated section, so its saved opening reference no longer meets this cut. Configured crossfades still apply.'};
+    if(!matchesReference(input,before,fps,'end'))return {state:'mismatch',message:`${after.label} was generated from ${referenceName(input,flow)}, using the ending at ${(input.outFrame/fps).toFixed(3)} s. The connected clip uses different footage or a different ending. Configured crossfades still apply.`};
     return {state:'match',message:`The saved opening reference matches ${before.label} at ${(input.outFrame/fps).toFixed(3)} s.`};
   }
   if(before.generated){
     const result=before.generated,reference=result.reference;
-    if(!reference?.after)return {state:'unknown',message:'No ending reference was saved for this connection. Playback uses a cut.'};
+    if(!reference?.after)return {state:'unknown',message:'No ending reference is linked to this connection. Configured crossfades still apply.'};
     if(before.clip.outFrame!==Math.round((result.start+result.duration)*fps)||reference.mode==='loop'||!matchesReference(reference.after,after,fps,'start'))
-      return {state:'mismatch',message:`The saved ending reference comes from ${referenceName(reference.after,flow)}${reference.mode==='loop'?' to close the loop':` at ${(reference.after.inFrame/fps).toFixed(3)} s`}. It does not match this destination cut. Playback still works.`};
+      return {state:'mismatch',message:`The saved ending reference comes from ${referenceName(reference.after,flow)}${reference.mode==='loop'?' to close the loop':` at ${(reference.after.inFrame/fps).toFixed(3)} s`}. It does not match this destination cut. Configured crossfades still apply.`};
     return {state:'match',message:`The saved ending reference matches ${after.label} at ${(reference.after.inFrame/fps).toFixed(3)} s.`};
   }
-  return {state:'unknown',message:after.generated?'Start reference was disabled for this render. Playback uses a cut.':'These are source clips; no generated reference is needed.'};
+  return {state:'unknown',message:after.generated?'No opening reference is linked to this render. Configured crossfades still apply.':'These are source clips; no generated reference is needed.'};
 }

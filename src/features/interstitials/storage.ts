@@ -1,3 +1,4 @@
+import { generationSeedSchema } from '../../../shared/generation-seed';
 import { loraAddressSchema, loraInstructionsSchema, loraStrengthSchema } from '../../../shared/loras';
 import { videoAssetReferenceSchema } from '../../../shared/video-references';
 import { INTERSTITIAL } from '../../../shared/constants';
@@ -20,7 +21,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
   if (method !== undefined && method !== 'fal' && !generationMethods.includes(method as InterstitialSettings['method'] & string)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
-  return interstitialSettings({ ...settings, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
+  return interstitialSettings({ ...settings, seed: generationSeedSchema.safeParse(settings.seed).data, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
 }
 
 function readResult(value: unknown): InterstitialResult | undefined {
@@ -49,6 +50,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
       const result = readResult(item.result);
       return [{ id: item.id, label: typeof item.label === 'string' ? item.label.replace(/^Pin (\d+)$/, 'Interstitial $1') : 'Video', time: item.time, kind: item.kind === 'call-response' ? 'call-response' : item.kind === 'regular' ? 'regular' : undefined, groupId: typeof item.groupId === 'string' ? item.groupId : undefined,
         lora: loraAddressSchema.nullable().safeParse(item.lora).data, loraInstructions: loraInstructionsSchema.safeParse(item.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(item.loraStrength).data,
+        seed: generationSeedSchema.safeParse(item.seed).data,
         turbo: typeof item.turbo === 'boolean' ? item.turbo : undefined,
         continuity: typeof item.continuity === 'string' ? item.continuity : undefined, dialogue: typeof item.dialogue === 'string' ? item.dialogue : undefined, loopAudio: typeof item.loopAudio === 'boolean' ? item.loopAudio : undefined,
         useStartVideoAsset: typeof item.useStartVideoAsset === 'boolean' ? item.useStartVideoAsset : undefined,
@@ -75,6 +77,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         requestMethod: item.requestMethod === 'fal' || generationMethods.includes(item.requestMethod) ? item.requestMethod
           : item.requestId && (item.method === 'fal' || item.generationSettings?.method === 'fal') ? 'fal' : undefined,
         requestPrompt: typeof item.requestPrompt === 'string' ? item.requestPrompt : undefined,
+        requestSeed: generationSeedSchema.safeParse(item.requestSeed).data,
         requestReference: readReference(item.requestReference),
         requestOrigin: clipOriginSchema.safeParse(item.requestOrigin).data,
         requestInsertion: item.requestInsertion && [item.requestInsertion.start, item.requestInsertion.duration, item.requestInsertion.totalDuration].every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
@@ -86,6 +89,11 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
   } catch { return []; }
 }
 export function saveInterstitials(sourceId: string, items: Interstitial[]) {
-  try { localStorage.setItem(interstitialKey(sourceId), JSON.stringify(items)); return true; }
+  try {
+    const key = interstitialKey(sourceId);
+    const value = JSON.stringify(items.map(({ progress: _progress, progressDetails: _details, queuePosition: _position, ...item }) => item));
+    if (localStorage.getItem(key) !== value) localStorage.setItem(key, value);
+    return true;
+  }
   catch { return false; }
 }

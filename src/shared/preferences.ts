@@ -3,6 +3,13 @@ export const defaultPinchZoomSensitivity = 3;
 export const minPinchZoomSensitivity = .5;
 export const maxPinchZoomSensitivity = 5;
 
+export const defaultTurboPreference = 'sparko:default-turbo';
+export const defaultTurboEnabled = false;
+export function savedDefaultTurbo(): boolean {
+  try { return localStorage.getItem(defaultTurboPreference) === 'true'; }
+  catch { return defaultTurboEnabled; }
+}
+
 export type PlayheadTimeMode = 'internal' | 'elapsed';
 export const playheadTimePreference = 'sparko:playhead-time';
 export const defaultPlayheadTimeMode: PlayheadTimeMode = 'internal';

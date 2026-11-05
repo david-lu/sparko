@@ -23,6 +23,7 @@ import type { LibraryAsset, LibraryFolder } from './types';
 import type { AssetGeneration } from '../../../shared/asset-generation';
 import { readClipMetadata } from '../../media/clipMetadata';
 import { resolveClipReferences, restoreClip } from '../interstitials/clipMetadata';
+import { projectContent } from './projectContent';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
   busy: boolean; message: string; progress: number | null; error: string | null;
@@ -136,7 +137,9 @@ export class ProjectController {
     undoLabel: null, redoLabel: null, historyRevision: 0, activationRevision: 0, savedProjects: [], savedProjectId: null,
     recentFiles: [], fileName: null, dirty: false };
   private fileHandle: FileSystemFileHandle | null = null;
-  private revision = 0;
+  private currentContent: string | null = null;
+  private savedContent: string | null = null;
+  private queuedContent: string | null = null;
   private draftId = (() => {
     try {
       const existing = localStorage.getItem('sparko:draft-id');
@@ -157,7 +160,7 @@ export class ProjectController {
   private update(patch: Partial<State>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
   clearError() { this.update({ error: null }); }
   editAssets(change: (project: Project) => Project, record = true) {
-    if (this.state.project) { this.save(change(this.state.project), record); this.update({ dirty: true }); }
+    if (this.state.project) this.save(change(this.state.project), record);
   }
   setLora(entry: ProjectLora, previousModel?: string) {
     if (!generationModel(entry.model)?.supportsLora) throw new Error('This model does not support LoRAs in the current generation integration.');
@@ -197,11 +200,21 @@ export class ProjectController {
     this.interstitials.setDefaultLora(projectLoraAddress(project.loras, H3_MODEL_ID), projectLoraStrength(project.loras, H3_MODEL_ID));
     for (const generation of project.assetGenerations ?? []) this.generationStates.set(generation.id, generation);
     project = { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
-    if (record && this.state.project?.id === project.id) this.history.record(this.state.project, project);
-    this.revision++;
-    this.update({ project, dirty: this.state.dirty || record, undoLabel: this.history.undoLabel, redoLabel: this.history.redoLabel });
-    this.writes = this.writes.catch(() => undefined).then(() => writeProject(project));
-    void this.writes.catch(error => this.update({ error: storageError(error) }));
+    const content = projectContent(project), changed = content !== this.currentContent;
+    project = { ...project, updatedAt: changed ? Date.now() : this.state.project?.updatedAt ?? project.updatedAt };
+    if (changed && record && this.state.project?.id === project.id) this.history.record(this.state.project, project);
+    this.currentContent = content;
+    // Publish runtime progress even when it does not need to be saved.
+    this.update({ project, dirty: content !== this.savedContent, undoLabel: this.history.undoLabel, redoLabel: this.history.redoLabel });
+    const browserContent = projectContent(project, 'browser');
+    if (browserContent === this.queuedContent) return;
+    this.queuedContent = browserContent;
+    const writing = this.writes.catch(() => undefined).then(() => writeProject(project));
+    this.writes = writing;
+    void writing.catch(error => {
+      if (this.writes === writing) this.queuedContent = null;
+      this.update({ error: storageError(error) });
+    });
   }
   async init(defaultSource: MediaSource) {
     this.unsubscribe ??= this.interstitials.subscribe(() => {
@@ -269,7 +282,7 @@ export class ProjectController {
       .filter((id): id is string => !!id))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
-    this.revision = 0;
+    this.queuedContent = projectContent(project, 'browser');
     this.history.clear();
     this.fileHandle = null;
     this.update({ project, source, subtitle, error: null, dirty: false, undoLabel: null, redoLabel: null,
@@ -279,7 +292,9 @@ export class ProjectController {
     this.interstitials.setStoryGraph(project.storyFlow,project.source.assetId,this.storyDuration);
     assets.releaseExcept(new Set(assetIds(project)));
     this.switching = false;
-    this.save({ ...project, interstitials: this.interstitials.getSnapshot().items }, false);
+    const restored = { ...project, interstitials: this.interstitials.getSnapshot().items };
+    this.savedContent = this.currentContent = projectContent(restored);
+    this.save(restored, false);
   }
   private async prepareSource(project: Project, pendingAssets: Asset[], signal: AbortSignal) {
     if(project.storyFlow&&!project.source.assetId&&!project.source.url)return {project,pendingAssets};
@@ -399,24 +414,29 @@ export class ProjectController {
       await this.restoreArchive(file, signal);
       this.fileHandle = handle;
       await rememberRecentFile(handle);
-      this.update({ fileName: handle.name, dirty: false, recentFiles: await listRecentFiles() });
+      this.update({ fileName: handle.name, recentFiles: await listRecentFiles() });
       return true;
     });
   }
-  async saveToFile(handle: FileSystemFileHandle) {
+  async saveToFile(handle: FileSystemFileHandle, force = false) {
+    if (this.operation || !this.state.project) return;
+    if (!force && handle === this.fileHandle && this.currentContent === this.savedContent) return true;
     return this.task('Saving project file', async signal => {
       // Open the writer while the Save click still has user activation.
       const writer = await handle.createWritable();
-      const revision = this.revision;
+      let content: string;
       try {
         const archive = await this.buildArchive(signal, handle.name.replace(/\.sparko$/i, ''));
         signal.throwIfAborted();
         await writer.write(archive.blob);
         await writer.close();
+        content = archive.content;
       } catch (error) { await writer.abort().catch(() => undefined); throw error; }
       this.fileHandle = handle;
+      this.savedContent = content;
+      this.update({ fileName: handle.name, dirty: this.currentContent !== content, savedProjectId: null });
       await rememberRecentFile(handle);
-      this.update({ fileName: handle.name, dirty: this.revision !== revision, savedProjectId: null, recentFiles: await listRecentFiles() });
+      this.update({ recentFiles: await listRecentFiles() });
       return true;
     });
   }
@@ -581,7 +601,7 @@ export class ProjectController {
       this.switching = true;
       try {
         this.fileHandle = null;
-        this.revision = 0;
+        this.currentContent = this.savedContent = this.queuedContent = null;
         this.history.clear();
         this.update({ project: null, source: null, subtitle: null, savedProjectId: null, fileName: null,
           dirty: false, undoLabel: null, redoLabel: null, historyRevision: this.state.historyRevision + 1 });
@@ -629,9 +649,10 @@ export class ProjectController {
   async exportProject(): Promise<{ blob: Blob; name: string } | undefined> {
     return this.task('Collecting project assets', signal => this.buildArchive(signal));
   }
-  private async buildArchive(signal: AbortSignal, fileName?: string): Promise<{ blob: Blob; name: string }> {
+  private async buildArchive(signal: AbortSignal, fileName?: string): Promise<{ blob: Blob; name: string; content: string }> {
       if (!this.state.project) throw new Error('Create or open a project first.');
       const snapshot = structuredClone(this.state.project);
+      const content = projectContent(snapshot);
       if (fileName) snapshot.name = fileName;
       signal.throwIfAborted();
       if (!snapshot.source.assetId&&!snapshot.storyFlow) throw new Error('Wait for the source video to finish preparing.');
@@ -643,7 +664,7 @@ export class ProjectController {
       }
       const blob = await packProject(snapshot, stored, signal, (message, progress) => this.update({ message, progress }));
       signal.throwIfAborted();
-      return { blob, name: `${snapshot.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'project'}.sparko` };
+      return { blob, name: `${snapshot.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'project'}.sparko`, content };
   }
   private async validateVideo(blob: Blob, signal: AbortSignal) {
     const url = URL.createObjectURL(blob), engine = new MediaEngine({ id: 'validate', name: 'Project video', url, file: new File([blob], 'video.mp4') });

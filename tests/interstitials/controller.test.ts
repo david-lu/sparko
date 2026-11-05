@@ -17,7 +17,7 @@ vi.mock('../../src/features/interstitials/api', () => ({ generateInterstitial: v
 vi.mock('../../src/features/interstitials/progress-stream', () => ({ watchComfyJob: vi.fn() }));
 vi.mock('../../src/features/call-response/generation', () => ({ generationSource: vi.fn() }));
 vi.mock('../../src/features/call-response/finishLoop', () => ({ finishLoop: vi.fn(async (blob, result) => ({ blob, result })) }));
-vi.mock('../../src/media/clipMetadata', () => ({ writeClipMetadata: vi.fn(async blob => blob) }));
+vi.mock('../../src/media/clipMetadata', () => ({ readClipMetadata: vi.fn(), writeClipMetadata: vi.fn(async blob => blob) }));
 vi.mock('../../src/media/MediaEngine', () => ({ MediaEngine: class { inspect() { return Promise.resolve({ duration: 9, fps: 25 }); } dispose() {} } }));
 vi.mock('../../src/features/project/assets', () => ({ assets: {
   fetch: async () => ({ id: 'fetched-asset', name: 'video.mp4', blob: new Blob(['video']) }),
@@ -45,6 +45,52 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
+  it.each([undefined, 0, Number.MAX_SAFE_INTEGER])('owns seed selection before submission and saves the actual seed independently of edits (%s)', async seed => {
+    const id = add(); controller.edit(id, { seed });
+    let used!: number;
+    vi.mocked(generateInterstitial).mockImplementation(async item => {
+      used = item.seed!;
+      expect(Number.isSafeInteger(used)).toBe(true);
+      expect(used).toBeGreaterThanOrEqual(0);
+      if (seed !== undefined) expect(used).toBe(seed);
+      expect(loadInterstitials('source')[0].requestSeed).toBe(used);
+      controller.edit(id, { seed: 123 });
+      return { requestId: completed.requestId, status: 'IN_QUEUE' };
+    });
+    vi.mocked(getInterstitialJob).mockResolvedValue(completed);
+    await controller.generate(id, media, info);
+    const item = controller.getSnapshot().items[0];
+    expect(item.phase).toBe('ready');
+    expect(item.seed).toBe(123);
+    expect(item.generationSettings?.seed).toBe(seed);
+    expect(item.result?.metadata?.settings.seed).toBe(seed);
+    expect(item.result?.metadata?.seed).toBe(used);
+    expect(loadInterstitials('source')[0].result?.metadata?.seed).toBe(used);
+    expect(vi.mocked(writeClipMetadata).mock.calls.at(-1)?.[1].seed).toBe(used);
+  });
+  it('chooses a new random seed for regeneration while retaining the previous render seed on failure', async () => {
+    const random = vi.spyOn(crypto, 'getRandomValues').mockImplementation(words => {
+      (words as Uint32Array).set([0, 42]); return words;
+    });
+    const original = await readyScene();
+    expect(original.result?.metadata?.seed).toBe(42);
+    random.mockImplementation(words => { (words as Uint32Array).set([0, 43]); return words; });
+    vi.mocked(generateInterstitial).mockRejectedValueOnce(new Error('Submission failed'));
+    await controller.generate(original.id, media, info);
+    const failed = controller.getSnapshot().items[0];
+    expect(failed.requestSeed).toBe(43);
+    expect(failed.previousResult?.metadata?.seed).toBe(42);
+    expect(failed.seed).toBeUndefined();
+  });
+  it('undo restores Random without overwriting the latest render seed', async () => {
+    const item = await readyScene(), seed = item.result?.metadata?.seed;
+    const edit = { id: item.id, label: item.label, time: item.time, ...interstitialSettings(item) };
+    controller.edit(item.id, { seed: 0 });
+    await controller.restoreEdits([edit], undefined, new AbortController().signal);
+    expect(controller.getSnapshot().items[0].seed).toBeUndefined();
+    expect(controller.getSnapshot().items[0].result?.metadata?.seed).toBe(seed);
+    expect(hasUnsubmittedChanges(controller.getSnapshot().items[0])).toBe(false);
+  });
   it('restores image-only loop provenance for submitted and completed renders', async () => {
     const item = await readyScene();
     localStorage.setItem(interstitialKey('source'), JSON.stringify([{ ...item, requestReference: { mode: 'loop' }, result: { ...item.result, reference: { mode: 'loop' } } }]));
@@ -534,7 +580,7 @@ describe('interstitial lifecycle', () => {
   });
   it('keeps edits during preparation, upload, queueing and loading separate from the submitted inputs', async () => {
     const id = add();
-    controller.edit(id,{resolution:'2k'});
+    controller.edit(id,{resolution:'2k',seed:0});
     const submitted = interstitialSettings(controller.getSnapshot().items[0]);
     const edited = new Set<string>();
     controller.subscribe(() => {

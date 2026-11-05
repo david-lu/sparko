@@ -101,9 +101,20 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   })).toBe(1);
   await expect(restored.locator('.project-status')).toHaveCount(0);
   await restored.route(`${new URL(restored.url()).origin}/media/**`, route => route.abort());
+  await restored.addInitScript(() => {
+    (window as any).fileWrites = 0;
+    const createWritable = FileSystemFileHandle.prototype.createWritable;
+    FileSystemFileHandle.prototype.createWritable = function (...args) {
+      (window as any).fileWrites++;
+      return createWritable.apply(this, args);
+    };
+  });
   await restored.reload();
   await restored.getByRole('region', { name: 'Recent projects' }).getByRole('button', { name: 'Open' }).click();
   await expect.poll(async () => (await activeProject(restored))?.interstitials.filter((item: any) => item.phase === 'ready').length, { timeout: 60_000 }).toBe(1);
+  await expect(restored.locator('.project-status')).toHaveCount(0);
+  await restored.keyboard.press('Control+s');
+  expect(await restored.evaluate(() => (window as any).fileWrites)).toBe(0);
   expect(remoteReads).toBe(0);
   expect((await activeProject(restored)).subtitle?.assetId).toBeTruthy();
   await restored.screenshot({ path: 'test-results/project-imported.png' });

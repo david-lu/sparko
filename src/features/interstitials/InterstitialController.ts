@@ -1,3 +1,4 @@
+import { chooseGenerationSeed, generationSeedSchema } from '../../../shared/generation-seed';
 import { loraAddressSchema, loraInstructionsSchema, loraStrengthSchema, LORA_STRENGTH } from '../../../shared/loras';
 import { storyGenerationItem } from '../story-flow/referenceInputs';
 import { behaviors } from '../story-flow/behaviors';
@@ -20,7 +21,7 @@ import { finishLoop } from '../call-response/finishLoop';
 import type { StoryGraph } from '../story-flow/model';
 import { storyDependency } from '../story-flow/dependencies';
 import { captureClipOrigin } from './clipMetadata';
-import { writeClipMetadata } from '../../media/clipMetadata';
+import { readClipMetadata, writeClipMetadata } from '../../media/clipMetadata';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null; sequence: GenerationSequence | null };
 const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -36,8 +37,12 @@ export class InterstitialController {
   setStoryGraph(graph:StoryGraph|undefined,assetId='',duration=0) { this.story=graph?{graph,assetId,duration}:undefined;if(graph)this.linkedDurationIds=[]; }
   private defaultLora: string | null = null;
   private defaultLoraStrength = LORA_STRENGTH.default;
+  private defaultTurbo = false;
+  setDefaultTurbo(enabled: boolean) { this.defaultTurbo = enabled; }
   setDefaultLora(address: string | null, strength = LORA_STRENGTH.default) { this.defaultLora = address; this.defaultLoraStrength = loraStrengthSchema.parse(strength); }
-  private withLoraDefault(item: Interstitial): Interstitial {
+  private withGenerationDefaults(item: Interstitial): Interstitial {
+    // Imported renders and copied submitted clips retain their original settings.
+    item = { ...item, turbo: item.turbo ?? (item.result || item.previousResult || item.generationSettings || item.requestId ? false : this.defaultTurbo) };
     if (item.lora !== undefined) return item;
     if (item.result || item.generationSettings) return { ...item, lora: null };
     return { ...item, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined };
@@ -74,7 +79,7 @@ export class InterstitialController {
       const legacyJob = (item.requestMethod as string | undefined) === 'fal'
         || (!item.requestMethod && (item.generationSettings?.method as string | undefined) === 'fal');
       const { interpolateMiddle: _legacyInterpolation, maskTransitionMs: _legacyTransition, ...current } = item;
-      const restored = { ...current, method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
+      const restored = { ...current, turbo: item.turbo === true, method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
         maskInjection: clipMaskInjection(item),
         audioMaskTransitionMs: normalizeMaskTransitionMs(item.audioMaskTransitionMs ?? item.maskTransitionMs),
         videoMaskTransitionMs: normalizeMaskTransitionMs(item.videoMaskTransitionMs ?? item.maskTransitionMs),
@@ -108,7 +113,7 @@ export class InterstitialController {
     this.callResponses = flow ? [...this.callResponses.filter(group => group.interstitial.id !== flow.interstitial.id), flow] : [];
     if (!flow) { this.linkedDurationIds = []; return; }
     this.linkedDurationIds = responseInterstitialIds(flow);
-    const added = flow.scenes.filter(scene => scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({ ...draftClip(flow, scene), lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined,
+    const added = flow.scenes.filter(scene => scene.interstitialId && !this.state.items.some(item => item.id === scene.interstitialId)).map(scene => ({ ...draftClip(flow, scene), turbo: this.defaultTurbo, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined,
       ...(scene.clip.kind === 'response' && flow.interstitial.linkResponseDurations !== false ? { duration: this.state.items.find(item => responseInterstitialIds(flow).includes(item.id))?.duration ?? 6 } : {}) }));
     const items = [...this.state.items, ...added].map(item => {
       const scene = flow.scenes.find(scene => scene.interstitialId === item.id);
@@ -141,7 +146,7 @@ export class InterstitialController {
     const anchor = Math.max(0, Math.min(frameTime(duration, fps), frameTime(time, fps)));
     const existing = this.state.items.find(item => !item.groupId && item.kind !== 'call-response' && Math.abs(item.time - anchor) < 0.5 / fps);
     if (existing) { this.select(existing.id); return existing; }
-    const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined,
+    const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor, turbo: this.defaultTurbo, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
       enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, maskInjection: 'standard', audioMaskTransitionMs: MASK_TRANSITION.defaultMs, videoMaskTransitionMs: MASK_TRANSITION.defaultMs, resolution: 'native', method: 'comfy', prompt: '', phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
@@ -155,7 +160,7 @@ export class InterstitialController {
     const label = name.trim().slice(0, 1000) || 'Untitled';
     if (this.state.items.some(item => item.id === id && item.label !== label)) this.patch(id, { label });
   }
-  ensureItem(item: Interstitial) { if (!this.state.items.some(current => current.id === item.id)) this.update({ items: [...this.state.items, this.withLoraDefault(item)] }, true); }
+  ensureItem(item: Interstitial) { if (!this.state.items.some(current => current.id === item.id)) this.update({ items: [...this.state.items, this.withGenerationDefaults(item)] }, true); }
   edit(id: string, values: Partial<InterstitialSettings>) {
     const item = this.state.items.find(item => item.id === id);
     // The editor always stays usable. Jobs and media retain the inputs they were submitted with.
@@ -163,6 +168,7 @@ export class InterstitialController {
     if (values.lora !== undefined && values.lora !== null) values = { ...values, lora: loraAddressSchema.parse(values.lora) };
     // A new LoRA must not retain the previous selection’s custom instructions.
     if (values.lora !== undefined && values.lora !== item.lora) values = { ...values, loraInstructions: values.loraInstructions, loraStrength: values.loraStrength };
+    if (values.seed !== undefined) generationSeedSchema.parse(values.seed);
     if (values.loraStrength !== undefined) values = { ...values, loraStrength: loraStrengthSchema.parse(values.loraStrength) };
     if (values.loraInstructions !== undefined) values = { ...values, loraInstructions: loraInstructionsSchema.parse(values.loraInstructions) };
     if (values.duration !== undefined && this.hasLinkedDuration(id)) {
@@ -257,15 +263,16 @@ export class InterstitialController {
       // A failed status request may still belong to an active job. Retire it before resubmitting.
       if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId);
       operation.signal.throwIfAborted();
-      this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, result: undefined });
+      const requestSeed = chooseGenerationSeed(item.seed);
+      this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, requestSeed, result: undefined });
       const source = dependency?.reference && (dependency.reference.before || dependency.reference.after) ? await generationSource(item, dependency.reference, operation.signal, info) : { item, engine, info };
       operation.signal.throwIfAborted();
       const submittedPrompt = source.item.prompt;
-      const job = await generateInterstitial({ ...source.item, requestOrigin }, source.engine, source.info, operation.signal, (phase, progress) => {
+      const job = await generateInterstitial({ ...source.item, seed: requestSeed, requestOrigin }, source.engine, source.info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });
       if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId).catch(() => undefined); return; }
-      this.patch(id, { requestId: job.requestId, requestMethod: method, requestPrompt: submittedPrompt, requestInsertion: job.insertion, phase: 'queued', progress: undefined });
+      this.patch(id, { requestId: job.requestId, requestMethod: method, requestPrompt: submittedPrompt, requestSeed: job.seed ?? requestSeed, requestInsertion: job.insertion, phase: 'queued', progress: undefined });
       await this.poll(id, job.requestId, operation.signal, job.insertion);
     } catch (error) { this.fail(id, operation, error); }
     finally { if (this.tasks.get(id) === operation) this.tasks.delete(id); }
@@ -313,7 +320,8 @@ export class InterstitialController {
         if (!job.videoUrl || !insertion) throw new Error('The result is missing its generated scene boundaries. Retry checking the result.');
         const submitted=this.state.items.find(item=>item.id===id);
         const result = { url: job.videoUrl, ...insertion, reference: submitted?.requestReference, prompt: submitted?.requestPrompt,
-          metadata: submitted?.requestOrigin ? { ...submitted.requestOrigin, media: insertion, prompt: submitted.requestPrompt ?? submitted.requestOrigin.settings.prompt, jobId: requestId } : undefined };
+          metadata: submitted?.requestOrigin ? { ...submitted.requestOrigin, media: insertion, prompt: submitted.requestPrompt ?? submitted.requestOrigin.settings.prompt, jobId: requestId,
+            ...(submitted.requestSeed !== undefined ? { seed: submitted.requestSeed } : {}) } : undefined };
         stream.abort();
         this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined, progressDetails: undefined });
         await this.loadResult(id, result, signal); return;
@@ -342,6 +350,10 @@ export class InterstitialController {
       });
       signal.throwIfAborted();
       let blob = fetched.blob;
+      if (result.metadata && result.metadata.seed === undefined) {
+        const embedded = await readClipMetadata(blob, signal);
+        if (embedded?.id === result.metadata.id && embedded.seed !== undefined) result = { ...result, metadata: { ...result.metadata, seed: embedded.seed } };
+      }
       if (result.metadata) {
         this.patch(id, { progress: undefined, progressDetails: { stage: 'Saving clip metadata' } });
         // Packet-copy progress can fire synchronously hundreds of times. Limit
@@ -439,7 +451,7 @@ export class InterstitialController {
     if (sequenceStructure(flow) !== sequenceStructure(this.callResponse) && !await this.cancelSequence('Clip structure changed. Start a new sequence to include the updated clips.')) throw new Error('Could not cancel generation. Retry undo or redo.');
     this.callResponse = flow; this.linkedDurationIds = flow ? responseInterstitialIds(flow) : [];
     // Preserve the latest job and render even when the corresponding edit predates them.
-    this.update({ items: edits.map(edit => ({ ...this.retained.get(edit.id)!, ...edit })), selectedId, error: null }, true);
+    this.update({ items: edits.map(edit => ({ ...this.retained.get(edit.id)!, ...edit, seed: edit.seed })), selectedId, error: null }, true);
   }
   dispose() {
     this.sequenceOperation?.abort(); this.sequenceOperation = undefined;

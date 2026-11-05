@@ -55,9 +55,7 @@ function referenceFadeLength(node: StoryNode | undefined, neighbor: StoryNode | 
   const result = playableResult(item);
   if (result) {
     // Follow the video being played, even while different settings are queued for regeneration.
-    if (side === 'before' && result.reference && ['custom', 'loop'].includes(result.reference.mode ?? '') && !result.reference.before) return;
-    if (side === 'after' && result.reference && (!result.reference.after || result.reference.mode === 'loop' || result.reference.mode === 'extend')) return;
-    return nodeMediaLayout(node, items)[side];
+    return nodeMediaLayout(node, items)[side] || undefined;
   }
   const settings = storyGenerationItem(item, node);
   if (side === 'after' && settings.method === 'comfy-loop') return;

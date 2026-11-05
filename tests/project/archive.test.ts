@@ -31,6 +31,16 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it.each([undefined, 0, Number.MAX_SAFE_INTEGER])('preserves the seed setting (%s), submitted seed and template settings', async seed => {
+    const snapshot = structuredClone(project), item = snapshot.interstitials[0];
+    item.seed = seed; item.requestSeed = 42; item.generationSettings = interstitialSettings(item);
+    const node = { id: 'seed-node', name: 'Seed clip', kind: 'simple' as const, interstitialId: item.id, x: 0, y: 0, loopCount: 0 };
+    snapshot.storyFlow = { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [{ id: 'seed-template', name: 'Seed', entryId: node.id, nodes: [node], edges: [], settings: { [node.id]: interstitialSettings(item) } }] };
+    const restored = (await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress)).project;
+    for (const settings of [restored.interstitials[0], restored.interstitials[0].generationSettings, restored.storyFlow!.templates[0].settings[node.id]]) expect(settings?.seed).toBe(seed);
+    expect(restored.interstitials[0].requestSeed).toBe(42);
+    expect(hasUnsubmittedChanges(restored.interstitials[0])).toBe(false);
+  });
   it('opens legacy subtitle library entries while retaining the separate subtitle track', async () => {
     const blob = await packProject(project, media, signal(), progress);
     const legacy = await rewrite(blob, value => { value.project.library = [

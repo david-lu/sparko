@@ -1,3 +1,4 @@
+import { generationSeedSchema } from './generation-seed.js';
 import { loraSettings } from './loras.js';
 import { z } from 'zod';
 import { videoReferenceSettings } from './video-references.js';
@@ -15,7 +16,7 @@ const range = z.object({ inFrame: frame, outFrame: frame }).refine(v => v.outFra
 export const clipSettingsSchema = z.object({
   ...videoReferenceSettings,
   ...loraSettings,
-  turbo: z.boolean().optional(),
+  turbo: z.boolean().optional(), seed: generationSeedSchema.optional(),
   imageReferences: imageReferencesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),
@@ -43,6 +44,8 @@ export const clipOriginSchema = z.object({
 });
 export const clipMetadataSchema = clipOriginSchema.extend({
   prompt: z.string().max(8000), jobId: id.optional(),
+  /** Seed used by native H3 sampling, including the base render of a 2K job. */
+  seed: generationSeedSchema.optional(),
   media: z.object({ start: seconds, duration: seconds.positive(), totalDuration: seconds.positive() })
     .refine(v => v.start + v.duration <= v.totalDuration + 1 / TIMELINE_FPS),
 }).refine(v => !v.clip.trim || v.clip.trim.outFrame <= Math.round(v.media.duration * v.fps), 'Clip trim exceeds its generated section.');
@@ -71,6 +74,11 @@ export function parseComfyClipMetadata(text: unknown): ClipMetadata | undefined 
     const envelope = JSON.parse(text);
     const prompt = envelope?.prompt ?? envelope;
     const graph = typeof prompt === 'string' ? JSON.parse(prompt) : prompt;
-    return parseClipMetadata(JSON.stringify(graph?.output?._meta?.[CLIP_METADATA_TAG]));
+    const metadata = parseClipMetadata(JSON.stringify(graph?.output?._meta?.[CLIP_METADATA_TAG]));
+    // Older Sparko workflows already record the sampler's connected noise seed.
+    const link = graph?.sample?.class_type === 'SamplerCustomAdvanced' ? graph.sample.inputs?.noise : undefined;
+    const noise = Array.isArray(link) && typeof link[0] === 'string' && link[1] === 0 ? graph[link[0]] : undefined;
+    const seed = noise?.class_type === 'RandomNoise' ? generationSeedSchema.safeParse(noise.inputs?.noise_seed).data : undefined;
+    return metadata && metadata.seed === undefined && seed !== undefined ? { ...metadata, seed } : metadata;
   } catch { return; }
 }

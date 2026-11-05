@@ -46,6 +46,8 @@ export type GenerationEvent =
   | { type: 'refresh' };
 export type GenerationJob = {
   requestId: string;
+  /** Actual H3 sampling seed, returned when the job is accepted. */
+  seed?: number;
   status: 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   queuePosition?: number;
   progress?: number;

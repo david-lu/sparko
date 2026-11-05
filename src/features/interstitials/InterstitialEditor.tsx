@@ -22,6 +22,7 @@ import TaskStatus from '../../shared/TaskStatus';
 import { sequenceActive } from '../call-response/sequence';
 import GenerationFeedback from './GenerationFeedback';
 import ImageReferences from './ImageReferences';
+import GenerationSeed from './GenerationSeed';
 import { hasNoVideoInput } from './api';
 import MaskCurveEditor from './MaskCurveEditor';
 import { maskCurveSchema } from '../../../shared/mask-curves';
@@ -190,6 +191,8 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         </label>
         <p id={`${resolutionId}-help`} className="hint">Off by default: Native H3 output. Enable this to add the official H3-Regenerate-2K pass.</p>
       </div>
+      <GenerationSeed key={`seed:${selected.id}`} value={selected.seed} lastSeed={currentResult?.metadata?.seed} baseOnly={selected.resolution === '2k'}
+        onChange={seed => controller.edit(selected.id, { seed })} />
       <div className="interstitial-time-fields" key={selected.id}>{!compact && timeFields}{durationField}</div>
     </fieldset>
     {!compact && <div className="interstitial-generation-feedback" aria-live="polite">

@@ -25,6 +25,8 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
     expect(origin).toMatchObject({ format: 'sparko-clip', settings: { prompt: 'Continue the motion' },
       references: { before: { assetId: expect.any(String) }, after: { assetId: expect.any(String) } } });
     expect(origin).toEqual((await readProject(page)).interstitials[0].requestOrigin);
+    expect(form.get('seed')).toBe('0');
+    expect(origin.settings.seed).toBe(0);
     expect(form.get('maskInjection')).toBe('standard');
     expect(form.get('audioMaskTransitionMs')).toBe(comfySubmissions === 1 ? '250' : '0');
     expect(form.get('videoMaskTransitionMs')).toBe('1000');
@@ -59,6 +61,11 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(page.getByRole('combobox', { name: 'Video generation method' })).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion' })).toHaveCount(0);
   await page.getByLabel('Video prompt').fill('Continue the motion');
+  const seedMode = page.getByLabel('Generation seed mode', { exact: true }), seedValue = page.getByLabel('Generation seed value', { exact: true });
+  await expect(seedMode).toHaveValue('random'); await expect(seedValue).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Use last seed', exact: true })).toBeDisabled();
+  await seedMode.selectOption('fixed'); await seedValue.fill('0');
+  await expect(seedValue).toHaveValue('0');
   await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
   await page.getByText('Simple transition durations',{exact:true}).click();
   const audioTransition = page.getByRole('spinbutton', { name: 'Audio mask transition duration', exact: true });
@@ -75,13 +82,18 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(page.getByText(/FILM \+/)).toHaveCount(0);
   const controls = () => page.locator('.interstitial-editor').evaluate(form => {
     const top=form.getBoundingClientRect().top;
-    return ['textarea','.interstitial-time-fields','button[type=submit]','.task-status','input[aria-label="Audio mask transition duration"]','input[aria-label="Video mask transition duration"]'].map(selector=>{
+    return ['textarea','.generation-seed','.interstitial-time-fields','button[type=submit]','.task-status','input[aria-label="Audio mask transition duration"]','input[aria-label="Video mask transition duration"]'].map(selector=>{
       const bounds=form.querySelector(selector)!.getBoundingClientRect();return {top:bounds.top-top,height:bounds.height};
     });
   });
   const idleControls=await controls();
   const optionPosition = () => mask.evaluate(element => element.getBoundingClientRect().top - element.closest('form')!.getBoundingClientRect().top);
   const optionTop = await optionPosition();
+  await seedValue.fill('-1');
+  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  expect(comfySubmissions).toBe(0);
+  expect(await seedValue.evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(false);
+  await seedValue.fill('0');
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect(page.getByRole('progressbar', { name: 'Generating video' })).toHaveJSProperty('position', displayed, { timeout: 60_000 });
   await expect.poll(() => statusReads).toBeGreaterThanOrEqual(2);
@@ -119,6 +131,8 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   const saved = async () => (await readProject(page)).interstitials[0];
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);
+  expect((await saved()).result.metadata.seed).toBe(0);
+  expect((await saved()).requestSeed).toBe(0);
   expect((await saved()).requestMethod).toBe('comfy');
   expect((await saved()).generationSettings.maskInjection).toBe('standard');
   expect((await saved()).generationSettings).toMatchObject({ audioMaskTransitionMs: 250, videoMaskTransitionMs: 1000 });
@@ -127,10 +141,15 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(page.locator('.inspector-clip-meta')).toContainText('Generated');
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
   await page.locator('.inspector-output > summary').click();
+  await expect(page.getByLabel('Generation seed', { exact: true })).toHaveText('0');
   const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click();
   const downloaded = await download;
   expect(await readClipMetadata(new Blob([await readFile((await downloaded.path())!)]), new AbortController().signal)).toEqual((await saved()).result.metadata);
   await page.screenshot({ path: `test-results/comfy-interstitial-${detailed ? 'detailed' : 'aggregate'}-${width}.png` });
+  await seedMode.selectOption('random'); await expect(seedValue).toBeDisabled();
+  await expect(page.getByLabel('Generation seed', { exact: true })).toHaveText('0');
+  await page.getByRole('button', { name: 'Use last seed', exact: true }).click();
+  await expect(seedMode).toHaveValue('fixed'); await expect(seedValue).toHaveValue('0');
   await audioTransition.fill('0');
   await expect(videoTransition).toHaveValue('1000');
   await expect(page.locator('.interstitial-edited')).toHaveText('Edited');
@@ -139,6 +158,8 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect.poll(async () => comfySubmissions, { timeout: 60_000 }).toBe(2);
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
   expect((await saved()).result.duration).toBe(148 / 24);
+  expect((await saved()).result.metadata.seed).toBe(0);
+  expect((await saved()).requestSeed).toBe(0);
   expect((await saved()).requestMethod).toBe('comfy');
   expect((await saved()).generationSettings.maskInjection).toBe('standard');
   expect((await saved()).generationSettings).toMatchObject({ audioMaskTransitionMs: 0, videoMaskTransitionMs: 1000 });
@@ -149,4 +170,5 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await page.getByText('Simple transition durations', { exact: true }).click();
   await expect(audioTransition).toHaveValue('0');
   await expect(videoTransition).toHaveValue('1000');
+  await expect(seedMode).toHaveValue('fixed'); await expect(seedValue).toHaveValue('0');
 });

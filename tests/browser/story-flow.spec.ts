@@ -94,7 +94,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await page.locator('.story-clip.type-source .story-clip-title').first().click();await page.getByLabel('Source out',{exact:true}).fill('1.75');
   const warning=page.locator('.story-edge.reference-mismatch');await expect(warning).toHaveCount(1);await warning.locator('.story-crossfade').click();
   expect(await warning.locator('.story-edge-line').evaluate(el=>getComputedStyle(el).stroke)).toBe('rgb(241, 124, 118)');
-  await expect(page.getByLabel('Reference matching')).toContainText('Reference mismatch');await expect(page.getByLabel('Reference matching')).toContainText('Playback still works');
+  await expect(page.getByLabel('Reference matching')).toContainText('Reference mismatch');await expect(page.getByLabel('Reference matching')).toContainText('Configured crossfades still apply');
   await page.setViewportSize({width:1440,height:1000});await fitAll(page);await page.screenshot({path:'test-results/reference-mismatch.png',fullPage:true});
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-edge.reference-mismatch')).toHaveCount(0);
   await generated.locator('.story-clip-title').click();await page.locator('.inspector-output>summary').click();await page.getByRole('region',{name:'Video breakdown'}).scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/generated-reference-sections.png',fullPage:true});

@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect, openVideo, readProject, saveAndReopen, fitAll, type Page } from './fixtures';
 import { writeClipMetadata, readClipMetadata } from '../../src/media/clipMetadata';
-import { clipMetadata } from '../fixtures/clip-metadata';
+import { clipMetadata as legacyClipMetadata } from '../fixtures/clip-metadata';
+const clipMetadata = { ...legacyClipMetadata, seed: Number.MAX_SAFE_INTEGER };
 import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output } from 'mediabunny';
 
 async function video(metadata = clipMetadata) {
@@ -36,6 +37,7 @@ for (const width of [1440, 390]) test(`dropping a portable video restores an int
   await fitAll(page); await page.locator('.story-clip-title').click();
   await expect(page.getByLabel('Video prompt', { exact: true })).toHaveValue(clipMetadata.settings.prompt);
   await page.locator('.inspector-output>summary').click();
+  await expect(page.getByLabel('Generation seed', { exact: true })).toHaveText(String(clipMetadata.seed));
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Opening video');
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Ending video');
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Original clip is not in this project');
