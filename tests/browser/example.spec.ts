@@ -65,7 +65,7 @@ test('starts on the chooser and opens the example only when requested', async ({
   await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
   expect(downloads).toBe(0);
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference');
   await expect(page.getByRole('button', { name: 'Add video', exact: true })).toBeEnabled();
   expect((await activeProject(page)).interstitials).toEqual([]);
   expect(downloads).toBe(0);

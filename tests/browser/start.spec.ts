@@ -43,10 +43,12 @@ test('opens the bundled sample project with its saved videos', async ({ page }) 
   await page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ }).click();
   await expect(page.locator('.menu-document')).toBeVisible({ timeout: 180_000 });
   const project = await readProject(page);
-  await expect(page.locator('.menu-document')).toHaveText(project.name);
+  expect(project.name).toBe('sample');
+  expect(project.storyFlow.nodes).toHaveLength(13);
+  await expect(page.locator('.menu-document')).toHaveText('sample');
   expect(project.source.name).toMatch(/\.mp4$/);
   await expect.poll(async () => (await readProject(page))?.interstitials.filter((item: { phase: string }) => item.phase === 'ready').length ?? 0,
-    { timeout: 60_000 }).toBeGreaterThan(0);
+    { timeout: 60_000 }).toBe(9);
 });
 
 test('asks before closing a project with unsaved changes', async ({ page }) => {
@@ -60,7 +62,7 @@ test('asks before closing a project with unsaved changes', async ({ page }) => {
   const prompt = page.getByRole('dialog', { name: 'Save changes before closing?' });
   await expect(prompt).toBeVisible();
   await prompt.getByRole('button', { name: 'Cancel' }).click();
-  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference');
   await page.getByText('File', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Close project' }).click();
   await prompt.getByRole('button', { name: 'Discard changes' }).click();

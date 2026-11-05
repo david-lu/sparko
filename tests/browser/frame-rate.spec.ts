@@ -50,7 +50,7 @@ test('converts only a short generation reference from a native 25 fps source', a
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference');
   const rates = await page.evaluate(async () => {
     const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
     const { exportMp4 } = await import('/src/media/media.ts' as string);
@@ -102,7 +102,7 @@ test('cancelling a fallback conversion preserves the active project and leaves n
     } finally { db.close(); }
   });
   expect(result).toEqual({ id: before.id, source: before.source, count: 1 });
-  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.mp4');
+  await expect(page.locator('.menu-document')).toHaveText('interstitial-reference');
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
@@ -148,7 +148,7 @@ test('opens a saved 25 fps source without moving its drafts', async ({ page }) =
   });
   await page.reload();
   await page.getByRole('region', { name: 'Recent projects' }).getByRole('button', { name: 'Open' }).click();
-  await expect(page.locator('.menu-document')).toHaveText('legacy.mp4');
+  await expect(page.locator('.menu-document')).toHaveText(legacy.name);
   await expect(page.locator('.story-clip-title').filter({ hasText: 'Opening' })).toBeVisible();
   const prepared = await page.evaluate(async () => {
     const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);

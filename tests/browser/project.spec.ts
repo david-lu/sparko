@@ -62,7 +62,7 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await restored.goto('/');
   await expect(restored.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
   await restored.getByLabel('Choose project file').setInputFiles({ name: download.suggestedFilename(), mimeType: 'application/zip', buffer: await readFile(path) });
-  await expect(restored.locator('.menu-document')).toHaveText('interstitial-reference.mp4', { timeout: 30_000 });
+  await expect(restored.locator('.menu-document')).toHaveText('interstitial-reference', { timeout: 30_000 });
   await expect.poll(async () => (await activeProject(restored))?.interstitials.filter((item: any) => item.phase === 'ready').length, { timeout: 60_000 }).toBe(1);
   await restored.locator('.story-clip-title').filter({ hasText: 'Unfinished draft' }).click();
   await expect(restored.getByLabel('Video prompt')).toHaveValue('Unfinished draft');

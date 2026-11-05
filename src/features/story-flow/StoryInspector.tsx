@@ -102,9 +102,9 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
     {item && <InterstitialEditor key={item.id} projects={editor.projects} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
       generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} issues={editor.jobs.dependency(item.id)?.issues} labels={{ start: referenceLabel(referenceIds('before', refs.input)), end: referenceLabel(referenceIds('after', refs.output)) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
       resultDetails={<GeneratedVideoInfo item={item} node={node} nodes={graph.nodes} items={items} assetAliases={editor.projects.getSnapshot().project?.assetAliases} onSelectReference={editor.revealClip} />} />}
-    {node.source?.kind === 'image' && <label className="inspector-property"><span>Duration (s)</span><input aria-label="Image duration" type="number" min={1 / TIMELINE_FPS} step={1 / TIMELINE_FPS} value={Number(duration.toFixed(3))} onChange={e => {
-      const frames = Math.round(e.target.valueAsNumber * TIMELINE_FPS);
-      if (Number.isSafeInteger(frames) && frames > 0) editor.patch(node.id, { source: { ...node.source!, outFrame: node.source!.inFrame + frames } });
+    {node.source?.kind === 'image' && <label className="inspector-property"><span>Duration (s)</span><input aria-label="Image duration" title={`Minimum: 1 frame (1/${TIMELINE_FPS} second). Arrow keys adjust one frame.`} type="number" min={1 / TIMELINE_FPS} step={1 / TIMELINE_FPS} value={duration} onChange={e => {
+      const frames = Math.max(1, Math.round(e.target.valueAsNumber * TIMELINE_FPS));
+      if (Number.isSafeInteger(frames)) editor.patch(node.id, { source: { ...node.source!, outFrame: node.source!.inFrame + frames } });
     }}/></label>}
     {node.source && node.source.kind !== 'image' && <div className="inspector-source-range">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'Source in' : 'Source out'}</span><input type="number" step={1 / TIMELINE_FPS} min={field === 'inFrame' ? 0 : (node.source!.inFrame + 1) / TIMELINE_FPS} max={field === 'inFrame' ? (node.source!.outFrame - 1) / TIMELINE_FPS : node.source!.duration ?? info?.duration}
       value={Number((node.source![field] / TIMELINE_FPS).toFixed(3))} onChange={e => {

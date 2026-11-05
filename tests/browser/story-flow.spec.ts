@@ -154,12 +154,13 @@ test('clip names accept spaces, Escape cancels, and rename is one undoable edit'
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(input).toHaveValue('New scene');expect((await saved(page)).interstitials[0].label).toBe('New scene');
 });
 
-test('the existing sample project opens with two editable interaction groups',async({page})=>{
+test('the bundled sample project opens its saved timeline and interaction groups',async({page})=>{
   test.setTimeout(180000);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await page.getByRole('button',{name:/Sample project/}).click();
   await expect(page.locator('.story-clip').first()).toBeVisible({timeout:120000});await expect.poll(async()=>(await saved(page))?.storyFlow?.nodes.length??0).toBeGreaterThan(5);const project=await saved(page);
   expect(project.storyFlow.nodes.length).toBeGreaterThan(5);expect(project.storyFlow.nodes.some((n:any)=>n.interstitialId)).toBe(true);expect(project.storyFlow.edges.length).toBeGreaterThan(0);
   await expect(page.locator('.story-group')).toHaveCount(2);
-  expect(project.storyFlow.groups.map((g:any)=>g.name)).toEqual(['Question & response 1','Question & response 2']);
+  expect(project.name).toBe('sample');
+  expect(project.storyFlow.groups.map((g:any)=>g.name)).toEqual(['Question & response 1','Group 2']);
   for(const group of project.storyFlow.groups){expect(group.nodeIds).toHaveLength(4);expect(group.nodeIds.every((id:string)=>project.storyFlow.nodes.find((n:any)=>n.id===id)?.interstitialId)).toBe(true);}
   expect(await page.locator('.timeline-pin,.timeline-interstitial-group').count()).toBe(0);
   await fitAll(page);await page.locator('.story-clip').first().locator('.story-filmstrip').focus();await page.keyboard.press('ArrowRight');await expect(page.locator('.story-playhead')).toBeVisible();

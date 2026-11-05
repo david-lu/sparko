@@ -392,7 +392,7 @@ export default function App() {
           disabled={projectState.busy || !projectState.redoLabel} onClick={() => { controller.pause(); void projects.redo(); }}><Redo2 size={14} />{shortcutHint('redo')}</button>
       </div>
       <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-haspopup="dialog" aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button></>}
-      <span className="menu-document">{projectState.fileName || (savedFlow || projectState.project?.name!==source.name.replace(/\.[^.]+$/,'') ? projectState.project?.name : source.name)}</span>
+      <span className="menu-document">{projectState.fileName || projectState.project?.name || source.name}</span>
       <div className="mode-toggle" role="group" aria-label="Workspace mode">
         <button aria-pressed={!preview} disabled={projectState.busy} onClick={() => setPreview(false)}><Pencil size={13} />Edit</button>
         <button aria-pressed={preview} disabled={projectState.busy} onClick={() => { projects.endHistoryGroup(); setShortcuts(false); setPreferencesOpen(false); setHelpOpen(false); setPreview(true); }}><Eye size={14} />Preview</button>
