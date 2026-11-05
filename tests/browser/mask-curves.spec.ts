@@ -66,7 +66,7 @@ for(const width of [1440,390]) test(`separate neutral mask editors preserve pins
   expect(errors).toEqual([]);
 });
 
-for(const width of [1440,390]) test(`custom masks submit independently and keep controls stable through generation at ${width}px`,async({page})=>{
+for(const width of [1440,390]) test(`custom masks submit independently and keep controls stable through generation at ${width}px`,{tag:'@slow'},async({page})=>{
   await page.setViewportSize({width,height:width===390?844:1000});
   await page.route('**/api/status',async route=>{const response=await route.fetch();await route.fulfill({json:{...await response.json(),providers:{openai:false,gemini:false,comfy:true}}});});
   await page.route('**/api/comfy/status*',route=>route.fulfill({json:{ready:true}}));

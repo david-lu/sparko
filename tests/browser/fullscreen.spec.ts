@@ -27,7 +27,7 @@ test('fullscreen timeline can be hidden, restored and remembered without losing 
   await expect(timeline).toBeVisible();
 });
 
-test('fullscreen controls follow mouse activity and remain available during interaction', async ({ page }) => {
+test('fullscreen controls follow mouse activity and remain available during interaction', { tag: '@slow' }, async ({ page }) => {
   const stage = page.locator('.video-stage');
   const controls = page.locator('.transport');
   await stage.hover();
