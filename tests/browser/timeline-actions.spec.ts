@@ -27,16 +27,16 @@ for(const width of [1440,390]) {
     await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(initial.storyFlow);
     await page.getByRole('button',{name:'Redo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(after.storyFlow);
     await fitAll(page);
-    await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Video crossfade duration')).toHaveValue('0.75');
-    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration')).toHaveValue('0');
+    await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0.75');
+    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0');
     await title.click();await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
     await page.getByRole('spinbutton',{name:'end_range',exact:true}).fill('1.625');
-    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration')).toHaveValue('1.208');
-    await page.getByLabel('Video crossfade duration').fill('0.5');
+    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.208');
+    await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.5');
     await title.click();await page.getByRole('spinbutton',{name:'end_range',exact:true}).fill('2');
-    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration')).toHaveValue('0.5');
-    await expect(page.locator('.connection-fade-control').filter({has:page.getByLabel('Video crossfade duration')})).not.toContainText('Automatic:');
-    await expect(page.getByLabel('Audio crossfade duration')).toHaveValue('1.5');
+    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0.5');
+    await expect(page.locator('.connection-fade-control').filter({has:page.getByLabel('Video crossfade duration',{exact:true})})).not.toContainText('Automatic:');
+    await expect(page.getByLabel('Audio crossfade duration',{exact:true})).toHaveValue('1.5');
   });
 
   test(`context menus follow the pointer and insert templates at ${width}px`,async({page})=>{
