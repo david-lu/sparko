@@ -25,7 +25,7 @@ export const normalizeMaskInjection = (_value: unknown, _legacyInterpolation?: u
 export const clipMaskInjection = (_item: Pick<InterstitialSettings, 'method' | 'maskInjection' | 'interpolateMiddle' | 'useInputReference' | 'useOutputReference'>): MaskInjection => 'standard';
 export const minimumDuration = (method: GenerationMethod = 'comfy') => method === 'comfy-loop' ? INTERSTITIAL.minStartRange : INTERSTITIAL.minDuration;
 export type InterstitialPhase = 'draft' | 'preparing' | 'uploading' | 'queued' | 'rendering' | 'loading' | 'ready' | 'error' | 'cancelled';
-export type ClipReference = { kind?: 'image'; sceneId: string; assetId: string; inFrame: number; outFrame: number };
+export type ClipReference = { kind?: 'image'|'audio'; sceneId: string; assetId: string; inFrame: number; outFrame: number };
 export type GenerationReference = { before?: ClipReference; after?: ClipReference; beforeClips?: ClipReference[]; afterClips?: ClipReference[]; mode?: 'extend' | 'loop' | 'bridge' | 'custom' };
 export type InterstitialResult = { url: string; assetId?: string; /** Portable render provenance; reference IDs here may belong to another project. */ metadata?: ClipMetadata;
   /** Original output with reference sections, kept separately from the repeatable loop. */ fullAssetId?: string;

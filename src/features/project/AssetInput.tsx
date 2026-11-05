@@ -60,7 +60,7 @@ export default function AssetInput({ projects, value, kinds, onChange, label = '
     onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
     onDragEnd={() => setDragging(false)}
     onDrop={e => { e.preventDefault(); e.stopPropagation(); setDragging(false); const item = readLibraryDrag(e.dataTransfer), selections = readLibraryMove(e.dataTransfer);
-      const ids = selections.map(selection => selection.type === 'asset' ? selection.id : projects.getSnapshot().project?.assetGenerations?.find(g => g.id === selection.id)?.selectedAssetId);
+      const ids = selections.map(selection => selection.type === 'asset' ? selection.id : projects.getSnapshot().project?.clipGenerations?.find(g => g.id === selection.id)?.selectedAssetId);
       if (!ids.length && item && 'assetId' in item) ids.push(item.assetId);
       if (ids.some(id => !id)) { setError('A selected generation has no output yet.'); return; }
       void receive([...e.dataTransfer.files], ids.filter((id): id is string => !!id)); }}>

@@ -46,6 +46,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
   const imageFor = (segment: TimelineSegment) => {
     let image = images.get(segment.source.url);
     if (!image) {
+      if(segment.source.kind==='audio'){const blank=new OffscreenCanvas(canvas.width,canvas.height);const ctx=blank.getContext('2d')!;ctx.fillStyle='black';ctx.fillRect(0,0,blank.width,blank.height);image=Promise.resolve(blank);}else
       image = loadStillImage(segment.source, options.signal).then(bitmap => {
         try { return stillCanvas(bitmap, canvas.width, canvas.height, options.frame?.fit === 'cover' ? 'cover' : 'contain'); }
         finally { bitmap.close(); }
@@ -74,7 +75,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
       let edge: CompositionTransition | undefined;
       const edgeSinks = new Map<TimelineSegment, { sink: CanvasSink; first: number; last: number }>();
       const edgeFrame = async (segment: TimelineSegment, frame: number) => {
-        if (segment.source.kind === 'image') return imageFor(segment);
+        if (segment.source.kind === 'image'||segment.source.kind==='audio') return imageFor(segment);
         let decoder = edgeSinks.get(segment);
         if (!decoder) {
           const track = await inputFor(segment).getPrimaryVideoTrack();
@@ -93,7 +94,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
         if (first >= last) continue;
         const timestamps = function* () { for (let frame = first; frame < last; frame++) yield segment.sourceStart + (segment.still ? 0 : (frame - segment.startFrame) / composition.fps) + 1e-7; };
         const samples = async function* () {
-          if (segment.source.kind === 'image') {
+          if (segment.source.kind === 'image'||segment.source.kind==='audio') {
             const still = await imageFor(segment);
             for (let frame = first; frame < last; frame++) yield { canvas: still };
           } else {

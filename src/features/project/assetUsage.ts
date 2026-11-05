@@ -21,12 +21,13 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     }
     for (const side of ['before', 'after'] as const) for (const ref of referenceClips(item.requestReference, side)) add(ref.assetId, owner, `Submitted ${side === 'before' ? 'start' : 'end'} reference`);
   }
-  for (const g of project.assetGenerations ?? []) {
+  for (const g of project.clipGenerations ?? []) {
     for (const ref of g.settings.references) add(ref.assetId, g.name, `${g.kind} generation input`);
     for (const ref of g.submitted?.references ?? []) add(ref.assetId, g.name, 'Submitted generation input');
     for (const version of g.versions) for (const ref of version.settings.references) add(ref.assetId, g.name, 'Saved version input');
   }
   for (const template of project.storyFlow?.templates ?? []) {
+    for(const generation of template.generations??[]){for(const ref of generation.settings.references)add(ref.assetId,template.name,'Template generation input');for(const version of generation.versions){add(version.assetId,template.name,'Template generation version');for(const ref of version.settings.references)add(ref.assetId,template.name,'Template version input');}}
     for (const node of template.nodes) add(node.source?.assetId, template.name, 'Template footage');
     for (const settings of Object.values(template.settings)) {
       for (const ref of settings.imageReferences ?? []) add(ref.assetId, template.name, 'Template image input');

@@ -10,15 +10,15 @@ export function planAssetDeletion(project: Project, selection: readonly LibraryM
     if (seen.has(key)) return [];
     seen.add(key);
     const name = item.type === 'asset' ? project.library?.find(asset => asset.assetId === item.id)?.name
-      : project.assetGenerations?.find(generation => generation.id === item.id)?.name;
+      : project.clipGenerations?.find(generation => generation.id === item.id)?.name;
     return name === undefined ? [] : [{ ...item, name }];
   });
   const generationIds = new Set(targets.filter(item => item.type === 'generation').map(item => item.id));
   const assetIds = new Set([
     ...targets.filter(item => item.type === 'asset').map(item => item.id),
-    ...project.assetGenerations?.filter(g => generationIds.has(g.id)).flatMap(g => g.versions.map(version => version.assetId)) ?? [],
+    ...project.clipGenerations?.filter(g => generationIds.has(g.id)).flatMap(g => g.versions.map(version => version.assetId)) ?? [],
     ...project.library?.filter(asset => asset.generationId && generationIds.has(asset.generationId)).map(asset => asset.assetId) ?? [],
   ]);
   return { projectId: project.id, targets, generationIds, assetIds,
-    usages: assetUsage({ ...project, assetGenerations: project.assetGenerations?.filter(g => !generationIds.has(g.id)) }, [...assetIds]) };
+    usages: assetUsage({ ...project, clipGenerations: project.clipGenerations?.filter(g => !generationIds.has(g.id)) }, [...assetIds]) };
 }

@@ -5,9 +5,7 @@ async function setup(page: Page) {
   await openVideo(page);
 }
 async function create(page: Page) {
-  await page.getByRole('button', { name: 'Library menu', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Create generation', exact: true }).click();
-  await page.getByRole('menu', { name: 'Create generation', exact: true }).getByRole('menuitem', { name: 'Image', exact: true }).click();
+  await page.getByRole('button',{name:'Add image',exact:true}).press('Enter');
 }
 async function importImage(page: Page, name = 'Reference.png') {
   const base64 = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 160; c.height = 90; const ctx = c.getContext('2d')!; ctx.fillStyle = '#dfab69'; ctx.fillRect(0, 0, 160, 90); return c.toDataURL().split(',')[1]; });
@@ -16,7 +14,7 @@ async function importImage(page: Page, name = 'Reference.png') {
   await expect(page.getByRole('button', { name: `Library asset ${name}`, exact: true })).toBeVisible();
   return file;
 }
-const positions = (page: Page) => page.locator('.asset-inspector').evaluate(root => ['.prompt-field-heading', 'textarea', '.asset-input', 'button[type=submit]'].map(selector => { const r = root.querySelector(selector)!.getBoundingClientRect(); return { y: r.top - root.getBoundingClientRect().top, height: r.height }; }));
+const positions = (page: Page) => page.locator('.clip-generation-editor').evaluate(root => ['.prompt-field-heading', 'textarea', '.asset-input', 'button[type=submit]'].map(selector => { const r = root.querySelector(selector)!.getBoundingClientRect(); return { y: r.top - root.getBoundingClientRect().top, height: r.height }; }));
 
 for (const width of [1440, 390]) test(`image enhancement follows the selected model and keeps the Inspector stable at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await setup(page); await importImage(page); await create(page);
@@ -43,7 +41,7 @@ for (const width of [1440, 390]) test(`image enhancement follows the selected mo
   await expect(toast).toContainText(error); await expect(toast).toBeInViewport();
   const toolbar = (await page.locator('.menubar').boundingBox())!;
   expect((await toast.boundingBox())!.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height);
-  await expect(page.locator('.asset-inspector')).not.toContainText(error);
+  await expect(page.locator('.clip-generation-editor')).not.toContainText(error);
   await expect(prompt).toHaveValue(enhanced); expect(await positions(page)).toEqual(before);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   await page.screenshot({ path: `test-results/enhancement-toast-${width}.png` });
@@ -51,11 +49,11 @@ for (const width of [1440, 390]) test(`image enhancement follows the selected mo
   await expect(toast).toHaveCount(0); expect(await positions(page)).toEqual(before);
   await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeEnabled();
   await expect(page.getByRole('link', { name: 'Nano Banana Pro prompt guide ↗', exact: true })).toHaveAttribute('href', /google/);
-  await page.locator('.asset-inspector').screenshot({ path: `test-results/image-model-enhancement-${width}.png` });
+  await page.locator('.clip-generation-editor').screenshot({ path: `test-results/image-model-enhancement-${width}.png` });
   await input.scrollIntoViewIfNeeded(); await input.screenshot({ path: `test-results/asset-drop-input-${width}.png` });
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(prompt).toHaveValue('A poster reading "SUNRISE"');
   await expect(page.getByLabel('Image count', { exact: true })).toHaveCount(0); await model.selectOption('flux-2-max');
-  expect((await readProject(page)).assetGenerations[0].settings.count).toBe(1); await expect(page.getByLabel('Image count', { exact: true })).toHaveCount(0);
+  expect((await readProject(page)).clipGenerations[0].settings.count).toBe(1); await expect(page.getByLabel('Image count', { exact: true })).toHaveCount(0);
   await expect(page.locator('.asset-prompt-guide')).toHaveAttribute('href', /docs.bfl.ai/);
   await model.selectOption('ideogram-v3'); await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeDisabled();
   await input.getByRole('button', { name: 'Remove reference Reference.png', exact: true }).click();
@@ -95,9 +93,9 @@ test('all image models submit one image and save one generation version', async 
     await create(page); await page.getByLabel('Generation model', { exact: true }).selectOption(model); await page.getByLabel('Generation prompt', { exact: true }).fill('A warm landscape');
     await expect(page.getByLabel('Image count', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Generate image', exact: true }).click();
-    await expect.poll(async () => (await readProject(page)).assetGenerations[index].versions.length).toBe(1);
-    expect(submitted.settings).toMatchObject({ model, count: 1 }); expect((await readProject(page)).assetGenerations[index].versions[0].settings).toMatchObject({ model, count: 1 });
-    await expect(page.locator('.asset-preview img')).toBeVisible();
+    await expect.poll(async () => (await readProject(page)).clipGenerations[index].versions.length).toBe(1);
+    expect(submitted.settings).toMatchObject({ model, count: 1 }); expect((await readProject(page)).clipGenerations[index].versions[0].settings).toMatchObject({ model, count: 1 });
+    await expect(page.locator('.story-clip.selected .video-filmstrip img')).toBeVisible();
   }
 });
 

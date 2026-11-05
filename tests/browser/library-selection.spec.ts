@@ -21,11 +21,10 @@ async function folder(page: Page, name: string) {
   return page.getByRole('button', { name: `Folder ${name}`, exact: true });
 }
 async function draft(page: Page) {
-  await page.getByRole('button', { name: 'Library menu', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Create generation', exact: true }).click();
-  await page.getByRole('menu', { name: 'Create generation', exact: true }).getByRole('menuitem', { name: 'Image', exact: true }).click();
-  return page.getByRole('button', { name: 'Library generation Untitled image', exact: true });
+  await page.getByRole('button',{name:'Add image',exact:true}).press('Enter');
+  return page.getByRole('button',{name:'Select Untitled image',exact:true});
 }
+async function fourthAsset(page:Page){await importImages(page,['Fourth.png']);return asset(page,'Fourth.png');}
 async function beginDrag(page: Page, source: Locator, target: Locator) {
   await source.evaluate(el => el.scrollIntoView({ block: 'center' })); const from = (await source.boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
@@ -52,7 +51,7 @@ for (const width of [1440, 390]) test(`library selections preview and move toget
   await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
   const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   const target = await folder(page, 'References'); await page.locator('.library-feedback').click();
-  await importImages(page, ['One.png', 'Two.png', 'Three.png']); const generation = await draft(page);
+  await importImages(page, ['One.png', 'Two.png', 'Three.png']); const generation = await fourthAsset(page);
   await asset(page, 'One.png').click(); await asset(page, 'Three.png').click({ modifiers: ['Shift'] });
   await expect(selected(page)).toHaveCount(3);
   await asset(page, 'Two.png').click({ modifiers: [modifier] }); await expect(selected(page)).toHaveCount(2);
@@ -61,7 +60,7 @@ for (const width of [1440, 390]) test(`library selections preview and move toget
   const inspector = page.getByRole('region', { name: 'Selected assets', exact: true });
   await expect(inspector.getByRole('heading')).toHaveText('4 assets selected');
   await expect(inspector.locator('li')).toHaveCount(4);
-  await expect(inspector).toContainText('One.png'); await expect(inspector).toContainText('Untitled image');
+  await expect(inspector).toContainText('One.png'); await expect(inspector).toContainText('Fourth.png');
   await expect(inspector.locator('input,textarea,select,button,[contenteditable=true]')).toHaveCount(0);
   await asset(page, 'One.png').scrollIntoViewIfNeeded();
   await expect(asset(page, 'One.png').locator('.library-thumb')).toHaveAttribute('data-preview-state', 'ready');
@@ -84,18 +83,18 @@ for (const width of [1440, 390]) test(`library selections preview and move toget
   await beginDrag(page, asset(page, 'One.png'), target); await expect(target).toHaveClass(/is-drop-target/); await page.mouse.up();
   await expect(page.locator('.is-drop-target,.asset-library.is-dropping')).toHaveCount(0);
   const moved = await readProject(page), destination = moved.libraryFolders[0].id;
-  expect(moved.library.filter((a: any) => a.name.endsWith('.png')).map((a: any) => a.folderId)).toEqual([destination, destination, destination]);
-  expect(moved.assetGenerations[0].folderId).toBe(destination); expect(moved.storyFlow).toEqual(before.storyFlow);
+  expect(moved.library.filter((a: any) => a.name.endsWith('.png')).map((a: any) => a.folderId)).toEqual([destination, destination, destination, destination]);
+  expect(moved.library.find((a:any)=>a.name==='Fourth.png').folderId).toBe(destination); expect(moved.storyFlow).toEqual(before.storyFlow);
   await expect(selected(page)).toHaveCount(4); expect((await shape()).slice(0, 2)).toEqual(idle.slice(0, 2));
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  expect((await readProject(page)).library).toEqual(before.library); expect((await readProject(page)).assetGenerations).toEqual(before.assetGenerations);
+  expect((await readProject(page)).library).toEqual(before.library); expect((await readProject(page)).clipGenerations).toEqual(before.clipGenerations);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   expect((await readProject(page)).library).toEqual(moved.library);
   // Moving back to the project root keeps the whole selection.
   await beginDrag(page, asset(page, 'One.png'), page.locator('.library-feedback'));
   await expect(page.locator('.asset-library')).toHaveClass(/is-dropping/); await page.mouse.up();
   expect((await readProject(page)).library.filter((a: any) => a.name.endsWith('.png')).every((a: any) => !a.folderId)).toBe(true);
-  expect((await readProject(page)).assetGenerations[0].folderId).toBeUndefined();
+  expect((await readProject(page)).library.find((a:any)=>a.name==='Fourth.png').folderId).toBeUndefined();
   await asset(page, 'One.png').click(); await expect(selected(page)).toHaveCount(1);
   await expect(page.getByLabel('Asset name', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
@@ -158,20 +157,19 @@ for (const width of [1440, 390]) test(`30 assets use four centered thumbnails an
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
 
-test('Select unused assets includes subfolders and generation drafts but excludes referenced assets', async ({ page }) => {
+test('Select unused assets includes subfolders and excludes clip generation references', async ({ page }) => {
   await openVideo(page); await importImages(page, ['Outside.png']);
   const parent = await folder(page, 'References'); await importImages(page, ['Used.png', 'Unused.png']);
-  const generation = await draft(page);
+  await draft(page);
   await dragIntoView(page, asset(page, 'Used.png'), page.getByRole('group', { name: 'Reference assets', exact: true }));
   await folder(page, 'Nested'); await importImages(page, ['Nested.png']);
   await parent.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Select unused assets', exact: true }).click();
-  await expect(selected(page)).toHaveCount(3);
+  await expect(selected(page)).toHaveCount(2);
   for (const name of ['Unused.png', 'Nested.png']) await expect(asset(page, name)).toHaveAttribute('aria-pressed', 'true');
   for (const name of ['Used.png', 'Outside.png', 'interstitial-reference.mp4']) await expect(asset(page, name)).toHaveAttribute('aria-pressed', 'false');
-  await expect(generation).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('region', { name: 'Selected assets' }).locator('li')).toHaveCount(3);
+  await expect(page.getByRole('region', { name: 'Selected assets' }).locator('li')).toHaveCount(2);
   await page.locator('.library-feedback').click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Select unused assets', exact: true }).click();
-  await expect(selected(page)).toHaveCount(4); await expect(asset(page, 'Outside.png')).toHaveAttribute('aria-pressed', 'true');
+  await expect(selected(page)).toHaveCount(3); await expect(asset(page, 'Outside.png')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('Enter commits imported and generated asset names without submitting generation', async ({ page }) => {
@@ -183,15 +181,15 @@ test('Enter commits imported and generated asset names without submitting genera
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(asset(page, 'Original.png')).toBeVisible();
   await draft(page); let requests = 0;
   await page.route('**/api/library-generations', route => { requests++; return route.abort(); });
-  await heading.fill('Concept image'); await heading.press('Enter');
-  await expect(page.getByRole('button', { name: 'Library generation Concept image', exact: true })).toBeVisible();
-  expect((await readProject(page)).assetGenerations[0]).toMatchObject({ name: 'Concept image', phase: 'draft' }); expect(requests).toBe(0);
+  const clipName=page.getByLabel('Clip name',{exact:true});await clipName.fill('Concept image');await clipName.press('Enter');
+  await expect(page.getByRole('button',{name:'Select Concept image',exact:true})).toBeVisible();
+  expect((await readProject(page)).clipGenerations[0]).toMatchObject({ name: 'Concept image', phase: 'draft' }); expect(requests).toBe(0);
 });
 
 for (const width of [1440, 390]) test(`multi-selection menus preserve assets, move together and delete with one undo at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
   await folder(page, 'References'); await page.locator('.library-feedback').click();
-  await importImages(page, ['One.png', 'Two.png', 'Outside.png']); const generation = await draft(page);
+  await importImages(page, ['One.png', 'Two.png', 'Outside.png']); const generation = await fourthAsset(page);
   const chooseBatch = async () => {
     await asset(page, 'One.png').click(); await asset(page, 'Two.png').click({ modifiers: [modifier] }); await generation.click({ modifiers: [modifier] });
     await expect(selected(page)).toHaveCount(3);
@@ -205,9 +203,9 @@ for (const width of [1440, 390]) test(`multi-selection menus preserve assets, mo
   await page.getByRole('menu', { name: 'Move selected assets', exact: true }).getByRole('menuitem', { name: 'References', exact: true }).click();
   const moved = await readProject(page), folderId = moved.libraryFolders[0].id;
   expect(moved.library.filter((a: any) => ['One.png', 'Two.png'].includes(a.name)).every((a: any) => a.folderId === folderId)).toBe(true);
-  expect(moved.assetGenerations[0].folderId).toBe(folderId); await expect(selected(page)).toHaveCount(3);
+  expect(moved.library.find((a:any)=>a.name==='Fourth.png').folderId).toBe(folderId); await expect(selected(page)).toHaveCount(3);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  expect((await readProject(page)).library).toEqual(before.library); expect((await readProject(page)).assetGenerations).toEqual(before.assetGenerations);
+  expect((await readProject(page)).library).toEqual(before.library); expect((await readProject(page)).clipGenerations).toEqual(before.clipGenerations);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await asset(page, 'Outside.png').click({ button: 'right' });
   await expect(selected(page)).toHaveCount(1); await expect(page.getByRole('menu', { name: 'Asset actions', exact: true })).toBeVisible();
@@ -224,7 +222,7 @@ for (const width of [1440, 390]) test(`multi-selection menus preserve assets, mo
   await expect(asset(page, 'Outside.png')).toBeVisible();
   expect((await readProject(page)).storyFlow).toEqual(before.storyFlow);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  expect((await readProject(page)).library).toEqual(moved.library); expect((await readProject(page)).assetGenerations).toEqual(moved.assetGenerations);
+  expect((await readProject(page)).library).toEqual(moved.library); expect((await readProject(page)).clipGenerations).toEqual(moved.clipGenerations);
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(asset(page, 'One.png')).toHaveCount(0); await expect(generation).toHaveCount(0);
 });
 
@@ -239,37 +237,21 @@ test('batch deletion protects used assets and does not delete the unused part of
   await expect(source).toBeVisible(); await expect(asset(page, 'Unused.png')).toBeVisible(); await expect(selected(page)).toHaveCount(2);
 });
 
-for (const width of [1440, 390]) test(`batch deletion waits for generation cancellation without moving controls and keeps assets on failure at ${width}px`, async ({ page }) => {
-  await page.setViewportSize({ width, height: 1000 });
-  await page.route('**/api/status', async route => { const response = await route.fetch(), status = await response.json(); await route.fulfill({ json: { ...status, providers: { ...status.providers, fal: true } } }); });
-  let release!: () => void, fail = true, cancellations = 0;
-  const gate = new Promise<void>(resolve => { release = resolve; });
-  await page.route('**/api/library-generations', route => route.fulfill({ json: { requestId: 'batch-request-123' } }));
-  await page.route('**/api/library-generations/nano-banana-2/batch-request-123', async route => {
-    if (route.request().method() !== 'DELETE') return route.fulfill({ json: { phase: 'queued', count: 1 } });
-    cancellations++; await gate;
-    return route.fulfill(fail ? { status: 500, json: { error: 'Cancellation failed. Try again.' } } : { json: { cancelled: true } });
+for(const width of [1440,390])test(`clip deletion waits for generation cancellation and keeps assets at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:1000});
+  await page.route('**/api/status',async route=>{const response=await route.fetch(),body=await response.json();await route.fulfill({json:{...body,providers:{...body.providers,fal:true}}});});
+  let release!:()=>void,fail=true,cancellations=0;const gate=new Promise<void>(resolve=>{release=resolve;});
+  await page.route('**/api/library-generations',route=>route.fulfill({json:{requestId:'batch-request-123'}}));
+  await page.route('**/api/library-generations/nano-banana-2/batch-request-123',async route=>{
+    if(route.request().method()!=='DELETE')return route.fulfill({json:{phase:'queued',count:1}});
+    cancellations++;await gate;return route.fulfill(fail?{status:500,json:{error:'Cancellation failed. Try again.'}}:{json:{cancelled:true}});
   });
-  await openVideo(page); await importImages(page, ['Kept.png']); const generation = await draft(page);
-  await page.getByLabel('Generation prompt', { exact: true }).fill('A reference image');
-  await page.getByRole('button', { name: 'Generate image', exact: true }).click(); await expect(generation).toContainText('Queued');
-  await asset(page, 'Kept.png').click({ modifiers: [modifier] }); await expect(selected(page)).toHaveCount(2);
-  await asset(page, 'Kept.png').click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Delete selected assets…', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Delete 2 assets?', exact: true });
-  const positions = () => dialog.locator('h2,.asset-delete-targets,.library-feedback,.close-project-actions button').evaluateAll(elements => elements.map(element => {
-    const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
-  }));
-  const idle = await positions(); await dialog.getByRole('button', { name: 'Delete assets', exact: true }).click();
-  await expect.poll(() => cancellations).toBe(1); await expect(dialog.getByRole('button', { name: 'Deleting…', exact: true })).toBeDisabled();
-  expect(await positions()).toEqual(idle); await page.keyboard.press('Escape'); await expect(dialog).toBeVisible();
-  await dialog.screenshot({ path: `test-results/library-batch-deleting-${width}.png` });
-  release(); await expect(dialog.getByRole('status')).toContainText('Cancellation failed');
-  expect(await positions()).toEqual(idle);
-  let project = await readProject(page); expect(project.library.some((a: any) => a.name === 'Kept.png')).toBe(true); expect(project.assetGenerations).toHaveLength(1);
-  fail = false; await dialog.getByRole('button', { name: 'Delete assets', exact: true }).click();
-  await expect(dialog).toHaveCount(0); expect(cancellations).toBe(2);
-  await expect(asset(page, 'Kept.png')).toHaveCount(0); await expect(generation).toHaveCount(0);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(asset(page, 'Kept.png')).toBeVisible(); await expect(generation).toContainText('cancelled');
-  project = await readProject(page); expect(project.assetGenerations).toHaveLength(1);
+  await openVideo(page);await importImages(page,['Kept.png']);await draft(page);
+  await page.getByLabel('Generation prompt',{exact:true}).fill('A reference image');await page.getByRole('button',{name:'Generate image',exact:true}).click();
+  await expect.poll(async()=>(await readProject(page)).clipGenerations[0].phase).toBe('queued');
+  const remove=page.getByRole('button',{name:'Delete selected clips',exact:true});await remove.scrollIntoViewIfNeeded();const bounds=await remove.boundingBox();await remove.click();
+  await expect.poll(()=>cancellations).toBe(1);expect(await remove.boundingBox()).toEqual(bounds);await expect(page.locator('.story-clip')).toHaveCount(2);
+  release();await expect.poll(async()=>(await readProject(page)).clipGenerations[0].phase).toBe('error');await expect(page.locator('.story-clip')).toHaveCount(2);
+  fail=false;await remove.click();await expect(page.locator('.story-clip')).toHaveCount(1);await expect(asset(page,'Kept.png')).toBeVisible();
+  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(2);expect((await readProject(page)).clipGenerations[0].phase).toBe('cancelled');
 });

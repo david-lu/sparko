@@ -34,7 +34,7 @@ for (const width of [1440, 390]) test(`asset thumbnails and context menus work w
   await expect(audio.getByRole('img', { name: 'Waveform of voice-answer.wav' })).toBeVisible();
 
   await audio.click(); await image.click({ button: 'right' });
-  await expect(actions(page).getByRole('menuitem').allTextContents()).resolves.toEqual(['Open in Inspector', 'Add to timeline', 'Edit image', 'Download', 'Rename asset…', 'Delete asset…']);
+  await expect(actions(page).getByRole('menuitem').allTextContents()).resolves.toEqual(['Open in Inspector', 'Add to timeline', 'Download', 'Rename asset…', 'Delete asset…']);
   await expect(image).toHaveAttribute('aria-pressed', 'true'); await expect(audio).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByLabel('Asset name', { exact: true })).toHaveValue('Reference.png');
   await page.keyboard.press('Escape'); await expect(image).toBeFocused();
@@ -47,12 +47,12 @@ for (const width of [1440, 390]) test(`asset thumbnails and context menus work w
   await expect(actions(page).getByRole('menuitem', { name: 'Create generation', exact: true })).toHaveCount(0);
   await expect(actions(page).getByRole('menuitem', { name: 'Edit image', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape'); await audio.click({ button: 'right' });
-  expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Open in Inspector', 'Download', 'Rename asset…', 'Delete asset…']);
+  expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Open in Inspector', 'Add to timeline', 'Download', 'Rename asset…', 'Delete asset…']);
   const box = await actions(page).boundingBox(); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x + box!.width).toBeLessThanOrEqual(width); expect(box!.y + box!.height).toBeLessThanOrEqual(1000);
   await page.screenshot({ path: `test-results/library-context-${width}.png`, fullPage: true });
   await page.keyboard.press('Escape'); await image.click();
   await page.locator('.library-feedback').click({ button: 'right' });
-  expect((await actions(page).getByRole('menuitem').allTextContents()).map(text => text.trim())).toEqual(['Import files…', 'Import folder…', 'New folder', 'Select unused assets', 'Create generation']);
+  expect((await actions(page).getByRole('menuitem').allTextContents()).map(text => text.trim())).toEqual(['Import files…', 'Import folder…', 'New folder', 'Select unused assets']);
   await expect(image).toHaveAttribute('aria-pressed', 'false');
   await page.keyboard.press('Escape'); await page.getByLabel('Search library').click({ button: 'right' }); await expect(actions(page)).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -82,9 +82,10 @@ test('asset actions operate on the clicked asset and folders preserve their cont
   await expect(page.getByLabel('Asset name', { exact: true })).toHaveValue('Renamed.png');
   await asset(page, 'Renamed.png').click({ button: 'right' });
   const downloaded = page.waitForEvent('download'); await actions(page).getByRole('menuitem', { name: 'Download', exact: true }).click(); expect((await downloaded).suggestedFilename()).toBe('Renamed.png');
-  await asset(page, 'Renamed.png').click({ button: 'right' }); await actions(page).getByRole('menuitem', { name: 'Edit image', exact: true }).click();
+  await asset(page, 'Renamed.png').click({ button: 'right' }); await actions(page).getByRole('menuitem', { name: 'Add to timeline', exact: true }).click();
+  await page.getByRole('button',{name:'Generate a new version',exact:true}).click();
   await expect(page.getByLabel('Generation prompt', { exact: true })).toBeVisible();
-  expect((await readProject(page)).assetGenerations[0].settings.references[0].name).toBe('Renamed.png');
+  expect((await readProject(page)).clipGenerations[0].settings.references[0].name).toBe('Renamed.png');
   const nativeDialogs: string[] = [];
   page.on('dialog', async dialog => { nativeDialogs.push(dialog.message()); await dialog.dismiss(); });
   await page.getByRole('button', { name: 'New folder', exact: true }).click();
@@ -127,23 +128,17 @@ test('asset actions operate on the clicked asset and folders preserve their cont
   expect(nativeDialogs).toEqual([]);
 });
 
-test('generation menus reflect draft, running, cancelled and completed states', async ({ page }) => {
-  await page.route('**/api/status', async route => { const response = await route.fetch(); const body = await response.json(); await route.fulfill({ json: { ...body, providers: { ...body.providers, fal: true } } }); });
-  await openVideo(page); const png = await picture(page); let complete = false, cancelled = 0;
-  await page.route('**/api/library-generations', route => route.fulfill({ json: { requestId: 'request_123' } }));
-  await page.route('**/api/library-generations/nano-banana-2/request_123', route => { if (route.request().method() === 'DELETE') { cancelled++; return route.fulfill({ json: { cancelled: true } }); } return route.fulfill({ json: { phase: complete ? 'ready' : 'queued', count: 1 } }); });
-  await page.route('**/api/library-generations/nano-banana-2/request_123/content/0', route => route.fulfill({ body: png.buffer, contentType: 'image/png' }));
-  await page.getByRole('button', { name: 'Library menu', exact: true }).click(); await actions(page).getByRole('menuitem', { name: 'Create generation', exact: true }).click();
-  await page.getByRole('menu', { name: 'Create generation', exact: true }).getByRole('menuitem', { name: 'Image', exact: true }).click();
-  const generation = page.getByRole('button', { name: 'Library generation Untitled image', exact: true });
-  await generation.click({ button: 'right' }); expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Open in Inspector', 'Rename generation…', 'Delete generation…']);
-  await page.keyboard.press('Escape'); await page.getByLabel('Generation prompt', { exact: true }).fill('A reference image'); await page.getByRole('button', { name: 'Generate image', exact: true }).click();
-  await expect(generation).toContainText('Queued'); await generation.click({ button: 'right' });
-  await actions(page).getByRole('menuitem', { name: 'Cancel generation', exact: true }).click(); await expect.poll(() => cancelled).toBe(1);
-  await expect(generation).toContainText('cancelled'); await generation.click({ button: 'right' });
-  await expect(actions(page).getByRole('menuitem', { name: 'Cancel generation', exact: true })).toHaveCount(0);
-  complete = true; await actions(page).getByRole('menuitem', { name: 'Check result', exact: true }).click();
-  await expect(generation.locator('.library-thumb')).toHaveAttribute('data-preview-state', 'ready');
-  await generation.click({ button: 'right' });
-  expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Open in Inspector', 'Add to timeline', 'Edit image', 'Download selected version', 'Rename generation…', 'Delete generation…']);
+test('generation controls stay on the clip while the Library exposes completed media', async ({ page }) => {
+  await page.route('**/api/status',async route=>{const response=await route.fetch(),body=await response.json();await route.fulfill({json:{...body,providers:{...body.providers,fal:true}}});});
+  await openVideo(page);const png=await picture(page);let complete=false,cancelled=0;
+  await page.route('**/api/library-generations',route=>route.fulfill({json:{requestId:'request_123'}}));
+  await page.route('**/api/library-generations/nano-banana-2/request_123',route=>{if(route.request().method()==='DELETE'){cancelled++;return route.fulfill({json:{cancelled:true}});}return route.fulfill({json:{phase:complete?'ready':'queued',count:1}});});
+  await page.route('**/api/library-generations/nano-banana-2/request_123/content/0',route=>route.fulfill({body:png.buffer,contentType:'image/png'}));
+  await page.getByRole('button',{name:'Add image',exact:true}).press('Enter');
+  await expect(page.locator('[data-library-type=generation]')).toHaveCount(0);
+  await page.getByLabel('Generation prompt',{exact:true}).fill('A reference image');await page.getByRole('button',{name:'Generate image',exact:true}).click();
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();await expect.poll(()=>cancelled).toBe(1);
+  complete=true;await page.getByRole('button',{name:'Check result',exact:true}).click();
+  const output=asset(page,'Untitled image · v1');await expect(output).toBeVisible();await output.click({button:'right'});
+  expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Open in Inspector','Add to timeline','Download','Rename asset…','Delete asset…']);
 });

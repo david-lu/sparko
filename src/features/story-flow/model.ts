@@ -1,3 +1,4 @@
+import type { AssetGeneration } from '../../../shared/asset-generation';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { playableResult, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import { composeFlows } from '../call-response/compose';
@@ -12,7 +13,13 @@ export type StoryCondition = { id: string; label: string; values: string[] };
 export type StoryNode = {
   id: string; name: string; kind: NodeKind; x: number; y: number;
   color?: ClipColor;
-  source?: { kind?: 'image'; assetId: string; originalAssetId?:string; duration?:number; inFrame: number; outFrame: number };
+  /** Playback belongs to this placement, never to its shared media file. */
+  volume?: number;
+  /** Each recipe has one owning clip; completed media remains independently reusable. */
+  generationId?: string;
+  mediaKind?: 'video' | 'image' | 'audio';
+  duration?: number;
+  source?: { kind?: 'image' | 'audio'; assetId: string; originalAssetId?:string; duration?:number; inFrame: number; outFrame: number };
   /** Edit range relative to the generated body, leaving the cached output intact. */
   trim?: { inFrame: number; outFrame: number };
   interstitialId?: string;
@@ -33,7 +40,7 @@ export type StoryEdge = { id: string; from: string; to: string; event: 'next' | 
 export const groupColors = { blue: '#82a5bd', purple: '#a391c2', green: '#80a69a', amber: '#c4a779', rose: '#c58d99' } as const;
 export type GroupBounds = { x: number; y: number; width: number; height: number };
 export type StoryGroup = { id: string; name: string; nodeIds: string[]; color: keyof typeof groupColors; bounds?: GroupBounds };
-export type StoryTemplate = { id: string; name: string; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; settings: Record<string, InterstitialSettings>; color?: StoryGroup['color'] };
+export type StoryTemplate = { id: string; name: string; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; settings: Record<string, InterstitialSettings>; generations?: AssetGeneration[]; color?: StoryGroup['color'] };
 export type StoryGraph = { version: 1; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; templates: StoryTemplate[]; groups?: StoryGroup[] };
 export const PIXELS_PER_SECOND = 32;
 export const CLIP_HEIGHT = 76;
@@ -90,6 +97,7 @@ export function migrateFades(graph: StoryGraph): StoryGraph {
 }
 export function nodeDuration(node: StoryNode, items: Interstitial[]): number {
   if (node.source) return (node.source.outFrame - node.source.inFrame) / TIMELINE_FPS;
+  if (node.generationId) return node.duration ?? 4;
   const item = items.find(item => item.id === node.interstitialId);
   const duration=item && playableResult(item)?.duration || item?.duration || 6;
   if(!node.trim)return duration;
@@ -331,13 +339,13 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
   graph=normalizeConditions(graph);
   const fps = TIMELINE_FPS, total = Math.max(1, Math.floor(duration * fps));
   const scenes: TimelineScene[] = graph.nodes.map(node => {
-    const item = items.find(i => i.id === node.interstitialId), saved = item && playableResult(item);
+    const item = items.find(i => i.id === node.interstitialId), savedResult = item && playableResult(item), saved = node.source && node.source.assetId !== savedResult?.assetId ? undefined : savedResult;
     const result = saved?.fullAssetId && !saved.fullRange && saved === item?.result && item.requestInsertion
       ? {...saved, fullRange:item.requestInsertion} : saved;
     const bounds=generatedBounds(node,result?.duration??item?.duration??6),start=result?Math.round(result.start*fps):0;
     const source = node.source ?? { assetId: result?.assetId ?? sourceAssetId, inFrame: result ? start+bounds.inFrame : 0, outFrame: result ? start+bounds.outFrame : 1 };
-    return { id:node.id, label:item?.label ?? node.name, role:node.kind === 'source' ? 'source':'call', dialogue:item?.dialogue ?? '', interstitialId:node.interstitialId,
-      draft:!node.source && !result, plannedFrames:bounds.outFrame-bounds.inFrame, generated:result,
+    return { id:node.id, label:item?.label ?? node.name, volume:node.volume ?? 1, role:node.kind === 'source' ? 'source':'call', dialogue:item?.dialogue ?? '', interstitialId:node.interstitialId,
+      draft:!node.source && !result, plannedFrames:node.generationId?Math.round(nodeDuration(node,items)*fps):bounds.outFrame-bounds.inFrame, generated:result,
       sourceTime:item?.time, storyNode:node,
       clip:behaviors(node).loop || behaviors(node).conditional ? { id:node.id, ...source, kind:'idle', repeat:'until-answer',exitAt:'loop-boundary' } : { id:node.id,...source,kind:node.kind === 'source' ? 'video':'call' } };
   });

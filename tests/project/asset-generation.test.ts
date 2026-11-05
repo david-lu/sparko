@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { ASSET_MODELS, newAssetGeneration, validateAssetSettings } from '../../shared/asset-generation';
-import { AssetGenerationController } from '../../src/features/project/AssetGenerationController';
+import { ClipGenerationController } from '../../src/features/project/ClipGenerationController';
 import type { ProjectController } from '../../src/features/project/ProjectController';
 import { emptyAnalysis, type Project } from '../../src/features/project/types';
 import { createFalClient, falFiles, falPayload, falRequestPath } from '../../server/features/asset-generation/fal';
@@ -39,14 +39,14 @@ describe('fal media generations', () => {
     const generation = newAssetGeneration('image'); generation.settings.count = 3; generation.settings.prompt = 'A poster';
     generation.submitted = structuredClone(generation.settings);
     generation.versions = [{ assetId: crypto.randomUUID(), name: 'Previous result', createdAt: 1, settings: structuredClone(generation.settings) }];
-    let project: Project = { id: 'test', name: 'Legacy batch', updatedAt: 0, source: { name: 'Empty' }, subtitle: null, analysis: emptyAnalysis(), interstitials: [], assetGenerations: [generation] };
+    let project: Project = { id: 'test', name: 'Legacy batch', updatedAt: 0, source: { name: 'Empty' }, subtitle: null, analysis: emptyAnalysis(), interstitials: [], clipGenerations: [generation] };
     let listener: (() => void) | undefined;
     const projects = { getSnapshot: () => ({ project }), subscribe: (callback: () => void) => { listener = callback; return () => { listener = undefined; }; },
       editAssets: vi.fn((change: (p: Project) => Project) => { project = change(project); listener?.(); }) };
-    const stop = new AssetGenerationController(projects as unknown as ProjectController).watch();
-    expect(project.assetGenerations![0].settings.count).toBe(1);
-    expect(project.assetGenerations![0].submitted).toEqual(generation.submitted);
-    expect(project.assetGenerations![0].versions).toEqual(generation.versions);
+    const stop = new ClipGenerationController(projects as unknown as ProjectController).watch();
+    expect(project.clipGenerations![0].settings.count).toBe(1);
+    expect(project.clipGenerations![0].submitted).toEqual(generation.submitted);
+    expect(project.clipGenerations![0].versions).toEqual(generation.versions);
     expect(projects.editAssets).toHaveBeenCalledTimes(1); expect(projects.editAssets).toHaveBeenCalledWith(expect.any(Function), false);
     stop();
   });

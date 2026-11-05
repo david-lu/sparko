@@ -16,7 +16,7 @@ export function storyDependency(graph: StoryGraph, items: Interstitial[], assetI
   const flow = runtimeFlow(graph, items, assetId, duration), byId = new Map(flow.scenes.map(s => [s.id, s]));
   const ref = (id: string): ClipReference => {
     const scene = byId.get(id)!, range = sceneMediaRange(scene, flow.fps);
-    return { ...(scene.storyNode?.source?.kind === 'image' ? { kind: 'image' as const } : {}), sceneId: id, assetId: range.assetId, inFrame: Math.round(range.start * flow.fps), outFrame: Math.round(range.end * flow.fps) };
+    return { ...(scene.storyNode?.source?.kind ? { kind: scene.storyNode.source.kind } : {}), sceneId: id, assetId: range.assetId, inFrame: Math.round(range.start * flow.fps), outFrame: Math.round(range.end * flow.fps) };
   };
   const matches = (input: ClipReference, current: ClipReference) => {
     const scene = byId.get(current.sceneId)!;

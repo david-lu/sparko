@@ -14,16 +14,21 @@ export function collectLibrary(project: Project, sourceDuration?: number): Libra
     add({ ...project.source, assetId: project.source.assetId, kind: image ? 'image' : 'video', duration: image ? undefined : sourceDuration });
   }
   for (const node of project.storyFlow?.nodes ?? []) {
-    if (node.source) add({ assetId: node.source.assetId, originalAssetId: node.source.originalAssetId, name: node.name, kind: node.source.kind === 'image' ? 'image' : 'video', duration: node.source.duration });
+    if (node.source) add({ assetId: node.source.assetId, originalAssetId: node.source.originalAssetId, name: node.name, kind: node.source.kind ?? 'video', duration: node.source.duration });
   }
   for (const item of project.interstitials) {
     for (const result of [item.previousResult, item.result]) {
       if (!result?.assetId) continue;
-      add({ assetId: result.assetId, name: item.label, kind: 'generated', duration: result.totalDuration,
+      const generation = { provider: 'comfy' as const, result,
+        settings: result.metadata?.settings ?? (result === item.result && item.phase === 'ready' ? item.generationSettings : undefined) };
+      add({ assetId: result.assetId, name: item.label, kind: 'generated', duration: result.totalDuration, generation,
         inFrame: Math.round(result.start * TIMELINE_FPS), outFrame: Math.round((result.start + result.duration) * TIMELINE_FPS) });
+      if (result.fullAssetId) add({ assetId: result.fullAssetId, name: `${item.label} · full render`, kind: 'generated', generation,
+        duration: result.fullRange?.totalDuration, inFrame: Math.round((result.fullRange?.start ?? 0) * TIMELINE_FPS), outFrame: result.fullRange ? Math.round((result.fullRange.start + result.fullRange.duration) * TIMELINE_FPS) : undefined });
     }
   }
-  for (const generation of project.assetGenerations ?? []) for (const version of generation.versions) add({ assetId: version.assetId, name: version.name, kind: generation.kind === 'video' ? 'generated' : generation.kind, generationId: generation.id, folderId: generation.folderId });
+  for (const generation of [...project.clipGenerations ?? [], ...project.assetGenerations ?? []]) for (const version of generation.versions) add({ assetId: version.assetId, name: version.name, kind: generation.kind === 'video' ? 'generated' : generation.kind, generationId: generation.id, folderId: generation.folderId,
+    generation: { provider: 'fal', settings: version.settings, createdAt: version.createdAt } });
   for (const item of project.interstitials) for (const ref of item.imageReferences ?? []) add({ assetId: ref.assetId, name: ref.name, kind: 'image' });
   return [...entries.values()];
 }

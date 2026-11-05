@@ -2,9 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { test, expect, openVideo, dragIntoView, addDraft, readProject, saveAndReopen, type Page } from './fixtures';
 
 async function create(page: Page, kind: 'Image' | 'Video' | 'Audio') {
-  await page.getByRole('button', { name: 'Library menu', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Create generation', exact: true }).click();
-  await page.getByRole('menu', { name: 'Create generation', exact: true }).getByRole('menuitem', { name: kind, exact: true }).click();
+  await page.getByRole('button',{name:kind==='Video'?'Add Kling video':`Add ${kind.toLowerCase()}`,exact:true}).press('Enter');
   await expect(page.getByLabel('Generation model', { exact: true })).toBeVisible();
 }
 async function falStatus(page: Page) {
@@ -60,32 +58,32 @@ for (const width of [1440, 390]) test(`image generation keeps Inspector controls
   await page.getByLabel('Generation prompt', { exact: true }).fill('Turn the reference into a warm film poster');
   await dragIntoView(page, page.getByRole('button', { name: 'Library asset Character.png', exact: true }), page.getByRole('group', { name: 'Reference assets', exact: true }));
   await expect(page.getByRole('button', { name: 'Remove reference Character.png', exact: true })).toBeVisible();
-  const positions = () => page.locator('.asset-inspector').evaluate(el => { const root = el.getBoundingClientRect(); return ['.asset-preview', 'textarea', 'button[type=submit]', '.asset-generation-feedback'].map(s => { const r = el.querySelector(s)!.getBoundingClientRect(); return { y: Math.round(r.top - root.top), height: r.height }; }); });
+  const positions = () => page.locator('.clip-inspector').evaluate(el => { const root = el.getBoundingClientRect(); return ['.asset-render-info', 'textarea', 'button[type=submit]', '.asset-generation-feedback'].map(s => { const r = el.querySelector(s)!.getBoundingClientRect(); return { y: Math.round(r.top - root.top), height: r.height }; }); });
   const before = await positions();
   await page.getByRole('button', { name: 'Generate image', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Library generation Untitled image', exact: true })).toContainText('Generating');
+  await expect(page.getByRole('button',{name:'Generating…',exact:true})).toBeDisabled();
   expect(await positions()).toEqual(before);
   await page.getByLabel('Generation prompt', { exact: true }).fill('A different future version');
   expect(submitted.settings.prompt).toBe('Turn the reference into a warm film poster'); expect(submitted.inputs[0].kind).toBe('image');
   await page.screenshot({ path: `test-results/image-generation-${width}-loading.png`, fullPage: true });
   complete = true;
-  await expect(page.locator('.asset-inspector .asset-preview img')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.story-clip.selected .video-filmstrip img')).toBeVisible({ timeout: 15_000 });
   expect(await positions()).toEqual(before);
-  await expect.poll(async () => (await readProject(page)).assetGenerations[0].versions.length).toBe(1);
-  const generation = (await readProject(page)).assetGenerations[0];
+  await expect.poll(async () => (await readProject(page)).clipGenerations[0].versions.length).toBe(1);
+  const generation = (await readProject(page)).clipGenerations[0];
   expect(generation.versions[0].settings.prompt).toBe('Turn the reference into a warm film poster'); expect(generation.settings.prompt).toBe('A different future version');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   await page.screenshot({ path: `test-results/image-generation-${width}-ready.png`, fullPage: true });
   if (width === 1440) {
     await page.getByRole('button', { name: 'Collapse Library panel', exact: true }).click();
     await page.getByRole('button', { name: 'Collapse Add clips panel', exact: true }).click();
-    await page.getByLabel('Asset name', { exact: true }).scrollIntoViewIfNeeded();
+    await page.getByLabel('Clip name', { exact: true }).scrollIntoViewIfNeeded();
     await page.locator('.sidebar').screenshot({ path: 'test-results/image-generation-ui.png' });
     await saveAndReopen(page);
     await page.getByRole('button', { name: 'Expand Library panel', exact: true }).click();
-    await page.getByRole('button', { name: 'Library generation Untitled image', exact: true }).click();
-    await expect(page.locator('.asset-preview img')).toBeVisible();
-    expect((await readProject(page)).assetGenerations[0].versions).toHaveLength(1);
+    await page.getByRole('button', { name: 'Select Untitled image', exact: true }).click();
+    await expect(page.locator('.story-clip.selected .video-filmstrip img')).toBeVisible();
+    expect((await readProject(page)).clipGenerations[0].versions).toHaveLength(1);
   }
   expect(errors).toEqual([]);
 });
@@ -104,7 +102,7 @@ test('a cancelled generation can retrieve its result without another paid submis
   await expect.poll(() => submitted).toBe(1);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click(); await expect.poll(() => cancelled).toBe(1);
   complete = true; await page.getByRole('button', { name: 'Check result', exact: true }).click();
-  await expect(page.locator('.asset-preview img')).toBeVisible(); expect(submitted).toBe(1);
+  await expect(page.locator('.story-clip.selected .video-filmstrip img')).toBeVisible(); expect(submitted).toBe(1);
 });
 
 test('folders import media without creating timeline clips and Start/End video toggles stay independent', async ({ page }) => {
@@ -142,14 +140,13 @@ test('video and audio generations save playable outputs and expose appropriate m
   await page.route('**/api/library-generations/stable-audio-2.5/request_123/content/0', route => route.fulfill({ contentType: 'audio/wav', path: 'tests/fixtures/voice-answer.wav' }));
   await create(page, 'Video'); await page.getByLabel('Generation prompt', { exact: true }).fill('Ocean waves');
   await page.getByRole('button', { name: 'Generate video', exact: true }).click();
-  await expect(page.locator('.asset-preview video')).toBeVisible();
-  await page.getByRole('button', { name: 'Add to timeline', exact: true }).click(); await expect(page.locator('.story-clip')).toHaveCount(2);
+  await expect(page.locator('.story-clip.selected .video-filmstrip img').first()).toBeVisible(); await expect(page.locator('.story-clip')).toHaveCount(2);
   await create(page, 'Audio'); await page.getByLabel('Generation model', { exact: true }).selectOption('stable-audio-2.5');
   await page.getByLabel('Generation prompt', { exact: true }).fill('Gentle ambient music');
   await page.getByLabel('Generation duration', { exact: true }).fill('30');
   await page.getByRole('button', { name: 'Generate audio', exact: true }).click();
-  await expect(page.locator('.asset-preview audio')).toBeVisible();
-  await expect.poll(async () => (await readProject(page)).assetGenerations.filter((g: any) => g.phase === 'ready').length).toBe(2);
+  await expect(page.locator('.story-clip.selected [aria-label="Audio clip"]')).toBeVisible();
+  await expect.poll(async () => (await readProject(page)).clipGenerations.filter((g: any) => g.phase === 'ready').length).toBe(2);
 });
 
 test('all panels can float, dock, maximize, and reset without changing the default workspace', async ({ page }) => {
