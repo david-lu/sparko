@@ -85,8 +85,9 @@
 
 /* Reveal detail only when it fits; every media state uses the same clip box. */
 .story-clip,.story-drop-preview{container:clip / inline-size}
-.story-clip>.story-clip-title,.story-drop-preview>.story-clip-title{gap:4px;background:color-mix(in srgb,var(--clip-color) 24%,var(--panel));box-shadow:inset 0 2px var(--clip-color)}
-.story-clip-title>.story-clip-type{display:flex;flex:none;gap:3px;color:var(--clip-color)}
+.story-clip>.story-clip-title,.story-drop-preview>.story-clip-title{gap:4px;background:color-mix(in srgb,var(--clip-color) 40%,var(--panel));box-shadow:inset 0 2px var(--clip-color)}
+.story-clip-title small{color:var(--text)}
+.story-clip-title>.story-clip-type{display:flex;flex:none;gap:3px;color:color-mix(in srgb,var(--clip-color) 80%,white)}
 .story-clip-type svg{flex:none}
 .story-clip-title>.story-clip-name{display:block;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .story-clip[data-detail=label] .story-clip-title small,.story-clip:not([data-detail=full]) .story-clip-secondary-type{display:none}
