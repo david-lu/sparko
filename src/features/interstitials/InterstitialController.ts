@@ -252,7 +252,8 @@ export class InterstitialController {
       previousResult: playableResult(item)?{...playableResult(item)!,prompt:playableResult(item)!.prompt??(item.phase==='ready'?item.requestPrompt:undefined)}:undefined, result: undefined, requestId: item.phase === 'ready' ? undefined : item.requestId,
       requestMethod: item.requestMethod, generationSettings: interstitialSettings(item), requestReference: dependency?.reference, requestOrigin: undefined });
     try {
-      this.patch(id, { requestOrigin: captureClipOrigin(item, dependency?.reference, this.story?.graph, this.state.items) });
+      const requestOrigin = captureClipOrigin(item, dependency?.reference, this.story?.graph, this.state.items);
+      this.patch(id, { requestOrigin });
       // A failed status request may still belong to an active job. Retire it before resubmitting.
       if (item.requestId && item.phase !== 'cancelled' && item.phase !== 'ready') await cancelInterstitialJob(item.requestId);
       operation.signal.throwIfAborted();
@@ -260,7 +261,7 @@ export class InterstitialController {
       const source = dependency?.reference && (dependency.reference.before || dependency.reference.after) ? await generationSource(item, dependency.reference, operation.signal, info) : { item, engine, info };
       operation.signal.throwIfAborted();
       const submittedPrompt = source.item.prompt;
-      const job = await generateInterstitial(source.item, source.engine, source.info, operation.signal, (phase, progress) => {
+      const job = await generateInterstitial({ ...source.item, requestOrigin }, source.engine, source.info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });
       if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId).catch(() => undefined); return; }

@@ -545,6 +545,8 @@ describe('interstitial lifecycle', () => {
     });
     vi.mocked(generateInterstitial).mockImplementation(async (item, _engine, _info, _signal, progress) => {
       expect(interstitialSettings(item)).toEqual(submitted);
+      expect(item.requestOrigin?.settings).toEqual(submitted);
+      expect(item.requestOrigin).toEqual(controller.getSnapshot().items[0].requestOrigin);
       progress('uploading');
       return { requestId: completed.requestId, status: 'IN_QUEUE' };
     });

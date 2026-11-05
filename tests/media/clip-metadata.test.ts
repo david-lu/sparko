@@ -1,11 +1,22 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, EncodedPacketSink, Input, Mp4OutputFormat, Output } from 'mediabunny';
+import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, EncodedPacketSink, Input, Mp4OutputFormat, Output, type MetadataTags } from 'mediabunny';
 import { readClipMetadata, writeClipMetadata } from '../../src/media/clipMetadata';
-import { MAX_CLIP_METADATA_BYTES, parseClipMetadata } from '../../shared/clip-metadata';
+import { MAX_CLIP_METADATA_BYTES, parseClipMetadata, parseComfyClipMetadata, clipOriginSchema } from '../../shared/clip-metadata';
 import { clipMetadata } from '../fixtures/clip-metadata';
+import { bridgeWorkflow } from '../../server/features/comfy/workflow';
+import { comfyBridgePlan } from '../../shared/comfy';
 const signal = () => new AbortController().signal;
 const fixture = async () => new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')], { type: 'video/mp4' });
+async function withTags(tags: MetadataTags, metadataFormat: 'mdta' | 'mdir' = 'mdta') {
+  const input = new Input({ source: new BlobSource(await fixture()), formats: ALL_FORMATS });
+  const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ metadataFormat }) });
+  try {
+    const conversion = await Conversion.init({ input, output, copy: { mode: 'forced' }, tags });
+    await conversion.execute();
+    return new Blob([output.target.buffer!], { type: 'video/mp4' });
+  } finally { input.dispose(); }
+}
 async function inspect(blob: Blob) {
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   try {
@@ -19,6 +30,27 @@ async function inspect(blob: Blob) {
   } finally { input.dispose(); }
 }
 describe('portable MP4 clip metadata', () => {
+  it.each(['prompt', 'comment'] as const)('reads direct Comfy downloads with a %s tag and no local sparko tag', async format => {
+    const origin = clipOriginSchema.parse(clipMetadata);
+    const graph = bridgeWorkflow('uploaded-reference', { clipOrigin: origin, before: 1.625, after: 1.625, duration: 6,
+      prompt: 'Exact submitted prompt', width: 960, height: 544, hasAudio: true }, 1234);
+    const prompt = JSON.stringify(graph);
+    const blob = await withTags(format === 'prompt' ? { raw: { prompt } } : { comment: JSON.stringify({ prompt }) }, format === 'prompt' ? 'mdta' : 'mdir');
+    expect((await inspect(blob)).tags.raw?.sparko).toBeUndefined();
+    expect(await readClipMetadata(blob, signal())).toEqual({ ...origin, prompt: 'Exact submitted prompt', media: comfyBridgePlan(1.625, 1.625, 6).insertion });
+    // Loop extraction and local updates must override the original graph's media range.
+    const local = await writeClipMetadata(blob, clipMetadata, signal());
+    expect(await readClipMetadata(local, signal())).toEqual(clipMetadata);
+    const invalidLocal = await withTags({ raw: { prompt, sparko: JSON.stringify({ ...clipMetadata, version: 2 }) } });
+    expect(await readClipMetadata(invalidLocal, signal())).toBeUndefined();
+  });
+  it('does not infer reference identities from an ordinary graph or accept invalid embedded data', () => {
+    const wrap = (metadata: unknown) => JSON.stringify({ prompt: JSON.stringify({ output: { _meta: { sparko: metadata } } }) });
+    for (const text of ['{', 'null', JSON.stringify({ prompt: '{' }), JSON.stringify({ before: { inputs: { video: 'upload.mp4' } } }),
+      wrap({ ...clipMetadata, version: 2 }), wrap({ ...clipMetadata, references: { before: { ...clipMetadata.references.before, outFrame: 0 } } }), ' '.repeat(MAX_CLIP_METADATA_BYTES * 4 + 1)]) {
+      expect(parseComfyClipMetadata(text)).toBeUndefined();
+    }
+  });
   it('round trips Unicode, source provenance and Comfy tags without changing encoded video packets', async () => {
     const original = await fixture();
     expect(await readClipMetadata(original, signal())).toBeUndefined();

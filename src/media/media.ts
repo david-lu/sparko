@@ -7,7 +7,7 @@ import type { ExportFrame } from './videoFraming';
 import { audioVolume, scaleAudioSample } from './audioVolume';
 
 export type MediaSource = { id: string; name: string; url: string; file?: File; assetId?: string; volume?: number };
-export type MediaInfo = { duration: number; width: number; height: number; codec: string; fps: number; hasAudio: boolean };
+export type MediaInfo = { duration: number; videoDuration?: number; width: number; height: number; codec: string; fps: number; hasAudio: boolean };
 export type Thumbnail = { time: number; url: string };
 type TaskOptions = { signal?: AbortSignal; onProgress?: (progress: number) => void };
 
@@ -28,11 +28,11 @@ export async function inspectMedia(source: MediaSource): Promise<MediaInfo> {
   try {
     const video = await input.getPrimaryVideoTrack();
     if (!video) throw new Error('This file has no video track.');
-    const [duration, width, height, codec, audio, stats] = await Promise.all([
+    const [duration, width, height, codec, audio, stats, videoDuration] = await Promise.all([
       input.computeDuration(), video.getDisplayWidth(), video.getDisplayHeight(),
-      video.getCodec(), input.getPrimaryAudioTrack(), video.computePacketStats(100),
+      video.getCodec(), input.getPrimaryAudioTrack(), video.computePacketStats(100), video.computeDuration(),
     ]);
-    return { duration, width, height, codec: codec || 'unknown', hasAudio: !!audio, fps: stats.averagePacketRate || 30 };
+    return { duration, videoDuration, width, height, codec: codec || 'unknown', hasAudio: !!audio, fps: stats.averagePacketRate || 30 };
   } finally { input.dispose(); }
 }
 
@@ -184,7 +184,7 @@ export async function exportMediaVolume(blob: Blob, volume: number, options: Tas
     if (!await input.getPrimaryAudioTrack()) return blob;
     const video = await input.getPrimaryVideoTrack();
     if (video) await ensureAac();
-    const output = new Output({ target: new BufferTarget(), format: video ? new Mp4OutputFormat({ fastStart: 'in-memory' }) : new WavOutputFormat() });
+    const output = new Output({ target: new BufferTarget(), format: video ? new Mp4OutputFormat({ fastStart: 'in-memory', metadataFormat: 'mdta' }) : new WavOutputFormat() });
     const conversion = await Conversion.init({ input, output, tracks: 'primary',
       video: video ? {} : { discard: true },
       audio: { codec: video ? 'aac' : 'pcm-s16', forceTranscode: true, process: sample => scaleAudioSample(sample, gain) },

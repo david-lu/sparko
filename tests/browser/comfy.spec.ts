@@ -1,6 +1,8 @@
 import { expect, test, openVideo, addBridge, readProject, saveAndReopen, fitAll } from './fixtures';
 import { generationProgress } from '../../server/features/comfy/progress';
 import { ComfyNodeProgress } from '../../server/features/comfy/node-progress';
+import { readFile } from 'node:fs/promises';
+import { readClipMetadata } from '../../src/media/clipMetadata';
 
 for (const width of [1440,390]) for (const detailed of [true, false]) test(`mocked Comfy generation, status recovery, and regeneration with ${detailed ? 'detailed' : 'aggregate-only'} progress at ${width}px`, { tag: ['@generation', '@slow'] }, async ({ page }) => {
   await page.setViewportSize({width,height:width===390?844:1000});
@@ -19,6 +21,10 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
     const form = await new Response(Uint8Array.from(route.request().postDataBuffer()!), { headers: { 'Content-Type': route.request().headers()['content-type'] } }).formData();
     expect(form.get('before')).toBe('1.625'); expect(form.get('after')).toBe('1.625'); expect(form.get('duration')).toBe('6');
     expect(form.get('prompt')).toBe('Continue the motion'); expect((form.get('video') as File).size).toBeGreaterThan(1000);
+    const origin = JSON.parse(form.get('clipOrigin') as string);
+    expect(origin).toMatchObject({ format: 'sparko-clip', settings: { prompt: 'Continue the motion' },
+      references: { before: { assetId: expect.any(String) }, after: { assetId: expect.any(String) } } });
+    expect(origin).toEqual((await readProject(page)).interstitials[0].requestOrigin);
     expect(form.get('maskInjection')).toBe('standard');
     expect(form.get('audioMaskTransitionMs')).toBe(comfySubmissions === 1 ? '250' : '0');
     expect(form.get('videoMaskTransitionMs')).toBe('1000');
@@ -121,7 +127,9 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(page.locator('.inspector-clip-meta')).toContainText('Generated');
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
   await page.locator('.inspector-output > summary').click();
-  const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click(); await download;
+  const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click();
+  const downloaded = await download;
+  expect(await readClipMetadata(new Blob([await readFile((await downloaded.path())!)]), new AbortController().signal)).toEqual((await saved()).result.metadata);
   await page.screenshot({ path: `test-results/comfy-interstitial-${detailed ? 'detailed' : 'aggregate'}-${width}.png` });
   await audioTransition.fill('0');
   await expect(videoTransition).toHaveValue('1000');

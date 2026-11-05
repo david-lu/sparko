@@ -5,6 +5,8 @@ import { createApp } from '../../server/app';
 import { errorHandler } from '../../server/shared/http';
 import type { Providers } from '../../server/providers';
 import { defaultMaskCurve } from '../../shared/mask-curves';
+import { clipOriginSchema, MAX_CLIP_METADATA_BYTES } from '../../shared/clip-metadata';
+import { clipMetadata } from '../fixtures/clip-metadata';
 
 let mediaDuration = 3.25;
 vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: class {
@@ -27,6 +29,17 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it('passes validated clip provenance with all generation fields and rejects invalid metadata before submitting', async () => {
+    const clipOrigin = clipOriginSchema.parse(clipMetadata);
+    await submit('1.625', '1.625', 'Exact prompt', { clipOrigin: JSON.stringify(clipOrigin), mode: 'custom', resolution: 'native',
+      lora: 'h3.safetensors', loraStrength: '0.7', maskInjection: 'standard', audioMaskTransitionMs: '250', videoMaskTransitionMs: '750',
+      audioMaskCurve: JSON.stringify(defaultMaskCurve(1.625, 1.625, 250)), videoMaskCurve: JSON.stringify(defaultMaskCurve(1.625, 1.625, 750)) }).expect(202);
+    expect(comfy.submit.mock.calls[0][1].clipOrigin).toEqual(clipOrigin);
+    for (const value of ['{', JSON.stringify({ ...clipOrigin, version: 2 }), ' '.repeat(MAX_CLIP_METADATA_BYTES + 1)]) {
+      await submit('1.625', '1.625', 'Invalid origin', { clipOrigin: value }).expect(400);
+    }
+    expect(comfy.submit).toHaveBeenCalledOnce();
+  });
   it('checks LoRA addresses behind authentication and passes selections into generation', async () => {
     const address = 'iris-animation__h3.safetensors';
     comfy.resolveLora.mockResolvedValue(address);

@@ -48,10 +48,28 @@ export const clipMetadataSchema = clipOriginSchema.extend({
 export type ClipOrigin = z.infer<typeof clipOriginSchema>;
 export type ClipMetadata = z.infer<typeof clipMetadataSchema>;
 
+export function serializeClipMetadata(metadata: ClipMetadata): string {
+  const text = JSON.stringify(clipMetadataSchema.parse(metadata));
+  if (new TextEncoder().encode(text).length > MAX_CLIP_METADATA_BYTES) throw new Error('Clip metadata exceeds 256 KB.');
+  return text;
+}
+
 export function parseClipMetadata(text: unknown): ClipMetadata | undefined {
   if (typeof text !== 'string' || text.length > MAX_CLIP_METADATA_BYTES) return;
   try {
     const result = clipMetadataSchema.safeParse(JSON.parse(text));
     return result.success ? result.data : undefined;
+  } catch { return; }
+}
+
+/** Comfy saves the API graph as a prompt tag, or inside VHS's JSON comment. */
+export function parseComfyClipMetadata(text: unknown): ClipMetadata | undefined {
+  // Allow room for the graph and JSON escaping around the bounded clip payload.
+  if (typeof text !== 'string' || text.length > MAX_CLIP_METADATA_BYTES * 4) return;
+  try {
+    const envelope = JSON.parse(text);
+    const prompt = envelope?.prompt ?? envelope;
+    const graph = typeof prompt === 'string' ? JSON.parse(prompt) : prompt;
+    return parseClipMetadata(JSON.stringify(graph?.output?._meta?.[CLIP_METADATA_TAG]));
   } catch { return; }
 }
