@@ -74,7 +74,7 @@ for (const width of [1440, 390]) test(`library selections preview and move toget
   await beginDrag(page, asset(page, 'One.png'), target); await expect(target).toHaveClass(/is-drop-target/);
   expect(await shape()).toEqual(idle);
   const preview = await page.evaluate(() => (window as any).libraryDragImage);
-  expect(preview.text).toBe('4'); expect(preview.thumbnails).toHaveLength(4); expect(preview.effect).toBe('move');
+  expect(preview.text).toBe('4'); expect(preview.thumbnails).toHaveLength(4); expect(preview.effect).toBe('copyMove');
   expect(preview.x).toBe(preview.width / 2); expect(preview.y).toBe(preview.height / 2);
   expect(preview.thumbnails.map((t: any) => [t.x, t.y])).toEqual([[6, 6], [14, 14], [22, 22], [30, 30]]);
   await page.screenshot({ path: `test-results/library-multi-drag-${width}.png`, fullPage: true });
@@ -186,4 +186,90 @@ test('Enter commits imported and generated asset names without submitting genera
   await heading.fill('Concept image'); await heading.press('Enter');
   await expect(page.getByRole('button', { name: 'Library generation Concept image', exact: true })).toBeVisible();
   expect((await readProject(page)).assetGenerations[0]).toMatchObject({ name: 'Concept image', phase: 'draft' }); expect(requests).toBe(0);
+});
+
+for (const width of [1440, 390]) test(`multi-selection menus preserve assets, move together and delete with one undo at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
+  await folder(page, 'References'); await page.locator('.library-feedback').click();
+  await importImages(page, ['One.png', 'Two.png', 'Outside.png']); const generation = await draft(page);
+  const chooseBatch = async () => {
+    await asset(page, 'One.png').click(); await asset(page, 'Two.png').click({ modifiers: [modifier] }); await generation.click({ modifiers: [modifier] });
+    await expect(selected(page)).toHaveCount(3);
+  };
+  await chooseBatch(); const before = await readProject(page);
+  await asset(page, 'One.png').click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Selected asset actions', exact: true });
+  await expect(menu).toBeVisible(); await expect(selected(page)).toHaveCount(3);
+  await expect(menu.getByRole('menuitem', { name: /Rename/ })).toHaveCount(0);
+  await menu.getByRole('menuitem', { name: 'Move to folder', exact: true }).click();
+  await page.getByRole('menu', { name: 'Move selected assets', exact: true }).getByRole('menuitem', { name: 'References', exact: true }).click();
+  const moved = await readProject(page), folderId = moved.libraryFolders[0].id;
+  expect(moved.library.filter((a: any) => ['One.png', 'Two.png'].includes(a.name)).every((a: any) => a.folderId === folderId)).toBe(true);
+  expect(moved.assetGenerations[0].folderId).toBe(folderId); await expect(selected(page)).toHaveCount(3);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  expect((await readProject(page)).library).toEqual(before.library); expect((await readProject(page)).assetGenerations).toEqual(before.assetGenerations);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await asset(page, 'Outside.png').click({ button: 'right' });
+  await expect(selected(page)).toHaveCount(1); await expect(page.getByRole('menu', { name: 'Asset actions', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape'); await chooseBatch(); await asset(page, 'One.png').focus(); await page.keyboard.press('Shift+F10');
+  await expect(menu).toBeVisible(); await expect(selected(page)).toHaveCount(3);
+  await menu.screenshot({ path: `test-results/library-multi-menu-${width}.png` });
+  await menu.getByRole('menuitem', { name: 'Delete selected assets…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Delete 3 assets?', exact: true });
+  await expect(dialog.getByLabel('Assets to delete').locator('li')).toHaveCount(3);
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click(); await expect(selected(page)).toHaveCount(3);
+  await page.locator('.asset-library').press(width === 1440 ? 'Delete' : 'Backspace');
+  await dialog.getByRole('button', { name: 'Delete assets', exact: true }).click();
+  await expect(dialog).toHaveCount(0); await expect(asset(page, 'One.png')).toHaveCount(0); await expect(asset(page, 'Two.png')).toHaveCount(0); await expect(generation).toHaveCount(0);
+  await expect(asset(page, 'Outside.png')).toBeVisible();
+  expect((await readProject(page)).storyFlow).toEqual(before.storyFlow);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  expect((await readProject(page)).library).toEqual(moved.library); expect((await readProject(page)).assetGenerations).toEqual(moved.assetGenerations);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(asset(page, 'One.png')).toHaveCount(0); await expect(generation).toHaveCount(0);
+});
+
+test('batch deletion protects used assets and does not delete the unused part of a blocked selection', async ({ page }) => {
+  await openVideo(page); await importImages(page, ['Unused.png']);
+  const source = asset(page, 'interstitial-reference.mp4');
+  await source.click(); await asset(page, 'Unused.png').click({ modifiers: [modifier] });
+  await asset(page, 'Unused.png').press('Delete');
+  const dialog = page.getByRole('dialog', { name: 'Delete 2 assets?', exact: true });
+  await expect(dialog).toContainText('Timeline footage'); await expect(dialog.getByRole('button', { name: 'Delete assets', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Keep assets', exact: true }).click();
+  await expect(source).toBeVisible(); await expect(asset(page, 'Unused.png')).toBeVisible(); await expect(selected(page)).toHaveCount(2);
+});
+
+for (const width of [1440, 390]) test(`batch deletion waits for generation cancellation without moving controls and keeps assets on failure at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.route('**/api/status', async route => { const response = await route.fetch(), status = await response.json(); await route.fulfill({ json: { ...status, providers: { ...status.providers, fal: true } } }); });
+  let release!: () => void, fail = true, cancellations = 0;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/library-generations', route => route.fulfill({ json: { requestId: 'batch-request-123' } }));
+  await page.route('**/api/library-generations/nano-banana-2/batch-request-123', async route => {
+    if (route.request().method() !== 'DELETE') return route.fulfill({ json: { phase: 'queued', count: 1 } });
+    cancellations++; await gate;
+    return route.fulfill(fail ? { status: 500, json: { error: 'Cancellation failed. Try again.' } } : { json: { cancelled: true } });
+  });
+  await openVideo(page); await importImages(page, ['Kept.png']); const generation = await draft(page);
+  await page.getByLabel('Generation prompt', { exact: true }).fill('A reference image');
+  await page.getByRole('button', { name: 'Generate image', exact: true }).click(); await expect(generation).toContainText('Queued');
+  await asset(page, 'Kept.png').click({ modifiers: [modifier] }); await expect(selected(page)).toHaveCount(2);
+  await asset(page, 'Kept.png').click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Delete selected assets…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Delete 2 assets?', exact: true });
+  const positions = () => dialog.locator('h2,.asset-delete-targets,.library-feedback,.close-project-actions button').evaluateAll(elements => elements.map(element => {
+    const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
+  }));
+  const idle = await positions(); await dialog.getByRole('button', { name: 'Delete assets', exact: true }).click();
+  await expect.poll(() => cancellations).toBe(1); await expect(dialog.getByRole('button', { name: 'Deleting…', exact: true })).toBeDisabled();
+  expect(await positions()).toEqual(idle); await page.keyboard.press('Escape'); await expect(dialog).toBeVisible();
+  await dialog.screenshot({ path: `test-results/library-batch-deleting-${width}.png` });
+  release(); await expect(dialog.getByRole('status')).toContainText('Cancellation failed');
+  expect(await positions()).toEqual(idle);
+  let project = await readProject(page); expect(project.library.some((a: any) => a.name === 'Kept.png')).toBe(true); expect(project.assetGenerations).toHaveLength(1);
+  fail = false; await dialog.getByRole('button', { name: 'Delete assets', exact: true }).click();
+  await expect(dialog).toHaveCount(0); expect(cancellations).toBe(2);
+  await expect(asset(page, 'Kept.png')).toHaveCount(0); await expect(generation).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(asset(page, 'Kept.png')).toBeVisible(); await expect(generation).toContainText('cancelled');
+  project = await readProject(page); expect(project.assetGenerations).toHaveLength(1);
 });

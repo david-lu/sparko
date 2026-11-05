@@ -3,7 +3,7 @@ import { GripVertical, Upload, X } from 'lucide-react';
 import type { AssetReference, MediaKind } from '../../../shared/asset-generation';
 import type { ProjectController } from './ProjectController';
 import { fileEntries, mediaFile, mediaKind } from './libraryFiles';
-import { readLibraryDrag, startLibraryDrag, STORY_DRAG_TYPE } from '../story-flow/libraryDrag';
+import { readLibraryDrag, readLibraryMove, LIBRARY_MOVE_TYPE, startLibraryDrag, STORY_DRAG_TYPE } from '../story-flow/libraryDrag';
 import AssetThumbnail from './AssetThumbnail';
 import { assets } from './assets';
 import { useAssetAvailability } from './useAssetAvailability';
@@ -35,7 +35,7 @@ export default function AssetInput({ projects, value, kinds, onChange, label = '
     signal.throwIfAborted(); if (projects.getSnapshot().project?.id !== projectId) return;
     onChange(next);
   };
-  const receive = async (files: File[], id?: string) => {
+  const receive = async (files: File[], ids: string[] = []) => {
     if (operation.current) return;
     const task = new AbortController(); operation.current = task; setBusy(true); setError('');
     try {
@@ -46,17 +46,24 @@ export default function AssetInput({ projects, value, kinds, onChange, label = '
           if (imageFormats && !imageFormats.includes(mediaFile(file).type)) throw new Error('Use a PNG, JPEG or WebP image.');
         }
         const added = await projects.importAssets(fileEntries(files)); task.signal.throwIfAborted(); await add(added.map(a => a.assetId), task.signal);
-      } else if (id) await add([id], task.signal);
+      } else if (ids.length) {
+        if (!multiple && ids.length > 1) throw new Error('Drop one asset at a time.');
+        await add(ids, task.signal);
+      }
       else throw new Error('This generation has no output yet. Generate it first.');
     } catch (e) { if (!task.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to add reference.'); }
     finally { if (!task.signal.aborted) { operation.current = null; setBusy(false); } }
   };
   const dropLabel = multiple ? `Drag ${kinds.length === 1 ? kinds[0] + 's' : 'assets'} from Library` : `Drag ${kinds[0]} from Library`;
   return <div className={`asset-input ${dragging ? 'is-dragging' : ''}`} role="group" aria-label={label} aria-busy={busy}
-    onDragOver={e => { if (e.dataTransfer.types.includes(STORY_DRAG_TYPE) || e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = busy ? 'none' : 'copy'; if (!busy) setDragging(true); } }}
+    onDragOver={e => { if (e.dataTransfer.types.includes(STORY_DRAG_TYPE) || e.dataTransfer.types.includes(LIBRARY_MOVE_TYPE) || e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = busy ? 'none' : 'copy'; if (!busy) setDragging(true); } }}
     onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
     onDragEnd={() => setDragging(false)}
-    onDrop={e => { e.preventDefault(); e.stopPropagation(); setDragging(false); const item = readLibraryDrag(e.dataTransfer); void receive([...e.dataTransfer.files], item && 'assetId' in item ? item.assetId : undefined); }}>
+    onDrop={e => { e.preventDefault(); e.stopPropagation(); setDragging(false); const item = readLibraryDrag(e.dataTransfer), selections = readLibraryMove(e.dataTransfer);
+      const ids = selections.map(selection => selection.type === 'asset' ? selection.id : projects.getSnapshot().project?.assetGenerations?.find(g => g.id === selection.id)?.selectedAssetId);
+      if (!ids.length && item && 'assetId' in item) ids.push(item.assetId);
+      if (ids.some(id => !id)) { setError('A selected generation has no output yet.'); return; }
+      void receive([...e.dataTransfer.files], ids.filter((id): id is string => !!id)); }}>
     <div className={`asset-input-slots ${multiple ? 'multiple' : ''}`}>
       {!value.length && <div className="asset-input-empty"><Upload size={17}/><span>{dropLabel}</span></div>}
       {value.map(ref => { const error = assets.error(ref.assetId) || (!kinds.includes(ref.kind) ? `This model does not accept ${ref.kind} references. Remove this reference or choose a compatible model.` : undefined); return <div className="asset-reference-chip" key={ref.assetId} draggable={!busy} onDragStart={e => { e.stopPropagation(); startLibraryDrag(e, { assetId: ref.assetId }); }}>

@@ -8,8 +8,11 @@ export async function readClipMetadata(blob: Blob, signal: AbortSignal): Promise
   try {
     const tags = await input.getMetadataTags(); signal.throwIfAborted();
     // A local tag may describe an extracted loop and takes precedence over the original graph.
-    if (tags.raw?.[CLIP_METADATA_TAG] !== undefined) return parseClipMetadata(tags.raw[CLIP_METADATA_TAG]);
-    return parseComfyClipMetadata(tags.raw?.prompt) ?? parseComfyClipMetadata(tags.comment);
+    const comfy = parseComfyClipMetadata(tags.raw?.prompt) ?? parseComfyClipMetadata(tags.comment);
+    if (tags.raw?.[CLIP_METADATA_TAG] === undefined) return comfy;
+    const local = parseClipMetadata(tags.raw[CLIP_METADATA_TAG]);
+    // Preserve local loop bounds, recovering only the same render's missing seed.
+    return local && local.seed === undefined && comfy?.id === local.id && comfy.seed !== undefined ? { ...local, seed: comfy.seed } : local;
   } catch { signal.throwIfAborted(); return; }
   finally { signal.removeEventListener('abort', abort); input.dispose(); }
 }

@@ -4,7 +4,7 @@ import { createNode } from '../../src/features/story-flow/model';
 import { renderComposition } from '../../src/media/CompositionRenderer';
 import { assets } from '../../src/features/project/assets';
 
-vi.mock('../../src/features/project/assets', () => ({ assets: { open: vi.fn(async () => ({ url: 'blob:incoming' })) } }));
+vi.mock('../../src/features/project/assets', () => ({ assets: { open: vi.fn(async () => ({ url: 'blob:incoming', asset: { name: 'Reference.mp4', blob: new Blob([], { type: 'video/mp4' }) } })) } }));
 vi.mock('../../src/media/MediaEngine', () => ({ MediaEngine: class {
   inspect() { return Promise.resolve({ duration: 10, fps: 24, width: 320, height: 192, hasAudio: false }); }
   dispose() {}

@@ -3,6 +3,7 @@ import { createComfyProvider } from '../../server/features/comfy/provider';
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
 import { clipOriginSchema } from '../../shared/clip-metadata';
 import { clipMetadata } from '../fixtures/clip-metadata';
+import { COMFY_MODELS } from '../../shared/constants';
 
 const input = { before: 1.625, after: 1.625, duration: 6, prompt: 'Bridge the scene', width: 960, height: 544, hasAudio: true };
 const catalogFor = (graph: ReturnType<typeof bridgeWorkflow>): Record<string, object> => ({ ...Object.fromEntries(Object.values(graph).map(node => [node.class_type, {}])), MVEx_FrameRangeMask: {} });
@@ -11,13 +12,26 @@ const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body)
 const collect = async <T>(stream: AsyncIterable<T>) => { const items: T[] = []; for await (const item of stream) items.push(item); return items; };
 
 describe('Comfy Cloud v2 adapter', () => {
+  it.each([0, Number.MAX_SAFE_INTEGER])('uses fixed seed %s unchanged with Turbo and 2K', async seed => {
+    const settings = { ...input, seed, turbo: true, resolution: '2k' as const, clipOrigin: clipOriginSchema.parse(clipMetadata) };
+    const nodes = { ...catalogFor(bridgeWorkflow('asset', settings, seed)), LoraLoaderModelOnly: { input: { required: { lora_name: [[COMFY_MODELS.turboLora]] } } } };
+    const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(nodes))
+      .mockResolvedValueOnce(reply({ id: 'input-asset' })).mockResolvedValueOnce(reply({ id: 'comfy-job-123', status: 'queued' }));
+    const job = await createComfyProvider({ COMFY_CLOUD_API_KEY: 'private-key' }, transport).submit(new Blob(['video']), settings);
+    const graph = JSON.parse(String(transport.mock.calls.at(-1)![1]!.body)).workflow;
+    expect(job.seed).toBe(seed);
+    expect(graph.noise.inputs.noise_seed).toBe(seed);
+    expect(graph.output._meta.sparko.seed).toBe(seed);
+  });
   it.each(['native', '2k'] as const)('includes portable clip data in the saved %s workflow without exposing credentials', async resolution => {
     const clipOrigin = clipOriginSchema.parse(clipMetadata), settings = { ...input, resolution, clipOrigin };
     const transport = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(catalogFor(bridgeWorkflow('asset', settings, 0))))
       .mockResolvedValueOnce(reply({ id: 'input-asset' })).mockResolvedValueOnce(reply({ id: 'comfy-job-123', status: 'queued' }));
     const job = await createComfyProvider({ COMFY_CLOUD_API_KEY: 'private-key' }, transport).submit(new Blob(['video']), settings);
     const payload = JSON.parse(String(transport.mock.calls.at(-1)![1]!.body));
-    expect(payload.workflow.output._meta.sparko).toEqual({ ...clipOrigin, media: job.insertion, prompt: input.prompt });
+    expect(payload.workflow.output._meta.sparko).toEqual({ ...clipOrigin, media: job.insertion, prompt: input.prompt, seed: job.seed });
+    expect(job.seed).toBe(payload.workflow.noise.inputs.noise_seed);
+    expect(Number.isSafeInteger(job.seed)).toBe(true);
     expect(payload.workflow.output.class_type).toBe(resolution === '2k' ? 'SaveVideo' : 'VHS_VideoCombine');
     expect(JSON.stringify(payload.workflow)).not.toContain('private-key');
     expect(payload.extra_data?.extra_pnginfo).toBeUndefined();

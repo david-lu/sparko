@@ -18,16 +18,18 @@ export function makePreset(id:string):StoryTemplate {
 }
 export function instantiateTemplate(graph:StoryGraph,template:StoryTemplate,items:Interstitial[],connectionId?:string,placement?:{x:number;y:number}) {
   template=normalizeConditions(template);
+  const builtIn=builtInTemplates.some(preset=>preset.id===template.id);
   const remap=new Map(template.nodes.map(n=>[n.id,freshId()])), itemIds=new Map(template.nodes.map(n=>[n.id,freshId()]));
   const connection=graph.edges.find(e=>e.id===connectionId);
   const entry=template.nodes.find(n=>n.id===template.entryId)!,offset=placement?{x:placement.x-entry.x,y:placement.y-entry.y}:{x:0,y:0};
   const nodes=template.nodes.map(n=>({...n,conditions:conditionsFor(template,n),x:n.x+offset.x,y:n.y+offset.y,id:remap.get(n.id)!,interstitialId:n.kind==='source'?undefined:itemIds.get(n.id)!,referenceId:remap.get(n.referenceId??'')??(n.id===template.entryId?connection?.from:undefined)}));
-  const added:Interstitial[]=template.nodes.filter(n=>n.kind!=='source').map(n=>({id:itemIds.get(n.id)!,label:n.name,time:0,kind:'regular',phase:'draft',...interstitialSettings(template.settings[n.id])}));
+  // Built-ins inherit the current creation default; saved templates retain their explicit settings.
+  const added:Interstitial[]=template.nodes.filter(n=>n.kind!=='source').map(n=>({id:itemIds.get(n.id)!,label:n.name,time:0,kind:'regular',phase:'draft',...interstitialSettings(template.settings[n.id]),...(builtIn?{turbo:undefined}:{})}));
   const edges:StoryEdge[]=template.edges.map(e=>({...e,conditionId:e.event==='answer'?e.conditionId??e.id:undefined,id:freshId(),from:remap.get(e.from)!,to:remap.get(e.to)!,points:e.points?.map(p=>({...p,id:freshId(),x:p.x+offset.x,y:p.y+offset.y}))}));
   if(connection){edges.push(withReferenceFade({...connection,id:freshId(),to:remap.get(template.entryId)!,points:undefined},[...graph.nodes,...nodes]));
     for(const node of nodes.filter(n=>!edges.some(e=>e.from===n.id&&e.to!==n.id)))edges.push(withReferenceFade(edge(node.id,connection.to),[...graph.nodes,...nodes]));}
   // Built-in entry clips can start a new project without external footage.
-  if(builtInTemplates.some(preset=>preset.id===template.id))for(const node of nodes){
+  if(builtIn)for(const node of nodes){
     if(edges.some(e=>e.to===node.id&&e.from!==node.id))continue;
     const item=added.find(item=>item.id===node.interstitialId);
     if(item){item.useInputReference=false;item.useOutputReference=false;item.startReferenceType='none';item.endReferenceType='none';}

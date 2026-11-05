@@ -7,6 +7,9 @@
 
 .library-context-menu [role=separator]{height:1px;background:var(--line);margin:4px 2px}.library-context-menu button:disabled{opacity:.45;cursor:default}.library-context-menu button:disabled:hover{background:transparent}.library-thumb[data-preview-state=loading]>svg{opacity:.5}.library-thumb[data-preview-state=unavailable]>svg{color:var(--muted)}.library-thumb img{pointer-events:none}
 .library-folder-dialog h2{margin-bottom:18px}.library-folder-dialog .field{margin-bottom:0}
+.library-menu-heading{padding:6px 9px;font-size:10px;color:var(--muted)}
+.library-context-menu [role=menu] button{overflow-wrap:anywhere}
+.asset-delete-targets{max-height:120px;overflow:auto;overflow-wrap:anywhere;margin:12px 0;padding-left:20px;font-size:12px;line-height:1.6}
 .library-media .library-folder.is-drop-target{background:color-mix(in srgb,var(--accent) 22%,var(--surface));color:var(--text);box-shadow:inset 0 0 0 2px var(--accent);border-radius:4px}
 .library-footer{min-height:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .library-drag-preview{position:fixed;left:0;top:0;z-index:10001;pointer-events:none}

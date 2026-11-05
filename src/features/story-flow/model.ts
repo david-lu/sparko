@@ -10,7 +10,7 @@ export type NodeKind = 'source' | 'simple' | 'looped' | 'conditional';
 export type StoryCondition = { id: string; label: string; values: string[] };
 export type StoryNode = {
   id: string; name: string; kind: NodeKind; x: number; y: number;
-  source?: { assetId: string; originalAssetId?:string; duration?:number; inFrame: number; outFrame: number };
+  source?: { kind?: 'image'; assetId: string; originalAssetId?:string; duration?:number; inFrame: number; outFrame: number };
   /** Edit range relative to the generated body, leaving the cached output intact. */
   trim?: { inFrame: number; outFrame: number };
   interstitialId?: string;
@@ -55,9 +55,7 @@ function referenceFadeLength(node: StoryNode | undefined, neighbor: StoryNode | 
   const result = playableResult(item);
   if (result) {
     // Follow the video being played, even while different settings are queued for regeneration.
-    if (side === 'before' && result.reference && ['custom', 'loop'].includes(result.reference.mode ?? '') && !result.reference.before) return;
-    if (side === 'after' && result.reference && (!result.reference.after || result.reference.mode === 'loop' || result.reference.mode === 'extend')) return;
-    return nodeMediaLayout(node, items)[side];
+    return nodeMediaLayout(node, items)[side] || undefined;
   }
   const settings = storyGenerationItem(item, node);
   if (side === 'after' && settings.method === 'comfy-loop') return;

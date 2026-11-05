@@ -1,3 +1,4 @@
+import { generationSeedSchema } from '../../../shared/generation-seed.js';
 import express, { type Express } from 'express';
 import { H3_MODEL_ID, loraAddressSchema, loraStrengthSchema } from '../../../shared/loras.js';
 import { openAsBlob } from 'node:fs';
@@ -27,7 +28,9 @@ const maskCurve = z.preprocess(value => {
   if (typeof value !== 'string' || value.length > 10000) return value;
   try { return JSON.parse(value); } catch { return value; }
 }, maskCurveSchema.optional());
-const schema = z.object({ lora: loraAddressSchema.optional(),
+const schema = z.object({
+  seed: z.preprocess(value => typeof value === 'string' && value.trim() ? Number(value) : value, generationSeedSchema.optional()),
+  lora: loraAddressSchema.optional(),
   turbo: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
   clipOrigin: z.preprocess(value => {
     if (typeof value !== 'string' || new TextEncoder().encode(value).length > MAX_CLIP_METADATA_BYTES) return value;

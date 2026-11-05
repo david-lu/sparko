@@ -10,6 +10,10 @@ export function assetThumbnails(source: MediaSource, knownDuration?: number): Pr
   const cached = cache.get(key);
   if (cached) return cached;
   const task = (async () => {
+    if (source.kind === 'image') {
+      const [frame] = await sampleFrames(source, { start: 0, end: 1 }, 1, 240);
+      return [{ ...frame, start: 0, end: knownDuration ?? source.duration ?? 4 }];
+    }
     let duration = knownDuration;
     if (duration === undefined) {
       const input = openInput(source);

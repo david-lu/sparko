@@ -207,20 +207,39 @@ describe('canvas flow playback', () => {
     }
     expect(checked).toBe(12);
   });
-  it('caps graph fades to saved references and rejects rewired or trimmed generated boundaries',()=>{
+  it('keeps fades for rewired and trimmed clips while respecting available footage',()=>{
     const a=createNode('simple'),b=createNode('simple'),items=[a,b].map(p=>({...p.item,phase:'ready' as const,result:{assetId:`mock:${p.node.id}`,url:'blob:generated',start:2,duration:6,totalDuration:10}}));
     items[1].result={...items[1].result,start:.125};
     const graph:StoryGraph={version:1,entryId:a.node.id,nodes:[a.node,b.node],edges:[{...edge(a.node.id,b.node.id),crossfade:1}],templates:[]};
     let flow=runtimeFlow(graph,items,'mock:original',20);expect(flowTransition(flow,flow.edges[0])).toMatchObject({startFrame:-3,frames:3});
     flow.scenes[1].generated!.reference={before:{sceneId:a.node.id,assetId:'wrong:asset',inFrame:48,outFrame:192}};
-    expect(flowTransition(flow,flow.edges[0])).toBeUndefined();
-    const player=makePlayer(flow);player.seekScene(a.node.id,143,true);advance();expect(player.session.sceneId).toBe(b.node.id);expect(layers()).toHaveLength(1);player.dispose();
+    expect(flowTransition(flow,flow.edges[0])).toMatchObject({startFrame:-3,frames:3});
+    const player=makePlayer(flow);player.seekScene(a.node.id,143,true);expect(layers()).toHaveLength(2);expect(layers()[1].opacity).toBeCloseTo(2/3);advance();expect(player.session.sceneId).toBe(b.node.id);expect(layers()).toHaveLength(1);player.dispose();
     delete flow.scenes[1].generated!.reference;b.node.trim={inFrame:24,outFrame:144};flow=runtimeFlow(graph,items,'mock:original',20);
-    expect(flowTransition(flow,flow.edges[0])).toBeUndefined();
+    expect(flowTransition(flow,flow.edges[0])).toMatchObject({startFrame:0,frames:24});
   });
   it('uses each imported source duration instead of clamping playback to the primary video',()=>{
     const graph:StoryGraph={version:1,entryId:'extra',nodes:[{id:'extra',name:'Extra video',kind:'source',source:{assetId:'mock:extra',duration:12,inFrame:0,outFrame:288},x:0,y:0,crossfadeStart:0,crossfadeEnd:0,loopCount:0}],edges:[],templates:[]};
     const player=makePlayer(runtimeFlow(graph,[],'mock:original',2));player.seekScene('extra',240);expect(layers()[0].time).toBe(10);expect(layers()[0].sourceFootage).toBe(false);expect(layers()[0].still).toBe(false);player.dispose();
+  });
+  it.each([false, true])('plays an imported exit fade with independent audio when references are mismatched: %s', mismatched => {
+    const { node, item } = createNode('simple');
+    item.phase = 'ready'; item.result = { assetId: 'mock:imported', url: 'blob:imported', start: 1.625, duration: 148/24, totalDuration: 226/24,
+      reference: { mode: 'custom', ...(mismatched ? { after: { sceneId: 'old-parent', assetId: 'mock:old-parent', inFrame: 999, outFrame: 1100 } } : {}) } };
+    const graph: StoryGraph = { version: 1, entryId: node.id, nodes: [node,
+      { id: 'parent', name: 'Parent video', kind: 'source', x: 0, y: 0, loopCount: 0, source: { assetId: 'mock:original', duration: 10, inFrame: 48, outFrame: 240 } }],
+      edges: [{ ...edge(node.id, 'parent'), videoCrossfade: 14/24, audioCrossfade: 21/24 }], templates: [] };
+    const flow = runtimeFlow(graph, [item], 'mock:original', 10), player = makePlayer(flow);
+    player.seekScene('parent', 7);
+    expect(layers()).toHaveLength(2);
+    expect(layers()[0].source.assetId).toBe('mock:imported');
+    expect(layers()[0].time).toBeCloseTo(194/24);
+    expect(layers()[0].gain).toBeCloseTo(2/3);
+    expect(layers()[1]).toMatchObject({ opacity: .5, muted: false });
+    expect(layers()[1].time).toBeCloseTo(55/24);
+    expect(layers()[1].gain).toBeCloseTo(1/3);
+    player.setCrossfade(false); expect(layers()).toHaveLength(1);
+    player.dispose();
   });
   it('aligns graph entry fades with the reference prefix and seeks split generated media precisely',()=>{
     const a=createNode('simple'),b=createNode('simple');
@@ -424,7 +443,7 @@ describe('canvas flow playback', () => {
     expect(layers()[0].time).toBeCloseTo(2 + 45 / 24);
     expect(layers()[1]).toMatchObject({ source: { id: 'mock:correct' }, time: 0 });
     response.generated.reference!.before!.assetId = 'mock:other-idle';
-    expect(flowTransition(flow, edge, 12)).toBeUndefined();
+    expect(flowTransition(flow, edge, 12)).toMatchObject({ startFrame: -3, frames: 3 });
     player.dispose();
   });
   it('changes fade length in place for both automatic cuts and responses, retaining it when toggled', () => {

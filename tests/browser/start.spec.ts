@@ -11,7 +11,7 @@ test('starts with an empty project and keeps the player above its timeline', asy
   expect(sampleRequests).toBe(0);
   await page.getByRole('button', { name: /^New project/ }).click();
   await expect(page.locator('.menu-document')).toHaveText('Untitled project');
-  await expect(page.locator('.story-clip')).toHaveCount(0);await expect(page.getByText('Drop video files here',{exact:true})).toBeVisible();
+  await expect(page.locator('.story-clip')).toHaveCount(0);await expect(page.getByText('Drop videos or images here',{exact:true})).toBeVisible();
   expect((await page.locator('.video-stage').boundingBox())!.y).toBeLessThan((await page.locator('.story-canvas').boundingBox())!.y);
   expect(sampleRequests).toBe(0);
   await page.getByText('File', { exact: true }).click();

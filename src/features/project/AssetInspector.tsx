@@ -14,6 +14,7 @@ import AssetThumbnail from './AssetThumbnail';
 import AssetVolumeControl from './AssetVolumeControl';
 import AssetDownload from './AssetDownload';
 import { assetVolume } from './assetVolume';
+import VideoFrameRate from './VideoFrameRate';
 import EnhancePromptActions from '../interstitials/EnhancePromptActions';
 import { useImagePromptEnhancement } from './useImagePromptEnhancement';
 import './asset-inspector.css';
@@ -73,8 +74,9 @@ export default function AssetInspector({ editor, status }: { editor: StoryEditor
       if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); }
     }}/>
     <div className="inspector-clip-meta">{kind}{generation ? ` generation · ${generation.phase}` : ' · Imported'}</div>
+    {kind === 'video' && <VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={asset?.assetId}/>}
     <details className="inspector-group" open><summary>Preview</summary><AssetPreview id={compare ? settings?.references.find(r => r.kind === 'image')?.assetId : generation?.selectedAssetId ?? asset?.assetId} kind={kind} name={name} onPlay={() => editor.player.pause()}/>
-      <div className="asset-preview-actions">{asset && (kind === 'image' ? <a className="text-button" href={assets.url(asset.assetId)} download={asset.name}>Download</a> : <AssetDownload asset={{ ...asset, volume: assetVolume(project?.library, asset.assetId) }}/>)}{asset && kind === 'video' && <button className="text-button" onClick={() => void editor.addAsset(asset.assetId)}>Add to timeline</button>}{asset && kind === 'image' && <button className="text-button" onClick={editImage}>Edit image</button>}{asset && settings?.references.some(r => r.kind === 'image') && <button className="text-button" aria-pressed={compare} onClick={() => setCompare(!compare)}>{compare ? 'Show result' : 'Compare original'}</button>}</div>
+      <div className="asset-preview-actions">{asset && (kind === 'image' ? <a className="text-button" href={assets.url(asset.assetId)} download={asset.name}>Download</a> : <AssetDownload asset={{ ...asset, volume: assetVolume(project?.library, asset.assetId) }}/>)}{asset && (kind === 'video' || kind === 'image') && <button className="text-button" onClick={() => void editor.addAsset(asset.assetId)}>Add to timeline</button>}{asset && kind === 'image' && <button className="text-button" onClick={editImage}>Edit image</button>}{asset && settings?.references.some(r => r.kind === 'image') && <button className="text-button" aria-pressed={compare} onClick={() => setCompare(!compare)}>{compare ? 'Show result' : 'Compare original'}</button>}</div>
     </details>
     {(kind === 'audio' || kind === 'video') && <AssetVolumeControl projects={editor.projects} assetId={asset?.assetId}/>}
     {generation && settings && model && <form onSubmit={e => { e.preventDefault(); if (!enhancement.enhancing && !missingReferences.length) void editor.assetJobs.generate(generation.id); }}>

@@ -9,7 +9,7 @@ export type TrimSide = 'start' | 'end';
 export function clipTrimRange(node: StoryNode, items: Interstitial[], sourceDuration?: number) {
   if (node.source) {
     const duration = node.source.duration ?? sourceDuration;
-    const totalFrames = Number.isFinite(duration) ? Math.max(1, Math.floor(duration! * TIMELINE_FPS)) : node.source.outFrame;
+    const totalFrames = node.source.kind === 'image' ? Infinity : Number.isFinite(duration) ? Math.max(1, Math.floor(duration! * TIMELINE_FPS)) : node.source.outFrame;
     return { inFrame: node.source.inFrame, outFrame: node.source.outFrame, totalFrames };
   }
   const item = items.find(item => item.id === node.interstitialId);

@@ -1,3 +1,4 @@
+import { chooseGenerationSeed } from '../../../shared/generation-seed';
 import { INTERSTITIAL, MASK_TRANSITION } from '../../../shared/constants';
 import type { GenerationJob } from '../../../shared/contracts';
 import { clipMaskInjection, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
@@ -13,6 +14,7 @@ export const hasNoVideoInput = (item: Interstitial) => item.useInputReference ==
 
 export async function generateInterstitial(item: Interstitial, engine: Pick<MediaEngine, 'exportMp4'> | null, info: MediaInfo | null, signal: AbortSignal,
   onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void): Promise<GenerationJob> {
+  const seed = chooseGenerationSeed(item.seed);
   const audioMaskTransitionMs = item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;
   const videoMaskTransitionMs = item.videoMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;
   validateMaskTransitionMs(audioMaskTransitionMs, 'Audio mask transition');
@@ -51,6 +53,7 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   if (clip && clip.size > INTERSTITIAL.maxReferenceBytes) throw new Error('The reference clip exceeds 50 MB. Shorten the reference ranges.');
   signal.throwIfAborted();
   const body = new FormData();
+  body.set('seed', String(seed));
   if (item.requestOrigin) body.set('clipOrigin', JSON.stringify(item.requestOrigin));
   if (images.length) body.set('imageReferences', JSON.stringify(images));
   if (startImageIndex !== undefined) body.set('startImageIndex', String(startImageIndex));

@@ -1,3 +1,4 @@
+import { referenceClips } from '../../../shared/reference-clips';
 import { isGenerating, playableResult, type ClipReference, type GenerationReference, type Interstitial } from '../../../shared/interstitials';
 import { branchScenes, clipTypeLabel, getScene, resolveFlow, type CallResponseFlow, type SceneId, type TimelineScene } from './model';
 import type { ContentIssue } from '../../shared/ContentIssues';
@@ -15,8 +16,11 @@ const generationReference = (scene: TimelineScene, fps: number): ClipReference =
   return { sceneId: scene.id, assetId: scene.generated!.fullAssetId!, inFrame,
     outFrame: inFrame + scene.clip.outFrame - scene.clip.inFrame };
 };
-const sameClip = (a?: ClipReference, b?: ClipReference) => a?.sceneId === b?.sceneId && a?.assetId === b?.assetId && a?.inFrame === b?.inFrame && a?.outFrame === b?.outFrame;
-export const sameReference = (a: GenerationReference, b: GenerationReference) => a.mode === b.mode && sameClip(a.before, b.before) && sameClip(a.after, b.after);
+const sameClip = (a?: ClipReference, b?: ClipReference) => a?.kind === b?.kind && a?.sceneId === b?.sceneId && a?.assetId === b?.assetId && a?.inFrame === b?.inFrame && a?.outFrame === b?.outFrame;
+export const sameReference = (a: GenerationReference, b: GenerationReference) => a.mode === b.mode && (['before', 'after'] as const).every(side => {
+  const left = referenceClips(a, side), right = referenceClips(b, side);
+  return left.length === right.length && left.every((clip, index) => sameClip(clip, right[index]));
+});
 export type ClipDependency = { reference?: GenerationReference; label: string; blocked?: string; issues?: ContentIssue[]; stale: boolean };
 
 /** Follow the media actually used by the render, including both sides of a bridge. */

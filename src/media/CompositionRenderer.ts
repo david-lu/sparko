@@ -7,6 +7,7 @@ import { CompositionAudioCrossfade } from './CompositionAudioCrossfade';
 import { CompositionAudioWriter } from './CompositionAudioWriter';
 import { generatedClipFit, type ExportFrame } from './videoFraming';
 import { audioVolume, scaleAudioSample } from './audioVolume';
+import { loadStillImage, stillCanvas } from './stillImage';
 
 type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; maxDimension?: number; frame?: ExportFrame;
   beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
@@ -41,6 +42,18 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
   output.addVideoTrack(video, { frameRate: composition.fps });
   output.addAudioTrack(audio);
   const inputs = new Map<string, Input>();
+  const images = new Map<string, Promise<OffscreenCanvas>>();
+  const imageFor = (segment: TimelineSegment) => {
+    let image = images.get(segment.source.url);
+    if (!image) {
+      image = loadStillImage(segment.source, options.signal).then(bitmap => {
+        try { return stillCanvas(bitmap, canvas.width, canvas.height, options.frame?.fit === 'cover' ? 'cover' : 'contain'); }
+        finally { bitmap.close(); }
+      });
+      images.set(segment.source.url, image);
+    }
+    return image;
+  };
   const inputFor = (segment: TimelineSegment) => {
     let input = inputs.get(segment.source.url);
     if (!input) { input = openInput(segment.source); inputs.set(segment.source.url, input); }
@@ -61,6 +74,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
       let edge: CompositionTransition | undefined;
       const edgeSinks = new Map<TimelineSegment, { sink: CanvasSink; first: number; last: number }>();
       const edgeFrame = async (segment: TimelineSegment, frame: number) => {
+        if (segment.source.kind === 'image') return imageFor(segment);
         let decoder = edgeSinks.get(segment);
         if (!decoder) {
           const track = await inputFor(segment).getPrimaryVideoTrack();
@@ -77,12 +91,20 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
       for (const segment of composition.segments) {
         const first = Math.max(firstFrame, segment.startFrame), last = Math.min(lastFrame, segment.endFrame);
         if (first >= last) continue;
-        const track = await inputFor(segment).getPrimaryVideoTrack();
-        if (!track || !await track.canDecode()) throw new Error(`Unable to decode ${segment.label}.`);
-        const sink = new CanvasSink(track, { width: canvas.width, height: canvas.height, fit: await fitFor(segment, track), poolSize: 2 });
         const timestamps = function* () { for (let frame = first; frame < last; frame++) yield segment.sourceStart + (segment.still ? 0 : (frame - segment.startFrame) / composition.fps) + 1e-7; };
+        const samples = async function* () {
+          if (segment.source.kind === 'image') {
+            const still = await imageFor(segment);
+            for (let frame = first; frame < last; frame++) yield { canvas: still };
+          } else {
+            const track = await inputFor(segment).getPrimaryVideoTrack();
+            if (!track || !await track.canDecode()) throw new Error(`Unable to decode ${segment.label}.`);
+            const sink = new CanvasSink(track, { width: canvas.width, height: canvas.height, fit: await fitFor(segment, track), poolSize: 2 });
+            yield* sink.canvasesAtTimestamps(timestamps());
+          }
+        };
         let frame = first;
-        for await (const sample of sink.canvasesAtTimestamps(timestamps())) {
+        for await (const sample of samples()) {
           options.signal.throwIfAborted();
           await options.beforeFrame?.(frame / composition.fps);
           if (!sample) throw new Error(`A frame is missing from ${segment.label}.`);
@@ -124,7 +146,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
         if (from >= to) continue;
         const sourceStart = segment.sourceStart + from - segment.startFrame / composition.fps;
         const sourceEnd = sourceStart + to - from;
-        const track = segment.still || segment.muted ? null : await inputFor(segment).getPrimaryAudioTrack();
+        const track = segment.source.kind === 'image' || segment.still || segment.muted ? null : await inputFor(segment).getPrimaryAudioTrack();
         let cursor = from - origin;
         if (track) {
           if (!await track.canDecode()) throw new Error(`Unable to decode audio in ${segment.label}.`);

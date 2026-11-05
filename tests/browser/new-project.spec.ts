@@ -38,8 +38,8 @@ test('empty projects can be saved, reopened, and populated through the import bu
   const path=testInfo.outputPath('empty.sparko');await (await download).saveAs(path);
   await page.getByText('File',{exact:true}).click();await page.getByRole('menuitem',{name:'Close project',exact:true}).click();await expect(page.getByRole('button',{name:/^New project/})).toBeVisible();
   await page.getByLabel('Choose project file',{exact:true}).setInputFiles(path);await expect(page.locator('.story-scroll')).toBeVisible();await expect(page.locator('.story-clip')).toHaveCount(0);
-  const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Import videos',exact:true}).click();await (await chooser).setFiles('tests/fixtures/interstitial-reference.mp4');
+  const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Import videos or images',exact:true}).click();await (await chooser).setFiles('tests/fixtures/interstitial-reference.mp4');
   await expect(page.locator('.story-clip')).toHaveCount(1);await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
   await page.locator('.story-clip-title').click();await page.getByRole('button',{name:'Delete selected clips',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(0);
-  await expect(page.getByText('Drop video files here',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(1);expect(errors).toEqual([]);
+  await expect(page.getByText('Drop videos or images here',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(1);expect(errors).toEqual([]);
 });

@@ -3,6 +3,20 @@ export const defaultPinchZoomSensitivity = 3;
 export const minPinchZoomSensitivity = .5;
 export const maxPinchZoomSensitivity = 5;
 
+export const defaultTurboPreference = 'sparko:default-turbo';
+export const defaultTurboEnabled = false;
+export function savedDefaultTurbo(): boolean {
+  try { return localStorage.getItem(defaultTurboPreference) === 'true'; }
+  catch { return defaultTurboEnabled; }
+}
+
+export const convertImportedVideoPreference = 'sparko:convert-imported-video-24fps';
+export const defaultConvertImportedVideo = false;
+export function savedConvertImportedVideo(): boolean {
+  try { return localStorage.getItem(convertImportedVideoPreference) === 'true'; }
+  catch { return defaultConvertImportedVideo; }
+}
+
 export type PlayheadTimeMode = 'internal' | 'elapsed';
 export const playheadTimePreference = 'sparko:playhead-time';
 export const defaultPlayheadTimeMode: PlayheadTimeMode = 'internal';

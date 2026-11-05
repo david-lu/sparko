@@ -9,9 +9,12 @@ export function collectLibrary(project: Project, sourceDuration?: number): Libra
     const existing = entries.get(item.assetId);
     entries.set(item.assetId, existing ? { ...item, ...existing, duration: existing.duration ?? item.duration } : item);
   };
-  if (project.source.assetId) add({ ...project.source, assetId: project.source.assetId, kind: 'video', duration: sourceDuration });
+  if (project.source.assetId) {
+    const image = entries.get(project.source.assetId)?.kind === 'image' || project.storyFlow?.nodes.some(n => n.source?.assetId === project.source.assetId && n.source?.kind === 'image');
+    add({ ...project.source, assetId: project.source.assetId, kind: image ? 'image' : 'video', duration: image ? undefined : sourceDuration });
+  }
   for (const node of project.storyFlow?.nodes ?? []) {
-    if (node.source) add({ assetId: node.source.assetId, originalAssetId: node.source.originalAssetId, name: node.name, kind: 'video', duration: node.source.duration });
+    if (node.source) add({ assetId: node.source.assetId, originalAssetId: node.source.originalAssetId, name: node.name, kind: node.source.kind === 'image' ? 'image' : 'video', duration: node.source.duration });
   }
   for (const item of project.interstitials) {
     for (const result of [item.previousResult, item.result]) {

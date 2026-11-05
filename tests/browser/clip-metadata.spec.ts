@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect, openVideo, readProject, saveAndReopen, fitAll, type Page } from './fixtures';
 import { writeClipMetadata, readClipMetadata } from '../../src/media/clipMetadata';
-import { clipMetadata } from '../fixtures/clip-metadata';
+import { clipMetadata as legacyClipMetadata } from '../fixtures/clip-metadata';
+const clipMetadata = { ...legacyClipMetadata, seed: Number.MAX_SAFE_INTEGER };
 import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output } from 'mediabunny';
 
 async function video(metadata = clipMetadata) {
@@ -14,7 +15,8 @@ async function drop(page: Page, bytes: Buffer) {
   await page.locator('.story-scroll').dispatchEvent('drop', { dataTransfer, clientX: bounds.x + Math.min(150, bounds.width / 2), clientY: bounds.y + Math.min(80, bounds.height / 2) });
   await dataTransfer.dispose();
 }
-for (const width of [1440, 390]) test(`dropping a portable video restores an interstitial and keeps loading layout stable at ${width}px`, async ({ page }) => {
+for (const [width, normalize] of [[1440, true], [390, false]] as const) test(`dropping a portable video restores an interstitial and keeps loading layout stable at ${width}px (24 fps conversion: ${normalize})`, async ({ page }) => {
+  if (normalize) await page.addInitScript(() => localStorage.setItem('sparko:convert-imported-video-24fps', 'true'));
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({ width, height: 1000 }); await page.goto('/');
   await page.getByRole('button', { name: /^New project/ }).click(); await expect(page.locator('.story-scroll')).toBeVisible();
@@ -34,8 +36,11 @@ for (const width of [1440, 390]) test(`dropping a portable video restores an int
   const project = await readProject(page); expect(project.interstitials[0]).toMatchObject({ phase: 'ready', generationSettings: { ...clipMetadata.settings, maskInjection: 'standard' }, result: { metadata: clipMetadata, start: 1, duration: 2, totalDuration: 4 } });
   expect(project.interstitials[0].requestId).toBeUndefined(); expect(project.storyFlow.nodes[0].source).toBeUndefined();
   await fitAll(page); await page.locator('.story-clip-title').click();
+  await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText(normalize ? '24 fps' : '25 fps');
+  if (normalize) expect(project.library.find((a: any) => a.assetId === project.interstitials[0].result.assetId)).toMatchObject({ normalizedFps: 24, originalAssetId: expect.any(String) });
   await expect(page.getByLabel('Video prompt', { exact: true })).toHaveValue(clipMetadata.settings.prompt);
   await page.locator('.inspector-output>summary').click();
+  await expect(page.getByLabel('Generation seed', { exact: true })).toHaveText(String(clipMetadata.seed));
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Opening video');
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Ending video');
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Original clip is not in this project');
@@ -107,6 +112,31 @@ for (const width of [1440, 390]) test(`imported scene references stay disconnect
   await saveAndReopen(page);
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
   expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
+});
+
+test('converting a generated scene creates a separate copy with its metadata and reference ranges', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'portable.mp4', mimeType: 'video/mp4', buffer: await video() });
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1); await page.locator('.story-clip-title').click();
+  const before = await readProject(page);
+  await page.getByRole('button', { name: 'Convert frame rate…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Convert frame rate', exact: true });
+  await dialog.getByLabel('Target FPS', { exact: true }).fill('30');
+  await dialog.getByRole('button', { name: 'Create copy', exact: true }).click(); await expect(dialog).toHaveCount(0);
+  await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('30 fps');
+  const converted = await readProject(page), copy = converted.library.find((a: any) => a.normalizedFps === 30);
+  expect(converted.storyFlow).toEqual(before.storyFlow); expect(converted.interstitials).toEqual(before.interstitials);
+  expect(copy).toMatchObject({ kind: 'generated', originalAssetId: before.interstitials[0].result.assetId, inFrame: 24, outFrame: 72 });
+  const saved = await page.evaluate(async id => {
+    const { readAsset } = await import('/src/features/project/database.ts' as string);
+    const { readClipMetadata } = await import('/src/media/clipMetadata.ts' as string);
+    return readClipMetadata((await readAsset(id)).blob, new AbortController().signal);
+  }, copy.assetId);
+  expect(saved).toEqual(clipMetadata);
+  await page.getByRole('button', { name: `Library asset ${copy.name}`, exact: true }).dblclick();
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
+  await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('30 fps');
+  expect((await readProject(page)).interstitials[1].result).toMatchObject({ assetId: copy.assetId, metadata: clipMetadata, start: 1, duration: 2 });
 });
 
 test('opening a portable video directly restores it; ordinary and invalid metadata files remain sources', async ({ page }) => {

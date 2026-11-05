@@ -13,11 +13,11 @@ export async function enhancePrompt(item: Pick<Interstitial, 'prompt' | 'time' |
   if (reference) {
     if (reference.before) {
     const before = await assets.open(reference.before.assetId);
-    referenceFrames.push((await sampleFrame({ id: reference.before.assetId, name: 'Preceding clip', url: before.url }, (reference.before.outFrame - 1) / TIMELINE_FPS, 512, signal)).url);
+    referenceFrames.push((await sampleFrame({ id: reference.before.assetId, name: 'Preceding clip', kind: reference.before.kind, url: before.url }, (reference.before.outFrame - 1) / TIMELINE_FPS, 512, signal)).url);
     }
     if (reference.after) {
       const after = await assets.open(reference.after.assetId);
-      referenceFrames.push((await sampleFrame({ id: reference.after.assetId, name: 'Following clip', url: after.url }, (reference.mode === 'loop' ? reference.after.outFrame - 1 : reference.after.inFrame) / TIMELINE_FPS, 512, signal)).url);
+      referenceFrames.push((await sampleFrame({ id: reference.after.assetId, name: 'Following clip', kind: reference.after.kind, url: after.url }, (reference.mode === 'loop' ? reference.after.outFrame - 1 : reference.after.inFrame) / TIMELINE_FPS, 512, signal)).url);
     }
   } else if (engine && info) {
     const last = Math.max(0, info.duration - 1 / info.fps);

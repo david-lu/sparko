@@ -20,7 +20,12 @@ for(const width of [1440,390])test(`time label scrubs without jumping, respects 
   await page.getByLabel('Source in',{exact:true}).fill('.5');await page.getByLabel('Source out',{exact:true}).fill('3.5');
   const label=page.getByRole('slider',{name:/^Playhead of /});await label.press('Home');
   await expect(label).toHaveText('00:00.500');const graph=(await readProject(page)).storyFlow;
-  const viewport=await page.locator('.story-scroll').boundingBox(),toolbar=await page.locator('.story-toolbar').boundingBox();
+  // Preferences can scroll the stacked workspace; compare layout in workspace coordinates.
+  const layout=()=>page.locator('.story-scroll,.story-toolbar').evaluateAll(nodes=>nodes.map(el=>{
+    const r=el.getBoundingClientRect(),workspace=el.closest('.workspace-grid')!,origin=workspace.getBoundingClientRect();
+    return {x:r.x-origin.x+workspace.scrollLeft,y:r.y-origin.y+workspace.scrollTop,width:r.width,height:r.height};
+  }));
+  const before=await layout();
   await dragTime(page,1);await expect(label).toHaveText('00:01.500');
   await page.getByRole('button',{name:'Zoom out story',exact:true}).click();
   await dragTime(page,.5);await expect(label).toHaveText('00:02.000');
@@ -33,7 +38,7 @@ for(const width of [1440,390])test(`time label scrubs without jumping, respects 
   await dialog.getByRole('button',{name:'Done',exact:true}).click();await expect(label).toHaveText('00:01.000');
   await dragTime(page,.5);await expect(label).toHaveText('00:01.500');
   expect((await readProject(page)).storyFlow).toEqual(graph);
-  expect(await page.locator('.story-scroll').boundingBox()).toEqual(viewport);expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);
+  expect(await layout()).toEqual(before);
   expect(errors).toEqual([]);
   await page.screenshot({path:`test-results/playhead-drag-${width}.png`});
 });

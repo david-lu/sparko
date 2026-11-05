@@ -29,7 +29,7 @@ for (const width of [1440, 390]) test(`missing Start/End content has clickable e
   const before = await positions(page);
   await startError.click();
   const details = page.getByRole('dialog', { name: 'Start reference errors', exact: true });
-  await expect(details).toContainText('Connect an incoming clip'); await expect(details).toContainText('Choose another video');
+  await expect(details).toContainText('Connect an incoming clip'); await expect(details).toContainText('Choose other videos / images');
   expect(await positions(page)).toEqual(before);
   await page.keyboard.press('Escape'); await expect(details).not.toBeVisible();
   await endError.focus(); await page.keyboard.press('Space');
@@ -46,7 +46,7 @@ for (const width of [1440, 390]) test(`missing Start/End content has clickable e
   await referenceType(page, 'Start', 'Image'); await startError.click();
   await expect(details).toContainText('Add an image for the start reference'); await page.keyboard.press('Escape');
   await referenceType(page, 'Start', 'Video'); await page.getByLabel('Use arbitrary start video', { exact: true }).check();
-  await startError.click(); await expect(details).toContainText('Choose a video for the start reference'); await page.keyboard.press('Escape');
+  await startError.click(); await expect(details).toContainText('Choose videos or images for the start reference'); await page.keyboard.press('Escape');
   await referenceType(page, 'Start', 'None'); await referenceType(page, 'End', 'None');
   await expect(startError).toHaveCount(0); await expect(endError).toHaveCount(0); await expect(timelineError).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);

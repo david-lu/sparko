@@ -29,6 +29,14 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it.each(['0', '123456789', '9007199254740991'])('forwards fixed seed %s exactly', async seed => {
+    await submit('1.625', '1.625', 'Seeded scene', { seed }).expect(202);
+    expect(comfy.submit.mock.calls[0][1].seed).toBe(Number(seed));
+  });
+  it.each(['', ' ', '-1', '1.5', 'NaN', 'Infinity', '9007199254740992', 'random'])('rejects invalid seed %s before submission', async seed => {
+    await submit('1.625', '1.625', 'Seeded scene', { seed }).expect(400);
+    expect(comfy.submit).not.toHaveBeenCalled();
+  });
   it('validates Turbo at preflight and submission, including explicit false', async () => {
     comfy.check.mockResolvedValue({ ready: true });
     await request(app).get('/api/comfy/status?turbo=true&imageGuides=true').expect(200);

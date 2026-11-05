@@ -15,7 +15,7 @@ export default function ProjectInspector({editor}:{editor:StoryEditor}) {
   if(!project||!graph)return null;
   const start=graph.nodes.find(n=>n.id===graph.entryId),item=editor.items.find(i=>i.id===start?.interstitialId),result=item&&playableResult(item);
   const assetId=start?.source?.assetId??result?.assetId??result?.fullAssetId;
-  const asset=assetId?{...project.library?.find(a=>a.assetId===assetId),assetId,kind:'video' as const,
+  const asset=assetId?{...project.library?.find(a=>a.assetId===assetId),assetId,kind:start?.source?.kind === 'image' ? 'image' as const : 'video' as const,
     ...(start?.source?{inFrame:start.source.inFrame,outFrame:start.source.outFrame}:{})}:undefined;
   return <section className="story-inspector project-inspector" aria-label="Project settings" data-project-edit>
     <h2>Project settings</h2>
@@ -35,8 +35,8 @@ export default function ProjectInspector({editor}:{editor:StoryEditor}) {
         void editor.setStartAsset(id).catch(cause=>setError(cause instanceof Error?cause.message:'Unable to change the start video.')).finally(()=>setBusy(false));
       }}>
       <div className="project-entry-preview">
-        {start?<><AssetThumbnail asset={asset} kind="video" name={start.name}/><div><strong title={start.name}>{start.name}</strong><span>{nodeDuration(start,editor.items).toFixed(2)} s · {item?(result?'Generated video':'Draft video'):'Video'}</span></div></>
-          :<><Video size={23}/><div><strong>No start video</strong><span>Add a video to begin</span></div></>}
+        {start?<><AssetThumbnail asset={asset} kind={asset?.kind ?? 'video'} name={start.name}/><div><strong title={start.name}>{start.name}</strong><span>{nodeDuration(start,editor.items).toFixed(2)} s · {item?(result?'Generated video':'Draft video'):start.source?.kind==='image'?'Still image':'Video'}</span></div></>
+          :<><Video size={23}/><div><strong>No start video</strong><span>Add a video or image to begin</span></div></>}
       </div>
       <span className={`project-entry-instruction${error?' has-error':''}`} role="status" aria-atomic="true" title={error||undefined} tabIndex={error?0:undefined}>
         {busy?'Adding video…':dragging||editor.clipDrag?.overStart?'Drop to set the start video':error||'Drag a timeline clip or Library video here'}

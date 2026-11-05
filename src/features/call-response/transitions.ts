@@ -2,33 +2,27 @@ import { INTERSTITIAL_CROSSFADE_FRAMES } from '../../../shared/constants';
 import { referenceCrossfade } from '../../media/ReferenceCrossfade';
 import { getScene, sceneFrames, type CallResponseFlow, type FlowEdge } from './model';
 import { sceneMediaRange } from '../story-flow/mediaRange';
-import { connectionReference } from '../story-flow/references';
 import type { FadeChannel } from '../story-flow/model';
 
 function storyTransition(flow: CallResponseFlow, edge: FlowEdge, channel: FadeChannel) {
   const before = getScene(flow, edge.from), after = getScene(flow, edge.to), fps = flow.fps;
   const requested = Math.max(0, Math.round(channel === 'audio' ? edge.audioTransitionFrames ?? edge.transitionFrames : edge.transitionFrames));
   if (!requested || !before || !after || before.id === after.id || before.draft || after.draft) return;
-  if (connectionReference(flow,edge).state==='mismatch') return;
   const left = sceneMediaRange(before, fps), right = sceneMediaRange(after, fps);
-  if (after.generated && (after.generated.reference?.before || after.generated.reference?.mode !== 'custom')) {
-    const result = after.generated, reference = result.reference?.before;
-    // The prefix meets the original body start, never an arbitrary trim point.
-    if (after.clip.inFrame !== Math.round(result.start * fps)) return;
-    if (reference && !((reference.assetId === before.clip.assetId && reference.outFrame === before.clip.outFrame)
-      || (reference.assetId === left.assetId && reference.outFrame === Math.round(left.end * fps)))) return;
-    const frames = Math.min(requested, sceneFrames(before), Math.floor(right.start * fps + 1e-6));
+  const openingFrames = Math.max(0, Math.floor(right.start * fps + 1e-6));
+  const endingFrames = Math.max(0, Math.floor(((left.total ?? left.end) - left.end) * fps + 1e-6));
+  // Reference identity is provenance, not permission to dissolve. Prefer saved
+  // handles at the original body boundaries, regardless of which clips connect.
+  if (after.generated && after.clip.inFrame === Math.round(after.generated.start * fps) && openingFrames) {
+    const frames = Math.min(requested, sceneFrames(before), openingFrames);
     return frames > 0 ? { before, after, startFrame: -frames, frames } : undefined;
   }
-  if (before.generated) {
-    const result = before.generated, reference = result.reference;
-    if (before.clip.outFrame !== Math.round((result.start + result.duration) * fps)) return;
-    if (reference && (!reference.after || reference.mode === 'loop' || reference.mode === 'extend'
-      || reference.after.assetId !== after.clip.assetId || reference.after.inFrame !== after.clip.inFrame)) return;
-    const frames = Math.min(requested, sceneFrames(after), Math.floor(((left.total ?? left.end) - left.end) * fps + 1e-6));
+  if (before.generated && before.clip.outFrame === Math.round((before.generated.start + before.generated.duration) * fps)
+    && endingFrames) {
+    const frames = Math.min(requested, sceneFrames(after), endingFrames);
     return frames > 0 ? { before, after, startFrame: 0, frames } : undefined;
   }
-  // Ordinary footage has no generated reference interval: dissolve around the cut.
+  // Without a saved handle (including trimmed bodies), dissolve around the cut.
   const frames = Math.min(requested, sceneFrames(before), sceneFrames(after));
   return frames > 0 ? { before, after, startFrame: -Math.floor(frames / 2), frames } : undefined;
 }
@@ -36,11 +30,6 @@ function storyTransition(flow: CallResponseFlow, edge: FlowEdge, channel: FadeCh
 function referenceTransition(flow: CallResponseFlow, edge: FlowEdge, frames: number) {
   const before = getScene(flow, edge.from), after = getScene(flow, edge.to);
   if (!before || !after || before.id === after.id || edge.when === 'pending' || before.draft || after.draft) return;
-  const input = after.generated?.reference?.before, output = before.generated?.reference;
-  // Rewired or partially generated sequences must not blend unrelated reference footage.
-  if (input && (input.assetId !== before.clip.assetId || input.outFrame !== before.clip.outFrame)) return;
-  if (output && (!output.after || output.mode === 'loop' || output.mode === 'extend'
-    || output.after.assetId !== after.clip.assetId || output.after.inFrame !== after.clip.inFrame)) return;
   const window = referenceCrossfade(
     { frames: sceneFrames(before), generated: !!before.interstitialId || before.clip.kind !== 'video', range: before.generated },
     { frames: sceneFrames(after), generated: !!after.interstitialId || after.clip.kind !== 'video', range: after.generated }, frames, flow.fps);
@@ -55,11 +44,6 @@ function idleTransition(flow: CallResponseFlow, edge: FlowEdge, requestedFrames:
   if (!enteringIdle && !leavingIdle) return;
   // The Response was generated from the end of Idle's body. Its own saved
   // prefix length, not Idle's unrelated loop suffix, bounds this overlap.
-  const submittedIdle = leavingIdle && after.generated.reference?.before;
-  const full = before.generated.fullAssetId && before.generated.fullRange;
-  const fullOutFrame = full ? Math.round(full.start * flow.fps) + sceneFrames(before) : undefined;
-  if (submittedIdle && !(submittedIdle.assetId === before.clip.assetId && submittedIdle.outFrame === before.clip.outFrame)
-    && !(full && submittedIdle.assetId === before.generated.fullAssetId && submittedIdle.outFrame === fullOutFrame)) return;
   const idlePrefix = after.clip.kind === 'idle' && after.generated.fullAssetId && after.generated.fullRange;
   const contextFrames = enteringIdle ? idlePrefix ? Math.floor(idlePrefix.start * flow.fps + 1e-6) : Infinity
     : Math.floor(after.generated.start * flow.fps + 1e-6);

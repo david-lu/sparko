@@ -2,7 +2,7 @@ import { H3_MODEL_ID, projectLoraAddress, projectLoraStrength, saveProjectLora, 
 import { generationModel } from '../../../shared/generation-models';
 import type { MediaInfo, MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
-import { canPlaySourceVideo, prepareSourceVideo } from '../../media/prepareVideo';
+import { canPlaySourceVideo, convertVideoFrameRate, prepareSourceVideo } from '../../media/prepareVideo';
 import type { InterstitialController } from '../interstitials/InterstitialController';
 import { assets } from './assets';
 import { clearActiveProject, deleteSavedProject, forgetRecentFile, listRecentFiles, listSavedProjects, readActiveProject, readAsset, readProject, rememberRecentFile, storageError, writeProject, type RecentFile } from './database';
@@ -23,6 +23,9 @@ import type { LibraryAsset, LibraryFolder } from './types';
 import type { AssetGeneration } from '../../../shared/asset-generation';
 import { readClipMetadata } from '../../media/clipMetadata';
 import { resolveClipReferences, restoreClip } from '../interstitials/clipMetadata';
+import { projectContent } from './projectContent';
+import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
+import { savedConvertImportedVideo } from '../../shared/preferences';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
   busy: boolean; message: string; progress: number | null; error: string | null;
@@ -33,6 +36,44 @@ type State = { project: Project | null; source: MediaSource | null; subtitle: { 
 /** Owns project persistence and portable snapshots; media and job controllers stay independent. */
 export class ProjectController {
   private storyDuration=0;
+  private convertImportedVideo = savedConvertImportedVideo();
+  setConvertImportedVideo(enabled: boolean) { this.convertImportedVideo = enabled; }
+  private async prepareImport(file: File, signal: AbortSignal, onProgress: (progress: number) => void, assetId?: string) {
+    // A Library asset is already imported; adding it to the timeline keeps its chosen frame rate.
+    const normalize = !assetId && this.convertImportedVideo;
+    const existing = this.state.project?.library?.find(item => item.assetId === assetId);
+    const blob = await prepareSourceVideo(file, signal, onProgress, normalize);
+    const asset: Asset = { id: blob === file && assetId || freshId(), name: file.name, blob };
+    const original = blob !== file && !assetId ? { id: freshId(), name: file.name, blob: file } : undefined;
+    const library: LibraryAsset = { ...existing, assetId: asset.id, name: existing?.name ?? file.name, kind: existing?.kind ?? 'video',
+      originalAssetId: existing?.originalAssetId ?? (blob !== file ? assetId ?? original?.id : undefined),
+      normalizedFps: normalize ? 24 : existing?.normalizedFps };
+    return { asset, original, library };
+  }
+  async convertVideoAsset(assetId: string, fps: number): Promise<LibraryAsset | undefined> {
+    const initial = this.state.project, source = initial?.library?.find(item => item.assetId === assetId);
+    if (!initial || !source || !['video', 'generated'].includes(source.kind)) return;
+    return this.task('Converting video frame rate', async signal => {
+      if ((initial.library?.length ?? 0) >= 2000) throw new Error('A project supports up to 2,000 assets.');
+      const stored = await readAsset(assetId);
+      if (!stored) throw new Error('The saved video is missing.');
+      const blob = await convertVideoFrameRate(stored.blob, fps, signal, progress => this.update({ progress }));
+      const info = await this.validateVideo(blob, signal);
+      const suffix = `.${fps}fps.mp4`;
+      const asset: Asset = { id: freshId(), name: source.name.replace(/\.[^.]+$/, '').slice(0, 1000 - suffix.length) + suffix, blob };
+      const copy: LibraryAsset = { assetId: asset.id, originalAssetId: assetId, normalizedFps: fps, name: asset.name,
+        kind: source.kind, folderId: source.folderId, volume: source.volume, width: info.width, height: info.height,
+        duration: info.duration, inFrame: source.inFrame, outFrame: source.outFrame };
+      await this.writes; signal.throwIfAborted();
+      if (this.state.project?.id !== initial.id) throw new Error('Project changed while converting the video.');
+      await writeProject({ ...this.state.project, library: [...this.state.project.library ?? [], copy] }, [asset], false, signal);
+      await assets.open(asset.id);
+      this.endHistoryGroup();
+      this.save({ ...this.state.project!, library: [...this.state.project!.library ?? [], copy] });
+      this.endHistoryGroup();
+      return copy;
+    });
+  }
   initializeStoryFlow(duration:number) {
     const project=this.state.project;if(!project?.source.assetId)return;
     this.storyDuration=duration;
@@ -43,7 +84,7 @@ export class ProjectController {
       try { this.interstitials.setCallResponses([]); this.save({...project,storyFlow:graph,callResponse:undefined,callResponses:undefined},false); }
       finally{this.switching=false;}
     }
-    else if (!project.library?.find(item => item.assetId === project.source.assetId)?.duration) this.save(project, false);
+    else if (project.library?.find(item => item.assetId === project.source.assetId)?.kind !== 'image' && !project.library?.find(item => item.assetId === project.source.assetId)?.duration) this.save(project, false);
   }
   updateStoryFlow(graph:StoryGraph,added:Interstitial[]=[]) {
     const project=this.state.project;if(!project||this.operation)return;
@@ -73,7 +114,7 @@ export class ProjectController {
   }
   async importLibraryAsset(assetId: string, position?: { x: number; y: number }, asStart = false) {
     const kind = this.state.project?.library?.find(item => item.assetId === assetId)?.kind;
-    if (this.state.busy || (kind !== 'video' && kind !== 'generated')) return;
+    if (this.state.busy || (kind !== 'video' && kind !== 'generated' && kind !== 'image')) return;
     const projectId = this.state.project?.id;
     try {
       const asset = await readAsset(assetId);
@@ -84,28 +125,39 @@ export class ProjectController {
   }
   private async importClips(entries: { file: File; assetId?: string }[], position?: { x: number; y: number }, asStart = false) {
     const initial = this.state.project; if (!initial?.storyFlow || !entries.length) return;
-    return this.task('Importing videos', async signal => {
+    return this.task('Importing clips', async signal => {
       if (initial.storyFlow!.nodes.length + entries.length > 1000) throw new Error('A project can contain up to 1,000 clips.');
       const pending: Asset[] = [], nodes: StoryNode[] = [], added: Interstitial[] = [];
+      const importedLibrary: LibraryAsset[] = [];
       const openedIds: string[] = [];
       for (const [index, entry] of entries.entries()) {
-        const { file } = entry;
-        if (!file.type.startsWith('video/') && !/\.(mp4|webm|mov|mkv|m4v)$/i.test(file.name)) throw new Error('Drop video files onto the timeline.');
+        const file = mediaFile(entry.file);
+        if (mediaKind(file) === 'audio') throw new Error('Drop video or image files onto the timeline.');
         signal.throwIfAborted(); this.update({ message: `Importing ${file.name} (${index + 1}/${entries.length})`, progress: index / entries.length });
+        if (mediaKind(file) === 'image') {
+          const info = await inspectAsset(file, 'image'); signal.throwIfAborted();
+          const asset = { id: entry.assetId ?? freshId(), name: file.name, blob: file };
+          if (!entry.assetId) pending.push(asset);
+          const existing = initial.library?.find(a => a.assetId === asset.id);
+          importedLibrary.push({ ...existing, ...info, assetId: asset.id, name: existing?.name ?? file.name, kind: 'image' });
+          openedIds.push(asset.id);
+          nodes.push({ id: freshId(), name: existing?.name ?? file.name, kind: 'source', x: 0, y: 0, loopCount: 0,
+            source: { kind: 'image', assetId: asset.id, inFrame: 0, outFrame: DEFAULT_IMAGE_DURATION * TIMELINE_FPS } });
+          continue;
+        }
         const metadata = await readClipMetadata(file, signal);
-        const blob = await prepareSourceVideo(file, signal, progress => this.update({ message: `Preparing ${file.name}`, progress: (index + progress) / entries.length }));
-        const info = await this.validateVideo(blob, signal);
-        const asset: Asset = { id: blob === file && entry.assetId || freshId(), name: file.name, blob };
+        const { asset, original, library } = await this.prepareImport(file, signal, progress => this.update({ message: `Preparing ${file.name}`, progress: (index + progress) / entries.length }), entry.assetId);
+        const info = await this.validateVideo(asset.blob, signal);
         if (asset.id !== entry.assetId) pending.push(asset);
+        if (original) pending.push(original);
         openedIds.push(asset.id);
         // AAC padding can extend the container beyond the unchanged video frames.
         const restored = metadata && restoreClip(metadata, asset.id, info.videoDuration ?? info.duration);
+        importedLibrary.push({ ...library, name: entry.assetId ? library.name : restored?.item.label ?? library.name,
+          kind: restored ? 'generated' : library.kind, width: info.width, height: info.height, duration: info.duration });
         if (restored) { nodes.push(restored.node); added.push(restored.item); continue; }
-        const library = initial.library?.find(item => item.assetId === entry.assetId);
-        let originalAssetId = library?.originalAssetId;
-        if (blob !== file) { originalAssetId = entry.assetId ?? freshId(); if (!entry.assetId) pending.push({ id: originalAssetId, name: file.name, blob: file }); }
         nodes.push({ id: freshId(), name: library?.name ?? file.name, kind: 'source',
-          source: { assetId: asset.id, originalAssetId, duration: info.duration, inFrame: library?.inFrame ?? 0,
+          source: { assetId: asset.id, originalAssetId: library.originalAssetId, duration: info.duration, inFrame: library?.inFrame ?? 0,
             outFrame: library?.outFrame ?? Math.max(1, Math.floor(info.duration * TIMELINE_FPS)) },
           x: 0, y: 0, crossfadeStart: 0, crossfadeEnd: 0, loopCount: 0 });
       }
@@ -117,12 +169,13 @@ export class ProjectController {
       resolveClipReferences(next, interstitials, added, current.assetAliases);
       const firstSource = !current.source.assetId ? nodes.find(node => node.source) : undefined;
       const project = { ...current, storyFlow: next, interstitials,
+        library: [...current.library?.filter(item => !importedLibrary.some(imported => imported.assetId === item.assetId)) ?? [], ...importedLibrary],
         source: firstSource ? { name: firstSource.name, assetId: firstSource.source!.assetId, originalAssetId: firstSource.source!.originalAssetId } : current.source, updatedAt: Date.now() };
       await this.writes; signal.throwIfAborted();
       await writeProject(project, pending, false, signal);
       await Promise.all(openedIds.map(id => assets.open(id)));
       signal.throwIfAborted();
-      if (firstSource) { this.storyDuration = firstSource.source!.duration!; this.update({ source: await this.openSource(project) }); }
+      if (firstSource) { this.storyDuration = firstSource.source!.duration ?? DEFAULT_IMAGE_DURATION; this.update({ source: await this.openSource(project) }); }
       this.switching = true;
       try {
         added.forEach(item => this.interstitials.ensureItem(item));
@@ -136,7 +189,9 @@ export class ProjectController {
     undoLabel: null, redoLabel: null, historyRevision: 0, activationRevision: 0, savedProjects: [], savedProjectId: null,
     recentFiles: [], fileName: null, dirty: false };
   private fileHandle: FileSystemFileHandle | null = null;
-  private revision = 0;
+  private currentContent: string | null = null;
+  private savedContent: string | null = null;
+  private queuedContent: string | null = null;
   private draftId = (() => {
     try {
       const existing = localStorage.getItem('sparko:draft-id');
@@ -157,7 +212,7 @@ export class ProjectController {
   private update(patch: Partial<State>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
   clearError() { this.update({ error: null }); }
   editAssets(change: (project: Project) => Project, record = true) {
-    if (this.state.project) { this.save(change(this.state.project), record); this.update({ dirty: true }); }
+    if (this.state.project) this.save(change(this.state.project), record);
   }
   setLora(entry: ProjectLora, previousModel?: string) {
     if (!generationModel(entry.model)?.supportsLora) throw new Error('This model does not support LoRAs in the current generation integration.');
@@ -168,40 +223,61 @@ export class ProjectController {
     const initial = this.state.project;
     if (!initial || !entries.length) return [];
     if ((initial.library?.length ?? 0) + entries.length > 2000) throw new Error('A project supports up to 2,000 assets.');
-    const folders: LibraryFolder[] = [...initial.libraryFolders ?? []], added: LibraryAsset[] = [];
-    // Validate the entire batch before publishing it to the document.
-    for (const entry of entries) mediaKind(entry.file);
-    for (const entry of entries) {
-      const file = mediaFile(entry.file), path = entry.path;
-      if (!file.size) throw new Error(`${file.name} is empty.`);
-      onProgress?.(`Importing ${file.name}`);
-      let parentId = folderId;
-      const parts = path.split('/').slice(0, -1).filter(part => part && part !== '.' && part !== '..');
-      if (parts.length > 50) throw new Error('Folders can be nested up to 50 levels.');
-      for (const name of parts) {
-        let folder = folders.find(f => f.parentId === parentId && f.name === name);
-        if (!folder) { folder = { id: crypto.randomUUID(), name: name.slice(0, 1000), parentId }; folders.push(folder); }
-        parentId = folder.id;
+    return await this.task('Importing assets', async signal => {
+      const folders: LibraryFolder[] = [...initial.libraryFolders ?? []], added: LibraryAsset[] = [];
+      const pending: Asset[] = [];
+      // Validate the entire batch before publishing it to the document.
+      for (const entry of entries) mediaKind(entry.file);
+      for (const entry of entries) {
+        const file = mediaFile(entry.file), path = entry.path;
+        if (!file.size) throw new Error(`${file.name} is empty.`);
+        onProgress?.(`Importing ${file.name}`);
+        let parentId = folderId;
+        const parts = path.split('/').slice(0, -1).filter(part => part && part !== '.' && part !== '..');
+        if (parts.length > 50) throw new Error('Folders can be nested up to 50 levels.');
+        for (const name of parts) {
+          let folder = folders.find(f => f.parentId === parentId && f.name === name);
+          if (!folder) { folder = { id: crypto.randomUUID(), name: name.slice(0, 1000), parentId }; folders.push(folder); }
+          parentId = folder.id;
+        }
+        const kind = mediaKind(file);
+        const prepared = kind === 'video' ? await this.prepareImport(file, signal, progress => {
+          const message = `Preparing ${file.name} · ${Math.floor(progress * 100)}%`;
+          onProgress?.(message); this.update({ message, progress });
+        }) : undefined;
+        const asset = prepared?.asset ?? { id: freshId(), name: file.name.slice(0, 1000), blob: file };
+        const metadata = await inspectAsset(asset.blob, kind);
+        signal.throwIfAborted(); pending.push(asset); if (prepared?.original) pending.push(prepared.original);
+        added.push({ ...prepared?.library, assetId: asset.id, name: asset.name, kind, folderId: parentId, ...metadata });
       }
-      const kind = mediaKind(file), metadata = await inspectAsset(file, kind);
-      const asset = await assets.save(file, file.name.slice(0, 1000));
-      await assets.open(asset.id);
-      added.push({ assetId: asset.id, name: asset.name, kind, folderId: parentId, ...metadata });
-    }
-    if (this.state.project?.id !== initial.id) throw new Error('Project changed while importing. Import into the current project again.');
-    this.editAssets(project => ({ ...project, library: [...project.library ?? [], ...added],
-      libraryFolders: [...project.libraryFolders ?? [], ...folders.filter(f => !initial.libraryFolders?.some(old => old.id === f.id))] }));
-    return added;
+      if (this.state.project?.id !== initial.id) throw new Error('Project changed while importing. Import into the current project again.');
+      const project = { ...this.state.project!, library: [...this.state.project!.library ?? [], ...added],
+        libraryFolders: [...this.state.project!.libraryFolders ?? [], ...folders.filter(f => !initial.libraryFolders?.some(old => old.id === f.id))] };
+      await this.writes; signal.throwIfAborted(); await writeProject(project, pending, false, signal);
+      await Promise.all(added.map(item => assets.open(item.assetId)));
+      this.save(project);
+      return added;
+    }) ?? [];
   }
   private save(project: Project, record = true) {
     this.interstitials.setDefaultLora(projectLoraAddress(project.loras, H3_MODEL_ID), projectLoraStrength(project.loras, H3_MODEL_ID));
     for (const generation of project.assetGenerations ?? []) this.generationStates.set(generation.id, generation);
     project = { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
-    if (record && this.state.project?.id === project.id) this.history.record(this.state.project, project);
-    this.revision++;
-    this.update({ project, dirty: this.state.dirty || record, undoLabel: this.history.undoLabel, redoLabel: this.history.redoLabel });
-    this.writes = this.writes.catch(() => undefined).then(() => writeProject(project));
-    void this.writes.catch(error => this.update({ error: storageError(error) }));
+    const content = projectContent(project), changed = content !== this.currentContent;
+    project = { ...project, updatedAt: changed ? Date.now() : this.state.project?.updatedAt ?? project.updatedAt };
+    if (changed && record && this.state.project?.id === project.id) this.history.record(this.state.project, project);
+    this.currentContent = content;
+    // Publish runtime progress even when it does not need to be saved.
+    this.update({ project, dirty: content !== this.savedContent, undoLabel: this.history.undoLabel, redoLabel: this.history.redoLabel });
+    const browserContent = projectContent(project, 'browser');
+    if (browserContent === this.queuedContent) return;
+    this.queuedContent = browserContent;
+    const writing = this.writes.catch(() => undefined).then(() => writeProject(project));
+    this.writes = writing;
+    void writing.catch(error => {
+      if (this.writes === writing) this.queuedContent = null;
+      this.update({ error: storageError(error) });
+    });
   }
   async init(defaultSource: MediaSource) {
     this.unsubscribe ??= this.interstitials.subscribe(() => {
@@ -235,7 +311,7 @@ export class ProjectController {
       this.update({ savedProjects: await listSavedProjects(), recentFiles: await listRecentFiles() });
     });
   }
-  private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = [], savedProjectId: string | null = null, workingId = this.draftId) {
+  private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = [], savedProjectId: string | null = null, workingId = this.draftId, normalizeSource = false) {
     signal.throwIfAborted();
     this.storyDuration = 0;
     project = { ...project, id: workingId, saved: false, crossfadeFrames: project.crossfadeFrames ?? savedCrossfadeFrames(),storyFlow:project.storyFlow?migrateFades(project.storyFlow):undefined };
@@ -253,7 +329,7 @@ export class ProjectController {
       const rename = renamedClips.get(item.id);
       return rename && item.label === rename.before ? { ...item, label: rename.after } : item;
     }) };
-    ({ project, pendingAssets } = await this.prepareSource(project, pendingAssets, signal));
+    ({ project, pendingAssets } = await this.prepareSource(project, pendingAssets, signal, normalizeSource));
     ({ project, pendingAssets } = await this.prepareGraphSources(project,pendingAssets,signal));
     await this.prepareGenerated(project, pendingAssets, signal);
     project = { ...project, library: collectLibrary(project) };
@@ -269,7 +345,7 @@ export class ProjectController {
       .filter((id): id is string => !!id))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
-    this.revision = 0;
+    this.queuedContent = projectContent(project, 'browser');
     this.history.clear();
     this.fileHandle = null;
     this.update({ project, source, subtitle, error: null, dirty: false, undoLabel: null, redoLabel: null,
@@ -279,9 +355,11 @@ export class ProjectController {
     this.interstitials.setStoryGraph(project.storyFlow,project.source.assetId,this.storyDuration);
     assets.releaseExcept(new Set(assetIds(project)));
     this.switching = false;
-    this.save({ ...project, interstitials: this.interstitials.getSnapshot().items }, false);
+    const restored = { ...project, interstitials: this.interstitials.getSnapshot().items };
+    this.savedContent = this.currentContent = projectContent(restored);
+    this.save(restored, false);
   }
-  private async prepareSource(project: Project, pendingAssets: Asset[], signal: AbortSignal) {
+  private async prepareSource(project: Project, pendingAssets: Asset[], signal: AbortSignal, normalize = false) {
     if(project.storyFlow&&!project.source.assetId&&!project.source.url)return {project,pendingAssets};
     const previousSourceId = project.source.assetId;
     let original = pendingAssets.find(asset => asset.id === project.source.assetId);
@@ -297,16 +375,22 @@ export class ProjectController {
       });
       pendingAssets = [...pendingAssets, original];
     }
+    if (original.blob.type.startsWith('image/') || project.storyFlow?.nodes.some(n => n.source?.assetId === original!.id && n.source.kind === 'image')) {
+      await inspectAsset(original.blob, 'image'); signal.throwIfAborted();
+      return { project, pendingAssets };
+    }
     this.update({ message: 'Checking video playback', progress: null });
     let restoredOriginal = false;
-    if (project.source.originalAssetId && project.source.originalAssetId !== original.id) {
+    // Deliberate import conversions remain working copies when reopening, even after the preference changes.
+    const normalized = project.library?.some(item => item.assetId === previousSourceId && item.normalizedFps !== undefined);
+    if (!normalize && !normalized && project.source.originalAssetId && project.source.originalAssetId !== original.id) {
       const retained = pendingAssets.find(asset => asset.id === project.source.originalAssetId) ?? await readAsset(project.source.originalAssetId);
       const playable = retained && await canPlaySourceVideo(retained.blob, signal).catch(() => { signal.throwIfAborted(); return false; });
       if (retained && playable) { original = retained; restoredOriginal = true; }
     }
     const blob = restoredOriginal ? original.blob : await prepareSourceVideo(original.blob, signal, progress => {
       if (!signal.aborted) this.update({ message: 'Preparing 24 fps video', progress });
-    });
+    }, normalize);
     signal.throwIfAborted();
     let working = original;
     if (blob !== original.blob) {
@@ -317,6 +401,9 @@ export class ProjectController {
       ? { ...scene, clip: { ...scene.clip, assetId: working.id } } : scene) })));
     if(working.id!==previousSourceId&&project.storyFlow)project={...project,storyFlow:{...project.storyFlow,nodes:project.storyFlow.nodes.map(n=>n.source&&n.source.assetId===previousSourceId?{...n,source:{...n.source,assetId:working.id}}:n),templates:project.storyFlow.templates.map(t=>({...t,nodes:t.nodes.map(n=>n.source&&n.source.assetId===previousSourceId?{...n,source:{...n.source,assetId:working.id}}:n)}))}};
     if (working.id !== previousSourceId) project = { ...project, library: project.library?.map(item => item.assetId === previousSourceId ? { ...item, assetId: working.id } : item) };
+    if (normalize) project = { ...project, library: [...project.library?.filter(item => item.assetId !== working.id) ?? [],
+      { ...project.library?.find(item => item.assetId === working.id), assetId: working.id, name: project.source.name, kind: 'video', normalizedFps: 24,
+        originalAssetId: project.source.originalAssetId ?? (working !== original ? original.id : undefined) }] };
     return { project: { ...project, source: { ...project.source, assetId: working.id,
       originalAssetId: restoredOriginal ? undefined : project.source.originalAssetId ?? (working !== original ? original.id : undefined) }, updatedAt: Date.now() }, pendingAssets };
   }
@@ -338,7 +425,7 @@ export class ProjectController {
   }
   private async prepareGraphSources(project:Project,pendingAssets:Asset[],signal:AbortSignal){
     let graph=project.storyFlow;if(!graph)return {project,pendingAssets};
-    const ids=[...new Set(graph.nodes.flatMap(node=>node.source?[node.source.assetId]:[]))].filter(id => id !== project.source.assetId);
+    const ids=[...new Set(graph.nodes.flatMap(node=>node.source && node.source.kind !== 'image'?[node.source.assetId]:[]))].filter(id => id !== project.source.assetId);
     for(const [index,id] of ids.entries()){
       signal.throwIfAborted();const original=pendingAssets.find(asset=>asset.id===id)??await readAsset(id);if(!original)throw new Error('An imported video is missing.');
       this.update({message:`Checking video ${index+1} of ${ids.length}`,progress:index/ids.length});
@@ -357,7 +444,8 @@ export class ProjectController {
   private async openSource(project:Project):Promise<MediaSource|null>{
     if(!project.source.assetId)return null;
     const {asset,url}=await assets.open(project.source.assetId);
-    return {id:project.id,name:project.source.name,url,assetId:asset.id,file:new File([asset.blob],project.source.name,{type:asset.blob.type})};
+    return {id:project.id,name:project.source.name,url,assetId:asset.id,file:new File([asset.blob],project.source.name,{type:asset.blob.type}),
+      ...(asset.blob.type.startsWith('image/') || project.storyFlow?.nodes.some(n => n.source?.assetId === asset.id && n.source.kind === 'image') ? { kind: 'image', duration: DEFAULT_IMAGE_DURATION } : {})};
   }
   async newProject(){
     await this.task('Creating project',async signal=>{
@@ -369,7 +457,7 @@ export class ProjectController {
   async openDefault(source: MediaSource) {
     await this.task('Opening sample video', async signal => {
       if (!source.url) throw new Error('The sample video is unavailable on this server.');
-      await this.activate(this.create(source), signal, [], null, source.id);
+      await this.activate(this.create(source), signal, [], null, source.id, this.convertImportedVideo);
     });
   }
   async openSavedProject(id: string) {
@@ -399,24 +487,29 @@ export class ProjectController {
       await this.restoreArchive(file, signal);
       this.fileHandle = handle;
       await rememberRecentFile(handle);
-      this.update({ fileName: handle.name, dirty: false, recentFiles: await listRecentFiles() });
+      this.update({ fileName: handle.name, recentFiles: await listRecentFiles() });
       return true;
     });
   }
-  async saveToFile(handle: FileSystemFileHandle) {
+  async saveToFile(handle: FileSystemFileHandle, force = false) {
+    if (this.operation || !this.state.project) return;
+    if (!force && handle === this.fileHandle && this.currentContent === this.savedContent) return true;
     return this.task('Saving project file', async signal => {
       // Open the writer while the Save click still has user activation.
       const writer = await handle.createWritable();
-      const revision = this.revision;
+      let content: string;
       try {
         const archive = await this.buildArchive(signal, handle.name.replace(/\.sparko$/i, ''));
         signal.throwIfAborted();
         await writer.write(archive.blob);
         await writer.close();
+        content = archive.content;
       } catch (error) { await writer.abort().catch(() => undefined); throw error; }
       this.fileHandle = handle;
+      this.savedContent = content;
+      this.update({ fileName: handle.name, dirty: this.currentContent !== content, savedProjectId: null });
       await rememberRecentFile(handle);
-      this.update({ fileName: handle.name, dirty: this.revision !== revision, savedProjectId: null, recentFiles: await listRecentFiles() });
+      this.update({ recentFiles: await listRecentFiles() });
       return true;
     });
   }
@@ -581,7 +674,7 @@ export class ProjectController {
       this.switching = true;
       try {
         this.fileHandle = null;
-        this.revision = 0;
+        this.currentContent = this.savedContent = this.queuedContent = null;
         this.history.clear();
         this.update({ project: null, source: null, subtitle: null, savedProjectId: null, fileName: null,
           dirty: false, undoLabel: null, redoLabel: null, historyRevision: this.state.historyRevision + 1 });
@@ -592,18 +685,29 @@ export class ProjectController {
     });
   }
   async openVideo(file: File) {
-    await this.task('Saving video locally', async signal => {
+    file = mediaFile(file);
+    await this.task('Saving media locally', async signal => {
+      if (file.type.startsWith('image/')) {
+        const metadata = await inspectAsset(file, 'image'); signal.throwIfAborted();
+        const asset = { id: freshId(), name: file.name, blob: file }, nodeId = freshId();
+        const project: Project = { ...this.create({ id: `file:${file.name}:${file.size}:${file.lastModified}`, name: file.name, url: '' }),
+          source: { name: file.name, assetId: asset.id }, library: [{ assetId: asset.id, name: file.name, kind: 'image', ...metadata }],
+          storyFlow: { version: 1, entryId: nodeId, edges: [], templates: [], nodes: [{ id: nodeId, name: file.name, kind: 'source', x: 40, y: 90, loopCount: 0,
+            source: { assetId: asset.id, kind: 'image', inFrame: 0, outFrame: DEFAULT_IMAGE_DURATION * TIMELINE_FPS } }] } };
+        await this.activate(project, signal, [asset]); return;
+      }
       if (!file.type.startsWith('video/') && !/\.(mp4|webm|mov|mkv|m4v)$/i.test(file.name)) throw new Error('Choose a video file.');
       const id = `file:${file.name}:${file.size}:${file.lastModified}`;
-      const asset = { id: crypto.randomUUID(), name: file.name, blob: file };
       const metadata = await readClipMetadata(file, signal);
-      const info = metadata && await this.validateVideo(file, signal);
+      const { asset, original, library } = await this.prepareImport(file, signal, progress => this.update({ message: `Preparing ${file.name}`, progress }));
+      const info = metadata && await this.validateVideo(asset.blob, signal);
       const restored = metadata && info && restoreClip(metadata, asset.id, info.videoDuration ?? info.duration);
       const project: Project = restored
         ? { ...this.create({ id, name: file.name, url: '' }), source: { name: file.name }, interstitials: [restored.item],
           storyFlow: { version: 1, entryId: restored.node.id, nodes: [{ ...restored.node, x: 40, y: 90 }], edges: [], templates: [] } }
-        : { ...this.create({ id, name: file.name, url: '' }), source: { name: file.name, assetId: asset.id } };
-      await this.activate(project, signal, [asset]);
+        : { ...this.create({ id, name: file.name, url: '' }), source: { name: file.name, assetId: asset.id, originalAssetId: library.originalAssetId } };
+      project.library = [{ ...library, name: restored?.item.label ?? library.name, kind: restored ? 'generated' : 'video' }];
+      await this.activate(project, signal, [asset, ...(original ? [original] : [])]);
     });
   }
   updateAnalysis(analysis: AnalysisState, record = true) {
@@ -629,9 +733,10 @@ export class ProjectController {
   async exportProject(): Promise<{ blob: Blob; name: string } | undefined> {
     return this.task('Collecting project assets', signal => this.buildArchive(signal));
   }
-  private async buildArchive(signal: AbortSignal, fileName?: string): Promise<{ blob: Blob; name: string }> {
+  private async buildArchive(signal: AbortSignal, fileName?: string): Promise<{ blob: Blob; name: string; content: string }> {
       if (!this.state.project) throw new Error('Create or open a project first.');
       const snapshot = structuredClone(this.state.project);
+      const content = projectContent(snapshot);
       if (fileName) snapshot.name = fileName;
       signal.throwIfAborted();
       if (!snapshot.source.assetId&&!snapshot.storyFlow) throw new Error('Wait for the source video to finish preparing.');
@@ -643,10 +748,10 @@ export class ProjectController {
       }
       const blob = await packProject(snapshot, stored, signal, (message, progress) => this.update({ message, progress }));
       signal.throwIfAborted();
-      return { blob, name: `${snapshot.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'project'}.sparko` };
+      return { blob, name: `${snapshot.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'project'}.sparko`, content };
   }
   private async validateVideo(blob: Blob, signal: AbortSignal) {
-    const url = URL.createObjectURL(blob), engine = new MediaEngine({ id: 'validate', name: 'Project video', url, file: new File([blob], 'video.mp4') });
+    const url = URL.createObjectURL(blob), engine = new MediaEngine({ id: 'validate', name: 'Project video', url, ...(blob.type.startsWith('image/') ? { kind: 'image' } : {}), file: new File([blob], 'video.mp4') });
     try { signal.throwIfAborted(); const info = await engine.inspect(); signal.throwIfAborted(); return info; }
     finally { engine.dispose(); URL.revokeObjectURL(url); }
   }
@@ -666,6 +771,7 @@ export class ProjectController {
       }
     for(const node of [...imported.project.storyFlow?.nodes??[],...imported.project.storyFlow?.templates.flatMap(t=>t.nodes)??[]]){
       if(!node.source)continue;
+      if(node.source.kind==='image'){await inspectAsset(byId.get(node.source.assetId)!.blob,'image');signal.throwIfAborted();continue;}
       let info=clipInfo.get(node.source.assetId);
       if(!info){info=await this.validateVideo(byId.get(node.source.assetId)!.blob,signal);clipInfo.set(node.source.assetId,info);}
       if(node.source.outFrame/TIMELINE_FPS>info.duration+1/info.fps)throw new Error('A story clip extends beyond its source media.');
