@@ -11,6 +11,7 @@ import type { StoryCondition } from './model';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { AssetGenerationController } from '../project/AssetGenerationController';
 import { joinClips, joinProblems } from './joinClips';
+import type { ClipColor } from './clipColors';
 export type LibrarySelection = { type: 'asset' | 'generation' | 'job'; id: string };
 
 export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],projects:ProjectController,jobs:InterstitialController,player:VideoPlayerController) {
@@ -115,6 +116,12 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(placement)setNotice(connection?'Video inserted into the connection.':fromId?'Video attached to the clip.':'Video placed. Drag its sockets to connect it.');
   };
   const patch=(id:string,patch:Partial<StoryNode>)=>{if(graph)change({...graph,nodes:graph.nodes.map(n=>n.id===id?{...n,...patch}:n)});};
+  const colorClips=(color:ClipColor)=>{
+    if(!graph||!selected.length)return;
+    projects.endHistoryGroup();
+    change({...graph,nodes:graph.nodes.map(node=>selected.includes(node.id)?{...node,color}:node)});
+    projects.endHistoryGroup();
+  };
   const toggleBehavior=(id:string,behavior:'loop'|'conditional',enabled:boolean)=>{if(graph)change(setBehavior(graph,id,behavior,enabled));};
   const updateConditions=(id:string,conditions:StoryCondition[])=>{if(!graph)return;
     change({...graph,nodes:graph.nodes.map(n=>n.id===id?{...n,conditions,defaultConditionId:conditions.some(c=>c.id===n.defaultConditionId)?n.defaultConditionId:conditions[0]?.id}:n),edges:graph.edges.flatMap(e=>{
@@ -181,6 +188,6 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice('Added clip from the library.');}
   };
   return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,revealClip,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
-    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,librarySelections,selectLibrary,assetJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame};
+    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,librarySelections,selectLibrary,assetJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame,colorClips};
 }
 export type StoryEditor=ReturnType<typeof useStoryEditor>;

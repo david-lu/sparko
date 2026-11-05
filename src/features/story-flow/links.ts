@@ -6,7 +6,8 @@ const sample=(s:Curve,t:number):Point=>({x:(1-t)**3*s.a.x+3*(1-t)**2*t*s.b.x+3*(
 /** Smooth socket tangents, with optional movable points along the wire. */
 export function linkGeometry(from:Point,to:Point,points:Point[]=[],self=false) {
   const anchors=[from,...points,to],curves:Curve[]=anchors.slice(0,-1).map((a,i)=>{
-    const d=anchors[i+1],bend=Math.max(35,Math.min(180,Math.abs(d.x-a.x)*.5));
+    // Short forward links must not double back over their sockets when zoomed out.
+    const d=anchors[i+1],bend=Math.min(180,Math.abs(d.x-a.x)*.5);
     if(!points.length&&self)return {a,b:{x:a.x+55,y:a.y-105},c:{x:d.x-55,y:d.y-105},d};
     if(!points.length&&d.x<a.x)return {a,b:{x:a.x+65,y:a.y+125},c:{x:d.x-65,y:d.y+125},d};
     return {a,b:{x:a.x+bend,y:a.y},c:{x:d.x-bend,y:d.y},d};

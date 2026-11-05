@@ -5,11 +5,13 @@ import { interactionFor, sceneFrames, type CallResponseFlow, type TimelineScene 
 import { projectFlows, type Project } from '../project/types';
 import { behaviors, conditionsFor, defaultCondition, normalizeConditions, outputOffset } from './behaviors';
 import { storyGenerationItem } from './referenceInputs';
+import type { ClipColor } from './clipColors';
 
 export type NodeKind = 'source' | 'simple' | 'looped' | 'conditional';
 export type StoryCondition = { id: string; label: string; values: string[] };
 export type StoryNode = {
   id: string; name: string; kind: NodeKind; x: number; y: number;
+  color?: ClipColor;
   source?: { kind?: 'image'; assetId: string; originalAssetId?:string; duration?:number; inFrame: number; outFrame: number };
   /** Edit range relative to the generated body, leaving the cached output intact. */
   trim?: { inFrame: number; outFrame: number };

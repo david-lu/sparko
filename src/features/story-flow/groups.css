@@ -2,6 +2,10 @@
 .story-group.selected{border-color:var(--group-color);background:color-mix(in srgb,var(--group-color) 15%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--group-color) 20%,transparent)}
 .story-group-header{position:absolute;left:-1px;top:-1px;display:flex;align-items:center;gap:7px;width:calc(100% + 2px);height:26px;min-width:0;padding:4px 9px;border:1px solid color-mix(in srgb,var(--group-color) 50%,transparent);border-radius:5px 5px 0 0;background:color-mix(in srgb,var(--group-color) 16%,var(--base));color:var(--group-color);pointer-events:auto;cursor:grab;font-size:11px;text-align:left;touch-action:none}
 .story-group-header:active{cursor:grabbing}.story-group-header>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.story-group-header>small{flex:none;margin-left:auto;color:var(--muted);font-size:10px}.story-group-header>svg{flex:none}
+.story-group-header{overflow:hidden}.story-group-header>span{min-width:0;flex:1}
+.story-group[data-compact=true] .story-group-header>small{display:none}
+.story-group[data-tiny=true] .story-group-header{padding:4px;gap:0}
+.story-group[data-tiny=true] .story-group-header>svg{display:none}
 .group-colors{display:flex;align-items:center;gap:7px}.group-colors button{width:20px;height:20px;border:3px solid var(--panel);border-radius:50%}.group-colors button[aria-pressed=true]{outline:1px solid var(--text);outline-offset:1px}
 .group-inspector .story-name{width:100%;margin-bottom:2px}
 .group-clip-list{display:flex;flex-direction:column;padding-bottom:8px}.group-clip-list button{display:flex;align-items:center;justify-content:space-between;gap:7px;min-height:28px;padding:4px 7px;background:transparent;text-align:left;font-size:11px}.group-clip-list button:hover{background:var(--hover)}.group-clip-list span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.group-clip-list small{color:var(--muted);flex:none;font-size:10px}
