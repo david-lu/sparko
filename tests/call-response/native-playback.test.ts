@@ -45,6 +45,17 @@ const makePlayer = (flow = flowWithReferences()) => new FlowPlayback(flow, { vol
   { id: 'original', assetId: 'mock:original', name: 'Original', url: 'blob:source' }, vi.fn(), undefined, false, true, 4);
 
 describe('canvas flow playback', () => {
+  it.each([0, .4, 1])('uses asset volume %s even when a saved loop has the retired mute flag', volume => {
+    const { node, item } = createNode('looped');
+    const saved = { ...item, loopAudio: false, phase: 'ready' as const,
+      result: { assetId: 'mock:loop', url: 'blob:loop', start: 0, duration: 4, totalDuration: 4 } };
+    const graph: StoryGraph = { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [] };
+    const flow = runtimeFlow(graph, [saved], 'mock:original', 20);
+    flow.scenes[0].volume = volume;
+    const player = makePlayer(flow); player.seekScene(node.id, 24);
+    expect(layers()[0]).toMatchObject({ muted: false, source: { assetId: 'mock:loop', volume } });
+    player.dispose();
+  });
   it.each([
     { video: 1, audio: .5, frame: 126, opacity: .25, gain: 0, rate: 0 },
     { video: 1, audio: .5, frame: 138, opacity: .75, gain: .5, rate: 2 },
@@ -199,19 +210,19 @@ describe('canvas flow playback', () => {
     expect(layers()).toHaveLength(1); expect(player.session).toEqual(session);
     player.dispose();
   });
-  it('fades into the chosen response entirely within silent Idle', () => {
+  it('fades video and audio from Idle into the chosen response', () => {
     const player = makePlayer(); player.seekScene('call', 94);
     expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['call', 'wait']);
-    expect(layers().map(layer => layer.gain)).toEqual([.5, 0]);
-    expect(layers()[1]).toMatchObject({ time: 0, muted: true });
+    expect(layers().map(layer => layer.gain)).toEqual([.5, .5]);
+    expect(layers()[1]).toMatchObject({ time: 0, muted: false });
     player.seekScene('wait', 24);
-    expect(layers()).toHaveLength(1); expect(layers()[0]).toMatchObject({ gain: 0, muted: true });
+    expect(layers()).toHaveLength(1); expect(layers()[0]).toMatchObject({ gain: 1, muted: false });
     player.seekScene('wait', 43); player.branch('wait', 'incorrect'); player.pause();
     expect(layers()).toHaveLength(1); expect(layers()[0].key).toMatch(/^wait:/);
     player.play(); advance(); advance();
     expect(player.session).toMatchObject({ sceneId: 'wait', outcome: 'incorrect' });
     expect(layers().map(layer => layer.key.split(':')[0])).toEqual(['wait', 'incorrect']);
-    expect(layers()[0].gain).toBe(0); expect(layers()[1].gain).toBe(0);
+    expect(layers()[0].gain).toBeGreaterThan(0); expect(layers()[1].gain).toBe(0);
     expect(layers()[1].opacity).toBeGreaterThan(0);
     expect(layers()[1].time).toBeLessThan(2);
     for (let i = 0; i < 4; i++) advance();
@@ -248,18 +259,18 @@ describe('canvas flow playback', () => {
     expect(flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!, 4)).toMatchObject({ startFrame: -4, frames: 4 });
     const player = makePlayer(flow);
     player.seekScene('call', 94);
-    expect(layers()[1]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: true });
+    expect(layers()[1]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: false });
     expect(layers()[1].time).toBeCloseTo(2 - 2 / 24);
     player.seekScene('wait', 0);
     expect(layers()).toHaveLength(1);
-    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, time: 2, muted: true });
+    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, time: 2, muted: false });
     player.seekScene('wait', 47, true); advance();
     expect(player.session.loopIteration).toBe(2);
     expect(layers()).toHaveLength(1);
     expect(layers()[0].source.id).toBe('mock:idle-full');
     player.seekScene('wait', 46); player.branch('wait', 'correct'); player.pause();
     expect(layers()).toHaveLength(2);
-    expect(layers()[0]).toMatchObject({ key: 'wait:0:body', source: { id: 'mock:idle-full' }, muted: true });
+    expect(layers()[0]).toMatchObject({ key: 'wait:0:body', source: { id: 'mock:idle-full' }, muted: false });
     expect(layers()[0].time).toBeCloseTo(2 + 2 - 2 / 24);
     expect(layers()[1].source.id).toBe('mock:correct');
     expect(layers()[1].time).toBeCloseTo(2 - 2 / 24);
@@ -287,7 +298,7 @@ describe('canvas flow playback', () => {
     expect(layers().map(layer => layer.source.id)).toEqual(['mock:idle-full', 'mock:correct']);
     player.dispose();
   });
-  it('plays the original Idle audio with its video only when enabled', () => {
+  it('plays original Idle audio regardless of the retired loop audio toggle', () => {
     const flow = flowWithReferences(), idle = getScene(flow, 'wait');
     idle.generated = { ...idle.generated!, fullAssetId: 'mock:idle-full',
       fullRange: { start: 2, duration: 2, totalDuration: 6 } };
@@ -310,7 +321,7 @@ describe('canvas flow playback', () => {
     const session = { ...player.session };
     idle.loopAudio = false; player.setFlow({ ...flow, scenes: [...flow.scenes] });
     expect(player.session).toEqual(session);
-    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: true });
+    expect(layers()[0]).toMatchObject({ source: { id: 'mock:idle-full' }, muted: false });
     expect(layers()[0].audio).toBeUndefined();
     player.dispose();
   });
@@ -366,7 +377,7 @@ describe('canvas flow playback', () => {
     expect(layers()[1].opacity).toBe(0);
     player.dispose();
   });
-  it('caps long fades while keeping the silent Idle cycle free of fades', () => {
+  it('caps long fades while keeping the Idle cycle free of fades', () => {
     const flow = flowWithReferences();
     const incoming = flowTransition(flow, flow.edges.find(edge => edge.id === 'wait-correct')!, 48)!;
     const callToIdle = flowTransition(flow, flow.edges.find(edge => edge.id === 'call-wait')!, 48)!;
@@ -382,7 +393,7 @@ describe('canvas flow playback', () => {
     for (let frame = 0; frame < sceneFrames(getScene(flow, 'wait')); frame++) {
       player.seekScene('wait', frame);
       expect(layers()).toHaveLength(1);
-      expect(layers()[0]).toMatchObject({ opacity: 1, gain: 0, muted: true });
+      expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1, muted: false });
     }
     player.seekScene('call', 20); expect(layers()).toHaveLength(1);
     player.seekScene('correct', 60); expect(layers()).toHaveLength(1);
@@ -392,7 +403,7 @@ describe('canvas flow playback', () => {
     const player = makePlayer(); player.seekScene('wait', 47, true); advance();
     expect(player.session).toMatchObject({ sceneId: 'wait', loopIteration: 2 });
     expect(layers()).toHaveLength(1);
-    expect(layers()[0]).toMatchObject({ gain: 0, muted: true });
+    expect(layers()[0]).toMatchObject({ gain: 1, muted: false });
     player.seekScene('intro', 68, true); render.mockReturnValue(false); player.play();
     const frame = player.session.frame; advance(); advance();
     expect(player.session.frame).toBe(frame); expect(layers()).toHaveLength(2);

@@ -274,7 +274,7 @@ export function createNode(kind: Exclude<NodeKind, 'source'>, referenceId?: stri
   const name = kind === 'simple' ? 'New scene' : kind === 'looped' ? 'Waiting loop' : 'Choose a path';
   return { node: { id, name, kind, loop:kind==='looped',conditional:kind==='conditional',interstitialId: itemId, referenceId, x: 40, y: 90, loopCount: 0 },
     item: { id: itemId, label: name, kind: 'regular', time: 0, phase: 'draft', method: kind === 'simple' ? 'comfy-extend' : 'comfy-loop',
-      duration: kind === 'simple' ? 6 : 4, start_range: 2, end_range: 2, prompt: '', enable_prompt_expansion: false, loopAudio: true } };
+      duration: kind === 'simple' ? 6 : 4, start_range: 2, end_range: 2, prompt: '', enable_prompt_expansion: false } };
 }
 /** Legacy interaction sections become ordinary editable frames around their generated clips. */
 function legacyGroups(project:Project,nodes:StoryNode[]):StoryGroup[] {
@@ -336,7 +336,7 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
     const source = node.source ?? { assetId: result?.assetId ?? sourceAssetId, inFrame: result ? start+bounds.inFrame : 0, outFrame: result ? start+bounds.outFrame : 1 };
     return { id:node.id, label:item?.label ?? node.name, role:node.kind === 'source' ? 'source':'call', dialogue:item?.dialogue ?? '', interstitialId:node.interstitialId,
       draft:!node.source && !result, plannedFrames:bounds.outFrame-bounds.inFrame, generated:result,
-      sourceTime:item?.time, loopAudio:item?.loopAudio ?? true, storyNode:node,
+      sourceTime:item?.time, storyNode:node,
       clip:behaviors(node).loop || behaviors(node).conditional ? { id:node.id, ...source, kind:'idle', repeat:'until-answer',exitAt:'loop-boundary' } : { id:node.id,...source,kind:node.kind === 'source' ? 'video':'call' } };
   });
   // Drafts hold a reference frame, following the generation dependency rather than a fixed role name.

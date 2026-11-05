@@ -136,7 +136,7 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await blend()).layers).toMatchObject([
     { clip: 'call:0:body', opacity: 1, volume: .5, muted: false },
-    { clip: 'wait:1:reference', opacity: .5, volume: 0, muted: true },
+    { clip: 'wait:1:reference', opacity: .5, volume: .5, muted: false },
   ]);
   await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('correct', 2));
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
@@ -171,12 +171,12 @@ test('Call Response crossfades blend GPU video and audio gains and toggle withou
     await expect.poll(async () => (await read(page)).buffering).toBe(false);
     const rendered = await blend();
     expect(rendered.layers).toHaveLength(1);
-    expect(rendered.layers[0]).toMatchObject({ opacity: 1, volume: scene === 'wait' ? 0 : 1, muted: scene === 'wait' });
+    expect(rendered.layers[0]).toMatchObject({ opacity: 1, volume: 1, muted: false });
   }
   await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 23); p.branch('wait', 'incorrect'); p.pause(); });
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await blend()).layers).toMatchObject([
-    { clip: 'wait:0:body', muted: true, opacity: 1 },
+    { clip: 'wait:0:body', muted: false, opacity: 1 },
     { clip: 'incorrect:1:body', muted: true, opacity: 0 },
   ]);
   await page.evaluate(() => { const p = (window as any).flowBufferTest.playback; p.seekScene('wait', 22); p.branch('wait', 'incorrect'); p.pause(); });
@@ -249,17 +249,17 @@ test('idle loops and branches reuse generated media without encoding the source'
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
 
-for (const loopAudio of [false, true]) test(`Idle ${loopAudio ? 'with' : 'without'} source audio stays buffered across repeated loop boundaries`, async ({ page }) => {
+for (const volume of [0, 1]) test(`Idle at volume ${volume} stays buffered across repeated loop boundaries`, async ({ page }) => {
   await setup(page, { references: true });
-  await page.evaluate(loopAudio => {
+  await page.evaluate(volume => {
     const state = (window as any).flowBufferTest;
     const idle = state.flow.scenes.find((scene: { id: string }) => scene.id === 'wait');
-    idle.loopAudio = loopAudio;
+    idle.volume = volume;
     // The saved finished loop is gray; the full original is green.
     idle.generated.fullAssetId = state.flow.scenes.find((scene: { id: string }) => scene.id === 'correct').clip.assetId;
     state.playback.setFlow(state.flow);
     state.playback.seekScene('wait', 0);
-  }, loopAudio);
+  }, volume);
   await expect.poll(async () => (await read(page)).buffering).toBe(false);
   expect((await activePixel(page, 80))[1]).toBeGreaterThan(180);
   await page.evaluate(() => {

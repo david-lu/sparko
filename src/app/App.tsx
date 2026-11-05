@@ -135,7 +135,7 @@ export default function App() {
   const fileMenu = useRef<HTMLDetailsElement>(null);
   const savePending = useRef(false);
   const sourceVersion = useRef(0);
-  const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, loopAudio: item.loopAudio, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
+  const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
   useEffect(()=>{if(info&&projectState.source)projects.initializeStoryFlow(info.duration);},[info,projectState.source,projects]);
   const assetVolumes = useMemo(() => Object.fromEntries((projectState.project?.library ?? []).map(asset => [asset.assetId, assetVolume(projectState.project?.library, asset.assetId)])), [projectState.project?.library]);
   const flow = useMemo(() => {

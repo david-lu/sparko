@@ -59,10 +59,10 @@ export class CanvasFlowPlayback {
       const raw=scene.draft?bodyStart:bodyStart+frame/this.flow.fps;
       const time=Math.max(0,Math.min(Math.max(0,mediaDuration-1/this.flow.fps),raw));
       return {key:`${scene.id}:${session.visit%2}:body`,sourceFootage,source,
-        time,still:scene.draft||time!==raw,muted:scene.draft||time!==raw||scene.loopAudio===false};
+        time,still:scene.draft||time!==raw,muted:scene.draft||time!==raw};
     }
     return { key: `${scene.id}:${session.visit % 2}:${context ? 'reference' : 'body'}`, sourceFootage,
-      muted: scene.clip.kind === 'idle' && !(scene.loopAudio && fullIdle),
+      muted: !!scene.draft,
       source,
       time: context ? frame < 0 ? scene.generated!.fullRange!.start + frame / this.flow.fps
         : scene.generated!.fullRange!.start + scene.generated!.fullRange!.duration + (frame - sceneFrames(scene)) / this.flow.fps

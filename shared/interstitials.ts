@@ -66,6 +66,7 @@ export type InterstitialSettings = {
   enable_prompt_expansion: boolean;
   continuity?: string;
   dialogue?: string;
+  /** Legacy metadata only; playback uses asset volume instead. */
   loopAudio?: boolean;
   /** Read-only compatibility with retired FILM masks; new generations use pin curves. */
   maskInjection?: MaskInjection;
