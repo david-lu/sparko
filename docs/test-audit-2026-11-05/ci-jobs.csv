@@ -1,0 +1,43 @@
+run,job,conclusion,wall_seconds,test_seconds,npm_ci_seconds,browser_install_seconds
+41881280818,"Typecheck, unit tests, and build",success,41.0,9.0,5.0,
+41881280818,Browser tests (2/4),success,632.0,574.0,6.0,32.0
+41881280818,Browser tests (4/4),success,441.0,349.0,9.0,51.0
+41881280818,Browser tests (3/4),success,434.0,379.0,7.0,29.0
+41881280818,Browser tests (1/4),failure,519.0,435.0,7.0,48.0
+41881280818,Sparko quality checks,failure,4.0,,,
+41990542478,Browser tests (4/4),success,426.0,376.0,3.0,27.0
+41990542478,"Typecheck, unit tests, and build",success,43.0,11.0,6.0,
+41990542478,Browser tests (1/4),success,472.0,401.0,5.0,41.0
+41990542478,Browser tests (2/4),success,839.0,781.0,8.0,35.0
+41990542478,Browser tests (3/4),success,357.0,304.0,4.0,27.0
+41990542478,Sparko quality checks,success,3.0,,,
+42005913714,"Typecheck, unit tests, and build",success,41.0,11.0,7.0,
+42005913714,Browser tests (2/4),success,836.0,784.0,6.0,31.0
+42005913714,Browser tests (1/4),success,572.0,497.0,7.0,39.0
+42005913714,Browser tests (3/4),success,568.0,506.0,7.0,35.0
+42005913714,Browser tests (4/4),success,402.0,338.0,5.0,29.0
+42005913714,Sparko quality checks,success,3.0,,,
+42008938004,"Typecheck, unit tests, and build",success,34.0,8.0,5.0,
+42008938004,Browser tests (2/4),success,850.0,796.0,6.0,32.0
+42008938004,Browser tests (4/4),success,602.0,538.0,8.0,31.0
+42008938004,Browser tests (3/4),success,443.0,392.0,5.0,29.0
+42008938004,Browser tests (1/4),success,570.0,515.0,6.0,33.0
+42008938004,Sparko quality checks,success,4.0,,,
+42010975896,"Typecheck, unit tests, and build",success,36.0,8.0,4.0,
+42010975896,Browser tests (1/4),success,590.0,526.0,6.0,30.0
+42010975896,Browser tests (3/4),success,621.0,537.0,6.0,45.0
+42010975896,Browser tests (2/4),success,873.0,804.0,6.0,36.0
+42010975896,Browser tests (4/4),success,626.0,564.0,6.0,31.0
+42010975896,Sparko quality checks,success,4.0,,,
+42066673006,Browser tests (4/4),success,602.0,540.0,6.0,30.0
+42066673006,Browser tests (3/4),success,764.0,524.0,6.0,33.0
+42066673006,Browser tests (1/4),success,554.0,501.0,6.0,30.0
+42066673006,"Typecheck, unit tests, and build",success,44.0,9.0,6.0,
+42066673006,Browser tests (2/4),success,919.0,865.0,6.0,31.0
+42066673006,Sparko quality checks,success,3.0,,,
+42070133184,"Typecheck, unit tests, and build",success,46.0,9.0,6.0,
+42070133184,Browser tests (3/4),success,556.0,497.0,7.0,29.0
+42070133184,Browser tests (2/4),success,883.0,823.0,6.0,32.0
+42070133184,Browser tests (4/4),success,601.0,541.0,6.0,31.0
+42070133184,Browser tests (1/4),success,557.0,493.0,8.0,30.0
+42070133184,Sparko quality checks,success,3.0,,,

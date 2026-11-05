@@ -1,0 +1,81 @@
+file,line,test,ci_included,isolated_status,isolated_seconds,initial_shared_status,initial_shared_seconds,shared_repeat_status,evidence
+tests/browser/generation-resolution.spec.ts,12,official H3 2K generation keeps loading layout stable and persists with templates at 1440px,False,failed,3.484,failed,3.432,failed,"Error: expect(received).toEqual(expected) // deep equality
+
+- Expected  - 3
++ Received  + 3
+
+@@ -7,16 +7,16 @@
+      ""height"": 62,
+      ""top"": 962.5,
+    },
+    Object {
+      ""height"": 27,
+-     ""top"": 1197,
++     ""top"": 1180.5,
+    },
+    Object {
+      ""height"": 28,
+-     ""top"": 1230,
++     ""top"": 1213.5,
+    },
+    Object {
+      ""height"": 28,
+-     ""top"": 1260,
++     ""top"": 1243.5,
+    },
+  ]
+
+  25 |   const before=await controls();await page.getByRole('button',{name:'Generate',exact:true}).click();await expect.poll(()=>submitted,{timeout:60000}).toBe(1);expect(preflights).toBe(1);
+  26 |   await expect(page.locator('.generation-feedback,.task-status').last()).toContainText('Regenerating with H3 2K');expect(await controls()).toEqual(before);
+> 27 |   await expect(resolution).toBeEnabled();await resolution.uncheck();expect(await controls()).toEqual(before);complete=true;
+     |                                                                                              ^
+  28 |   await expect.poll(async()=>(await saved(page)).interstitials[0].phase,{timeout:60000}).toBe('ready');expect(await controls()).toEqual(before);
+  29 |   expect((await saved(page)).interstitials[0]).toMatchObject({resolution:'native',generationSettings:{resolution:'2k'}});expect(submitted).toBe(1);
+  30 |   await resolution.check();await fitAll(page);await page.locator('.story-clip.type-simple .story-clip-title').click();await page.locator('.story-clip.type-simple').click({button:'right'});
+    at /private/tmp/sparko-test-audit-2026-11-05/mutation-workspace/tests/browser/generation-resolution.spec.ts:27:94"
+tests/browser/generation-resolution.spec.ts,12,official H3 2K generation keeps loading layout stable and persists with templates at 390px,False,timedOut,90.185,timedOut,90.19,timedOut,"Test timeout of 90000ms exceeded.
+Error: locator.fill: Test timeout of 90000ms exceeded.
+Call log:
+  - waiting for getByLabel('Video prompt', { exact: true })
+
+
+   7 |   await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
+   8 |   await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
+>  9 |   await page.getByRole('button',{name:'Add video',exact:true}).dragTo(page.locator('.story-crossfade'));await page.getByLabel('Video prompt',{exact:true}).fill('Continue with fine detail');
+     |                                                                                                                                                            ^
+  10 | };
+  11 |
+  12 | for(const width of [1440,390])test(`official H3 2K generation keeps loading layout stable and persists with templates at ${width}px`,{tag:['@generation','@slow']},async({page})=>{
+    at open (/private/tmp/sparko-test-audit-2026-11-05/mutation-workspace/tests/browser/generation-resolution.spec.ts:9:156)
+    at /private/tmp/sparko-test-audit-2026-11-05/mutation-workspace/tests/browser/generation-resolution.spec.ts:23:3"
+tests/browser/inspector.spec.ts,3,"compact inspector uses connected references, supports all switch combinations, and keeps progress in place",False,failed,1.212,failed,1.192,failed,"Error: expect(received).toBeLessThan(expected)
+
+Expected: < 460
+Received:   673
+
+  29 |   await page.locator('.inspector-references-panel>summary').click();
+  30 |   const button = await inspector.locator('button[type=submit]').boundingBox(), panel = await inspector.boundingBox();
+> 31 |   expect(button!.y + button!.height - panel!.y).toBeLessThan(460); // Behavior headers, resolution, and guidance controls remain compact.
+     |                                                 ^
+  32 |   await page.locator('.inspector-references-panel>summary').click();
+  33 |   await page.screenshot({ path: 'test-results/inspector-compact-desktop.png', fullPage: true });
+  34 |   const settings = [[true, false], [true, true], [false, true], [false, false]];
+    at /private/tmp/sparko-test-audit-2026-11-05/mutation-workspace/tests/browser/inspector.spec.ts:31:49"
+tests/browser/universal-library.spec.ts,110,folders import media without creating timeline clips and Start/End video toggles stay independent,True,passed,1.588,timedOut,90.176,passed,"Test timeout of 90000ms exceeded.
+Error: locator.boundingBox: Test timeout of 90000ms exceeded.
+Call log:
+  - waiting for getByRole('button', { name: 'Library asset Arbitrary.mp4', exact: true })
+    - locator resolved to visible <button class="""" draggable=""true"" aria-pressed=""false"" data-library-type=""asset"" aria-label=""Library asset Arbitrary.mp4"" data-asset-id=""b441239c-185d-4897-b542-a6a6a5f8eb2a"" data-library-id=""b441239c-185d-4897-b542-a6a6a5f8eb2a"">…</button>
+
+
+   at fixtures.ts:21
+
+  19 | export async function dragIntoView(page: Page, source: Locator, target: Locator, position?: { x: number; y: number }) {
+  20 |   await source.scrollIntoViewIfNeeded();
+> 21 |   const from = (await source.boundingBox())!;
+     |                              ^
+  22 |   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  23 |   await page.mouse.down();
+  24 |   await page.mouse.move(from.x + from.width / 2 + 10, from.y + from.height / 2 + 10, { steps: 3 });
+    at dragIntoView (/Users/chicken/Documents/GitHub/sparko/tests/browser/fixtures.ts:21:30)
+    at /Users/chicken/Documents/GitHub/sparko/tests/browser/universal-library.spec.ts:126:3"

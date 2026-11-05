@@ -1,0 +1,134 @@
+{
+  "commit": "3d2453285e0047e550bbd2e4aa028c4036b47ae9",
+  "date": "2026-11-05",
+  "unit": {
+    "wallSeconds": 1.7964322499999998,
+    "exitCode": 0,
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "node": "v26.0.0"
+  },
+  "browser": {
+    "wallSeconds": 849.627082125,
+    "exitCode": 1,
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "node": "v26.0.0",
+    "port": 3201,
+    "commit": "3d2453285e0047e550bbd2e4aa028c4036b47ae9",
+    "sourceIsolation": "383 source/test text files matched the audited Git tree; independent Vite cache and port 3201"
+  },
+  "browserStats": {
+    "startTime": "2026-11-05T17:35:43.344Z",
+    "duration": 849380.1749999999,
+    "expected": 325,
+    "skipped": 0,
+    "unexpected": 3,
+    "flaky": 0
+  },
+  "ciRun": 42070133184,
+  "ciShards": [
+    {
+      "shard": 1,
+      "wallSeconds": 491.85386000000005,
+      "caseSeconds": 482.791,
+      "stats": {
+        "total": 78,
+        "expected": 78,
+        "unexpected": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "ok": true
+      }
+    },
+    {
+      "shard": 2,
+      "wallSeconds": 821.60785,
+      "caseSeconds": 812.759,
+      "stats": {
+        "total": 78,
+        "expected": 78,
+        "unexpected": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "ok": true
+      }
+    },
+    {
+      "shard": 3,
+      "wallSeconds": 495.47151499999995,
+      "caseSeconds": 487.014,
+      "stats": {
+        "total": 77,
+        "expected": 77,
+        "unexpected": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "ok": true
+      }
+    },
+    {
+      "shard": 4,
+      "wallSeconds": 539.4072319999999,
+      "caseSeconds": 531.584,
+      "stats": {
+        "total": 77,
+        "expected": 77,
+        "unexpected": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "ok": true
+      }
+    }
+  ],
+  "unitCases": 841,
+  "browserCases": 328,
+  "unitFiles": 61,
+  "browserFiles": 73,
+  "mutations": {
+    "probes": 9,
+    "detected": 8,
+    "caveat": "Purposively selected probes, not a statistical mutation score or bug detection percentage."
+  },
+  "snapshotValidation": {
+    "commit": "3d2453285e0047e550bbd2e4aa028c4036b47ae9",
+    "checkedSourceTestFiles": 383,
+    "mismatches": []
+  },
+  "sharedWorkspaceObservation": {
+    "wallSeconds": 940.2123876659999,
+    "exitCode": 1,
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "node": "v26.0.0",
+    "stats": {
+      "startTime": "2026-11-05T17:07:52.513Z",
+      "duration": 939704.5920000001,
+      "expected": 324,
+      "skipped": 0,
+      "unexpected": 4,
+      "flaky": 0
+    },
+    "limitation": "Concurrent appearance edits overlapped the run; superseded by the isolated full run."
+  },
+  "sharedFocusedRepeat": {
+    "wallSeconds": 104.24270366600001,
+    "exitCode": 1,
+    "stats": {
+      "startTime": "2026-11-05T17:27:56.743Z",
+      "duration": 103857.315,
+      "expected": 1,
+      "skipped": 0,
+      "unexpected": 3,
+      "flaky": 0
+    }
+  },
+  "rawDataDirectory": "/private/tmp/sparko-test-audit-2026-11-05",
+  "shardSimulation": {
+    "caseSeconds": [
+      578.847,
+      578.195,
+      578.9,
+      578.206
+    ],
+    "estimatedCriticalPathSavingSeconds": 233.859,
+    "validatedInCI": false
+  }
+}
