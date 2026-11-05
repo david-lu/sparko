@@ -559,14 +559,14 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
               </>}
               {(['video','audio'] as const).flatMap(channel=>{
                 const laneEnds:number[]=[];
-                const channelRegions=(regions[node.id]??[]).filter(region=>region.channel===channel).sort((a,b)=>a.start-b.start).map(region=>{
+                const channelRegions=(regions[node.id]??[]).filter(region=>region.channel===channel&&region.edgeId===editor.selectedEdge).sort((a,b)=>a.start-b.start).map(region=>{
                   const free=laneEnds.findIndex(end=>end<=region.start),lane=free<0?laneEnds.length:free;
                   laneEnds[lane]=region.end;return {...region,lane};
                 });
                 return channelRegions.map(region=>{
                   const label=`${channel==='video'?'Video':'Audio'} crossfade ${region.direction==='in'?'from':'to'} ${region.neighbor}: ${region.duration.toFixed(3)} seconds`;
                   return <span key={`${region.edgeId}:${channel}:${region.direction}`} role="img" aria-label={label}
-                    className={`story-transition-region ${region.direction}`} data-edge-id={region.edgeId} data-channel={channel}
+                    className={`story-transition-region ${region.direction} ${editor.selectedEdge===region.edgeId?'selected':''}`} data-edge-id={region.edgeId} data-channel={channel}
                     data-media-start={region.mediaStart} data-media-end={region.mediaEnd}
                     title={`${label} · ${region.mediaStart.toFixed(3)}–${region.mediaEnd.toFixed(3)} s in this video`}
                     onPointerEnter={()=>setHoveredConnection(region.edgeId)} onPointerLeave={()=>setHoveredConnection(null)}
