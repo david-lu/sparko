@@ -58,6 +58,24 @@ test('opens the saved sample project from the sample projects section', async ({
   await expect(page.getByLabel('Video prompt')).toHaveValue('Saved example prompt');
 });
 
+for (const source of ['sample', 'file'] as const) {
+  test(`closes an unchanged ${source} project after its saved videos finish loading`, async ({ page }) => {
+    if (source === 'file') await page.setViewportSize({ width: 390, height: 844 });
+    await page.route(exampleUrl, route => route.fulfill({ contentType: 'application/zip', body: archive }));
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: /Open project file/ })).toBeEnabled();
+    if (source === 'sample') await openExample(page);
+    else await page.getByLabel('Choose project file').setInputFiles({ name: 'example.sparko', mimeType: 'application/zip', buffer: archive });
+    await ready(page);
+    await expect.poll(async () => (await activeProject(page)).interstitials[0].phase).toBe('ready');
+    await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeEnabled();
+    await page.getByText('File', { exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Close project' }).click();
+    await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Save changes before closing?' })).toHaveCount(0);
+  });
+}
+
 test('starts on the chooser and opens the example only when requested', async ({ page }) => {
   let downloads = 0;
   await page.route(exampleUrl, route => { downloads++; return route.fulfill({ contentType: 'application/zip', body: archive }); });
