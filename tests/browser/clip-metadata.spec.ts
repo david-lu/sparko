@@ -126,7 +126,9 @@ test('converting a generated scene creates a separate copy with its metadata and
   await page.getByRole('button', { name: 'Convert video…', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Convert video', exact: true });
   await dialog.getByLabel('Target FPS', { exact: true }).fill('30');
-  await dialog.getByRole('button', { name: 'Create copy', exact: true }).click(); await expect(dialog).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Create copy', exact: true }).click();
+  // CI uses software encoding, which can finish after the default assertion timeout.
+  await expect(dialog).toHaveCount(0, { timeout: 30_000 });
   await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('30 fps');
   const converted = await readProject(page), copy = converted.library.find((a: any) => a.normalizedFps === 30);
   expect(converted.storyFlow).toEqual(before.storyFlow); expect(converted.interstitials).toEqual(before.interstitials);
