@@ -194,7 +194,7 @@ describe('interstitial prompt enhancement', () => {
     expect(instructions[2]).toContain('Omit all dialogue, voices, speech and lip movement');
     expect(instructions[3]).toContain('For a Response clip');
     expect(instructions[0]).toContain('nothing is added at submission');
-    expect(instructions[1]).toContain('enhancement step includes that line in an H3 dialogue tag');
+    expect(instructions[1]).toContain('include that exact line in an H3 dialogue tag with its vocal direction');
     const idleContext = JSON.parse(respond.mock.calls[2][0].input[0].content[0].text);
     expect(idleContext).toMatchObject({ draft: 'Quiet motion.', sharedContinuity: 'Keep the same scene.' });
     expect(idleContext).not.toHaveProperty('separateDialogue');
