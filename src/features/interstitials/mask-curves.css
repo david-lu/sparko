@@ -31,7 +31,10 @@
 .mask-plot-background{fill:#212120}
 .mask-generated-region{fill:#ffffff06}
 .mask-grid-line{stroke:#ffffff0c;stroke-width:1;vector-effect:non-scaling-stroke;pointer-events:none}
-.mask-reference-boundary{stroke:#ffffff24;stroke-dasharray:3 4;pointer-events:none}
+.mask-reference-boundary{stroke:#ffffff52;stroke-dasharray:3 4;vector-effect:non-scaling-stroke;pointer-events:none}
+.mask-video-boundary{pointer-events:none}
+.mask-video-boundary line{stroke:#aaa59c;stroke-width:1;vector-effect:non-scaling-stroke}
+.mask-video-boundary path{fill:#aaa59c}
 .mask-curve-line{fill:none;stroke:#d2cfca;stroke-width:1.7;vector-effect:non-scaling-stroke;pointer-events:none}
 .mask-time-indicator{stroke:#b5b1aa;stroke-width:1;stroke-dasharray:2 4;opacity:.6;pointer-events:none}
 .mask-axis-label{fill:#92908b;font:10px var(--mono);pointer-events:none}
