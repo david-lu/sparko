@@ -1,0 +1,1170 @@
+suite,file,line,test,tags,ci_included,local_status,local_seconds,ci_seconds,ci_shard
+unit/API,tests/api.test.ts,,server API boundaries reports configuration without exposing secrets,,True,passed,0.020323,,
+unit/API,tests/api.test.ts,,server API boundaries serves partial video responses,,True,passed,0.007599,,
+unit/API,tests/api.test.ts,,server API boundaries rejects cross-origin and unmarked mutations before provider calls,,True,passed,0.011204,,
+unit/API,tests/api.test.ts,,server API boundaries rejects invalid ranges and frames outside the range,,True,passed,0.048783,,
+unit/API,tests/api.test.ts,,server API boundaries passes validated captions to the OpenAI provider,,True,passed,0.001727,,
+unit/API,tests/api.test.ts,,server API boundaries rejects missing or invalid Gemini uploads,,True,passed,0.010741,,
+unit/API,tests/api.test.ts,,server API boundaries returns missing-key and provider-rate-limit errors without leaking errors,,True,passed,0.003766,,
+unit/API,tests/api.test.ts,,server API boundaries accepts bounded voice audio with optional scene context for either provider,,True,passed,0.095839,,
+unit/API,tests/api.test.ts,,"server API boundaries rejects missing, malformed, oversized or overlong voice input before inference",,True,passed,0.02286,,
+unit/API,tests/api.test.ts,,server API boundaries protects voice requests and handles provider errors without exposing credentials,,True,passed,0.006081,,
+unit/API,tests/api.test.ts,,server API boundaries does not expose the removed generation routes,,True,passed,0.001912,,
+unit/API,tests/hosting.test.ts,,enables hosted AI tools without a password when APP_PASSWORD is undefined,,True,passed,0.536481,,
+unit/API,tests/hosting.test.ts,,enables hosted AI tools without a password when APP_PASSWORD is ,,True,passed,0.069363,,
+unit/API,tests/hosting.test.ts,,requires the explicitly configured password when VERCEL is ,,True,passed,0.026585,,
+unit/API,tests/hosting.test.ts,,requires the explicitly configured password when VERCEL is 1,,True,passed,0.01443,,
+unit/API,tests/hosting.test.ts,,uses the bundled sample locally without weakening upload origin checks,,True,passed,0.00995,,
+unit/API,tests/shortcuts.test.ts,,shortcut assignments uses F only for Fit and keeps every default binding unique,,True,passed,0.001616,,
+unit/API,tests/shortcuts.test.ts,,shortcut assignments matches exact modifiers with equivalent Control and Command bindings,,True,passed,0.000239,,
+unit/API,tests/shortcuts.test.ts,,shortcut assignments accepts punctuation and function keys but reserves navigation out of the recorder,,True,passed,0.00021,,
+unit/API,tests/shortcuts.test.ts,,shortcut assignments checks conflicts across commands and alternate assignments,,True,passed,0.000152,,
+unit/API,tests/shortcuts.test.ts,,"shortcut assignments restores remapped, empty and alternate bindings without resurrecting defaults",,True,passed,0.000671,,
+unit/API,tests/shortcuts.test.ts,,shortcut assignments rejects malformed preferences and resolves duplicate saved assignments,,True,passed,0.00037,,
+unit/API,tests/call-response/archive.test.ts,,"call-response project persistence round-trips multiple draft pins, an inactive variant and short Comfy loop settings",,True,passed,0.057706,,
+unit/API,tests/call-response/archive.test.ts,,"call-response project persistence migrates binary projects without changing answer matching, scene IDs, or saved media",,True,passed,0.000918,,
+unit/API,tests/call-response/archive.test.ts,,"call-response project persistence rejects unknown answer targets, duplicate IDs, reserved IDs, and unknown fallbacks",,True,passed,0.00128,,
+unit/API,tests/call-response/archive.test.ts,,"call-response project persistence round-trips custom answer labels, matches, response media and dependencies",,True,passed,0.008701,,
+unit/API,tests/call-response/archive.test.ts,,call-response project persistence accepts legacy answers without colors and rejects out-of-range color values,,True,passed,0.000978,,
+unit/API,tests/call-response/archive.test.ts,,call-response project persistence migrates a legacy example into one parent and rejects invalid ownership,,True,passed,0.000756,,
+unit/API,tests/call-response/archive.test.ts,,"call-response project persistence round-trips idle behavior, connections and asset references in a normal project archive",,True,passed,0.00837,,
+unit/API,tests/call-response/archive.test.ts,,call-response project persistence preserves each generation’s own reference settings and generated boundaries,,True,passed,0.008059,,
+unit/API,tests/call-response/colors.test.ts,,"choice colors supports exact arbitrary RGB colors, primaries, grays, black and white",,True,passed,0.002314,,
+unit/API,tests/call-response/colors.test.ts,,choice colors keeps existing defaults and legacy HSL colors visually unchanged,,True,passed,0.000464,,
+unit/API,tests/call-response/colors.test.ts,,choice colors keeps text contrast at least 4.5:1 across the full HSV gamut,,True,passed,0.102354,,
+unit/API,tests/call-response/dependencies.test.ts,,"call-response generation dependencies uses Call for Idle and the same Idle for both branches, independent of retry edges",,True,passed,0.004768,,
+unit/API,tests/call-response/dependencies.test.ts,,call-response generation dependencies uses the saved full Idle body as Response input without re-encoding the extracted loop,,True,passed,0.000516,,
+unit/API,tests/call-response/dependencies.test.ts,,"call-response generation dependencies marks descendants stale after replacement, retains their media, and requires updates in order",,True,passed,0.000421,,
+unit/API,tests/call-response/dependencies.test.ts,,call-response generation dependencies does not invalidate the sibling branch and keeps generation enabled after a failed upstream replacement,,True,passed,0.000256,,
+unit/API,tests/call-response/dependencies.test.ts,,"call-response generation dependencies invalidates all descendants when source footage is trimmed, and only responses when the return footage changes",,True,passed,0.000284,,
+unit/API,tests/call-response/dependencies.test.ts,,call-response generation dependencies propagates through generated clips even after their type changes to Video,,True,passed,0.000241,,
+unit/API,tests/call-response/dependencies.test.ts,,call-response generation dependencies does not call an unrendered draft stale but preserves stale status on retained footage,,True,passed,0.000283,,
+unit/API,tests/call-response/dependencies.test.ts,,call-response generation dependencies tracks rendered references independently of editable prompts and generation profiles,,True,passed,0.000183,,
+unit/API,tests/call-response/dependencies.test.ts,,call-response generation dependencies limits reference windows to real clip bounds and reserves a held return pose for Idle,,True,passed,0.000189,,
+unit/API,tests/call-response/draft.test.ts,,"call-response drafts creates real drafts with Comfy extension, short loop and bridge profiles",,True,passed,0.005402,,
+unit/API,tests/call-response/draft.test.ts,,call-response drafts uses accepted output for both downstream references and draft previews,,True,passed,0.000306,,
+unit/API,tests/call-response/draft.test.ts,,call-response drafts composes multiple pins and regular clips with independent answers and unabridged source footage,,True,passed,0.001107,,
+unit/API,tests/call-response/draft.test.ts,,call-response drafts reserves draft slots and replaces them with generated clips (parent pin: false),,True,passed,0.001021,,
+unit/API,tests/call-response/draft.test.ts,,call-response drafts reserves draft slots and replaces them with generated clips (parent pin: true),,True,passed,0.000642,,
+unit/API,tests/call-response/generation.test.ts,,loop reference footage holds the incoming clip’s final frame as the return reference even if a different ending was supplied,,True,passed,0.00507,,
+unit/API,tests/call-response/model.test.ts,,"call-response example playback names new choices alphabetically, continuing beyond Z and avoiding custom label collisions",,True,passed,0.004182,,
+unit/API,tests/call-response/model.test.ts,,"call-response example playback migrates untouched example names while retaining custom answers, media and branch IDs",,True,passed,0.000316,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback restores fixed roles and connections on legacy groups without losing clip media,,True,passed,0.001057,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback swaps response button assignments with one route per answer and preserves the actual clips,,True,passed,0.000293,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback routes arbitrary labels and alternative text to independent response clips at loop boundaries,,True,passed,0.000845,,
+unit/API,tests/call-response/model.test.ts,,"call-response example playback removes branches and repairs connections, with one answer retained as the minimum",,True,passed,0.000294,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback owns all non-video clips in one stable video as clip types change,,True,passed,0.000413,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback aligns both example responses and their rejoin even with a 8-second source,,True,passed,0.000171,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback aligns both example responses and their rejoin even with a 1-second source,,True,passed,0.000116,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback keeps actual media lengths when a generated response differs from its sibling,,True,passed,0.00011,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback converting a call to idle supplies the branches used by its on-clip debug buttons,,True,passed,0.000116,,
+unit/API,tests/call-response/model.test.ts,,"call-response example playback idle clips repeat without an explicit loop edge, while video clips end",,True,passed,0.000112,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback debug buttons queue the chosen branch using the idle boundary,,True,passed,5.4e-05,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback the timeline example uses real asset ranges and linked videos,,True,passed,0.000201,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback follows the question into an indefinite wait and records loop traversals,,True,passed,0.000112,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback queues  FOUR!  until the loop boundary and plays only the correct branch,,True,passed,0.000185,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback queues 3 until the loop boundary and plays only the incorrect branch,,True,passed,8.8e-05,,
+unit/API,tests/call-response/model.test.ts,,"call-response example playback ignores blank, duplicate and out-of-scene answers, and never advances while paused",,True,passed,6.4e-05,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback uses edited graph connections for playback and resets the answer on a retry,,True,passed,7.6e-05,,
+unit/API,tests/call-response/model.test.ts,,call-response example playback keeps the ambient self-loop fixed and source splits on adjacent ranges of the same asset,,True,passed,4.3e-05,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback keeps the tail audible through the last fractional frame of a source loop,,True,passed,0.004929,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback repeats a trimmed full render with independent video 12 and audio 4 fades,,True,passed,0.003785,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback repeats a trimmed full render with independent video 4 and audio 12 fades,,True,passed,0.00076,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback repeats a trimmed full render with independent video 0 and audio 12 fades,,True,passed,0.000637,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback repeats a trimmed full render with independent video 12 and audio 0 fades,,True,passed,0.000574,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback repeats a trimmed full render with independent video 0 and audio 0 fades,,True,passed,0.000497,,
+unit/API,tests/call-response/native-playback.test.ts,,"canvas flow playback skips repeat fades for drafts, the last counted visit and a queued exit",,True,passed,0.00132,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback uses asset volume 0 even when a saved loop has the retired mute flag,,True,passed,0.000313,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback uses asset volume 0.4 even when a saved loop has the retired mute flag,,True,passed,0.000237,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback uses asset volume 1 even when a saved loop has the retired mute flag,,True,passed,0.00024,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback plays video=1 and audio=0.5 independently at frame 126,,True,passed,0.000464,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback plays video=1 and audio=0.5 independently at frame 138,,True,passed,0.000287,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback plays video=0.5 and audio=1 independently at frame 126,,True,passed,0.000281,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback plays video=0 and audio=1 independently at frame 138,,True,passed,0.000284,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback plays video=1 and audio=0 independently at frame 138,,True,passed,0.000255,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback supports an incoming video dissolve and an outgoing audio fade at the same time,,True,passed,0.000469,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback viewer seeks retain the chosen route and playback state while allowing a new answer,,True,passed,0.001067,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback matches every fade window and video timestamp in the original saved Sparko example,,True,passed,0.011729,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback keeps fades for rewired and trimmed clips while respecting available footage,,True,passed,0.000648,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback uses each imported source duration instead of clamping playback to the primary video,,True,passed,0.000336,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback plays an imported exit fade with independent audio when references are mismatched: false,,True,passed,0.000438,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback plays an imported exit fade with independent audio when references are mismatched: true,,True,passed,0.0003,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback aligns graph entry fades with the reference prefix and seeks split generated media precisely,,True,passed,0.000572,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback keeps scene time and seeking independent of MediaSource support,,True,passed,0.000386,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback blends only reference footage during intro without changing scene duration,,True,passed,0.000516,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback blends only reference footage during continue without changing scene duration,,True,passed,0.00029,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback finishes the entry fade before the first generated frame and retains the prepared deck,,True,passed,0.00051,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback fades video and audio from Idle into the chosen response,,True,passed,0.001,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback keeps the soundtrack active across Idle repeats and fades it at scene boundaries,,True,passed,0.001569,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback aligns the saved Idle body and Response prefix at their fade,,True,passed,0.001743,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback keeps the Idle to Response fade when the Response used the full Idle asset,,True,passed,0.000388,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback plays original Idle audio regardless of the retired loop audio toggle,,True,passed,0.000663,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback does not fade into a Response with no saved prefix range,,True,passed,0.000394,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback caps an Idle to Response fade by that Response generation’s saved prefix,,True,passed,0.000487,,
+unit/API,tests/call-response/native-playback.test.ts,,"canvas flow playback changes fade length in place for both automatic cuts and responses, retaining it when toggled",,True,passed,0.000433,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback caps connection fades while keeping the Idle repeat overlap independent,,True,passed,0.002278,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback retains the incoming loop deck and freezes fades while either deck buffers,,True,passed,0.000479,,
+unit/API,tests/call-response/native-playback.test.ts,,canvas flow playback restores saved bounds for a partial project and retains its draft slots,,True,passed,0.000482,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence keeps durations independent while using one shared reference for migrated loop clips,,True,passed,0.067234,,
+unit/API,tests/call-response/sequence.test.ts,,"call-response generation sequence waits for each result to be saved and inspected, then uses it for the next reference",,True,passed,0.107886,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence keeps active inputs fixed and uses the newest edits for pending clips without duplicate submissions,,True,passed,0.10636,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence stops on failure and continues remaining clips without regenerating successful ones,,True,passed,0.053991,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence cancels the running job using its submitted provider and never starts the next clip,,True,passed,0.102317,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence cancels a submission that arrives after cancellation without advancing the sequence,,True,passed,0.105654,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence reports a failed cancellation and leaves the job attached for retry,,True,passed,0.121704,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence stops when a pending prompt is cleared and can continue after editing it,,True,passed,0.104165,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence stops before submitting when Comfy Cloud is unavailable,,True,passed,0.052075,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence stops on structural edits while leaving all draft fields editable,,True,passed,0.102322,,
+unit/API,tests/call-response/sequence.test.ts,,"call-response generation sequence retires the sequence when a different project opens, ignoring late results",,True,passed,0.102129,,
+unit/API,tests/call-response/sequence.test.ts,,call-response generation sequence does not reuse a completed download made against an earlier predecessor,,True,passed,0.054374,,
+unit/API,tests/comfy/client.test.ts,,Comfy transport failures blocks live requests in the browser test server even when credentials are present,,True,passed,0.002512,,
+unit/API,tests/comfy/client.test.ts,,Comfy transport failures identifies a broken status connection without exposing error details or credentials,,True,passed,0.001332,,
+unit/API,tests/comfy/client.test.ts,,Comfy transport failures reports an upload timeout with its actual operation,,True,passed,0.000323,,
+unit/API,tests/comfy/client.test.ts,,Comfy transport failures reports an ambiguous submission response without retrying a paid job,,True,passed,0.010863,,
+unit/API,tests/comfy/client.test.ts,,Comfy transport failures handles a response body that disconnects after headers arrive,,True,passed,0.000538,,
+unit/API,tests/comfy/loras.test.ts,,"Comfy LoRA execution loads the selected LoRA before shifting, scheduling and sampling H3",,True,passed,0.017231,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution passes strength 0 to the submitted H3 workflow,,True,passed,0.001064,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution passes strength 0.65 to the submitted H3 workflow,,True,passed,0.000883,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution passes strength 1.4 to the submitted H3 workflow,,True,passed,0.000783,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution passes strength -0.5 to the submitted H3 workflow,,True,passed,0.000728,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution rejects invalid strength -101 before submission,,True,passed,0.000951,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution rejects invalid strength 101 before submission,,True,passed,0.000225,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution rejects invalid strength NaN before submission,,True,passed,0.000229,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution rejects invalid strength Infinity before submission,,True,passed,0.000515,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution resolves authenticated Comfy asset metadata to an imported filename,,True,passed,0.001701,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution rejects unavailable models and unsafe links before any asset upload or paid submission,,True,passed,0.001267,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution finds private imported LoRAs across pages even when they are absent from the built-in catalog,,True,passed,0.000438,,
+unit/API,tests/comfy/loras.test.ts,,Comfy LoRA execution rejects ambiguous short filenames and excludes missing model assets,,True,passed,0.000458,,
+unit/API,tests/comfy/mask-curves.test.ts,,"mask keyframes evaluates linear, eased, and Bézier curves by time rather than by handle parameter",,True,passed,0.001072,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes creates reference-relative defaults from a 0 ms transition,,True,passed,0.001369,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes creates reference-relative defaults from a 250 ms transition,,True,passed,0.000135,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes creates reference-relative defaults from a 500 ms transition,,True,passed,0.000109,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes creates reference-relative defaults from a 4000 ms transition,,True,passed,7.7e-05,,
+unit/API,tests/comfy/mask-curves.test.ts,,"mask keyframes rejects unordered, duplicate, out-of-range, excessive, and unlocked boundary pins",,True,passed,0.000639,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes snapshots curves without sharing handles and compares submitted settings structurally,,True,passed,0.002151,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes compiles independent masks on the video and audio clocks for 1.625 / 1.625 references,,True,passed,0.006396,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes compiles independent masks on the video and audio clocks for 4 / 1.625 references,,True,passed,0.004969,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes compiles independent masks on the video and audio clocks for 1.625 / 0 references,,True,passed,0.001765,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes compiles independent masks on the video and audio clocks for 0 / 1.625 references,,True,passed,0.001658,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes compiles independent masks on the video and audio clocks for 0 / 0 references,,True,passed,0.00015,,
+unit/API,tests/comfy/mask-curves.test.ts,,mask keyframes extends a partially regenerated audio endpoint through fitted padding without overlapping spans,,True,passed,0.006395,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 0 ms never partially masks the gap with references 1.625 / 1.625,,True,passed,0.001774,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 0 ms never partially masks the gap with references 3 / 2,,True,passed,0.000175,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 0 ms never partially masks the gap with references 1.625 / 0,,True,passed,0.000256,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 0 ms never partially masks the gap with references 0 / 1.625,,True,passed,0.000531,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 0 ms never partially masks the gap with references 0 / 0,,True,passed,0.00022,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 200 / video 200 ms never partially masks the gap with references 1.625 / 1.625,,True,passed,0.000538,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 200 / video 200 ms never partially masks the gap with references 3 / 2,,True,passed,0.000273,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 200 / video 200 ms never partially masks the gap with references 1.625 / 0,,True,passed,0.000199,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 200 / video 200 ms never partially masks the gap with references 0 / 1.625,,True,passed,0.000194,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 200 / video 200 ms never partially masks the gap with references 0 / 0,,True,passed,0.000112,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 500 ms never partially masks the gap with references 1.625 / 1.625,,True,passed,0.000178,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 500 ms never partially masks the gap with references 3 / 2,,True,passed,0.000143,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 500 ms never partially masks the gap with references 1.625 / 0,,True,passed,0.000122,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 500 ms never partially masks the gap with references 0 / 1.625,,True,passed,0.000103,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 500 ms never partially masks the gap with references 0 / 0,,True,passed,5.5e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 1000 ms never partially masks the gap with references 1.625 / 1.625,,True,passed,0.000132,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 1000 ms never partially masks the gap with references 3 / 2,,True,passed,0.000129,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 1000 ms never partially masks the gap with references 1.625 / 0,,True,passed,0.000108,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 1000 ms never partially masks the gap with references 0 / 1.625,,True,passed,0.000105,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 1000 ms never partially masks the gap with references 0 / 0,,True,passed,3.8e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 4000 / video 4000 ms never partially masks the gap with references 1.625 / 1.625,,True,passed,0.000324,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 4000 / video 4000 ms never partially masks the gap with references 3 / 2,,True,passed,0.000137,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 4000 / video 4000 ms never partially masks the gap with references 1.625 / 0,,True,passed,0.000107,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 4000 / video 4000 ms never partially masks the gap with references 0 / 1.625,,True,passed,0.000149,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 4000 / video 4000 ms never partially masks the gap with references 0 / 0,,True,passed,4.9e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 500 ms never partially masks the gap with references 1.625 / 1.625,,True,passed,0.000103,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 500 ms never partially masks the gap with references 3 / 2,,True,passed,0.000107,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 500 ms never partially masks the gap with references 1.625 / 0,,True,passed,8.2e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 500 ms never partially masks the gap with references 0 / 1.625,,True,passed,7.7e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 0 / video 500 ms never partially masks the gap with references 0 / 0,,True,passed,3.6e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 0 ms never partially masks the gap with references 1.625 / 1.625,,True,passed,4.5e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 0 ms never partially masks the gap with references 3 / 2,,True,passed,6.3e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 0 ms never partially masks the gap with references 1.625 / 0,,True,passed,3.9e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 0 ms never partially masks the gap with references 0 / 1.625,,True,passed,3.6e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 500 / video 0 ms never partially masks the gap with references 0 / 0,,True,passed,3.9e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 250 / video 1000 ms never partially masks the gap with references 1.625 / 1.625,,True,passed,0.00019,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 250 / video 1000 ms never partially masks the gap with references 3 / 2,,True,passed,0.000171,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 250 / video 1000 ms never partially masks the gap with references 1.625 / 0,,True,passed,9.1e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 250 / video 1000 ms never partially masks the gap with references 0 / 1.625,,True,passed,9.5e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 250 / video 1000 ms never partially masks the gap with references 0 / 0,,True,passed,4.6e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 250 ms never partially masks the gap with references 1.625 / 1.625,,True,passed,9.3e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 250 ms never partially masks the gap with references 3 / 2,,True,passed,0.0001,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 250 ms never partially masks the gap with references 1.625 / 0,,True,passed,0.000116,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 250 ms never partially masks the gap with references 0 / 1.625,,True,passed,0.000561,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations audio 1000 / video 250 ms never partially masks the gap with references 0 / 0,,True,passed,3.6e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations softens video when the input has no audio,,True,passed,0.000135,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid audioMaskTransitionMs: -1,,True,passed,0.000363,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid audioMaskTransitionMs: 4001,,True,passed,4.3e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid audioMaskTransitionMs: NaN,,True,passed,3.7e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid audioMaskTransitionMs: Infinity,,True,passed,3.2e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid audioMaskTransitionMs: 0.5,,True,passed,2.9e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid videoMaskTransitionMs: -1,,True,passed,3.1e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid videoMaskTransitionMs: 4001,,True,passed,3.4e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid videoMaskTransitionMs: NaN,,True,passed,2.6e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid videoMaskTransitionMs: Infinity,,True,passed,3.4e-05,,
+unit/API,tests/comfy/mask-transition.test.ts,,independent audio/video transition durations refuses invalid videoMaskTransitionMs: 0.5,,True,passed,3.8e-05,,
+unit/API,tests/comfy/node-progress.test.ts,,native Comfy node progress reports the observed sample 19/20 as 95% of stage without inventing an overall percentage,,True,passed,0.003381,,
+unit/API,tests/comfy/node-progress.test.ts,,"native Comfy node progress handles node maps, class labels, parallel nodes and completed stages without stale steps",,True,passed,0.001034,,
+unit/API,tests/comfy/node-progress.test.ts,,"native Comfy node progress ignores other jobs, previews, malformed frames and invalid steps without forwarding arbitrary text",,True,passed,0.000518,,
+unit/API,tests/comfy/node-progress.test.ts,,"Comfy progress connection keeps the API key on the server, scopes the socket to Cloud and blocks live test-mode connections",,True,passed,0.001724,,
+unit/API,tests/comfy/node-progress.test.ts,,"Comfy progress connection coalesces updates during backpressure, then closes on terminal status without cancelling the job",,True,passed,0.018529,,
+unit/API,tests/comfy/node-progress.test.ts,,Comfy progress connection clears stale native steps and falls back to v2 SSE when the socket disconnects,,True,passed,0.005593,,
+unit/API,tests/comfy/node-progress.test.ts,,"Comfy progress connection falls back when a socket never opens, and keeps custom v2 endpoints on SSE",,True,passed,0.002301,,
+unit/API,tests/comfy/node-progress.test.ts,,"Comfy progress connection closes on abort and consumer return, and never falls back or submits a request after abort",,True,passed,0.000677,,
+unit/API,tests/comfy/progress-stream.test.ts,,"incremental progress streams handles split UTF-8, multiline data and heartbeats with ""\n"" line endings",,True,passed,0.007133,,
+unit/API,tests/comfy/progress-stream.test.ts,,"incremental progress streams handles split UTF-8, multiline data and heartbeats with ""\r\n"" line endings",,True,passed,0.000438,,
+unit/API,tests/comfy/progress-stream.test.ts,,"incremental progress streams handles split UTF-8, multiline data and heartbeats with ""\r"" line endings",,True,passed,0.000416,,
+unit/API,tests/comfy/progress-stream.test.ts,,incremental progress streams cancels a pending reader immediately when the draft is cancelled or unloaded,,True,passed,0.001507,,
+unit/API,tests/comfy/progress-stream.test.ts,,incremental progress streams uses application authentication and stops reconnecting after a terminal event,,True,passed,0.025061,,
+unit/API,tests/comfy/progress-stream.test.ts,,"incremental progress streams reconnects after EOF and backs off when streaming is unavailable, without failing the render",,True,passed,0.002321,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress names official H3 2K regeneration without inventing a time estimate for the hosted pass,,True,passed,0.001688,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress shows the actual 35% sampling progress even when the workflow aggregate is 98%,,True,passed,0.000259,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress does not invent percentages for setup or finishing stages,,True,passed,0.000183,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress keeps progress indeterminate if sampler steps are missing or invalid: {},,True,passed,0.000109,,
+unit/API,tests/comfy/progress.test.ts,,"Comfy stage progress keeps progress indeterminate if sampler steps are missing or invalid: {""step"":9}",,True,passed,5.3e-05,,
+unit/API,tests/comfy/progress.test.ts,,"Comfy stage progress keeps progress indeterminate if sampler steps are missing or invalid: {""step"":9,""steps"":0}",,True,passed,0.000158,,
+unit/API,tests/comfy/progress.test.ts,,"Comfy stage progress keeps progress indeterminate if sampler steps are missing or invalid: {""step"":null,""steps"":20}",,True,passed,7.4e-05,,
+unit/API,tests/comfy/progress.test.ts,,"Comfy stage progress keeps progress indeterminate if sampler steps are missing or invalid: {""step"":-1,""steps"":20}",,True,passed,6.4e-05,,
+unit/API,tests/comfy/progress.test.ts,,"Comfy stage progress keeps progress indeterminate if sampler steps are missing or invalid: {""step"":7,""steps"":null}",,True,passed,9.9e-05,,
+unit/API,tests/comfy/progress.test.ts,,"Comfy stage progress keeps progress indeterminate if sampler steps are missing or invalid: {""step"":1.5,""steps"":20}",,True,passed,0.000248,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress does not use the live Cloud aggregate as render progress when stage and step counts are absent,,True,passed,0.000248,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress keeps missing or invalid progress indeterminate: undefined,,True,passed,0.000106,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress keeps missing or invalid progress indeterminate: NaN,,True,passed,4.4e-05,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress keeps missing or invalid progress indeterminate: Infinity,,True,passed,0.000143,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress keeps missing or invalid progress indeterminate: -1,,True,passed,5.5e-05,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress keeps missing or invalid progress indeterminate: 2,,True,passed,2.8e-05,,
+unit/API,tests/comfy/progress.test.ts,,Comfy stage progress keeps actual Comfy step progress after saving and loading,,True,passed,0.000149,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter uses fixed seed 0 unchanged with Turbo and 2K,,True,passed,0.022447,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter uses fixed seed 9007199254740991 unchanged with Turbo and 2K,,True,passed,0.001653,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter includes portable clip data in the saved native workflow without exposing credentials,,True,passed,0.002714,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter includes portable clip data in the saved 2k workflow without exposing credentials,,True,passed,0.001254,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter checks loop guides independently and fails before uploading when unavailable,,True,passed,0.001213,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter checks image-reference support separately and fails before uploads when the node is missing,,True,passed,0.000507,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter uploads ordered JPEG references and submits reference conditioning with 2K regeneration,,True,passed,0.000925,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter checks official 2K regeneration independently of native readiness before any upload or paid submission,,True,passed,0.00046,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter requires the official MiniMax H3 API model and submits regeneration without a community upscaler,,True,passed,0.00109,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter skips asset uploads when neither reference is enabled,,True,passed,0.000431,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter reports invalid optional Comfy configuration without breaking other providers at startup,,True,passed,0.000441,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter checks capabilities and submits native generation for saved standard masks,,True,passed,0.003155,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter checks capabilities and submits native generation for saved uniform masks,,True,passed,0.0015,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter checks capabilities and submits native generation for saved vignette masks,,True,passed,0.001093,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter shares native readiness for retired masks without requiring FILM or vignette nodes,,True,passed,0.000246,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter refuses missing nodes before uploading and reports the actual missing dependency,,True,passed,0.000278,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter requires VHS_LoadVideoFFmpeg before uploading or submitting a job,,True,passed,0.000233,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter requires GetAudioLatentSize before uploading or submitting a job,,True,passed,0.000362,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter requires FeatherMask before uploading or submitting a job,,True,passed,0.000458,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter requires CreateFadeMaskAdvanced before uploading or submitting a job,,True,passed,0.000372,,
+unit/API,tests/comfy/provider.test.ts,,"Comfy Cloud v2 adapter returns step progress, a durable authenticated media route, and refreshed signed URLs",,True,passed,0.001593,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter sanitizes execution errors and never retries paid submissions automatically,,True,passed,0.000719,,
+unit/API,tests/comfy/provider.test.ts,,"Comfy Cloud v2 adapter streams only normalized stages and steps, then reconciles terminal status through the job endpoint",,True,passed,0.003124,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter does not mistake a stream error or a truncated catalog for a completed job,,True,passed,0.000607,,
+unit/API,tests/comfy/provider.test.ts,,Comfy Cloud v2 adapter cancels only the requested active job and leaves completed renders intact,,True,passed,0.000256,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries forwards fixed seed 0 exactly,,True,passed,0.043856,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries forwards fixed seed 123456789 exactly,,True,passed,0.01136,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries forwards fixed seed 9007199254740991 exactly,,True,passed,0.004512,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid seed  before submission,,True,passed,0.005647,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid seed   before submission,,True,passed,0.002648,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid seed -1 before submission,,True,passed,0.003672,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid seed 1.5 before submission,,True,passed,0.004725,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid seed NaN before submission,,True,passed,0.00504,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid seed Infinity before submission,,True,passed,0.003533,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid seed 9007199254740992 before submission,,True,passed,0.015712,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid seed random before submission,,True,passed,0.011293,,
+unit/API,tests/comfy/routes.test.ts,,"Comfy API boundaries validates Turbo at preflight and submission, including explicit false",,True,passed,0.041421,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries passes validated clip provenance with all generation fields and rejects invalid metadata before submitting,,True,passed,0.016901,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries checks LoRA addresses behind authentication and passes selections into generation,,True,passed,0.02089,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries parses multipart LoRA strength 0,,True,passed,0.003284,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries parses multipart LoRA strength 0.65,,True,passed,0.002004,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries parses multipart LoRA strength 1.4,,True,passed,0.001966,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries parses multipart LoRA strength -0.5,,True,passed,0.001981,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid multipart strength  before generation,,True,passed,0.001997,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid multipart strength   before generation,,True,passed,0.002041,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid multipart strength bad before generation,,True,passed,0.00197,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid multipart strength NaN before generation,,True,passed,0.002021,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid multipart strength Infinity before generation,,True,passed,0.005016,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid multipart strength -101 before generation,,True,passed,0.002133,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid multipart strength 101 before generation,,True,passed,0.002144,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries validates separate pin curves before submitting a job,,True,passed,0.018343,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries accepts prompt-only loops and validates independent image endpoints before submission,,True,passed,0.007569,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries passes ordered images alongside footage and requests image-reference preflight,,True,passed,0.004514,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects malformed or excessive image references before submission: invalid json,,True,passed,0.002269,,
+unit/API,tests/comfy/routes.test.ts,,"Comfy API boundaries rejects malformed or excessive image references before submission: [""https://example.com/image.jpg""]",,True,passed,0.00278,,
+unit/API,tests/comfy/routes.test.ts,,"Comfy API boundaries rejects malformed or excessive image references before submission: [""data:image/jpeg;base64,YmFk""]",,True,passed,0.002982,,
+unit/API,tests/comfy/routes.test.ts,,"Comfy API boundaries rejects malformed or excessive image references before submission: [""data:image/jpeg;base64,/9j/2Q=="",""data:image/jpeg;base64,/9j/2Q=="",""data:image/jpeg;base64,/9j/2Q=="",""data:image/jpeg;base64,/9j/2Q=="",""data:image/jpeg;base64,/9j/2Q=="",""data:image/jpeg;base64,/9j/2Q=="",""data:image/jpeg;base64,/9j/2Q=="",""data:image/jpeg;base64,/9j/2Q=="",""data:image/jpeg;base64,/9j/2Q=="",""data:image/jpeg;base64,/9j/2Q==""]",,True,passed,0.00239,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries validates resolution and requests the selected 2K capabilities and native sampling canvas,,True,passed,0.007505,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries accepts one connected reference (0 / 1.625),,True,passed,0.001533,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries accepts one connected reference (1.625 / 0),,True,passed,0.002399,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries submits without any reference upload when both switches are off,,True,passed,0.001029,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries validates the reference and dispatches to Comfy,,True,passed,0.001409,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries passes independent audio 0 / video 500 ms transitions,,True,passed,0.002589,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries passes independent audio 500 / video 0 ms transitions,,True,passed,0.002026,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries passes independent audio 250 / video 1000 ms transitions,,True,passed,0.002178,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries passes independent audio 4000 / video 200 ms transitions,,True,passed,0.002059,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries defaults the other duration independently when only audioMaskTransitionMs is supplied,,True,passed,0.001905,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid audioMaskTransitionMs before generation: -1,,True,passed,0.001752,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid audioMaskTransitionMs before generation: 4001,,True,passed,0.002975,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid audioMaskTransitionMs before generation: NaN,,True,passed,0.002614,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid audioMaskTransitionMs before generation: Infinity,,True,passed,0.002245,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid audioMaskTransitionMs before generation: 1.5,,True,passed,0.004277,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries defaults the other duration independently when only videoMaskTransitionMs is supplied,,True,passed,0.002332,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid videoMaskTransitionMs before generation: -1,,True,passed,0.003387,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid videoMaskTransitionMs before generation: 4001,,True,passed,0.001645,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid videoMaskTransitionMs before generation: NaN,,True,passed,0.003012,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid videoMaskTransitionMs before generation: Infinity,,True,passed,0.002039,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects invalid videoMaskTransitionMs before generation: 1.5,,True,passed,0.002331,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries migrates the shared duration while preserving an explicit independent zero,,True,passed,0.002098,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries migrates the legacy interpolation switch: true,,True,passed,0.002061,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries migrates the legacy interpolation switch: false,,True,passed,0.001414,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries normalizes retired masks to native generation: standard,,True,passed,0.002063,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries normalizes retired masks to native generation: uniform,,True,passed,0.001749,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries normalizes retired masks to native generation: vignette,,True,passed,0.001878,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries rejects malformed legacy mask settings,,True,passed,0.003779,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries passes the entered prompt through to Comfy without rewriting it,,True,passed,0.001659,,
+unit/API,tests/comfy/routes.test.ts,,"Comfy API boundaries rejects off-grid windows, missing context, and unavailable providers before submission",,True,passed,0.005883,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries requires same-origin mutation headers and workspace authentication,,True,passed,0.006995,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries delivers live events without caching and closes the cloud subscription when done,,True,passed,0.001475,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries falls back to polling on an upstream stream failure without exposing provider details,,True,passed,0.001775,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries streams private output bytes with range support without forwarding application credentials,,True,passed,0.00439,,
+unit/API,tests/comfy/routes.test.ts,,Comfy API boundaries reports failed media connections as recoverable downloads instead of generic server errors,,True,passed,0.001352,,
+unit/API,tests/comfy/turbo.test.ts,,"H3 Turbo uses the Ref2VA Turbo recipe and preserves bridge conditioning, masks and output",,True,passed,0.005171,,
+unit/API,tests/comfy/turbo.test.ts,,"H3 Turbo uses the Ref2VA Turbo recipe and preserves extend conditioning, masks and output",,True,passed,0.001365,,
+unit/API,tests/comfy/turbo.test.ts,,"H3 Turbo uses the Ref2VA Turbo recipe and preserves loop conditioning, masks and output",,True,passed,0.001727,,
+unit/API,tests/comfy/turbo.test.ts,,"H3 Turbo uses the Ref2VA Turbo recipe and preserves custom conditioning, masks and output",,True,passed,0.001016,,
+unit/API,tests/comfy/turbo.test.ts,,H3 Turbo submits Turbo with optional character LoRA null,,True,passed,0.015143,,
+unit/API,tests/comfy/turbo.test.ts,,H3 Turbo submits Turbo with optional character LoRA sema.safetensors,,True,passed,0.000932,,
+unit/API,tests/comfy/turbo.test.ts,,H3 Turbo checks Turbo independently of cached normal readiness and fails before uploading or submitting when missing,,True,passed,0.000953,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge generates a custom clip with no video or image references,,True,passed,0.001686,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge generates a loop clip with no video or image references,,True,passed,0.000218,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge guides independent endpoints with chosen pictures and supports mixed footage,,True,passed,0.001173,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge keeps optional subject images separate from loop endpoint guides,,True,passed,0.000204,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge anchors both ends of an image-only loop to Picture 1, keeping other images as references",,True,passed,0.000238,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge conditions bridge generation on ordered image references without changing timeline masks,,True,passed,0.000427,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge conditions extend generation on ordered image references without changing timeline masks,,True,passed,0.000478,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge conditions loop generation on ordered image references without changing timeline masks,,True,passed,0.000266,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge conditions custom generation on ordered image references without changing timeline masks,,True,passed,0.000206,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge uses official H3 2K regeneration after the complete bridge base render,,True,passed,0.000659,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge uses official H3 2K regeneration after the complete extend base render,,True,passed,0.000366,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge uses official H3 2K regeneration after the complete loop base render,,True,passed,0.00029,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge uses official H3 2K regeneration after the complete custom base render,,True,passed,0.000212,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge keeps the 2K base render on the native H3 canvas for small, portrait and square references",,True,passed,0.000373,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge rejects source renders shorter than the official regeneration frame minimum before paid submission,,True,passed,0.000376,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge omits disabled reference loaders and masks (input true, output true)",,True,passed,0.000634,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge omits disabled reference loaders and masks (input true, output false)",,True,passed,0.000393,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge omits disabled reference loaders and masks (input false, output true)",,True,passed,0.000904,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge omits disabled reference loaders and masks (input false, output false)",,True,passed,0.000231,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge ignores retired uniform masks and uses native H3 generation,,True,passed,0.000683,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge ignores retired vignette masks and uses native H3 generation,,True,passed,0.000463,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge extends a Call with a soft preceding reference and generates the entire tail,,True,passed,0.000243,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge accepts a short Idle loop with two protected context windows,,True,passed,0.000183,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge snaps the generated target and protected contexts to H3’s grid,,True,passed,9.1e-05,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge rejects missing context and oversized targets before an upload or paid job,,True,passed,0.000921,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge loads 2-second reference windows with FFmpeg without rounding the suffix seek,,True,passed,0.000211,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge loads 3-second reference windows with FFmpeg without rounding the suffix seek,,True,passed,0.00013,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge loads 4-second reference windows with FFmpeg without rounding the suffix seek,,True,passed,0.000108,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge conditions on both motion windows with soft reference edges and a fully generated middle,,True,passed,0.000372,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge generates audio when the source is silent without connecting missing source audio,,True,passed,0.000115,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge feathers only inside connected reference audio: 1.625 / 1.625,,True,passed,0.000182,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge feathers only inside connected reference audio: 3 / 2,,True,passed,0.000167,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge feathers only inside connected reference audio: 1.625 / 0,,True,passed,0.000127,,
+unit/API,tests/comfy/workflow.test.ts,,H3 two-sided temporal bridge feathers only inside connected reference audio: 0 / 1.625,,True,passed,0.000125,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge leaves every latent frame overlapping the blank audio fully generative: {""before"":1.625,""after"":1.625,""duration"":9.5}",,True,passed,0.000116,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge leaves every latent frame overlapping the blank audio fully generative: {""before"":3,""after"":2,""duration"":6}",,True,passed,7.5e-05,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge leaves every latent frame overlapping the blank audio fully generative: {""before"":1.625,""after"":0,""duration"":6}",,True,passed,6.8e-05,,
+unit/API,tests/comfy/workflow.test.ts,,"H3 two-sided temporal bridge leaves every latent frame overlapping the blank audio fully generative: {""before"":0,""after"":1.625,""duration"":6}",,True,passed,5.6e-05,,
+unit/API,tests/interstitials/clip-metadata.test.ts,,restoring generated clips preserves separate loop fade durations in submitted metadata and restored MP4s,,True,passed,0.007485,,
+unit/API,tests/interstitials/clip-metadata.test.ts,,restoring generated clips retains Turbo when restoring a generated MP4 and its submitted settings,,True,passed,0.000586,,
+unit/API,tests/interstitials/clip-metadata.test.ts,,restoring generated clips keeps image provenance from a standalone MP4 without requiring absent image assets,,True,passed,0.000316,,
+unit/API,tests/interstitials/clip-metadata.test.ts,,restoring generated clips restores settings and matching reference ranges while leaving imported scenes disconnected,,True,passed,0.001195,,
+unit/API,tests/interstitials/clip-metadata.test.ts,,restoring generated clips leaves unmatched or ambiguous references unresolved and preserves existing connections,,True,passed,0.000588,,
+unit/API,tests/interstitials/clip-metadata.test.ts,,restoring generated clips keeps absent references as provenance through archive save/reopen without requiring their media,,True,passed,0.051078,,
+unit/API,tests/interstitials/clip-metadata.test.ts,,restoring generated clips finds the original parent after repeated project opens without matching a replaced source,,True,passed,0.023245,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition renders the source and inserted scenes on one 24 fps clock,,True,passed,0.005813,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition selects the exact frame on either side of each splice,,True,passed,0.000165,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition keeps the existing splice throughout retries and only uses a ready replacement,,True,passed,0.000732,,
+unit/API,tests/interstitials/composition.test.ts,,"frame-based timeline composition handles boundary anchors, multiple inserts at an anchor, and incomplete jobs",,True,passed,0.011946,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition quantizes fractional frame rates without cumulative offsets,,True,passed,0.000208,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 12 fps sources,,True,passed,9.5e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 24 fps sources,,True,passed,7.2e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 23.976023976023978 fps sources,,True,passed,6.4e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 25 fps sources,,True,passed,8.1e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 30 fps sources,,True,passed,8.6e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 29.97002997002997 fps sources,,True,passed,4.8e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 50 fps sources,,True,passed,4.3e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 60 fps sources,,True,passed,3.6e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 120 fps sources,,True,passed,3.5e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition uses 24 fps even without interstitials for 240 fps sources,,True,passed,3.9e-05,,
+unit/API,tests/interstitials/composition.test.ts,,frame-based timeline composition retains an end anchor rounded beyond the original file duration,,True,passed,8.3e-05,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle owns seed selection before submission and saves the actual seed independently of edits (undefined),,True,passed,0.014179,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle owns seed selection before submission and saves the actual seed independently of edits (0),,True,passed,0.00157,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle owns seed selection before submission and saves the actual seed independently of edits (9007199254740991),,True,passed,0.003749,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle chooses a new random seed for regeneration while retaining the previous render seed on failure,,True,passed,0.001202,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle undo restores Random without overwriting the latest render seed,,True,passed,0.000851,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle restores image-only loop provenance for submitted and completed renders,,True,passed,0.00089,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle migrates browser-saved interpolation without marking the existing render as edited,,True,passed,0.000863,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle persists audio and video edits independently of each other and submitted settings,,True,passed,0.001746,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle migrates browser-saved shared durations and retains an explicit independent zero,,True,passed,0.001746,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle migrates saved uniform masks without marking renders as edited or changing other clips,,True,passed,0.002027,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle migrates saved vignette masks without marking renders as edited or changing other clips,,True,passed,0.001719,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle migrates retired masks while retaining an extension clip’s reference choices,,True,passed,0.000409,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle retains the full idle generation while using the finished loop for playback,,True,passed,0.000708,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle preserves stale provenance across multiple groups, converted video clips and reloads",,True,passed,0.105282,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle keeps prompt and duration edits independent of displayed questions and saved variants,,True,passed,0.000804,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle keeps legacy dialogue available to enhancement without changing the saved prompt on load,,True,passed,0.00031,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle keeps newer Comfy steps when a poll is delayed 0 ms and reconciles subsequent polls,,True,passed,0.055415,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle keeps newer Comfy steps when a poll is delayed 6000 ms and reconciles subsequent polls,,True,passed,0.052325,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle retains streamed progress across empty polls and replaces it when a real snapshot arrives,,True,passed,0.05546,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle preserves native node steps across v2 polls, clears them on fallback, and honors COMPLETED",,True,passed,0.053764,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle preserves native node steps across v2 polls, clears them on fallback, and honors CANCELLED",,True,passed,0.052788,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle separates download, storage and video checks with a reported file size of 1000",,True,passed,0.109927,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle separates download, storage and video checks with a reported file size of 0",,True,passed,0.105324,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle opens the saved video before exposing its asset to the library and preview,,True,passed,0.000597,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle gives added answers independent media jobs, Idle references and shared duration settings",,True,passed,0.001013,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle undoes an edit during generation without losing the running job or its completed render,,True,passed,0.052706,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle restores a deleted render from history without starting another job,,True,passed,0.000966,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle restores a deleted call-response group with its latest media and duration links,,True,passed,0.052487,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle removes a group together after cancelling its jobs, preserves unrelated drafts and ignores late results",,True,passed,0.000731,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle retains every child if cancelling one group job fails, and allows retrying removal",,True,passed,0.000461,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle gives a newly converted child its own editable draft settings,,True,passed,0.000622,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle submits a child against its latest predecessor and stores that reference on its result,,True,passed,0.053818,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle blocks a child while its predecessor generates and retains media if reference preparation fails,,True,passed,0.050828,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle shares response duration edits and submissions, while preserving separate prompts and real result lengths",,True,passed,0.001281,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle normalizes older response targets without rewriting submitted settings, and clears links on project switch",,True,passed,0.000195,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle pins a Comfy job to its submitted bounds while the editor changes,,True,passed,0.052343,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle resumes saved Comfy jobs and cancels through Comfy,,True,passed,0.000284,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle cancels an uncertain Comfy job before retrying,,True,passed,0.000472,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle migrates existing pins without losing labels or source times,,True,passed,0.000194,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle tracks preparation through ready and persists only the generated-section bounds,,True,passed,0.000571,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle does not duplicate a paid submission while generation is active,,True,passed,0.000266,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle keeps edits during preparation, upload, queueing and loading separate from the submitted inputs",,True,passed,0.050711,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle submits current edits after a download fails if they changed while the job was running,,True,passed,0.001565,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle retries a completed scene with edited settings and swaps only after the new video loads,,True,passed,0.001326,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle preserves the original video after a failed retry and reload, then allows another retry",,True,passed,0.000743,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle keeps the original on a failed replacement download and retries downloading without paying again,,True,passed,0.000487,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle retains the original when a replacement has invalid video boundaries,,True,passed,0.000339,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle cancels only the replacement and retains the original video, ignoring late results",,True,passed,0.051467,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle ignores late results from a previous source and cancels orphaned submissions,,True,passed,0.000427,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle retries failed polling without submitting another generation,,True,passed,0.000444,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle keeps failures editable after reload and retries once with the corrected settings,,True,passed,0.001185,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle retries a failed download, regenerating only when the draft changed: false",,True,passed,0.000797,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle retries a failed download, regenerating only when the draft changed: true",,True,passed,0.000416,,
+unit/API,tests/interstitials/controller.test.ts,,interstitial lifecycle keeps a failed job attached if remote cancellation fails,,True,passed,0.000561,,
+unit/API,tests/interstitials/controller.test.ts,,"interstitial lifecycle moves failed and completed scenes without changing their job, prompt or generated asset",,True,passed,0.001683,,
+unit/API,tests/interstitials/enhance-prompt.test.ts,,prompt enhancement references sends LoRA instructions as separate enhancement context without changing the draft,,True,passed,0.003063,,
+unit/API,tests/interstitials/enhance-prompt.test.ts,,prompt enhancement references anchors a response to the last Idle frame and the first continuation frame,,True,passed,0.002214,,
+unit/API,tests/interstitials/enhance-prompt.test.ts,,prompt enhancement references uses the preceding clip as the Idle visual anchor,,True,passed,0.000463,,
+unit/API,tests/interstitials/enhance-prompt.test.ts,,prompt enhancement references samples the source frames immediately before and after an ordinary insertion,,True,passed,0.000548,,
+unit/API,tests/interstitials/enhance-prompt.test.ts,,prompt enhancement references does not contact OpenAI after reference sampling is cancelled,,True,passed,0.001162,,
+unit/API,tests/interstitials/generation-defaults.test.ts,,loads the Turbo default safely from null,,True,passed,0.002677,,
+unit/API,tests/interstitials/generation-defaults.test.ts,,loads the Turbo default safely from false,,True,passed,0.000128,,
+unit/API,tests/interstitials/generation-defaults.test.ts,,loads the Turbo default safely from invalid,,True,passed,8.7e-05,,
+unit/API,tests/interstitials/generation-defaults.test.ts,,loads the Turbo default safely from 1,,True,passed,0.001643,,
+unit/API,tests/interstitials/generation-defaults.test.ts,,loads the Turbo default safely from true,,True,passed,0.000125,,
+unit/API,tests/interstitials/generation-defaults.test.ts,,defaults Turbo off when preferences storage is unavailable,,True,passed,0.000134,,
+unit/API,tests/interstitials/generation-defaults.test.ts,,applies Turbo to new clips and built-ins while preserving explicit and saved settings,,True,passed,0.005713,,
+unit/API,tests/interstitials/idle-prompt.test.ts,,"visible prompts sent to Comfy submits the editable prompt exactly, without adding continuity, dialogue or Idle instructions",,True,passed,0.031937,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement supplies LoRA guidance alongside the draft for interstitial,,True,passed,0.004527,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement supplies LoRA guidance alongside the draft for call,,True,passed,0.000524,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement supplies LoRA guidance alongside the draft for idle,,True,passed,0.000439,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement supplies LoRA guidance alongside the draft for response,,True,passed,0.00019,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement respects selected endpoint pictures and leaves optional images unanchored for prompt-only loops,,True,passed,0.000376,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement uses the first picture as both boundaries when enhancing an image-only loop,,True,passed,0.00053,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement shows every attached image with its H3 picture number independently of video boundary frames,,True,passed,0.00034,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,"interstitial prompt enhancement uses the current model, reference frames and original dialogue with mandatory shot and position continuity",,True,passed,0.000862,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,"interstitial prompt enhancement instructs the enhancer to tag the exact Call line, including unusual grammar",,True,passed,0.000334,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement treats a quoted Response line as spoken dialogue and strips an older enhancement suffix,,True,passed,0.0002,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement does not run a code-level H3 dialogue or section validator on the enhanced text,,True,passed,9.9e-05,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement keeps quoted text on a sign out of H3 spoken dialogue,,True,passed,0.000115,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement accepts an H3 dialogue tag when the user requests speech without quoting a line,,True,passed,0.000227,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement keeps repeated enhancements from accumulating the mandatory continuity block,,True,passed,0.000546,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement replaces the previous Idle suffix without stacking loop instructions,,True,passed,0.000268,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement replaces an existing perfect-loop suffix when adding particle continuity,,True,passed,0.000203,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement uses separate instructions for every clip kind and excludes inherited speech from Idle context,,True,passed,0.000842,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement replaces the older continuity suffix when enhancing an existing clip again,,True,passed,0.000293,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement enhances a shared continuity brief without treating it as a clip action or appending another brief,,True,passed,0.000216,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement rejects incomplete or invalid provider output without returning a replacement prompt,,True,passed,0.00042,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement rejects incomplete or invalid provider output without returning a replacement prompt,,True,passed,0.000121,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement rejects incomplete or invalid provider output without returning a replacement prompt,,True,passed,0.000237,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement rejects incomplete or invalid provider output without returning a replacement prompt,,True,passed,0.000222,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement does not expose connection error details or retry automatically,,True,passed,0.000238,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,interstitial prompt enhancement honors cancellation before contacting the provider,,True,passed,0.000292,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API passes only validated prompt context and frames to the enhancer,,True,passed,0.024146,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API validates and forwards optional LoRA instructions,,True,passed,0.054241,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API accepts a short Idle loop and retains compatibility with legacy dialogue settings,,True,passed,0.003679,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API accepts speech merged into a prompt longer than the old separate-field limit,,True,passed,0.003535,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API passes the continuity target through to the enhancer,,True,passed,0.001983,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API rejects invalid input before making a paid request,,True,passed,0.002204,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API rejects invalid input before making a paid request,,True,passed,0.002702,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API rejects invalid input before making a paid request,,True,passed,0.00136,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API rejects invalid input before making a paid request,,True,passed,0.001147,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API rejects invalid input before making a paid request,,True,passed,0.000933,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API rejects invalid input before making a paid request,,True,passed,0.000921,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,prompt enhancement API rejects invalid input before making a paid request,,True,passed,0.001106,,
+unit/API,tests/interstitials/prompt-enhancement.test.ts,,"prompt enhancement API requires application headers, authentication and OpenAI configuration",,True,passed,0.006004,,
+unit/API,tests/interstitials/transitions.test.ts,,interstitial crossfades fades exclusively in the reference handles before and after the generated body,,True,passed,0.002043,,
+unit/API,tests/interstitials/transitions.test.ts,,"interstitial crossfades never fades across adjacent generated bodies, missing references, or gaps",,True,passed,0.000241,,
+unit/API,tests/interstitials/transitions.test.ts,,interstitial crossfades keeps source-only cuts and generation-reference holds intact,,True,passed,0.000282,,
+unit/API,tests/interstitials/transitions.test.ts,,"interstitial crossfades clamps the selected length to saved reference ranges, even for a very short generated body",,True,passed,0.000391,,
+unit/API,tests/interstitials/transitions.test.ts,,interstitial crossfades shares short source overlaps without mixing three clips or touching either generated body,,True,passed,0.000188,,
+unit/API,tests/interstitials/transitions.test.ts,,interstitial crossfades samples the exact saved end of a body with fractional frame bounds,,True,passed,7.6e-05,,
+unit/API,tests/media/asset-thumbnails.test.ts,,asset thumbnails decodes the full asset once while different clips select from the cached frames,,True,passed,0.001956,,
+unit/API,tests/media/asset-thumbnails.test.ts,,asset thumbnails reads an unknown asset duration once and retries a failed decode,,True,passed,0.000998,,
+unit/API,tests/media/asset-thumbnails.test.ts,,asset thumbnails keeps source intervals intact when trimming or splitting through a thumbnail,,True,passed,0.000189,,
+unit/API,tests/media/asset-thumbnails.test.ts,,asset thumbnails preserves time positions when a sampled frame cannot be decoded,,True,passed,0.000134,,
+unit/API,tests/media/clip-metadata.test.ts,,portable MP4 clip metadata recovers only the connected sampler seed in older graphs and preserves an explicit seed,,True,passed,0.023809,,
+unit/API,tests/media/clip-metadata.test.ts,,portable MP4 clip metadata rejects invalid saved seeds (-1),,True,passed,0.000496,,
+unit/API,tests/media/clip-metadata.test.ts,,portable MP4 clip metadata rejects invalid saved seeds (1.5),,True,passed,0.000301,,
+unit/API,tests/media/clip-metadata.test.ts,,portable MP4 clip metadata rejects invalid saved seeds (9007199254740992),,True,passed,0.000274,,
+unit/API,tests/media/clip-metadata.test.ts,,portable MP4 clip metadata rejects invalid saved seeds (123),,True,passed,0.000168,,
+unit/API,tests/media/clip-metadata.test.ts,,portable MP4 clip metadata reads direct Comfy downloads with a prompt tag and no local sparko tag,,True,passed,0.0123,,
+unit/API,tests/media/clip-metadata.test.ts,,portable MP4 clip metadata reads direct Comfy downloads with a comment tag and no local sparko tag,,True,passed,0.008424,,
+unit/API,tests/media/clip-metadata.test.ts,,portable MP4 clip metadata does not infer reference identities from an ordinary graph or accept invalid embedded data,,True,passed,0.000525,,
+unit/API,tests/media/clip-metadata.test.ts,,"portable MP4 clip metadata round trips Unicode, source provenance and Comfy tags without changing encoded video packets",,True,passed,0.015045,,
+unit/API,tests/media/clip-metadata.test.ts,,"portable MP4 clip metadata ignores malformed, unsupported or oversized metadata and rejects cancelled work",,True,passed,0.001678,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from null with safe defaults and limits,,True,passed,0.001126,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from invalid with safe defaults and limits,,True,passed,0.000145,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from Infinity with safe defaults and limits,,True,passed,0.0001,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from 0 with safe defaults and limits,,True,passed,0.000221,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from -10 with safe defaults and limits,,True,passed,0.00011,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from 4 with safe defaults and limits,,True,passed,5.1e-05,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from 12 with safe defaults and limits,,True,passed,5.2e-05,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from 14 with safe defaults and limits,,True,passed,3.5e-05,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from 13 with safe defaults and limits,,True,passed,0.000125,,
+unit/API,tests/player/preferences.test.ts,,restores crossfade frames from 500 with safe defaults and limits,,True,passed,8.3e-05,,
+unit/API,tests/player/preferences.test.ts,,uses the default length when storage is unavailable,,True,passed,7.8e-05,,
+unit/API,tests/player/preview-segments.test.ts,,viewer timeline uses only connected playback footage and maps exact cut boundaries,,True,passed,0.005234,,
+unit/API,tests/player/preview-segments.test.ts,,viewer timeline projects one response and follows queued and previously traversed answers after rejoining,,True,passed,0.000931,,
+unit/API,tests/player/preview-segments.test.ts,,"viewer timeline uses the branch selected in the editor, even before the viewer chooses an answer",,True,passed,0.000189,,
+unit/API,tests/player/preview-segments.test.ts,,viewer timeline keeps the opening of a detached sequence when advancing through its clips,,True,passed,0.000255,,
+unit/API,tests/player/preview-segments.test.ts,,viewer timeline shows one loop pass and terminates cyclic connections,,True,passed,0.000289,,
+unit/API,tests/player/preview-segments.test.ts,,viewer timeline does not preview retained condition wires when that behavior is turned off,,True,passed,0.000285,,
+unit/API,tests/player/preview-segments.test.ts,,viewer timeline uses planned draft durations and marks them without requiring generated media,,True,passed,0.000416,,
+unit/API,tests/project/archive.test.ts,,"portable project archives preserves the seed setting (undefined), submitted seed and template settings",,True,passed,0.058398,,
+unit/API,tests/project/archive.test.ts,,"portable project archives preserves the seed setting (0), submitted seed and template settings",,True,passed,0.010456,,
+unit/API,tests/project/archive.test.ts,,"portable project archives preserves the seed setting (9007199254740991), submitted seed and template settings",,True,passed,0.011329,,
+unit/API,tests/project/archive.test.ts,,portable project archives opens legacy subtitle library entries while retaining the separate subtitle track,,True,passed,0.013079,,
+unit/API,tests/project/archive.test.ts,,"portable project archives retains mask pins and Bézier handles in drafts, submitted settings, and templates",,True,passed,0.010578,,
+unit/API,tests/project/archive.test.ts,,portable project archives retains images used only by submitted settings or templates and remaps their IDs on import,,True,passed,0.015451,,
+unit/API,tests/project/archive.test.ts,,portable project archives saves and restores an empty project without a source asset,,True,passed,0.00205,,
+unit/API,tests/project/archive.test.ts,,portable project archives stores the crossfade duration with the project,,True,passed,0.005232,,
+unit/API,tests/project/archive.test.ts,,portable project archives opens archives with retired uniform masks using native generation,,True,passed,0.00449,,
+unit/API,tests/project/archive.test.ts,,portable project archives opens archives with retired vignette masks using native generation,,True,passed,0.004238,,
+unit/API,tests/project/archive.test.ts,,portable project archives preserves audio 0 / video 1000 ms separately from submitted settings,,True,passed,0.004651,,
+unit/API,tests/project/archive.test.ts,,portable project archives preserves audio 250 / video 0 ms separately from submitted settings,,True,passed,0.003586,,
+unit/API,tests/project/archive.test.ts,,portable project archives preserves audio 1000 / video 250 ms separately from submitted settings,,True,passed,0.004025,,
+unit/API,tests/project/archive.test.ts,,portable project archives preserves audio 4000 / video 500 ms separately from submitted settings,,True,passed,0.004417,,
+unit/API,tests/project/archive.test.ts,,portable project archives migrates a legacy shared 0 ms duration in editable and submitted settings,,True,passed,0.010517,,
+unit/API,tests/project/archive.test.ts,,portable project archives migrates a legacy shared 750 ms duration in editable and submitted settings,,True,passed,0.008213,,
+unit/API,tests/project/archive.test.ts,,portable project archives migrates the old interpolation toggle in editable and submitted archive settings,,True,passed,0.008643,,
+unit/API,tests/project/archive.test.ts,,portable project archives keeps the full idle preview when the loop is retained as a previous result: false,,True,passed,0.007849,,
+unit/API,tests/project/archive.test.ts,,portable project archives keeps the full idle preview when the loop is retained as a previous result: true,,True,passed,0.007512,,
+unit/API,tests/project/archive.test.ts,,"portable project archives preserves Comfy selection, submitted provider, and exact output boundaries",,True,passed,0.004772,,
+unit/API,tests/project/archive.test.ts,,portable project archives marks a pending legacy job as Fal when its old archive omitted the submitted provider,,True,passed,0.007243,,
+unit/API,tests/project/archive.test.ts,,portable project archives includes and remaps the retained original alongside the prepared working video,,True,passed,0.003867,,
+unit/API,tests/project/archive.test.ts,,"portable project archives round-trips binary assets, metadata and subtitles without remote or session URLs",,True,passed,0.007009,,
+unit/API,tests/project/archive.test.ts,,"portable project archives rejects missing media, unsupported versions and invalid frame boundaries",,True,passed,0.026294,,
+unit/API,tests/project/archive.test.ts,,portable project archives opens older archives with default duration and prompt expansion settings,,True,passed,0.007884,,
+unit/API,tests/project/archive.test.ts,,portable project archives preserves submitted settings separately from edits made after generation,,True,passed,0.00479,,
+unit/API,tests/project/archive.test.ts,,portable project archives rejects corrupt asset bytes instead of silently importing them,,True,passed,0.004443,,
+unit/API,tests/project/archive.test.ts,,portable project archives retains queued jobs and turns interrupted preparation back into a draft,,True,passed,0.005697,,
+unit/API,tests/project/archive.test.ts,,portable project archives includes the playable video while its replacement is queued,,True,passed,0.004313,,
+unit/API,tests/project/archive.test.ts,,portable project archives includes the playable video while its replacement is error,,True,passed,0.004907,,
+unit/API,tests/project/archive.test.ts,,portable project archives includes the playable video while its replacement is cancelled,,True,passed,0.006425,,
+unit/API,tests/project/archive.test.ts,,portable project archives includes the playable video while its replacement is preparing,,True,passed,0.007135,,
+unit/API,tests/project/archive.test.ts,,portable project archives supports cancelling export and import,,True,passed,0.000857,,
+unit/API,tests/project/asset-availability.test.ts,,local media availability does not flag pending reads and shares one read between consumers,,True,passed,0.005554,,
+unit/API,tests/project/asset-availability.test.ts,,"local media availability surfaces missing files, avoids retry loops, and clears errors after a successful reopen",,True,passed,0.001706,,
+unit/API,tests/project/asset-availability.test.ts,,local media availability rejects empty files instead of leaving a loading preview forever,,True,passed,0.000266,,
+unit/API,tests/project/asset-deletion.test.ts,,"deletes a generation and its inputs together, but protects uses outside the selection",,True,passed,0.00457,,
+unit/API,tests/project/asset-deletion.test.ts,,protects generation versions used by timeline clips or templates,,True,passed,0.000201,,
+unit/API,tests/project/asset-deletion.test.ts,,"deduplicates selections, ignores missing items and includes newly completed versions when rechecked",,True,passed,0.000493,,
+unit/API,tests/project/asset-generation.test.ts,,fal media generations maps the additional image models to their generation and editing endpoints,,True,passed,0.003113,,
+unit/API,tests/project/asset-generation.test.ts,,fal media generations requests one image from every image model and rejects batch submissions,,True,passed,0.000564,,
+unit/API,tests/project/asset-generation.test.ts,,fal media generations resets older draft batch counts while retaining submitted jobs and saved versions,,True,passed,0.000876,,
+unit/API,tests/project/asset-generation.test.ts,,"fal media generations uses each model’s actual image, video, and audio API fields",,True,passed,0.000739,,
+unit/API,tests/project/asset-generation.test.ts,,fal media generations polls the app queue path and normalizes string and object media outputs,,True,passed,0.000216,,
+unit/API,tests/project/asset-generation.test.ts,,fal media generations sanitizes provider errors and restricts output fetches without forwarding credentials,,True,passed,0.01167,,
+unit/API,tests/project/asset-generation.test.ts,,"fal media generations protects submission, validates reference kinds, and streams ready results",,True,passed,0.094651,,
+unit/API,tests/project/asset-library.test.ts,,universal asset references shares volume between an original video and its prepared timeline copy,,True,passed,0.001596,,
+unit/API,tests/project/asset-library.test.ts,,universal asset references warns about timeline image inputs and both arbitrary video inputs even without footage clips,,True,passed,0.000823,,
+unit/API,tests/project/asset-library.test.ts,,universal asset references retains dependencies used only by a submitted job or saved version,,True,passed,0.000378,,
+unit/API,tests/project/asset-library.test.ts,,universal asset references resolves Start and End independently and preserves submitted ranges,,True,passed,0.001431,,
+unit/API,tests/project/asset-library.test.ts,,"universal asset references round-trips folders, versions, and reference-only assets with remapped identities",,True,passed,0.054678,,
+unit/API,tests/project/asset-library.test.ts,,universal asset references restores deleted library metadata and folders through undo,,True,passed,0.000624,,
+unit/API,tests/project/asset-library.test.ts,,universal asset references groups a volume drag into one undo step and keeps mute as a separate edit,,True,passed,0.000528,,
+unit/API,tests/project/docking.test.ts,,moves player and timeline onto any side or tab without losing or duplicating panels,,True,passed,0.004481,,
+unit/API,tests/project/docking.test.ts,,supports a floating panel and rejects corrupted saved workspaces,,True,passed,0.000253,,
+unit/API,tests/project/history.test.ts,,project edit history groups audio slider edits separately from video and restores each independently,,True,passed,0.002773,,
+unit/API,tests/project/history.test.ts,,project edit history records crossfade length as a project edit and merges slider changes,,True,passed,0.000323,,
+unit/API,tests/project/history.test.ts,,"project edit history groups consecutive typing, round-trips it, and starts a separate group after undo",,True,passed,0.000487,,
+unit/API,tests/project/history.test.ts,,project edit history separates edits when focus changes or typing pauses,,True,passed,0.000344,,
+unit/API,tests/project/history.test.ts,,project edit history does not record generation updates or clear redo when a render completes,,True,passed,0.000181,,
+unit/API,tests/project/history.test.ts,,project edit history invalidates redo on a new edit and ignores identical edits,,True,passed,0.000314,,
+unit/API,tests/project/history.test.ts,,project edit history restores an entire removed call-response group as one entry,,True,passed,0.004011,,
+unit/API,tests/project/history.test.ts,,project edit history groups consecutive color slider changes for one button into one undo step,,True,passed,0.001361,,
+unit/API,tests/project/history.test.ts,,"project edit history records linked duration edits together, retains only its limit, and clears on project switch",,True,passed,0.00082,,
+unit/API,tests/project/history.test.ts,,project edit history records subtitle replacements,,True,passed,0.000209,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement passes LoRA guidance as separate context and validates its length,,True,passed,0.006279,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement uses the official guide for Nano Banana 2,,True,passed,0.000681,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement uses the official guide for FLUX.2 Pro,,True,passed,0.000354,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement uses the official guide for Seedream 4.5,,True,passed,0.000323,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement uses the official guide for Nano Banana Pro,,True,passed,0.000325,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement uses the official guide for FLUX.2 Max,,True,passed,0.000263,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement uses the official guide for Ideogram 3.0,,True,passed,0.000272,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement passes ordered image previews and cancels the actual provider request,,True,passed,0.000772,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement rejects unusable provider output,,True,passed,0.00036,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement rejects unusable provider output,,True,passed,0.000243,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement rejects unusable provider output,,True,passed,0.000318,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,model-specific image prompt enhancement sanitizes provider errors,,True,passed,0.000197,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,"model-specific image prompt enhancement returns actionable, sanitized errors for provider HTTP 401",,True,passed,0.020775,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,"model-specific image prompt enhancement returns actionable, sanitized errors for provider HTTP 403",,True,passed,0.003754,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,"model-specific image prompt enhancement returns actionable, sanitized errors for provider HTTP 429",,True,passed,0.001937,,
+unit/API,tests/project/image-prompt-enhancement.test.ts,,"model-specific image prompt enhancement protects the route and rejects unknown, non-image, incompatible and mismatched inputs before calling the provider",,True,passed,0.008232,,
+unit/API,tests/project/loras.test.ts,,"project LoRAs enforces one assignment per model on add, edit and archive validation",,True,passed,0.003106,,
+unit/API,tests/project/loras.test.ts,,"project LoRAs uses only the selected model and LoRA instructions, with custom and explicit empty overrides",,True,passed,0.000463,,
+unit/API,tests/project/loras.test.ts,,"project LoRAs validates strength and keeps legacy strength at one, including explicit zero",,True,passed,0.002702,,
+unit/API,tests/project/loras.test.ts,,"project LoRAs accepts imported model names and Comfy asset links, rejecting arbitrary fetch targets and traversal",,True,passed,0.000916,,
+unit/API,tests/project/loras.test.ts,,project LoRAs copies defaults for new clips and built-in templates while retaining overrides and submitted settings,,True,passed,0.003381,,
+unit/API,tests/project/loras.test.ts,,"project LoRAs resets a generation to the new model assignment when switching models, without altering submitted versions",,True,passed,0.000478,,
+unit/API,tests/project/loras.test.ts,,"project LoRAs round-trips assignments, overrides, submitted inputs and templates and keeps project edits undoable",,True,passed,0.045313,,
+unit/API,tests/project/persistence.test.ts,,"compares contents independent of property order, timestamps, progress, and render URLs",,True,passed,0.007955,,
+unit/API,tests/project/persistence.test.ts,,detects meaningful changes to seed,,True,passed,0.002157,,
+unit/API,tests/project/persistence.test.ts,,detects meaningful changes to turbo,,True,passed,0.002025,,
+unit/API,tests/project/persistence.test.ts,,detects meaningful changes to requestSeed,,True,passed,0.002145,,
+unit/API,tests/project/persistence.test.ts,,detects meaningful changes to requestId,,True,passed,0.001982,,
+unit/API,tests/project/persistence.test.ts,,detects meaningful changes to phase,,True,passed,0.00184,,
+unit/API,tests/project/persistence.test.ts,,detects meaningful changes to result,,True,passed,0.001861,,
+unit/API,tests/project/persistence.test.ts,,detects meaningful changes to analysis,,True,passed,0.002091,,
+unit/API,tests/project/persistence.test.ts,,detects meaningful changes to library,,True,passed,0.002416,,
+unit/API,tests/project/persistence.test.ts,,detects meaningful changes to storyFlow,,True,passed,0.001775,,
+unit/API,tests/project/persistence.test.ts,,skips unchanged browser writes and keeps the timestamp and clean state,,True,passed,0.003325,,
+unit/API,tests/project/persistence.test.ts,,skips duplicate queued writes but retries after a browser write fails,,True,passed,0.004637,,
+unit/API,tests/project/persistence.test.ts,,updates live progress without writing storage or marking a saved project dirty,,True,passed,0.005928,,
+unit/API,tests/project/persistence.test.ts,,"does not rewrite an unchanged file, and undo/redo track the saved content",,True,passed,0.002527,,
+unit/API,tests/project/persistence.test.ts,,always writes Save As and exports even when the project is unchanged,,True,passed,0.00207,,
+unit/API,tests/project/persistence.test.ts,,recognizes saved draft settings after undo normalizes optional fields,,True,passed,0.001665,,
+unit/API,tests/project/persistence.test.ts,,persists completed validation while treating media revalidation as unchanged file content,,True,passed,0.001234,,
+unit/API,tests/project/persistence.test.ts,,only marks contents saved after a successful write,,True,passed,0.002249,,
+unit/API,tests/project/persistence.test.ts,,only marks contents saved after a successful close,,True,passed,0.00211,,
+unit/API,tests/project/persistence.test.ts,,keeps edits made while the snapshot is being written dirty,,True,passed,0.053162,,
+unit/API,tests/project/persistence.test.ts,,resets comparisons when switching projects,,True,passed,0.00335,,
+unit/API,tests/project/persistence.test.ts,,keeps job recovery data in local storage without rewriting progress updates,,True,passed,0.001703,,
+unit/API,tests/voice-input/microphone.test.ts,,voice-activated microphone lifecycle arms on enable and produces no recording while silent or after a misfire,,True,passed,0.004976,,
+unit/API,tests/voice-input/microphone.test.ts,,voice-activated microphone lifecycle captures confirmed speech and releases the mic at the end of the utterance,,True,passed,0.006454,,
+unit/API,tests/voice-input/microphone.test.ts,,voice-activated microphone lifecycle finishes bounded answers automatically and supports a manual finish,,True,passed,0.047165,,
+unit/API,tests/voice-input/microphone.test.ts,,voice-activated microphone lifecycle stops a permission grant arriving after cancellation without starting detection,,True,passed,0.000498,,
+unit/API,tests/voice-input/microphone.test.ts,,voice-activated microphone lifecycle ignores late detection events and shows an actionable permission error,,True,passed,0.000928,,
+unit/API,tests/voice-input/microphone.test.ts,,voice-activated microphone lifecycle releases a cancelled model initialization and caps PCM output including pre-roll,,True,passed,0.054865,,
+unit/API,tests/voice-input/providers.test.ts,,voice provider adapters transcribes recorded speech then passes the answer and question to OpenAI,,True,passed,0.003137,,
+unit/API,tests/voice-input/providers.test.ts,,voice provider adapters does not generate an answer when OpenAI detects no speech,,True,passed,0.00218,,
+unit/API,tests/voice-input/providers.test.ts,,voice provider adapters passes audio directly to Gemini with structured output and cancellation,,True,passed,0.000905,,
+unit/API,tests/story-flow/behaviors.test.ts,,independent clip behaviors and named outputs conditional clips can loop=false independently of branching,,True,passed,0.005059,,
+unit/API,tests/story-flow/behaviors.test.ts,,independent clip behaviors and named outputs conditional clips can loop=true independently of branching,,True,passed,0.000383,,
+unit/API,tests/story-flow/behaviors.test.ts,,"independent clip behaviors and named outputs turning a behavior off retains conditions and wires, but disables choice playback",,True,passed,0.00069,,
+unit/API,tests/story-flow/behaviors.test.ts,,independent clip behaviors and named outputs a counted loop can branch early and follows its default condition when its count is exhausted,,True,passed,0.000328,,
+unit/API,tests/story-flow/behaviors.test.ts,,independent clip behaviors and named outputs unconnected conditions have their own outputs and reconnecting one preserves the other wire and its fade,,True,passed,0.005228,,
+unit/API,tests/story-flow/behaviors.test.ts,,"independent clip behaviors and named outputs templates preserve combined behaviors, condition identities and wire destinations across copies",,True,passed,0.001613,,
+unit/API,tests/story-flow/behaviors.test.ts,,independent clip behaviors and named outputs splitting keeps the behaviors and conditions on the outgoing half only,,True,passed,0.000584,,
+unit/API,tests/story-flow/behaviors.test.ts,,"independent clip behaviors and named outputs uses one existing default for no choice and unmatched input, without an extra output",,True,passed,0.000384,,
+unit/API,tests/story-flow/behaviors.test.ts,,independent clip behaviors and named outputs migrates a legacy self-repeat without adding a condition,,True,passed,0.00058,,
+unit/API,tests/story-flow/behaviors.test.ts,,independent clip behaviors and named outputs maps a legacy fallback destination onto an existing condition and retains wire settings,,True,passed,0.001237,,
+unit/API,tests/story-flow/behaviors.test.ts,,independent clip behaviors and named outputs merges duplicate legacy fallback and answer destinations without adding another output,,True,passed,0.000262,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches reports both missing endpoints and removes errors when references are disabled,,True,passed,0.002733,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches reports one actionable loop error instead of duplicating the end reference,,True,passed,0.000728,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches identifies ambiguous inputs and dangling connections without choosing footage,,True,passed,0.000337,,
+unit/API,tests/story-flow/dependencies.test.ts,,"connected reference switches distinguishes unfinished, generating and stale reference videos",,True,passed,0.00035,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches reports missing files for connected footage and every image sent to generation,,True,passed,0.000419,,
+unit/API,tests/story-flow/dependencies.test.ts,,"connected reference switches checks arbitrary video inputs independently, including invalid ranges",,True,passed,0.000291,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches supports simple clips from scratch with explicit reference types,,True,passed,0.000193,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches supports looped clips from scratch with explicit reference types,,True,passed,0.00016,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches supports conditional clips from scratch with explicit reference types,,True,passed,0.000182,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches reuses the incoming reference for a loop regardless of outgoing destinations or an old end range,,True,passed,0.000535,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches allows a prompt-only loop and keeps image-only loop provenance,,True,passed,0.000316,,
+unit/API,tests/story-flow/dependencies.test.ts,,"connected reference switches uses only enabled footage (input true, output true)",,True,passed,0.000149,,
+unit/API,tests/story-flow/dependencies.test.ts,,"connected reference switches uses only enabled footage (input true, output false)",,True,passed,0.000107,,
+unit/API,tests/story-flow/dependencies.test.ts,,"connected reference switches uses only enabled footage (input false, output true)",,True,passed,7.8e-05,,
+unit/API,tests/story-flow/dependencies.test.ts,,"connected reference switches uses only enabled footage (input false, output false)",,True,passed,0.000314,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches follows a rewired input and ignores the old reference ID,,True,passed,0.000236,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches does not silently pick one of several destinations or reference a self-loop,,True,passed,0.000155,,
+unit/API,tests/story-flow/dependencies.test.ts,,"connected reference switches retains submitted references when switches change, and reports edits",,True,passed,0.000485,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches keeps switches in captured and inserted templates,,True,passed,0.004845,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches archives optional input provenance and restores switches (output true),,True,passed,0.047713,,
+unit/API,tests/story-flow/dependencies.test.ts,,connected reference switches archives optional input provenance and restores switches (output false),,True,passed,0.010154,,
+unit/API,tests/story-flow/groups.test.ts,,clip groups and reusable templates fits automatic frames to clip bodies at every zoom without reserving condition labels or distant wire bends,,True,passed,0.00185,,
+unit/API,tests/story-flow/groups.test.ts,,"clip groups and reusable templates persists empty drawn frames through regrouping, clip deletion, layout and archives",,True,passed,0.048285,,
+unit/API,tests/story-flow/groups.test.ts,,clip groups and reusable templates moves explicit frames with members and duplicates their bounds without copying unrelated empty groups,,True,passed,0.001065,,
+unit/API,tests/story-flow/groups.test.ts,,"clip groups and reusable templates adds and removes membership without changing clips or connections, retaining a frame after the last member leaves",,True,passed,0.000509,,
+unit/API,tests/story-flow/groups.test.ts,,"clip groups and reusable templates creates a named group without changing clip timing, layout or connections",,True,passed,0.000383,,
+unit/API,tests/story-flow/groups.test.ts,,clip groups and reusable templates moves members and internal bends together while retaining external routing points,,True,passed,0.000174,,
+unit/API,tests/story-flow/groups.test.ts,,clip groups and reusable templates regroups explicitly selected members without moving or taking unrelated clips,,True,passed,0.000258,,
+unit/API,tests/story-flow/groups.test.ts,,clip groups and reusable templates keeps both halves of a split in the same group and removes empty groups on clip deletion,,True,passed,0.000513,,
+unit/API,tests/story-flow/groups.test.ts,,clip groups and reusable templates duplicates complete groups with new identities and leaves partial selections ungrouped,,True,passed,0.000202,,
+unit/API,tests/story-flow/groups.test.ts,,clip groups and reusable templates instantiates every template as an independent persistent group at the drop point,,True,passed,0.001386,,
+unit/API,tests/story-flow/groups.test.ts,,clip groups and reusable templates archives groups and templates containing footage even after the original source node is removed,,True,passed,0.010128,,
+unit/API,tests/story-flow/groups.test.ts,,"clip groups and reusable templates rejects duplicate membership, duplicate group identities, and missing members",,True,passed,0.000709,,
+unit/API,tests/story-flow/insert-connection.test.ts,,"insert an existing video into a transition keeps the node identity, group, settings link, and incoming branch metadata",,True,passed,0.004801,,
+unit/API,tests/story-flow/insert-connection.test.ts,,insert an existing video into a transition redirects the existing next output and retains unrelated incoming connections,,True,passed,0.000234,,
+unit/API,tests/story-flow/insert-connection.test.ts,,insert an existing video into a transition preserves conditional branches and connects a new branch to the destination,,True,passed,0.00032,,
+unit/API,tests/story-flow/insert-connection.test.ts,,insert an existing video into a transition reuses an existing destination connection,,True,passed,0.000158,,
+unit/API,tests/story-flow/insert-connection.test.ts,,"insert an existing video into a transition ignores source clips, missing targets, and connections already attached to the dragged clip",,True,passed,0.000123,,
+unit/API,tests/story-flow/join-clips.test.ts,,"joining clips uses graph order and spans gaps or overlaps (0,24 → 24,48)",,True,passed,0.005446,,
+unit/API,tests/story-flow/join-clips.test.ts,,"joining clips uses graph order and spans gaps or overlaps (0,12 → 36,60)",,True,passed,0.000395,,
+unit/API,tests/story-flow/join-clips.test.ts,,"joining clips uses graph order and spans gaps or overlaps (12,48 → 24,60)",,True,passed,0.000301,,
+unit/API,tests/story-flow/join-clips.test.ts,,"joining clips uses graph order and spans gaps or overlaps (24,60 → 0,48)",,True,passed,0.000254,,
+unit/API,tests/story-flow/join-clips.test.ts,,joining clips joins an arbitrary-length chain even when node and selection order are shuffled,,True,passed,0.000841,,
+unit/API,tests/story-flow/join-clips.test.ts,,"joining clips preserves outside wiring, fades, references, entry and unique group membership",,True,passed,0.000769,,
+unit/API,tests/story-flow/join-clips.test.ts,,joining clips restores a split generated clip without replacing its render or generation settings,,True,passed,0.00048,,
+unit/API,tests/story-flow/join-clips.test.ts,,joining clips matches retained full renders to imported ranges and supports joins beyond a generated body,,True,passed,0.00034,,
+unit/API,tests/story-flow/join-clips.test.ts,,joining clips recognizes two working copies of the same original source,,True,passed,0.000204,,
+unit/API,tests/story-flow/join-clips.test.ts,,joining clips preserves behaviors and conditional exits from the last clip,,True,passed,0.000662,,
+unit/API,tests/story-flow/join-clips.test.ts,,"joining clips reports insufficient selection, disconnected clips, cycles, and branches without changes",,True,passed,0.000831,,
+unit/API,tests/story-flow/join-clips.test.ts,,joining clips rejects connections into or out of the middle and internal interactive behavior,,True,passed,0.000806,,
+unit/API,tests/story-flow/join-clips.test.ts,,"joining clips explains missing, running and different media",,True,passed,0.000567,,
+unit/API,tests/story-flow/join-clips.test.ts,,joining clips rejects reversed adjacent ranges and a nonpositive combined range,,True,passed,0.000206,,
+unit/API,tests/story-flow/join-clips.test.ts,,"joining clips reports every independent media, graph, behavior, and timing problem together",,True,passed,0.000136,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout brings an outlier at (9000, 90) close without displacing nearby clips",,True,passed,0.009172,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout brings an outlier at (-9000, 90) close without displacing nearby clips",,True,passed,0.000608,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout brings an outlier at (40, 9000) close without displacing nearby clips",,True,passed,0.000464,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout brings an outlier at (40, -9000) close without displacing nearby clips",,True,passed,0.000337,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout brings an outlier at (9000, 9000) close without displacing nearby clips",,True,passed,0.000332,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout brings an outlier at (-9000, -9000) close without displacing nearby clips",,True,passed,0.001084,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout keeps short destinations compact beside a tall conditional (grouped false),,True,passed,0.000614,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout keeps short destinations compact beside a tall conditional (grouped true),,True,passed,0.000389,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout adds height only between the neighboring clips that need it,,True,passed,0.000304,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout reserves the full height of conditional sockets, even without connected outputs, at 180px",,True,passed,0.001678,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout reserves the full height of conditional sockets, even without connected outputs, at 480px",,True,passed,0.000914,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout clears conditional outputs and brings distant loose clips closer,,True,passed,0.000436,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout moves nearby loose clips with the entry and pulls in distant outliers at 180px,,True,passed,0.000212,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout moves nearby loose clips with the entry and pulls in distant outliers at 280px,,True,passed,0.001071,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout moves nearby loose clips with the entry and pulls in distant outliers at 480px,,True,passed,0.00034,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout brings nearby loose clips along when a distant path is laid out at 180px,,True,passed,0.000668,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout brings nearby loose clips along when a distant path is laid out at 280px,,True,passed,0.00027,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout brings nearby loose clips along when a distant path is laid out at 480px,,True,passed,0.000238,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout follows separate nearby paths using their own movement,,True,passed,0.000405,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout measures proximity to the visible end of long clips,,True,passed,0.000157,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout resolves overlaps introduced by preserving relative placement,,True,passed,0.000189,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout preserves nearby loose clips and gaps while bringing distant clips closer at 180px,,True,passed,0.000414,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout preserves nearby loose clips and gaps while bringing distant clips closer at 280px,,True,passed,0.000352,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout preserves nearby loose clips and gaps while bringing distant clips closer at 480px,,True,passed,0.000393,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout moves only a colliding nearby clip to the closest clear position,,True,passed,0.000266,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout reserves unaffected neighbors before resolving collisions, without cascading moves",,True,passed,0.000218,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout resolves several colliding clips locally without overlapping each other,,True,passed,0.000286,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout detects collisions with reference handles on a connected clip,,True,passed,0.000435,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout includes a loose clip’s reference handles when finding a clear position,,True,passed,0.000214,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout keeps the current vertical order of parallel branches,,True,passed,0.00039,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout translates a disconnected group and its frame together at 180px,,True,passed,0.000252,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout translates a disconnected group and its frame together at 280px,,True,passed,0.000237,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout translates a disconnected group and its frame together at 480px,,True,passed,0.000143,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout clears overlaps between loose clips around the entry,,True,passed,0.001709,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout brings a distant group member closer without changing group membership,,True,passed,0.0006,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout keeps branches, merging inputs, cycles, isolated clips and grouped members separate",,True,passed,0.002622,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout stacks conditional destinations in one column at 180px, even inside a template",,True,passed,0.001106,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout stacks conditional destinations in one column at 280px, even inside a template",,True,passed,0.000803,,
+unit/API,tests/story-flow/layout.test.ts,,"automatic clip layout stacks conditional destinations in one column at 480px, even inside a template",,True,passed,0.000734,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout includes generated reference handles and removes old bends without changing clip or fade data,,True,passed,0.000256,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout handles empty projects and self-loops,,True,passed,0.000153,,
+unit/API,tests/story-flow/layout.test.ts,,automatic clip layout moves self-loop bends with a displaced loose clip,,True,passed,0.000217,,
+unit/API,tests/story-flow/library.test.ts,,project library removes legacy subtitle entries without changing the project subtitle track,,True,passed,0.002473,,
+unit/API,tests/story-flow/library.test.ts,,project library retains unused footage and uses whole media bounds rather than the trim of one instance,,True,passed,0.000349,,
+unit/API,tests/story-flow/library.test.ts,,project library retains generated bodies independently of deleted jobs and keeps their reusable media range,,True,passed,0.000659,,
+unit/API,tests/story-flow/library.test.ts,,project library packages and remaps an unused library asset and its original,,True,passed,0.042282,,
+unit/API,tests/story-flow/library.test.ts,,project library undo and redo restore the imported library catalog with the document,,True,passed,0.000539,,
+unit/API,tests/story-flow/model.test.ts,,"story clip graph keeps independent loop fades through templates, validation and project archives",,True,passed,0.046727,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph caps short loop overlaps and exits exactly after the requested number of visits,,True,passed,0.001226,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph splits source ranges without losing frames and keeps the old outgoing route on the second part,,True,passed,0.000371,,
+unit/API,tests/story-flow/model.test.ts,,"story clip graph uses actual rendered duration, and keeps planned durations for drafts",,True,passed,9.7e-05,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph splits generated media without copying bytes and preserves branch routing on the second half,,True,passed,0.003187,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph migrates regular pins into clip sequences and includes unfinished drafts,,True,passed,0.00068,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph migrates a call-response section to editable grouped clips while preserving routing,,True,passed,0.001481,,
+unit/API,tests/story-flow/model.test.ts,,"story clip graph restores two legacy interaction groups once, without recreating removed or edited groups",,True,passed,0.001239,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph repairs the half-length legacy graph migration and leaves edited connection fades intact,,True,passed,0.000368,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph reconnects a simple clip by replacing its existing route,,True,passed,0.000281,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph removes incident connections and clears dangling generation references,,True,passed,0.000284,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph starts the built-in scene template without source footage,,True,passed,0.000533,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph starts the built-in loop template without source footage,,True,passed,0.000184,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph starts the built-in question template without source footage,,True,passed,0.000332,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph inserts templates with unique IDs and reconnects every terminal response,,True,passed,0.000844,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph places a template entry exactly at a drop without moving existing clips or unrelated wires,,True,passed,0.000841,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph captures selected videos as reusable settings without source assets or rendered media,,True,passed,0.0005,,
+unit/API,tests/story-flow/model.test.ts,,"story clip graph plays conditional routing at the clip boundary, repeats when enabled, and follows the default otherwise",,True,passed,0.001468,,
+unit/API,tests/story-flow/model.test.ts,,"story clip graph loops exactly N cycles, or waits for the manual Continue action",,True,passed,0.000809,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph stores independent fades on connections and keeps generated entry fades before the cut,,True,passed,0.000527,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph ignores obsolete reference selections and resolves cycles through saved footage,,True,passed,0.000405,,
+unit/API,tests/story-flow/model.test.ts,,"story clip graph generation reads the connected upstream clip, and bridge generation needs its downstream clip",,True,passed,0.000211,,
+unit/API,tests/story-flow/model.test.ts,,"story clip graph validates imported graph endpoints, finite coordinates and duplicate IDs",,True,passed,0.000443,,
+unit/API,tests/story-flow/model.test.ts,,"story clip graph preserves graphs, templates and fades through archives while remapping media IDs",,True,passed,0.010521,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph records a template insertion as one undoable document edit,,True,passed,0.000909,,
+unit/API,tests/story-flow/model.test.ts,,story clip graph archives every imported source and its retained original with independent asset remapping,,True,passed,0.008141,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades keeps video and audio edits independent of each other and of automatic reference lengths,,True,passed,0.0051,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades retains legacy shared defaults and independent overrides through migration and template saving,,True,passed,0.006595,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades preserves independent outgoing fades for loop exits and cuts on internal splits,,True,passed,0.000357,,
+unit/API,tests/story-flow/reference-fades.test.ts,,"reference-based video fades defaults new attachments to 75% of each enabled reference, bounded by the neighboring clip",,True,passed,0.000147,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades uses actual saved reference handles for playback and rounds to whole frames,,True,passed,0.000226,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades uses retained full-video handles and keeps loop repeats seamless,,True,passed,0.000177,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades preserves the outer fades when cutting generated footage and uses a cut inside its body,,True,passed,0.000147,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades prefers the next generated clip’s start reference and otherwise uses the previous end reference,,True,passed,0.00012,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades retains explicit fade edits and cuts when settings change or an existing connection is redirected,,True,passed,0.000151,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades leaves source-to-source connections and existing project defaults unchanged,,True,passed,0.000239,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades preserves automatic fades through saving and migration without freezing draft durations,,True,passed,0.000998,,
+unit/API,tests/story-flow/reference-fades.test.ts,,reference-based video fades defaults template attachment boundaries while retaining saved internal fade edits,,True,passed,0.005626,,
+unit/API,tests/story-flow/reference-highlights.test.ts,,selected generation reference highlights highlights only the requested portions across multiple videos and still images,,True,passed,0.005722,,
+unit/API,tests/story-flow/reference-highlights.test.ts,,"selected generation reference highlights uses saved timings and provenance after settings or connections change, including regeneration",,True,passed,0.000515,,
+unit/API,tests/story-flow/reference-highlights.test.ts,,selected generation reference highlights keeps the submitted windows while the first generation is pending,,True,passed,0.000287,,
+unit/API,tests/story-flow/reference-highlights.test.ts,,selected generation reference highlights marks only the held final frame as a loop ending and omits draft placeholder media,,True,passed,0.000418,,
+unit/API,tests/story-flow/reference-highlights.test.ts,,selected generation reference highlights matches arbitrary assets to visible ranges without highlighting unrelated copies of a connected clip,,True,passed,0.00035,,
+unit/API,tests/story-flow/reference-highlights.test.ts,,selected generation reference highlights projects references into full generated media handles and translates playable loop coordinates,,True,passed,0.000304,,
+unit/API,tests/story-flow/reference-highlights.test.ts,,selected generation reference highlights recovers portable saved references through aliases without requiring current connections,,True,passed,0.000208,,
+unit/API,tests/story-flow/reference-highlights.test.ts,,selected generation reference highlights does not invent provenance for an older completed render from the current wires,,True,passed,0.00014,,
+unit/API,tests/story-flow/reference-sequences.test.ts,,reference sequences and still clips fills both windows across connected clips and crops only the outside boundaries,,True,passed,0.003918,,
+unit/API,tests/story-flow/reference-sequences.test.ts,,reference sequences and still clips checks every contributing asset and ignores clips outside the requested window,,True,passed,0.000639,,
+unit/API,tests/story-flow/reference-sequences.test.ts,,reference sequences and still clips stops at the available boundary and never repeats a cycle to fill footage,,True,passed,0.000266,,
+unit/API,tests/story-flow/reference-sequences.test.ts,,reference sequences and still clips reports an ambiguous continuation only when the requested window reaches it,,True,passed,0.000232,,
+unit/API,tests/story-flow/reference-sequences.test.ts,,reference sequences and still clips marks a render stale when an earlier contributing clip changes,,True,passed,0.000275,,
+unit/API,tests/story-flow/reference-sequences.test.ts,,reference sequences and still clips retains explicit sequence order and reports edited order as stale,,True,passed,0.000291,,
+unit/API,tests/story-flow/reference-sequences.test.ts,,"reference sequences and still clips extends, splits and plays an image for its chosen frame count without a media duration limit",,True,passed,0.000371,,
+unit/API,tests/story-flow/reference-sequences.test.ts,,"reference sequences and still clips round-trips images, sequences, submitted provenance with remapped asset identities",,True,passed,0.054681,,
+unit/API,tests/story-flow/references.test.ts,,saved reference matching and timeline sections recognizes that an image-only loop has no opening footage reference,,True,passed,0.010668,,
+unit/API,tests/story-flow/references.test.ts,,"saved reference matching and timeline sections compares saved assets and cut frames, independently of the next generation settings",,True,passed,0.000492,,
+unit/API,tests/story-flow/references.test.ts,,saved reference matching and timeline sections keeps original loop references valid and catches changed loop endings,,True,passed,0.001688,,
+unit/API,tests/story-flow/references.test.ts,,saved reference matching and timeline sections shows saved reference lengths without coloring trimmed generated footage as reference,,True,passed,0.000415,,
+unit/API,tests/story-flow/references.test.ts,,saved reference matching and timeline sections does not flag a continuous split through a generated body as a reference mismatch,,True,passed,0.000567,,
+unit/API,tests/story-flow/transition-regions.test.ts,,"fades imported footage with no linked references, with separate video and audio regions on both clips",,True,passed,0.006936,,
+unit/API,tests/story-flow/transition-regions.test.ts,,"does not change fade timing when reference identities, frame ranges or modes differ",,True,passed,0.000638,,
+unit/API,tests/story-flow/transition-regions.test.ts,,uses a centered dissolve when no extra footage is available and only marks visible portions,,True,passed,0.00039,,
+unit/API,tests/story-flow/transition-regions.test.ts,,removes only the disabled channel and does not draw transitions on drafts or repeat edges,,True,passed,0.000424,,
+unit/API,tests/story-flow/trimming.test.ts,,"clip trim handles snaps to whole source frames, anchors the opposite edge, and leaves the original media intact",,True,passed,0.001285,,
+unit/API,tests/story-flow/trimming.test.ts,,clip trim handles clamps both ends to available media and retains at least one frame,,True,passed,0.000188,,
+unit/API,tests/story-flow/trimming.test.ts,,"clip trim handles trims generated bodies, keeps their source offsets, and can restore the full range",,True,passed,0.000861,,
+unit/API,tests/story-flow/trimming.test.ts,,clip trim handles uses the retained full render timeline for loops and the planned timeline for drafts,,True,passed,0.00017,,
+unit/API,tests/story-flow/viewport.test.ts,,fits negative coordinates and distant rows inside the viewport with fixed clip height,,True,passed,0.001209,,
+unit/API,tests/story-flow/viewport.test.ts,,keeps pointer anchoring and world coordinates stable when zoomed and panned far from zero,,True,passed,0.000199,,
+unit/API,tests/story-flow/viewport.test.ts,,restores readable rows after a compressed view is reused for a new layout,,True,passed,0.000119,,
+unit/API,tests/story-flow/viewport.test.ts,,"keeps fixed-size conditional labels apart, including labels that reach another column when zoomed out",,True,passed,9e-05,,
+browser,tests/browser/asset-volume.spec.ts,18,saved loops use volume without a second audio toggle at 1440px,,True,passed,1.436,8.474,1
+browser,tests/browser/asset-volume.spec.ts,18,saved loops use volume without a second audio toggle at 390px,,True,passed,1.072,4.96,1
+browser,tests/browser/asset-volume.spec.ts,54,asset volume edits playback and downloads while base previews and layout stay unchanged at 1440px,,True,passed,2.426,13.365,1
+browser,tests/browser/asset-volume.spec.ts,54,asset volume edits playback and downloads while base previews and layout stay unchanged at 390px,,True,passed,1.536,6.439,1
+browser,tests/browser/audio.spec.ts,3,asset exports apply volume to audio while preserving video packets and original files,,True,passed,1.231,1.555,1
+browser,tests/browser/audio.spec.ts,39,timeline exports apply each asset volume through audio crossfades,,True,passed,5.216,2.663,1
+browser,tests/browser/audio.spec.ts,127,"composition exports and preview renders preserve audio across mixed rates, channels and silent clips",,True,passed,2.759,4.883,1
+browser,tests/browser/audio.spec.ts,182,call-response generation references bridge 32 kHz audio into source audio or a silent held frame,,True,passed,1.661,2.123,1
+browser,tests/browser/audio.spec.ts,222,Idle uses audio from the full render while keeping the finished loop video,,True,passed,1.418,1.434,1
+browser,tests/browser/audio.spec.ts,255,"Idle soundtrack loops on the playback clock and follows pause, mute and exit",,True,passed,0.987,1.371,1
+browser,tests/browser/audio.spec.ts,298,"canvas playback schedules audible mixed-rate audio, silence and seeks on its shared clock",,True,passed,8.234,8.29,1
+browser,tests/browser/auto-layout.spec.ts,13,"Auto layout brings distant clips closer only on request, with undo at 1440px",,True,passed,1.322,5.339,1
+browser,tests/browser/auto-layout.spec.ts,13,"Auto layout brings distant clips closer only on request, with undo at 390px",,True,passed,1.307,4.951,1
+browser,tests/browser/auto-layout.spec.ts,45,auto layout clears compressed conditional rows and their output labels at 1440px without Fit,,True,passed,1.277,6.016,1
+browser,tests/browser/auto-layout.spec.ts,45,auto layout clears compressed conditional rows and their output labels at 390px without Fit,,True,passed,1.292,4.782,1
+browser,tests/browser/auto-layout.spec.ts,74,conditional outputs stack vertically after cleanup on a short 1440px timeline,,True,passed,1.085,5.066,1
+browser,tests/browser/auto-layout.spec.ts,74,conditional outputs stack vertically after cleanup on a short 390px timeline,,True,passed,1.068,4.438,1
+browser,tests/browser/auto-layout.spec.ts,93,cleanup separates disconnected clips at 1440px and survives Fit all,,True,passed,1.487,7.306,1
+browser,tests/browser/auto-layout.spec.ts,93,cleanup separates mixed routes and groups at 1440px and survives Fit all,,True,passed,1.45,7.886,1
+browser,tests/browser/auto-layout.spec.ts,93,cleanup separates disconnected clips at 390px and survives Fit all,,True,passed,1.513,6.036,1
+browser,tests/browser/auto-layout.spec.ts,93,cleanup separates mixed routes and groups at 390px and survives Fit all,,True,passed,1.516,6.045,1
+browser,tests/browser/behaviors.spec.ts,3,independent behaviors expose named condition sockets with separate draggable wires,,True,passed,2.306,10.413,1
+browser,tests/browser/call-response-draft.spec.ts,3,template clips keep independent audio/video masks and reference choices,,True,passed,2.672,13.849,1
+browser,tests/browser/call-response-enhancement.spec.ts,3,each template prompt enhances independently without submitting a generation,,True,passed,1.86,9.276,1
+browser,tests/browser/call-response.spec.ts,4,template durations and conditions are independent and persist at 1440px,,True,passed,2.339,11.141,1
+browser,tests/browser/call-response.spec.ts,4,template durations and conditions are independent and persist at 390px,,True,passed,2.28,10.029,1
+browser,tests/browser/call-response.spec.ts,26,removing a template group is undoable and preserves its clips,,True,passed,1.015,5.004,1
+browser,tests/browser/call-response.spec.ts,36,subtitle import can be undone and redone in the graph player,,True,passed,0.891,3.77,1
+browser,tests/browser/clip-loading.spec.ts,21,clip thumbnails and preview show loading without shifting at 1440px,,True,passed,0.675,2.585,1
+browser,tests/browser/clip-loading.spec.ts,21,clip thumbnails and preview show loading without shifting at 390px,,True,passed,0.719,1.797,1
+browser,tests/browser/clip-loading.spec.ts,54,replacing a loading clip ignores its late result and generation keeps the existing filmstrip,,True,passed,0.674,2.055,1
+browser,tests/browser/clip-loading.spec.ts,78,zoom stretches the existing filmstrip without loading more frames,,True,passed,0.639,2.137,1
+browser,tests/browser/clip-loading.spec.ts,95,splitting a clip reuses its video asset thumbnails without showing a new loading state,,True,passed,0.628,1.964,1
+browser,tests/browser/clip-loading.spec.ts,107,a generated clip waits for its local URL without caching a failed preview at 1440px,,True,passed,0.601,1.945,1
+browser,tests/browser/clip-loading.spec.ts,107,a generated clip waits for its local URL without caching a failed preview at 390px,,True,passed,0.613,1.621,1
+browser,tests/browser/clip-metadata.spec.ts,18,dropping a portable video restores an interstitial and keeps loading layout stable at 1440px (24 fps conversion: true),,True,passed,2.867,9.979,1
+browser,tests/browser/clip-metadata.spec.ts,18,dropping a portable video restores an interstitial and keeps loading layout stable at 390px (24 fps conversion: false),,True,passed,2.107,6.382,1
+browser,tests/browser/clip-metadata.spec.ts,62,imported scene references stay disconnected and can be selected from the inspector at 1440px,,True,passed,3.354,15.92,1
+browser,tests/browser/clip-metadata.spec.ts,62,imported scene references stay disconnected and can be selected from the inspector at 390px,,True,passed,3.344,13.995,1
+browser,tests/browser/clip-metadata.spec.ts,117,converting a generated scene creates a separate copy with its metadata and reference ranges,,True,passed,1.816,8.548,1
+browser,tests/browser/clip-metadata.spec.ts,142,opening a portable video directly restores it; ordinary and invalid metadata files remain sources,,True,passed,0.841,3.983,1
+browser,tests/browser/clip-metadata.spec.ts,154,a direct Comfy download restores reference identities and the generated section from its saved workflow,,True,passed,0.732,2.431,1
+browser,tests/browser/clip-metadata.spec.ts,170,"metadata survives packet copying, loop extraction, and a volume-adjusted video download",,True,passed,1.471,4.636,1
+browser,tests/browser/clip-trimming.spec.ts,22,"clip handles trim nondestructively, undo, cancel, and preserve time preferences at 1440px",,True,passed,2.757,12.404,1
+browser,tests/browser/clip-trimming.spec.ts,22,"clip handles trim nondestructively, undo, cancel, and preserve time preferences at 390px",,True,passed,2.886,10.43,1
+browser,tests/browser/clip-trimming.spec.ts,59,generated clips trim the playable body and display the full render’s internal time,,True,passed,2.336,9.958,1
+browser,tests/browser/comfy.spec.ts,7,"mocked Comfy generation, status recovery, and regeneration with detailed progress at 1440px",generation;slow,False,passed,14.74,,
+browser,tests/browser/comfy.spec.ts,7,"mocked Comfy generation, status recovery, and regeneration with aggregate-only progress at 1440px",generation;slow,False,passed,14.877,,
+browser,tests/browser/comfy.spec.ts,7,"mocked Comfy generation, status recovery, and regeneration with detailed progress at 390px",generation;slow,False,passed,14.748,,
+browser,tests/browser/comfy.spec.ts,7,"mocked Comfy generation, status recovery, and regeneration with aggregate-only progress at 390px",generation;slow,False,passed,14.808,,
+browser,tests/browser/connections.spec.ts,16,"sockets detach, connect backwards, reconnect, and cancel while retaining the connection fade",,True,passed,1.732,7.986,1
+browser,tests/browser/connections.spec.ts,32,video and audio fades stay independent and survive saving at 1440px,,True,passed,2.204,9.703,1
+browser,tests/browser/connections.spec.ts,32,video and audio fades stay independent and survive saving at 390px,,True,passed,2.148,8.088,1
+browser,tests/browser/connections.spec.ts,63,"reroute points reshape wires, cancel cleanly, and support keyboard and context-menu editing",,True,passed,1.476,6.412,1
+browser,tests/browser/connections.spec.ts,77,the fade icon opens a hidden or collapsed inspector without adding clips or a bounding outline,,True,passed,1.285,5.926,1
+browser,tests/browser/content-errors.spec.ts,22,missing Start/End content has clickable errors without moving controls at 1440px,,True,passed,1.766,8.429,1
+browser,tests/browser/content-errors.spec.ts,22,missing Start/End content has clickable errors without moving controls at 390px,,True,passed,1.778,7.415,1
+browser,tests/browser/content-errors.spec.ts,56,"missing video files surface on the clip and reference, block generation, and clear after restoration",,True,passed,1.491,6.21,1
+browser,tests/browser/crossfades.spec.ts,3,"crossfades blend video and mixed-rate audio in exports, previews and partial seeks",,True,passed,2.705,6.179,1
+browser,tests/browser/drag-placement.spec.ts,15,"library dragging previews the exact zoomed position, preserves the view, and cancels cleanly",,True,passed,1.385,5.349,1
+browser,tests/browser/drag-placement.spec.ts,49,wire drops attach at the pointer and template drops preserve existing positions and routing,,True,passed,1.346,6.041,1
+browser,tests/browser/drag-placement.spec.ts,71,template drops replace a highlighted transition and reconnect every branch at 1440px,,True,passed,1.253,6.255,1
+browser,tests/browser/drag-placement.spec.ts,71,template drops replace a highlighted transition and reconnect every branch at 390px,,True,passed,1.393,5.165,1
+browser,tests/browser/drag-placement.spec.ts,104,cancelled transition replacements and media drops leave the original connection intact,,True,passed,1.105,5.012,1
+browser,tests/browser/drag-placement.spec.ts,115,narrow library drops and saved templates use the same drag placement,,True,passed,1.4,4.759,1
+browser,tests/browser/draw-groups.spec.ts,10,"draw and cut tools complete one action, cancel cleanly, and keep the layout stable at 1440px",,True,passed,1.634,7.051,1
+browser,tests/browser/draw-groups.spec.ts,10,"draw and cut tools complete one action, cancel cleanly, and keep the layout stable at 390px",,True,passed,1.605,5.925,1
+browser,tests/browser/draw-groups.spec.ts,35,"drawn frames move, resize, accept selected clips, retain empty membership and survive reload",,True,passed,2.638,10.899,1
+browser,tests/browser/draw-groups.spec.ts,63,drawing encloses complete clips and right-click groups the selection without changing connections,,True,passed,1.483,6.384,1
+browser,tests/browser/example.spec.ts,50,opens the saved sample project from the sample projects section,,True,passed,0.901,3.895,1
+browser,tests/browser/example.spec.ts,61,starts on the chooser and opens the example only when requested,,True,passed,2.435,10.737,1
+browser,tests/browser/example.spec.ts,92,keeps the sample project available when no sample video URL exists,,True,passed,0.828,3.333,1
+browser,tests/browser/example.spec.ts,109,failed sample project downloads and corrupt archives leave the chooser ready for retry,,True,passed,0.927,3.379,1
+browser,tests/browser/example.spec.ts,129,cancels a sample project download and leaves the chooser ready for retry,,True,passed,1.694,3.924,1
+browser,tests/browser/flow-buffering.spec.ts,63,loop picture and sound fade independently while retaining the incoming decoder across repeats,,True,passed,3.071,3.913,1
+browser,tests/browser/flow-buffering.spec.ts,121,independent story fades blend pixels and audio gains on their own timelines,,True,passed,2.059,2.778,1
+browser,tests/browser/flow-buffering.spec.ts,167,Call Response crossfades blend GPU video and audio gains and toggle without moving the playhead,,True,passed,6.567,9.144,1
+browser,tests/browser/flow-buffering.spec.ts,254,"framing changes preserve the canvas playhead, speed and pending response",,True,passed,2.237,3.053,1
+browser,tests/browser/flow-buffering.spec.ts,278,canvas playback works without MediaSource and returns to the source frames,,True,passed,1.597,2.22,1
+browser,tests/browser/flow-buffering.spec.ts,293,idle loops and branches reuse generated media without encoding the source,,True,passed,7.94,8.231,1
+browser,tests/browser/flow-buffering.spec.ts,312,Idle at volume 0 stays buffered across repeated loop boundaries,,True,passed,4.175,4.647,1
+browser,tests/browser/flow-buffering.spec.ts,312,Idle at volume 1 stays buffered across repeated loop boundaries,,True,passed,4.221,4.675,1
+browser,tests/browser/flow-buffering.spec.ts,348,"retrying a response, rapid seeking and source subtitles stay tied to the shared audio clock",,True,passed,6.615,10.017,2
+browser,tests/browser/frame-capture.spec.ts,43,capture uses the trimmed playhead frame and keeps controls stable at 1440px,,True,passed,2.761,15.919,2
+browser,tests/browser/frame-capture.spec.ts,43,capture uses the trimmed playhead frame and keeps controls stable at 390px,,True,passed,1.599,6.901,2
+browser,tests/browser/frame-capture.spec.ts,92,generated video capture uses the playable body and recovers without layout shifts at 1440px,,True,passed,1.555,6.615,2
+browser,tests/browser/frame-capture.spec.ts,92,generated video capture uses the playable body and recovers without layout shifts at 390px,,True,passed,1.521,6.179,2
+browser,tests/browser/frame-capture.spec.ts,116,"video context menu supports keyboard dismissal, fullscreen and read-only preview",,True,passed,1.861,7.369,2
+browser,tests/browser/frame-rate.spec.ts,8,plays a 25 fps source natively without encoding and reuses it after reload,,True,passed,2.254,8.475,2
+browser,tests/browser/frame-rate.spec.ts,49,converts only a short generation reference from a native 25 fps source,,True,passed,0.896,3.397,2
+browser,tests/browser/frame-rate.spec.ts,72,cancelling a fallback conversion preserves the active project and leaves no partial assets,,True,passed,0.854,3.51,2
+browser,tests/browser/frame-rate.spec.ts,109,normalizes variable frame spacing even when its average is 24 fps,,True,passed,0.69,1.935,2
+browser,tests/browser/frame-rate.spec.ts,137,opens a saved 25 fps source without moving its drafts,,True,passed,1.578,6.215,2
+browser,tests/browser/frame-rate.spec.ts,171,prepares a large source at the configured height limit while preserving aspect ratio and the 24 fps clock,,True,passed,1.574,16.053,2
+browser,tests/browser/from-scratch.spec.ts,4,"create from scratch: loop false, conditional false, 1440px",,True,passed,4.144,8.251,2
+browser,tests/browser/from-scratch.spec.ts,4,"create from scratch: loop false, conditional true, 1440px",,True,passed,4.163,8.352,2
+browser,tests/browser/from-scratch.spec.ts,4,"create from scratch: loop true, conditional false, 1440px",,True,passed,4.525,23.666,2
+browser,tests/browser/from-scratch.spec.ts,4,"create from scratch: loop true, conditional true, 1440px",,True,passed,5.486,28.419,2
+browser,tests/browser/from-scratch.spec.ts,4,"create from scratch: loop false, conditional false, 390px",,True,passed,4.126,7.145,2
+browser,tests/browser/from-scratch.spec.ts,4,"create from scratch: loop false, conditional true, 390px",,True,passed,4.136,7.588,2
+browser,tests/browser/from-scratch.spec.ts,4,"create from scratch: loop true, conditional false, 390px",,True,passed,4.558,9.92,2
+browser,tests/browser/from-scratch.spec.ts,4,"create from scratch: loop true, conditional true, 390px",,True,passed,5.518,14.428,2
+browser,tests/browser/fullscreen.spec.ts,5,"fullscreen timeline can be hidden, restored and remembered without losing editing state",,True,passed,2.272,9.612,2
+browser,tests/browser/fullscreen.spec.ts,30,fullscreen controls follow mouse activity and remain available during interaction,,True,passed,15.477,19.497,2
+browser,tests/browser/fullscreen.spec.ts,70,fullscreen timeline controls remain reachable on narrow screens,,True,passed,1.51,6.577,2
+browser,tests/browser/generation-framing.spec.ts,3,generation uploads keep the same center crop when original and generated references are swapped,,True,passed,2.704,67.987,2
+browser,tests/browser/generation-quality.spec.ts,3,call-response references and finished Idle retain the generated clip resolution,slow,False,passed,0.95,,
+browser,tests/browser/generation-resolution.spec.ts,12,official H3 2K generation keeps loading layout stable and persists with templates at 1440px,generation;slow,False,failed,3.484,,
+browser,tests/browser/generation-resolution.spec.ts,12,official H3 2K generation keeps loading layout stable and persists with templates at 390px,generation;slow,False,timedOut,90.185,,
+browser,tests/browser/generation-resolution.spec.ts,40,unavailable 2K capability fails before submission and keeps the draft editable,generation,False,passed,1.42,,
+browser,tests/browser/generation-resolution.spec.ts,46,short clips explain the official 2K minimum before generation and remain available in Native,generation,False,passed,1.373,,
+browser,tests/browser/generation-resolution.spec.ts,53,Native is the default and generates without official 2K support,generation,False,passed,6.341,,
+browser,tests/browser/generation-seed.spec.ts,3,"seed settings support exact integers, undo and project persistence at 1440px",,True,passed,2.369,12.05,2
+browser,tests/browser/generation-seed.spec.ts,3,"seed settings support exact integers, undo and project persistence at 390px",,True,passed,2.373,11.327,2
+browser,tests/browser/groups.spec.ts,8,sample group frames fit their clips when opening and zooming at 1440px,slow,False,passed,2.662,,
+browser,tests/browser/groups.spec.ts,8,sample group frames fit their clips when opening and zooming at 390px,slow,False,passed,2.4,,
+browser,tests/browser/groups.spec.ts,27,"templates stay grouped, move their clips and bends together, and support rename, duplicate, ungroup and archives",,True,passed,3.558,21.808,2
+browser,tests/browser/groups.spec.ts,90,source clips can be grouped and saved as footage templates with keyboard shortcuts on a narrow canvas,,True,passed,1.281,5.827,2
+browser,tests/browser/help-create.spec.ts,12,picture walkthrough reserves image space and supports zoom at 1440px,,True,passed,2.506,9.444,2
+browser,tests/browser/help-create.spec.ts,12,picture walkthrough reserves image space and supports zoom at 390px,,True,passed,2.742,8.307,2
+browser,tests/browser/help-create.spec.ts,58,help opens from Window and preserves editing state at 1440px,,True,passed,1.375,7.518,2
+browser,tests/browser/help-create.spec.ts,58,help opens from Window and preserves editing state at 390px,,True,passed,1.403,5.95,2
+browser,tests/browser/help-create.spec.ts,89,"Add clips has its own search, saved templates, and independent panel controls",,True,passed,1.286,6.285,2
+browser,tests/browser/help-create.spec.ts,113,existing workspace layout gains Add clips without resetting preferences (locked: false),,True,passed,0.828,3.114,2
+browser,tests/browser/help-create.spec.ts,113,existing workspace layout gains Add clips without resetting preferences (locked: true),,True,passed,0.895,3.511,2
+browser,tests/browser/image-models.spec.ts,21,image enhancement follows the selected model and keeps the Inspector stable at 1440px,,True,passed,1.902,9.007,2
+browser,tests/browser/image-models.spec.ts,21,image enhancement follows the selected model and keeps the Inspector stable at 390px,,True,passed,1.888,8.249,2
+browser,tests/browser/image-models.spec.ts,66,"enhancement ignores late results after changing model, draft, references, or cancelling",,True,passed,1.558,7.181,2
+browser,tests/browser/image-models.spec.ts,89,all image models submit one image and save one generation version,,True,passed,2.85,13.072,2
+browser,tests/browser/image-models.spec.ts,104,"dragging directly to image boundaries adds, replaces and clears independent references",,True,passed,1.679,9.772,2
+browser,tests/browser/image-references.spec.ts,10,H3 images guide scene enhancement and generation with stable loading at 1440px,,True,passed,5.631,14.756,2
+browser,tests/browser/image-references.spec.ts,10,H3 images guide scene enhancement and generation with stable loading at 390px,,True,passed,5.657,13.175,2
+browser,tests/browser/image-references.spec.ts,10,H3 images guide loop enhancement and generation with stable loading at 1440px,,True,passed,6.044,28.275,2
+browser,tests/browser/image-references.spec.ts,10,H3 images guide loop enhancement and generation with stable loading at 390px,,True,passed,5.842,15.577,2
+browser,tests/browser/image-references.spec.ts,115,changing images cancels enhancement and ignores its late response,,True,passed,1.09,3.382,2
+browser,tests/browser/import-frame-rate.spec.ts,37,explicit FPS conversion creates an independent Library copy with stable layout at 1440px,,True,passed,3.667,14.425,2
+browser,tests/browser/import-frame-rate.spec.ts,37,explicit FPS conversion creates an independent Library copy with stable layout at 390px,,True,passed,3.401,14.226,2
+browser,tests/browser/import-frame-rate.spec.ts,90,explicit conversion can be cancelled or retried after failure without a partial Library copy,,True,passed,2.317,9.618,2
+browser,tests/browser/import-frame-rate.spec.ts,121,import preference normalizes timeline and library videos with stable layout at 1440px,,True,passed,3.308,13.378,2
+browser,tests/browser/import-frame-rate.spec.ts,121,import preference normalizes timeline and library videos with stable layout at 390px,,True,passed,3.087,12.904,2
+browser,tests/browser/import-frame-rate.spec.ts,173,converted primary imports survive preference reset and project reopening without encoding again,,True,passed,2.154,8.75,2
+browser,tests/browser/import-frame-rate.spec.ts,200,cancelling import conversion leaves the project and asset storage unchanged,,True,passed,1.226,4.72,2
+browser,tests/browser/import-frame-rate.spec.ts,220,24 fps and fractional FPS conversions preserve audio packets and timing,,True,passed,0.993,2.539,2
+browser,tests/browser/infinite-canvas.spec.ts,7,"clips move past zero in both directions, and cleanup keeps routes and media with one undo",,True,passed,1.383,6.134,2
+browser,tests/browser/infinite-canvas.spec.ts,22,"box selection moves clips together, Escape cancels, background clicks deselect, and text stays unselected",,True,passed,1.576,7.148,2
+browser,tests/browser/infinite-canvas.spec.ts,38,"Hand, Space and wheel pan freely; Fit and F preserve clip height and font size",,True,passed,1.721,8.17,2
+browser,tests/browser/inspector.spec.ts,3,"compact inspector uses connected references, supports all switch combinations, and keeps progress in place",generation;slow,False,failed,1.212,,
+browser,tests/browser/interstitials.spec.ts,25,reference and duration sliders synchronize with inputs and persist,,True,passed,2.616,11.448,2
+browser,tests/browser/interstitials.spec.ts,44,"composition export with crossfades disabled preserves frame counts, generated-only bounds and audio through both cuts",,True,passed,5.519,4.784,2
+browser,tests/browser/join-clips.spec.ts,18,joins a selected chain in graph order with undo and a custom failure popup at 1440px,,True,passed,2.499,11.92,2
+browser,tests/browser/join-clips.spec.ts,18,joins a selected chain in graph order with undo and a custom failure popup at 390px,,True,passed,2.411,10.4,2
+browser,tests/browser/join-clips.spec.ts,49,"lists all join failures, updates availability, and restores a gap at 1440px",,True,passed,1.789,9.002,2
+browser,tests/browser/join-clips.spec.ts,49,"lists all join failures, updates availability, and restores a gap at 390px",,True,passed,1.816,8.004,2
+browser,tests/browser/join-clips.spec.ts,77,joins split generated clips using their saved render and internal timestamps,,True,passed,2.079,9.219,2
+browser,tests/browser/library-context.spec.ts,10,asset thumbnails and context menus work without shifting rows at 1440px,,True,passed,1.495,7.319,2
+browser,tests/browser/library-context.spec.ts,10,asset thumbnails and context menus work without shifting rows at 390px,,True,passed,1.474,6.889,2
+browser,tests/browser/library-context.spec.ts,61,subtitles stay outside the asset library while project subtitle tracks still work,,True,passed,1.609,6.92,2
+browser,tests/browser/library-context.spec.ts,78,asset actions operate on the clicked asset and folders preserve their contents when removed,,True,passed,1.768,8.577,2
+browser,tests/browser/library-context.spec.ts,130,"generation menus reflect draft, running, cancelled and completed states",,True,passed,1.442,6.107,2
+browser,tests/browser/library-panels.spec.ts,6,"library media survives deleting its clip, is reusable without arrows, and survives an archive",,True,passed,2.244,10.971,2
+browser,tests/browser/library-panels.spec.ts,24,"animation panels reorder, snap, resize, cancel, persist, and reset while the player remains above the timeline",,True,passed,2.392,9.396,2
+browser,tests/browser/library-selection.spec.ts,51,library selections preview and move together with a read-only inspector at 1440px,,True,passed,1.884,9.953,2
+browser,tests/browser/library-selection.spec.ts,51,library selections preview and move together with a read-only inspector at 390px,,True,passed,2.003,9.755,2
+browser,tests/browser/library-selection.spec.ts,105,"folder drop targets track single drags, reject folder cycles, and clear on exit",,True,passed,1.386,6.218,2
+browser,tests/browser/library-selection.spec.ts,122,30 assets use four centered thumbnails and move from nested folders to the root background at 1440px,,True,passed,1.807,9.596,2
+browser,tests/browser/library-selection.spec.ts,122,30 assets use four centered thumbnails and move from nested folders to the root background at 390px,,True,passed,1.806,9.354,2
+browser,tests/browser/library-selection.spec.ts,161,Select unused assets includes subfolders and generation drafts but excludes referenced assets,,True,passed,1.748,8.139,2
+browser,tests/browser/library-selection.spec.ts,177,Enter commits imported and generated asset names without submitting generation,,True,passed,1.083,4.975,2
+browser,tests/browser/library-selection.spec.ts,191,"multi-selection menus preserve assets, move together and delete with one undo at 1440px",,True,passed,2.092,10.187,2
+browser,tests/browser/library-selection.spec.ts,191,"multi-selection menus preserve assets, move together and delete with one undo at 390px",,True,passed,2.286,10.113,3
+browser,tests/browser/library-selection.spec.ts,231,batch deletion protects used assets and does not delete the unused part of a blocked selection,,True,passed,1.057,5.231,3
+browser,tests/browser/library-selection.spec.ts,242,batch deletion waits for generation cancellation without moving controls and keeps assets on failure at 1440px,,True,passed,1.71,7.906,3
+browser,tests/browser/library-selection.spec.ts,242,batch deletion waits for generation cancellation without moving controls and keeps assets on failure at 390px,,True,passed,1.57,6.237,3
+browser,tests/browser/loading-layout.spec.ts,21,initial project read keeps the chooser steady without a loading blurb at 1440px,,True,passed,1.427,2.45,3
+browser,tests/browser/loading-layout.spec.ts,64,"project chooser stays fixed through loading, cancellation, and error at 1440px",,True,passed,1.59,3.457,3
+browser,tests/browser/loading-layout.spec.ts,103,discarding an edit does not show a closing message on the chooser at 1440px,,True,passed,0.975,3.828,3
+browser,tests/browser/loading-layout.spec.ts,125,loading preserves workspace and editor geometry at 1440px,generation,False,passed,5.46,,
+browser,tests/browser/loading-layout.spec.ts,206,"all clip phases preserve headers, rows and controls at 1440px",,True,passed,0.908,3.461,3
+browser,tests/browser/loading-layout.spec.ts,21,initial project read keeps the chooser steady without a loading blurb at 390px,,True,passed,1.44,2.359,3
+browser,tests/browser/loading-layout.spec.ts,64,"project chooser stays fixed through loading, cancellation, and error at 390px",,True,passed,1.567,2.832,3
+browser,tests/browser/loading-layout.spec.ts,103,discarding an edit does not show a closing message on the chooser at 390px,,True,passed,0.995,3.25,3
+browser,tests/browser/loading-layout.spec.ts,125,loading preserves workspace and editor geometry at 390px,generation,False,passed,5.249,,
+browser,tests/browser/loading-layout.spec.ts,206,"all clip phases preserve headers, rows and controls at 390px",,True,passed,0.881,2.816,3
+browser,tests/browser/loading-layout.spec.ts,21,initial project read keeps the chooser steady without a loading blurb at 320px,,True,passed,1.434,2.398,3
+browser,tests/browser/loading-layout.spec.ts,64,"project chooser stays fixed through loading, cancellation, and error at 320px",,True,passed,1.569,2.634,3
+browser,tests/browser/loading-layout.spec.ts,103,discarding an edit does not show a closing message on the chooser at 320px,,True,passed,0.886,2.964,3
+browser,tests/browser/loading-layout.spec.ts,125,loading preserves workspace and editor geometry at 320px,generation,False,passed,5.216,,
+browser,tests/browser/loading-layout.spec.ts,206,"all clip phases preserve headers, rows and controls at 320px",,True,passed,0.86,2.821,3
+browser,tests/browser/local-startup.spec.ts,4,local startup renders with pulled Vercel settings at 1440px,,True,passed,0.673,1.938,3
+browser,tests/browser/local-startup.spec.ts,4,local startup renders with pulled Vercel settings at 390px,,True,passed,0.658,1.726,3
+browser,tests/browser/loop-settings.spec.ts,6,loop video and audio fades edit independently and persist at 1440px,,True,passed,2.333,10.082,3
+browser,tests/browser/loop-settings.spec.ts,6,loop video and audio fades edit independently and persist at 390px,,True,passed,2.41,9.34,3
+browser,tests/browser/loras.spec.ts,28,LoRA dialog is stable while checking and on failure at 1440px,,True,passed,1.53,5.595,3
+browser,tests/browser/loras.spec.ts,28,LoRA dialog is stable while checking and on failure at 390px,,True,passed,1.467,4.885,3
+browser,tests/browser/loras.spec.ts,28,LoRA dialog is stable while checking and on failure at 320px,,True,passed,1.538,4.964,3
+browser,tests/browser/loras.spec.ts,65,"project assignments default new generations, persist, undo and never overwrite existing overrides",,True,passed,3.193,13.462,3
+browser,tests/browser/loras.spec.ts,105,generation submits the selected LoRA and cancellation of link validation never saves a late response,,True,passed,1.585,5.894,3
+browser,tests/browser/loras.spec.ts,135,enhancement uses the selected LoRA instructions and ignores late results after changing LoRAs,,True,passed,2.288,8.447,3
+browser,tests/browser/loras.spec.ts,194,Turbo persists and keeps video controls stable through generation at 1440px,,True,passed,5.52,13.747,3
+browser,tests/browser/loras.spec.ts,194,Turbo persists and keeps video controls stable through generation at 390px,,True,passed,5.364,12.15,3
+browser,tests/browser/loras.spec.ts,194,Turbo persists and keeps video controls stable through generation at 320px,,True,passed,5.37,12.186,3
+browser,tests/browser/mask-curves.spec.ts,3,"separate neutral mask editors preserve pins, handles, and independent settings at 1440px",,True,passed,2.791,14.722,3
+browser,tests/browser/mask-curves.spec.ts,3,"separate neutral mask editors preserve pins, handles, and independent settings at 390px",,True,passed,2.794,13.057,3
+browser,tests/browser/mask-curves.spec.ts,69,custom masks submit independently and keep controls stable through generation at 1440px,,True,passed,5.245,29.923,3
+browser,tests/browser/mask-curves.spec.ts,69,custom masks submit independently and keep controls stable through generation at 390px,,True,passed,5.259,16.376,3
+browser,tests/browser/menus.spec.ts,8,"menus are exclusive, dismiss consistently and preserve inspector sections at 1440px",,True,passed,1.814,7.403,3
+browser,tests/browser/menus.spec.ts,8,"menus are exclusive, dismiss consistently and preserve inspector sections at 390px",,True,passed,1.849,6.864,3
+browser,tests/browser/native-timeline.spec.ts,35,source-only editor playback loads captions and uses the canvas transport,,True,passed,1.051,4.111,3
+browser,tests/browser/native-timeline.spec.ts,56,redraws a replaced clip at the same playhead position,,True,passed,1.353,1.919,3
+browser,tests/browser/native-timeline.spec.ts,86,renders and crossfades decoded frames on one WebGPU canvas without native playback or preview encoding,,True,passed,4.971,5.759,3
+browser,tests/browser/native-timeline.spec.ts,149,uses the same decoded-frame pipeline without WebGPU and closes its media resources,,True,passed,1.068,1.465,3
+browser,tests/browser/native-timeline.spec.ts,174,opening a sparko file preserves mismatched originals and their reference bounds without preview encoding,,True,passed,1.054,1.605,3
+browser,tests/browser/native-timeline.spec.ts,214,cancelling video validation during import preserves the active project and commits no imported assets,,True,passed,1.029,1.55,3
+browser,tests/browser/new-project.spec.ts,7,drops multiple videos into an empty timeline at the pointer without moving the layout at 1440px,,True,passed,1.306,5.629,3
+browser,tests/browser/new-project.spec.ts,7,drops multiple videos into an empty timeline at the pointer without moving the layout at 390px,,True,passed,1.318,4.4,3
+browser,tests/browser/new-project.spec.ts,35,"empty projects can be saved, reopened, and populated through the import button",,True,passed,1.298,5.292,3
+browser,tests/browser/opening-view.spec.ts,10,opening and reopening fit every clip and start paused at the first frame (1440px),,True,passed,1.4,7.029,3
+browser,tests/browser/opening-view.spec.ts,10,opening and reopening fit every clip and start paused at the first frame (390px),,True,passed,1.474,5.72,3
+browser,tests/browser/orphaned-clips.spec.ts,10,select orphaned clips includes disconnected chains and cycles without editing the graph at 1440px,,True,passed,1.282,4.967,3
+browser,tests/browser/orphaned-clips.spec.ts,10,select orphaned clips includes disconnected chains and cycles without editing the graph at 390px,,True,passed,1.257,5.002,3
+browser,tests/browser/player.spec.ts,5,"canvas playback, settings and draft persistence",,True,passed,2.479,9.89,3
+browser,tests/browser/player.spec.ts,27,"keyboard seeking, captions and mobile layout",,True,passed,0.955,3.899,3
+browser,tests/browser/player.spec.ts,39,Mediabunny exports a non-keyframe MP4 cut with video and audio,,True,passed,1.438,6.983,3
+browser,tests/browser/playhead-drag.spec.ts,17,"time label scrubs without jumping, respects trims and zoom, and cancels at 1440px",,True,passed,1.799,8.246,3
+browser,tests/browser/playhead-drag.spec.ts,17,"time label scrubs without jumping, respects trims and zoom, and cancels at 390px",,True,passed,1.87,6.845,3
+browser,tests/browser/playhead-drag.spec.ts,46,generated playhead dragging uses the playable body and retained internal time,,True,passed,1.334,6.017,3
+browser,tests/browser/preferences.spec.ts,16,"Turbo default applies to new clips and templates, persists and resets at 1440px",,True,passed,2.471,11.645,3
+browser,tests/browser/preferences.spec.ts,16,"Turbo default applies to new clips and templates, persists and resets at 390px",,True,passed,2.513,9.896,3
+browser,tests/browser/preferences.spec.ts,50,"pinch sensitivity applies live, persists, and resets without moving controls at 1440px",,True,passed,2.178,8.949,3
+browser,tests/browser/preferences.spec.ts,50,"pinch sensitivity applies live, persists, and resets without moving controls at 390px",,True,passed,2.253,7.797,3
+browser,tests/browser/preview-mode.spec.ts,10,"preview is read-only, preserves the workspace, and seeks through colored videos",,True,passed,1.308,5.079,3
+browser,tests/browser/preview-mode.spec.ts,49,"preview preserves playback and supports pointer seeking, captions, speed, and fullscreen",,True,passed,1.513,5.686,3
+browser,tests/browser/preview-mode.spec.ts,77,audience answers work in preview and the timeline follows the chosen branch,,True,passed,4.851,7.35,3
+browser,tests/browser/preview-mode.spec.ts,98,preview controls stay fixed through buffering and errors at 1440px,,True,passed,0.987,4.462,3
+browser,tests/browser/preview-mode.spec.ts,98,preview controls stay fixed through buffering and errors at 390px,,True,passed,1.009,3.296,3
+browser,tests/browser/preview-mode.spec.ts,98,preview controls stay fixed through buffering and errors at 320px,,True,passed,1.031,3.297,3
+browser,tests/browser/preview-mode.spec.ts,137,an empty project has a stable disabled preview and can return to editing,,True,passed,0.698,2.32,3
+browser,tests/browser/project-inspector.spec.ts,18,"project settings show the start video, and the context action is exclusive, undoable and saved",,True,passed,2.333,9.724,3
+browser,tests/browser/project-inspector.spec.ts,35,timeline clips drop into project settings without moving the timeline at 1440px,,True,passed,1.895,8.122,3
+browser,tests/browser/project-inspector.spec.ts,35,timeline clips drop into project settings without moving the timeline at 390px,,True,passed,1.959,6.632,3
+browser,tests/browser/project-inspector.spec.ts,50,"a Library video becomes the start with one undo, and an existing clip is reused",,True,passed,1.39,6.584,3
+browser,tests/browser/project-inspector.spec.ts,64,ambiguous Library videos and invalid drops keep the current start and feedback layout stable,,True,passed,1.106,4.937,3
+browser,tests/browser/project-module-loading.spec.ts,7,project sample open and export survive missing deployment chunks,,True,passed,1.414,3.875,3
+browser,tests/browser/project-module-loading.spec.ts,7,project file open and export survive missing deployment chunks,,True,passed,1.397,3.57,3
+browser,tests/browser/project-shortcuts.spec.ts,14,"Control save shortcuts commit edits, update the current file, and save a separate copy",,True,passed,1.079,4.982,3
+browser,tests/browser/project-shortcuts.spec.ts,14,"Meta save shortcuts commit edits, update the current file, and save a separate copy",,True,passed,1.162,4.95,3
+browser,tests/browser/project-shortcuts.spec.ts,49,save shortcuts prevent duplicate pickers and recover after cancellation,,True,passed,0.669,1.986,3
+browser,tests/browser/project-shortcuts.spec.ts,71,save shortcuts download a project when the native file picker is unavailable,,True,passed,0.78,2.162,3
+browser,tests/browser/project-shortcuts.spec.ts,84,"unchanged saves skip writes and loading UI at 1440px, including after reopening",,True,passed,1.484,5.867,3
+browser,tests/browser/project-shortcuts.spec.ts,84,"unchanged saves skip writes and loading UI at 600px, including after reopening",,True,passed,1.34,6.5,4
+browser,tests/browser/project.spec.ts,16,"exports a complete project and restores assets, drafts, subtitles and analysis in a fresh browser",generation;slow,False,passed,6.763,,
+browser,tests/browser/project.spec.ts,124,"chooses a video, then opens and deletes an explicitly saved project",,True,passed,2.369,11.917,4
+browser,tests/browser/project.spec.ts,194,rolls back every asset and the active project if a multi-asset import cannot commit,,True,passed,0.783,2.939,4
+browser,tests/browser/project.spec.ts,215,cancelling a storage transaction leaves no imported assets or active-project change,,True,passed,0.852,2.783,4
+browser,tests/browser/prompt-enhancement.spec.ts,17,"enhances with visual references, stays editable, and supports undo, redo and persistence",,True,passed,2.404,10.916,4
+browser,tests/browser/prompt-enhancement.spec.ts,50,preserves the draft on errors and ignores a late result after the user edits it,,True,passed,1.414,6.231,4
+browser,tests/browser/reference-highlights.spec.ts,3,selection highlights draft and saved reference ranges without shifting the timeline at 1440px,,True,passed,2.79,13.58,4
+browser,tests/browser/reference-highlights.spec.ts,3,selection highlights draft and saved reference ranges without shifting the timeline at 390px,,True,passed,2.668,12.329,4
+browser,tests/browser/resampled-audio.spec.ts,9,chunked 32000 Hz audio matches continuous 48000 Hz resampling,,True,passed,0.101,0.213,4
+browser,tests/browser/resampled-audio.spec.ts,9,chunked 44100 Hz audio matches continuous 48000 Hz resampling,,True,passed,0.097,0.226,4
+browser,tests/browser/resampled-audio.spec.ts,9,chunked 96000 Hz audio matches continuous 48000 Hz resampling,,True,passed,0.102,0.229,4
+browser,tests/browser/resampled-audio.spec.ts,9,chunked 48000 Hz audio matches continuous 44100 Hz resampling,,True,passed,0.099,0.259,4
+browser,tests/browser/resampled-audio.spec.ts,56,"resampling preserves gaps and format changes, and passes matching audio through",,True,passed,0.094,0.197,4
+browser,tests/browser/resampled-audio.spec.ts,77,resampling yields with bounded lookahead and closes its decoder iterator on cancellation,,True,passed,0.094,0.228,4
+browser,tests/browser/shortcuts.spec.ts,9,Auto layout preserves the camera; F and Fit frame the selection or all clips without fullscreen,,True,passed,1.984,8.349,4
+browser,tests/browser/shortcuts.spec.ts,30,"shortcut assignments record safely, persist and reset at 1440px",,True,passed,2.708,13.282,4
+browser,tests/browser/shortcuts.spec.ts,30,"shortcut assignments record safely, persist and reset at 390px",,True,passed,2.633,13.185,4
+browser,tests/browser/stacking.spec.ts,72,"menus paint above playheads, clips, and panel controls at 1440px",,True,passed,1.766,7.823,4
+browser,tests/browser/stacking.spec.ts,99,inspector popovers and modal dialogs stay above the workspace at 1440px,,True,passed,1.667,8.341,4
+browser,tests/browser/stacking.spec.ts,72,"menus paint above playheads, clips, and panel controls at 390px",,True,passed,2.043,6.812,4
+browser,tests/browser/stacking.spec.ts,99,inspector popovers and modal dialogs stay above the workspace at 390px,,True,passed,1.718,7.575,4
+browser,tests/browser/stacking.spec.ts,133,fullscreen timeline menus and template dialogs remain above the player,,True,passed,1.508,6.258,4
+browser,tests/browser/start.spec.ts,3,starts with an empty project and keeps the player above its timeline,,True,passed,0.839,2.973,4
+browser,tests/browser/start.spec.ts,33,shows the sample project without a sample video action,,True,passed,0.526,1.508,4
+browser,tests/browser/start.spec.ts,40,opens the bundled sample project with its saved videos,,True,passed,1.939,11.185,4
+browser,tests/browser/start.spec.ts,54,asks before closing a project with unsaved changes,,True,passed,1.255,5.101,4
+browser,tests/browser/start.spec.ts,72,saves an edited project to disk before closing,,True,passed,1.353,4.482,4
+browser,tests/browser/start.spec.ts,89,does not list every old call response autosave as a saved project,,True,passed,0.907,3.116,4
+browser,tests/browser/still-images.spec.ts,15,"still image import, duration, playback and loading layout at 1440px",,True,passed,2.492,11.444,4
+browser,tests/browser/still-images.spec.ts,15,"still image import, duration, playback and loading layout at 390px",,True,passed,1.409,5.49,4
+browser,tests/browser/still-images.spec.ts,94,encodes ordered mixed references with exact windows and silent image sections,,True,passed,1.22,5.098,4
+browser,tests/browser/still-images.spec.ts,144,chooses and reorders multiple image references independently for Start and End at 1440px,,True,passed,1.219,4.955,4
+browser,tests/browser/still-images.spec.ts,144,chooses and reorders multiple image references independently for Start and End at 390px,,True,passed,1.301,3.401,4
+browser,tests/browser/still-images.spec.ts,180,opens an image directly as a silent timeline source,,True,passed,0.761,2.76,4
+browser,tests/browser/still-images.spec.ts,190,Preview seeks and plays across a video-to-image connection,,True,passed,1.766,6.882,4
+browser,tests/browser/story-flow.spec.ts,6,"source clips split, insert, scrub, connect and retain independent fades through undo",,True,passed,1.665,7.964,4
+browser,tests/browser/story-flow.spec.ts,26,"templates insert ordinary clips, routing stays editable, and selections can become templates",,True,passed,1.515,7.2,4
+browser,tests/browser/story-flow.spec.ts,38,narrow layout and loading keep graph and inspector controls in place,,True,passed,1.241,4.127,4
+browser,tests/browser/story-flow.spec.ts,49,"connected generation uses clip references, keeps controls stable, and reopens with media and fades",generation;slow,False,passed,7.869,,
+browser,tests/browser/story-flow.spec.ts,116,output ports attach clips and conditional choices advance real playback,,True,passed,6.834,12.992,4
+browser,tests/browser/story-flow.spec.ts,129,"arrows drag onto clip bodies, can be redirected, and cancel without changing routes",,True,passed,1.85,9.463,4
+browser,tests/browser/story-flow.spec.ts,149,"clip names accept spaces, Escape cancels, and rename is one undoable edit",,True,passed,0.955,4.174,4
+browser,tests/browser/story-flow.spec.ts,157,the bundled sample project opens its saved timeline and interaction groups,,True,passed,2.308,16.732,4
+browser,tests/browser/story-flow.spec.ts,170,"cut tool, context menu and S split source and video clips without changing the player layout",,True,passed,1.515,6.921,4
+browser,tests/browser/story-flow.spec.ts,183,auto layout brings loose clips along with a moved entry and preserves undo,,True,passed,1.377,5.967,4
+browser,tests/browser/story-flow.spec.ts,202,the side panel drops videos and templates onto the canvas and inserts on arrows,,True,passed,1.809,7.882,4
+browser,tests/browser/story-flow.spec.ts,223,multiple videos import as independent clips and retain their assets through undo and archive reopening,,True,passed,2.07,10.311,4
+browser,tests/browser/story-flow.spec.ts,237,dropping a video on an existing arrow imports a separate clip and a failed batch leaves the project intact,,True,passed,0.9,4.081,4
+browser,tests/browser/story-flow.spec.ts,247,right-click cuts at the existing playhead without seeking at 1440px,,True,passed,1.367,6.654,4
+browser,tests/browser/story-flow.spec.ts,247,right-click cuts at the existing playhead without seeking at 390px,,True,passed,1.42,5.606,4
+browser,tests/browser/thumbnail-timing.spec.ts,18,"thumbnail timestamps stay aligned through trimming, zooming and splitting at 1440px",,True,passed,2.764,7.64,4
+browser,tests/browser/thumbnail-timing.spec.ts,18,"thumbnail timestamps stay aligned through trimming, zooming and splitting at 390px",,True,passed,2.72,7.335,4
+browser,tests/browser/timeline-actions.spec.ts,7,"existing interstitials replace transitions, cancel, and undo at 1440px",,True,passed,2.269,10.941,4
+browser,tests/browser/timeline-actions.spec.ts,42,context menus follow the pointer and insert templates at 1440px,,True,passed,1.437,6.338,4
+browser,tests/browser/timeline-actions.spec.ts,7,"existing interstitials replace transitions, cancel, and undo at 390px",,True,passed,2.426,9.233,4
+browser,tests/browser/timeline-actions.spec.ts,42,context menus follow the pointer and insert templates at 390px,,True,passed,1.441,5.691,4
+browser,tests/browser/timeline-collapse.spec.ts,9,timeline collapses without losing its view and remembers the workspace preference at 1440px,,True,passed,1.798,8.373,4
+browser,tests/browser/timeline-collapse.spec.ts,9,timeline collapses without losing its view and remembers the workspace preference at 390px,,True,passed,1.853,6.883,4
+browser,tests/browser/timeline.spec.ts,3,Delete and Space respect text editing while clip deletion remains undoable,,True,passed,1.013,4.154,4
+browser,tests/browser/timeline.spec.ts,17,touch selects clips and edits their properties without horizontal overflow,,True,passed,0.997,4.203,4
+browser,tests/browser/transition-regions.spec.ts,32,"transition regions match playback, connection colors, and independent channel edits at 1440px",,True,passed,1.942,8.902,4
+browser,tests/browser/transition-regions.spec.ts,32,"transition regions match playback, connection colors, and independent channel edits at 390px",,True,passed,1.921,8.245,4
+browser,tests/browser/transition-regions.spec.ts,91,selecting a branch transition highlights both clips without squeezing its video and audio lanes at 1440px,,True,passed,2.115,9.368,4
+browser,tests/browser/transition-regions.spec.ts,91,selecting a branch transition highlights both clips without squeezing its video and audio lanes at 390px,,True,passed,2.062,8.413,4
+browser,tests/browser/universal-library.spec.ts,26,Library background deselects; deletion identifies clip inputs and unused deletion supports undo,,True,passed,1.638,7.343,4
+browser,tests/browser/universal-library.spec.ts,53,image generation keeps Inspector controls stable at 1440px and saves its submitted inputs,,True,passed,4.89,13.564,4
+browser,tests/browser/universal-library.spec.ts,53,image generation keeps Inspector controls stable at 390px and saves its submitted inputs,,True,passed,3.757,7.972,4
+browser,tests/browser/universal-library.spec.ts,93,a cancelled generation can retrieve its result without another paid submission,,True,passed,1.279,5.368,4
+browser,tests/browser/universal-library.spec.ts,110,folders import media without creating timeline clips and Start/End video toggles stay independent,,True,passed,1.588,8.323,4
+browser,tests/browser/universal-library.spec.ts,137,video and audio generations save playable outputs and expose appropriate models,,True,passed,1.48,6.679,4
+browser,tests/browser/universal-library.spec.ts,155,"all panels can float, dock, maximize, and reset without changing the default workspace",,True,passed,1.219,4.36,4
+browser,tests/browser/video-framing.spec.ts,3,"generated framing fills small borders in previews, exports and crossfades without cropping source footage",,True,passed,2.104,6.021,4
+browser,tests/browser/voice.spec.ts,45,"waits for speech, rejects a tone, captures an utterance and sends it only on request",,True,passed,8.833,11.441,4
+browser,tests/browser/voice.spec.ts,94,disables the mic when leaving the voice panel and handles permission denial,,True,passed,1.016,2.458,4
+browser,tests/browser/window-menu.spec.ts,14,Window controls panels and locks layout without blocking editing at 1440px,,True,passed,2.967,11.446,4
+browser,tests/browser/window-menu.spec.ts,14,Window controls panels and locks layout without blocking editing at 390px,,True,passed,2.659,9.329,4
+browser,tests/browser/window-menu.spec.ts,49,"locked docked columns ignore resize, balance and keyboard moves, then unlock normally",,True,passed,1.321,5.201,4
+browser,tests/browser/window-menu.spec.ts,61,selection respects a locked hidden inspector and collapsed timeline can be restored from Window,,True,passed,1.73,7.719,4

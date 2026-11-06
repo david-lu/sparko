@@ -27,6 +27,7 @@ import ContentIssues from '../../shared/ContentIssues';
 import { assets } from '../project/assets';
 import { useAssetAvailability } from '../project/useAssetAvailability';
 import VideoFrameRate from '../project/VideoFrameRate';
+import ClipColorPicker from './ClipColorPicker';
 
 function ClipName({ value, onSave }: { value: string; onSave: (name: string) => void }) {
   const [name, setName] = useState(value);
@@ -78,6 +79,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       {node.source && <ContentIssues label="Source video errors" issues={assets.error(node.source.assetId) ? [{ key: 'source', title: 'Source video unavailable', message: assets.error(node.source.assetId)! }] : []} />}
       {graph.entryId===node.id&&<span className="inspector-entry" title="The experience starts with this video"><Flag size={11}/>Start video</span>}
     </div>
+    <ClipColorPicker color={editor.selected.every(id => (graph.nodes.find(n => n.id === id)?.color ?? 'gray') === (node.color ?? 'gray')) ? node.color ?? 'gray' : undefined} onChange={editor.colorClips}/>
     {node.source?.kind !== 'image' && <VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={node.source?.assetId ?? (item && playableResult(item)?.assetId)}/>}
     <BehaviorSection key={`loop:${node.id}`} name="Loop" enabled={behavior.loop} onToggle={enabled=>editor.toggleBehavior(node.id,'loop',enabled)} help={!item && <LoopReferenceHelp />}>
       <label className="inspector-property"><span>Loop count</span><input aria-label="Loop count" type="number" min={0} max={10000} value={node.loopCount} title="0 repeats until a condition matches or Continue is pressed." onChange={e=>Number.isFinite(e.target.valueAsNumber)&&editor.patch(node.id,{loopCount:Math.max(0,Math.min(10000,Math.round(e.target.valueAsNumber)))})}/></label>

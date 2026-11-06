@@ -6,9 +6,10 @@ import { generationResolutions } from '../../../shared/interstitials';
 import { MASK_TRANSITION } from '../../../shared/constants';
 import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
 import { maskCurveSchema } from '../../../shared/mask-curves';
+import { clipColors } from './clipColors';
 const id=z.string().min(1).max(200), text=z.string().max(8000), seconds=z.number().finite().min(0).max(1e8);
 export const storyNodeSchema=z.object({id,name:z.string().max(1000),kind:z.enum(['source','simple','looped','conditional']),
-  x:z.number().finite(),y:z.number().finite(),
+  x:z.number().finite(),y:z.number().finite(),color:z.enum(Object.keys(clipColors) as [keyof typeof clipColors, ...Array<keyof typeof clipColors>]).optional(),
   source:z.object({kind:z.literal('image').optional(),assetId:z.uuid(),originalAssetId:z.uuid().optional(),duration:z.number().finite().positive().optional(),inFrame:z.number().int().min(0),outFrame:z.number().int().positive()}).refine(s=>s.outFrame>s.inFrame).optional(),
   trim:z.object({inFrame:z.number().int().min(0),outFrame:z.number().int().positive()}).refine(s=>s.outFrame>s.inFrame).optional(),
   interstitialId:id.optional(),referenceId:id.optional(),crossfadeStart:seconds.optional(),crossfadeEnd:seconds.optional(),loopCount:z.number().int().min(0).max(10000),

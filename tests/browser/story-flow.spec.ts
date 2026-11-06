@@ -154,7 +154,7 @@ test('clip names accept spaces, Escape cancels, and rename is one undoable edit'
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(input).toHaveValue('New scene');expect((await saved(page)).interstitials[0].label).toBe('New scene');
 });
 
-test('the bundled sample project opens its saved timeline and interaction groups',async({page})=>{
+test('the bundled sample project opens its saved timeline and interaction groups',{tag:'@slow'},async({page})=>{
   test.setTimeout(180000);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await page.getByRole('button',{name:/Sample project/}).click();
   await expect(page.locator('.story-clip').first()).toBeVisible({timeout:120000});await expect.poll(async()=>(await saved(page))?.storyFlow?.nodes.length??0).toBeGreaterThan(5);const project=await saved(page);
   expect(project.storyFlow.nodes.length).toBeGreaterThan(5);expect(project.storyFlow.nodes.some((n:any)=>n.interstitialId)).toBe(true);expect(project.storyFlow.edges.length).toBeGreaterThan(0);

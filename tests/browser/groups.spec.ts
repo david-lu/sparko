@@ -24,7 +24,7 @@ for(const width of [1440,390])test(`sample group frames fit their clips when ope
   await page.locator('.story-group-header').first().focus();await page.keyboard.press('Enter');await page.getByRole('button',{name:'Fit',exact:true}).click();await checkFrames();
 });
 
-test('templates stay grouped, move their clips and bends together, and support rename, duplicate, ungroup and archives', async ({ page, browser }) => {
+test('templates stay grouped, move their clips and bends together, and support rename, duplicate, ungroup and archives', { tag: '@slow' }, async ({ page, browser }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message)); await open(page);
   await page.getByRole('button', { name: 'Add template Question & response', exact: true }).dragTo(page.locator('.story-scroll'), { targetPosition: { x: 140, y: 70 } });
   await expect(page.locator('.story-group')).toHaveCount(1); await expect(page.locator('.story-clip')).toHaveCount(5);

@@ -1,0 +1,311 @@
+file,test,ci_seconds,current_shard,proposed_shard
+tests/browser/generation-framing.spec.ts,generation uploads keep the same center crop when original and generated references are swapped,67.987,2,1
+tests/browser/mask-curves.spec.ts,custom masks submit independently and keep controls stable through generation at 1440px,29.923,3,2
+tests/browser/from-scratch.spec.ts,"create from scratch: loop true, conditional true, 1440px",28.419,2,3
+tests/browser/image-references.spec.ts,H3 images guide loop enhancement and generation with stable loading at 1440px,28.275,2,4
+tests/browser/from-scratch.spec.ts,"create from scratch: loop true, conditional false, 1440px",23.666,2,4
+tests/browser/groups.spec.ts,"templates stay grouped, move their clips and bends together, and support rename, duplicate, ungroup and archives",21.808,2,3
+tests/browser/fullscreen.spec.ts,fullscreen controls follow mouse activity and remain available during interaction,19.497,2,2
+tests/browser/story-flow.spec.ts,the bundled sample project opens its saved timeline and interaction groups,16.732,4,2
+tests/browser/mask-curves.spec.ts,custom masks submit independently and keep controls stable through generation at 390px,16.376,3,3
+tests/browser/frame-rate.spec.ts,prepares a large source at the configured height limit while preserving aspect ratio and the 24 fps clock,16.053,2,4
+tests/browser/clip-metadata.spec.ts,imported scene references stay disconnected and can be selected from the inspector at 1440px,15.92,1,2
+tests/browser/frame-capture.spec.ts,capture uses the trimmed playhead frame and keeps controls stable at 1440px,15.919,2,3
+tests/browser/image-references.spec.ts,H3 images guide loop enhancement and generation with stable loading at 390px,15.577,2,1
+tests/browser/image-references.spec.ts,H3 images guide scene enhancement and generation with stable loading at 1440px,14.756,2,4
+tests/browser/mask-curves.spec.ts,"separate neutral mask editors preserve pins, handles, and independent settings at 1440px",14.722,3,2
+tests/browser/from-scratch.spec.ts,"create from scratch: loop true, conditional true, 390px",14.428,2,3
+tests/browser/import-frame-rate.spec.ts,explicit FPS conversion creates an independent Library copy with stable layout at 1440px,14.425,2,4
+tests/browser/import-frame-rate.spec.ts,explicit FPS conversion creates an independent Library copy with stable layout at 390px,14.226,2,1
+tests/browser/clip-metadata.spec.ts,imported scene references stay disconnected and can be selected from the inspector at 390px,13.995,1,2
+tests/browser/call-response-draft.spec.ts,template clips keep independent audio/video masks and reference choices,13.849,1,3
+tests/browser/loras.spec.ts,Turbo persists and keeps video controls stable through generation at 1440px,13.747,3,4
+tests/browser/reference-highlights.spec.ts,selection highlights draft and saved reference ranges without shifting the timeline at 1440px,13.58,4,1
+tests/browser/universal-library.spec.ts,image generation keeps Inspector controls stable at 1440px and saves its submitted inputs,13.564,4,2
+tests/browser/loras.spec.ts,"project assignments default new generations, persist, undo and never overwrite existing overrides",13.462,3,3
+tests/browser/import-frame-rate.spec.ts,import preference normalizes timeline and library videos with stable layout at 1440px,13.378,2,4
+tests/browser/asset-volume.spec.ts,asset volume edits playback and downloads while base previews and layout stay unchanged at 1440px,13.365,1,1
+tests/browser/shortcuts.spec.ts,"shortcut assignments record safely, persist and reset at 1440px",13.282,4,3
+tests/browser/shortcuts.spec.ts,"shortcut assignments record safely, persist and reset at 390px",13.185,4,4
+tests/browser/image-references.spec.ts,H3 images guide scene enhancement and generation with stable loading at 390px,13.175,2,2
+tests/browser/image-models.spec.ts,all image models submit one image and save one generation version,13.072,2,1
+tests/browser/mask-curves.spec.ts,"separate neutral mask editors preserve pins, handles, and independent settings at 390px",13.057,3,4
+tests/browser/story-flow.spec.ts,output ports attach clips and conditional choices advance real playback,12.992,4,2
+tests/browser/import-frame-rate.spec.ts,import preference normalizes timeline and library videos with stable layout at 390px,12.904,2,3
+tests/browser/clip-trimming.spec.ts,"clip handles trim nondestructively, undo, cancel, and preserve time preferences at 1440px",12.404,1,1
+tests/browser/reference-highlights.spec.ts,selection highlights draft and saved reference ranges without shifting the timeline at 390px,12.329,4,1
+tests/browser/loras.spec.ts,Turbo persists and keeps video controls stable through generation at 320px,12.186,3,3
+tests/browser/loras.spec.ts,Turbo persists and keeps video controls stable through generation at 390px,12.15,3,2
+tests/browser/generation-seed.spec.ts,"seed settings support exact integers, undo and project persistence at 1440px",12.05,2,4
+tests/browser/join-clips.spec.ts,joins a selected chain in graph order with undo and a custom failure popup at 1440px,11.92,2,1
+tests/browser/project.spec.ts,"chooses a video, then opens and deletes an explicitly saved project",11.917,4,4
+tests/browser/preferences.spec.ts,"Turbo default applies to new clips and templates, persists and resets at 1440px",11.645,3,3
+tests/browser/interstitials.spec.ts,reference and duration sliders synchronize with inputs and persist,11.448,2,2
+tests/browser/window-menu.spec.ts,Window controls panels and locks layout without blocking editing at 1440px,11.446,4,2
+tests/browser/still-images.spec.ts,"still image import, duration, playback and loading layout at 1440px",11.444,4,3
+tests/browser/voice.spec.ts,"waits for speech, rejects a tone, captures an utterance and sends it only on request",11.441,4,1
+tests/browser/generation-seed.spec.ts,"seed settings support exact integers, undo and project persistence at 390px",11.327,2,4
+tests/browser/start.spec.ts,opens the bundled sample project with its saved videos,11.185,4,2
+tests/browser/call-response.spec.ts,template durations and conditions are independent and persist at 1440px,11.141,1,3
+tests/browser/library-panels.spec.ts,"library media survives deleting its clip, is reusable without arrows, and survives an archive",10.971,2,4
+tests/browser/timeline-actions.spec.ts,"existing interstitials replace transitions, cancel, and undo at 1440px",10.941,4,1
+tests/browser/prompt-enhancement.spec.ts,"enhances with visual references, stays editable, and supports undo, redo and persistence",10.916,4,2
+tests/browser/draw-groups.spec.ts,"drawn frames move, resize, accept selected clips, retain empty membership and survive reload",10.899,1,4
+tests/browser/example.spec.ts,starts on the chooser and opens the example only when requested,10.737,1,1
+tests/browser/clip-trimming.spec.ts,"clip handles trim nondestructively, undo, cancel, and preserve time preferences at 390px",10.43,1,3
+tests/browser/behaviors.spec.ts,independent behaviors expose named condition sockets with separate draggable wires,10.413,1,3
+tests/browser/join-clips.spec.ts,joins a selected chain in graph order with undo and a custom failure popup at 390px,10.4,2,1
+tests/browser/story-flow.spec.ts,multiple videos import as independent clips and retain their assets through undo and archive reopening,10.311,4,2
+tests/browser/library-selection.spec.ts,"multi-selection menus preserve assets, move together and delete with one undo at 1440px",10.187,2,4
+tests/browser/library-selection.spec.ts,"multi-selection menus preserve assets, move together and delete with one undo at 390px",10.113,3,3
+tests/browser/loop-settings.spec.ts,loop video and audio fades edit independently and persist at 1440px,10.082,3,4
+tests/browser/call-response.spec.ts,template durations and conditions are independent and persist at 390px,10.029,1,2
+tests/browser/flow-buffering.spec.ts,"retrying a response, rapid seeking and source subtitles stay tied to the shared audio clock",10.017,2,1
+tests/browser/clip-metadata.spec.ts,dropping a portable video restores an interstitial and keeps loading layout stable at 1440px (24 fps conversion: true),9.979,1,3
+tests/browser/clip-trimming.spec.ts,generated clips trim the playable body and display the full render’s internal time,9.958,1,4
+tests/browser/library-selection.spec.ts,library selections preview and move together with a read-only inspector at 1440px,9.953,2,1
+tests/browser/from-scratch.spec.ts,"create from scratch: loop true, conditional false, 390px",9.92,2,2
+tests/browser/preferences.spec.ts,"Turbo default applies to new clips and templates, persists and resets at 390px",9.896,3,3
+tests/browser/player.spec.ts,"canvas playback, settings and draft persistence",9.89,3,2
+tests/browser/image-models.spec.ts,"dragging directly to image boundaries adds, replaces and clears independent references",9.772,2,4
+tests/browser/library-selection.spec.ts,library selections preview and move together with a read-only inspector at 390px,9.755,2,1
+tests/browser/project-inspector.spec.ts,"project settings show the start video, and the context action is exclusive, undoable and saved",9.724,3,3
+tests/browser/connections.spec.ts,video and audio fades stay independent and survive saving at 1440px,9.703,1,1
+tests/browser/import-frame-rate.spec.ts,explicit conversion can be cancelled or retried after failure without a partial Library copy,9.618,2,4
+tests/browser/fullscreen.spec.ts,"fullscreen timeline can be hidden, restored and remembered without losing editing state",9.612,2,2
+tests/browser/library-selection.spec.ts,30 assets use four centered thumbnails and move from nested folders to the root background at 1440px,9.596,2,4
+tests/browser/story-flow.spec.ts,"arrows drag onto clip bodies, can be redirected, and cancel without changing routes",9.463,4,1
+tests/browser/help-create.spec.ts,picture walkthrough reserves image space and supports zoom at 1440px,9.444,2,3
+tests/browser/library-panels.spec.ts,"animation panels reorder, snap, resize, cancel, persist, and reset while the player remains above the timeline",9.396,2,2
+tests/browser/transition-regions.spec.ts,selecting a branch transition highlights both clips without squeezing its video and audio lanes at 1440px,9.368,4,2
+tests/browser/library-selection.spec.ts,30 assets use four centered thumbnails and move from nested folders to the root background at 390px,9.354,2,3
+tests/browser/loop-settings.spec.ts,loop video and audio fades edit independently and persist at 390px,9.34,3,1
+tests/browser/window-menu.spec.ts,Window controls panels and locks layout without blocking editing at 390px,9.329,4,4
+tests/browser/call-response-enhancement.spec.ts,each template prompt enhances independently without submitting a generation,9.276,1,2
+tests/browser/timeline-actions.spec.ts,"existing interstitials replace transitions, cancel, and undo at 390px",9.233,4,1
+tests/browser/join-clips.spec.ts,joins split generated clips using their saved render and internal timestamps,9.219,2,3
+tests/browser/flow-buffering.spec.ts,Call Response crossfades blend GPU video and audio gains and toggle without moving the playhead,9.144,1,4
+tests/browser/image-models.spec.ts,image enhancement follows the selected model and keeps the Inspector stable at 1440px,9.007,2,4
+tests/browser/join-clips.spec.ts,"lists all join failures, updates availability, and restores a gap at 1440px",9.002,2,3
+tests/browser/preferences.spec.ts,"pinch sensitivity applies live, persists, and resets without moving controls at 1440px",8.949,3,1
+tests/browser/transition-regions.spec.ts,"transition regions match playback, connection colors, and independent channel edits at 1440px",8.902,4,2
+tests/browser/import-frame-rate.spec.ts,converted primary imports survive preference reset and project reopening without encoding again,8.75,2,2
+tests/browser/library-context.spec.ts,asset actions operate on the clicked asset and folders preserve their contents when removed,8.577,2,1
+tests/browser/clip-metadata.spec.ts,converting a generated scene creates a separate copy with its metadata and reference ranges,8.548,1,4
+tests/browser/frame-rate.spec.ts,plays a 25 fps source natively without encoding and reuses it after reload,8.475,2,3
+tests/browser/asset-volume.spec.ts,saved loops use volume without a second audio toggle at 1440px,8.474,1,3
+tests/browser/loras.spec.ts,enhancement uses the selected LoRA instructions and ignores late results after changing LoRAs,8.447,3,4
+tests/browser/content-errors.spec.ts,missing Start/End content has clickable errors without moving controls at 1440px,8.429,1,1
+tests/browser/transition-regions.spec.ts,selecting a branch transition highlights both clips without squeezing its video and audio lanes at 390px,8.413,4,2
+tests/browser/timeline-collapse.spec.ts,timeline collapses without losing its view and remembers the workspace preference at 1440px,8.373,4,3
+tests/browser/from-scratch.spec.ts,"create from scratch: loop false, conditional true, 1440px",8.352,2,4
+tests/browser/shortcuts.spec.ts,Auto layout preserves the camera; F and Fit frame the selection or all clips without fullscreen,8.349,4,1
+tests/browser/stacking.spec.ts,inspector popovers and modal dialogs stay above the workspace at 1440px,8.341,4,2
+tests/browser/universal-library.spec.ts,folders import media without creating timeline clips and Start/End video toggles stay independent,8.323,4,4
+tests/browser/help-create.spec.ts,picture walkthrough reserves image space and supports zoom at 390px,8.307,2,1
+tests/browser/audio.spec.ts,"canvas playback schedules audible mixed-rate audio, silence and seeks on its shared clock",8.29,1,3
+tests/browser/from-scratch.spec.ts,"create from scratch: loop false, conditional false, 1440px",8.251,2,2
+tests/browser/image-models.spec.ts,image enhancement follows the selected model and keeps the Inspector stable at 390px,8.249,2,3
+tests/browser/playhead-drag.spec.ts,"time label scrubs without jumping, respects trims and zoom, and cancels at 1440px",8.246,3,1
+tests/browser/transition-regions.spec.ts,"transition regions match playback, connection colors, and independent channel edits at 390px",8.245,4,4
+tests/browser/flow-buffering.spec.ts,idle loops and branches reuse generated media without encoding the source,8.231,1,2
+tests/browser/infinite-canvas.spec.ts,"Hand, Space and wheel pan freely; Fit and F preserve clip height and font size",8.17,2,3
+tests/browser/library-selection.spec.ts,Select unused assets includes subfolders and generation drafts but excludes referenced assets,8.139,2,1
+tests/browser/project-inspector.spec.ts,timeline clips drop into project settings without moving the timeline at 1440px,8.122,3,4
+tests/browser/connections.spec.ts,video and audio fades stay independent and survive saving at 390px,8.088,1,2
+tests/browser/join-clips.spec.ts,"lists all join failures, updates availability, and restores a gap at 390px",8.004,2,4
+tests/browser/connections.spec.ts,"sockets detach, connect backwards, reconnect, and cancel while retaining the connection fade",7.986,1,1
+tests/browser/universal-library.spec.ts,image generation keeps Inspector controls stable at 390px and saves its submitted inputs,7.972,4,2
+tests/browser/story-flow.spec.ts,"source clips split, insert, scrub, connect and retain independent fades through undo",7.964,4,3
+tests/browser/library-selection.spec.ts,batch deletion waits for generation cancellation without moving controls and keeps assets on failure at 1440px,7.906,3,2
+tests/browser/auto-layout.spec.ts,cleanup separates mixed routes and groups at 1440px and survives Fit all,7.886,1,1
+tests/browser/story-flow.spec.ts,the side panel drops videos and templates onto the canvas and inserts on arrows,7.882,4,3
+tests/browser/stacking.spec.ts,"menus paint above playheads, clips, and panel controls at 1440px",7.823,4,4
+tests/browser/preferences.spec.ts,"pinch sensitivity applies live, persists, and resets without moving controls at 390px",7.797,3,4
+tests/browser/window-menu.spec.ts,selection respects a locked hidden inspector and collapsed timeline can be restored from Window,7.719,4,1
+tests/browser/thumbnail-timing.spec.ts,"thumbnail timestamps stay aligned through trimming, zooming and splitting at 1440px",7.64,4,3
+tests/browser/from-scratch.spec.ts,"create from scratch: loop false, conditional true, 390px",7.588,2,2
+tests/browser/stacking.spec.ts,inspector popovers and modal dialogs stay above the workspace at 390px,7.575,4,2
+tests/browser/help-create.spec.ts,help opens from Window and preserves editing state at 1440px,7.518,2,3
+tests/browser/content-errors.spec.ts,missing Start/End content has clickable errors without moving controls at 390px,7.415,1,1
+tests/browser/menus.spec.ts,"menus are exclusive, dismiss consistently and preserve inspector sections at 1440px",7.403,3,4
+tests/browser/frame-capture.spec.ts,"video context menu supports keyboard dismissal, fullscreen and read-only preview",7.369,2,1
+tests/browser/preview-mode.spec.ts,audience answers work in preview and the timeline follows the chosen branch,7.35,3,4
+tests/browser/universal-library.spec.ts,Library background deselects; deletion identifies clip inputs and unused deletion supports undo,7.343,4,3
+tests/browser/thumbnail-timing.spec.ts,"thumbnail timestamps stay aligned through trimming, zooming and splitting at 390px",7.335,4,2
+tests/browser/library-context.spec.ts,asset thumbnails and context menus work without shifting rows at 1440px,7.319,2,4
+tests/browser/auto-layout.spec.ts,cleanup separates disconnected clips at 1440px and survives Fit all,7.306,1,1
+tests/browser/story-flow.spec.ts,"templates insert ordinary clips, routing stays editable, and selections can become templates",7.2,4,3
+tests/browser/image-models.spec.ts,"enhancement ignores late results after changing model, draft, references, or cancelling",7.181,2,2
+tests/browser/infinite-canvas.spec.ts,"box selection moves clips together, Escape cancels, background clicks deselect, and text stays unselected",7.148,2,2
+tests/browser/from-scratch.spec.ts,"create from scratch: loop false, conditional false, 390px",7.145,2,3
+tests/browser/draw-groups.spec.ts,"draw and cut tools complete one action, cancel cleanly, and keep the layout stable at 1440px",7.051,1,1
+tests/browser/opening-view.spec.ts,opening and reopening fit every clip and start paused at the first frame (1440px),7.029,3,4
+tests/browser/player.spec.ts,Mediabunny exports a non-keyframe MP4 cut with video and audio,6.983,3,2
+tests/browser/story-flow.spec.ts,"cut tool, context menu and S split source and video clips without changing the player layout",6.921,4,3
+tests/browser/library-context.spec.ts,subtitles stay outside the asset library while project subtitle tracks still work,6.92,2,4
+tests/browser/frame-capture.spec.ts,capture uses the trimmed playhead frame and keeps controls stable at 390px,6.901,2,1
+tests/browser/library-context.spec.ts,asset thumbnails and context menus work without shifting rows at 390px,6.889,2,1
+tests/browser/timeline-collapse.spec.ts,timeline collapses without losing its view and remembers the workspace preference at 390px,6.883,4,3
+tests/browser/still-images.spec.ts,Preview seeks and plays across a video-to-image connection,6.882,4,4
+tests/browser/menus.spec.ts,"menus are exclusive, dismiss consistently and preserve inspector sections at 390px",6.864,3,2
+tests/browser/playhead-drag.spec.ts,"time label scrubs without jumping, respects trims and zoom, and cancels at 390px",6.845,3,1
+tests/browser/stacking.spec.ts,"menus paint above playheads, clips, and panel controls at 390px",6.812,4,4
+tests/browser/universal-library.spec.ts,video and audio generations save playable outputs and expose appropriate models,6.679,4,3
+tests/browser/story-flow.spec.ts,right-click cuts at the existing playhead without seeking at 1440px,6.654,4,2
+tests/browser/project-inspector.spec.ts,timeline clips drop into project settings without moving the timeline at 390px,6.632,3,3
+tests/browser/frame-capture.spec.ts,generated video capture uses the playable body and recovers without layout shifts at 1440px,6.615,2,2
+tests/browser/project-inspector.spec.ts,"a Library video becomes the start with one undo, and an existing clip is reused",6.584,3,4
+tests/browser/fullscreen.spec.ts,fullscreen timeline controls remain reachable on narrow screens,6.577,2,1
+tests/browser/project-shortcuts.spec.ts,"unchanged saves skip writes and loading UI at 600px, including after reopening",6.5,4,2
+tests/browser/asset-volume.spec.ts,asset volume edits playback and downloads while base previews and layout stay unchanged at 390px,6.439,1,3
+tests/browser/connections.spec.ts,"reroute points reshape wires, cancel cleanly, and support keyboard and context-menu editing",6.412,1,4
+tests/browser/draw-groups.spec.ts,drawing encloses complete clips and right-click groups the selection without changing connections,6.384,1,1
+tests/browser/clip-metadata.spec.ts,dropping a portable video restores an interstitial and keeps loading layout stable at 390px (24 fps conversion: false),6.382,1,3
+tests/browser/timeline-actions.spec.ts,context menus follow the pointer and insert templates at 1440px,6.338,4,2
+tests/browser/help-create.spec.ts,"Add clips has its own search, saved templates, and independent panel controls",6.285,2,1
+tests/browser/stacking.spec.ts,fullscreen timeline menus and template dialogs remain above the player,6.258,4,4
+tests/browser/drag-placement.spec.ts,template drops replace a highlighted transition and reconnect every branch at 1440px,6.255,1,4
+tests/browser/library-selection.spec.ts,batch deletion waits for generation cancellation without moving controls and keeps assets on failure at 390px,6.237,3,1
+tests/browser/prompt-enhancement.spec.ts,preserves the draft on errors and ignores a late result after the user edits it,6.231,4,3
+tests/browser/library-selection.spec.ts,"folder drop targets track single drags, reject folder cycles, and clear on exit",6.218,2,2
+tests/browser/frame-rate.spec.ts,opens a saved 25 fps source without moving its drafts,6.215,2,4
+tests/browser/content-errors.spec.ts,"missing video files surface on the clip and reference, block generation, and clear after restoration",6.21,1,1
+tests/browser/crossfades.spec.ts,"crossfades blend video and mixed-rate audio in exports, previews and partial seeks",6.179,1,2
+tests/browser/frame-capture.spec.ts,generated video capture uses the playable body and recovers without layout shifts at 390px,6.179,2,3
+tests/browser/infinite-canvas.spec.ts,"clips move past zero in both directions, and cleanup keeps routes and media with one undo",6.134,2,1
+tests/browser/library-context.spec.ts,"generation menus reflect draft, running, cancelled and completed states",6.107,2,2
+tests/browser/auto-layout.spec.ts,cleanup separates mixed routes and groups at 390px and survives Fit all,6.045,1,4
+tests/browser/drag-placement.spec.ts,wire drops attach at the pointer and template drops preserve existing positions and routing,6.041,1,3
+tests/browser/auto-layout.spec.ts,cleanup separates disconnected clips at 390px and survives Fit all,6.036,1,4
+tests/browser/video-framing.spec.ts,"generated framing fills small borders in previews, exports and crossfades without cropping source footage",6.021,4,3
+tests/browser/playhead-drag.spec.ts,generated playhead dragging uses the playable body and retained internal time,6.017,3,2
+tests/browser/auto-layout.spec.ts,auto layout clears compressed conditional rows and their output labels at 1440px without Fit,6.016,1,1
+tests/browser/story-flow.spec.ts,auto layout brings loose clips along with a moved entry and preserves undo,5.967,4,3
+tests/browser/help-create.spec.ts,help opens from Window and preserves editing state at 390px,5.95,2,4
+tests/browser/connections.spec.ts,the fade icon opens a hidden or collapsed inspector without adding clips or a bounding outline,5.926,1,2
+tests/browser/draw-groups.spec.ts,"draw and cut tools complete one action, cancel cleanly, and keep the layout stable at 390px",5.925,1,1
+tests/browser/loras.spec.ts,generation submits the selected LoRA and cancellation of link validation never saves a late response,5.894,3,4
+tests/browser/project-shortcuts.spec.ts,"unchanged saves skip writes and loading UI at 1440px, including after reopening",5.867,3,3
+tests/browser/groups.spec.ts,source clips can be grouped and saved as footage templates with keyboard shortcuts on a narrow canvas,5.827,2,2
+tests/browser/native-timeline.spec.ts,renders and crossfades decoded frames on one WebGPU canvas without native playback or preview encoding,5.759,3,1
+tests/browser/opening-view.spec.ts,opening and reopening fit every clip and start paused at the first frame (390px),5.72,3,1
+tests/browser/timeline-actions.spec.ts,context menus follow the pointer and insert templates at 390px,5.691,4,2
+tests/browser/preview-mode.spec.ts,"preview preserves playback and supports pointer seeking, captions, speed, and fullscreen",5.686,3,3
+tests/browser/new-project.spec.ts,drops multiple videos into an empty timeline at the pointer without moving the layout at 1440px,5.629,3,4
+tests/browser/story-flow.spec.ts,right-click cuts at the existing playhead without seeking at 390px,5.606,4,4
+tests/browser/loras.spec.ts,LoRA dialog is stable while checking and on failure at 1440px,5.595,3,1
+tests/browser/still-images.spec.ts,"still image import, duration, playback and loading layout at 390px",5.49,4,2
+tests/browser/universal-library.spec.ts,a cancelled generation can retrieve its result without another paid submission,5.368,4,3
+tests/browser/drag-placement.spec.ts,"library dragging previews the exact zoomed position, preserves the view, and cancels cleanly",5.349,1,3
+tests/browser/auto-layout.spec.ts,"Auto layout brings distant clips closer only on request, with undo at 1440px",5.339,1,2
+tests/browser/new-project.spec.ts,"empty projects can be saved, reopened, and populated through the import button",5.292,3,1
+tests/browser/library-selection.spec.ts,batch deletion protects used assets and does not delete the unused part of a blocked selection,5.231,3,4
+tests/browser/window-menu.spec.ts,"locked docked columns ignore resize, balance and keyboard moves, then unlock normally",5.201,4,3
+tests/browser/drag-placement.spec.ts,template drops replace a highlighted transition and reconnect every branch at 390px,5.165,1,4
+tests/browser/start.spec.ts,asks before closing a project with unsaved changes,5.101,4,2
+tests/browser/still-images.spec.ts,encodes ordered mixed references with exact windows and silent image sections,5.098,4,1
+tests/browser/preview-mode.spec.ts,"preview is read-only, preserves the workspace, and seeks through colored videos",5.079,3,2
+tests/browser/auto-layout.spec.ts,conditional outputs stack vertically after cleanup on a short 1440px timeline,5.066,1,3
+tests/browser/drag-placement.spec.ts,cancelled transition replacements and media drops leave the original connection intact,5.012,1,1
+tests/browser/call-response.spec.ts,removing a template group is undoable and preserves its clips,5.004,1,4
+tests/browser/orphaned-clips.spec.ts,select orphaned clips includes disconnected chains and cycles without editing the graph at 390px,5.002,3,1
+tests/browser/project-shortcuts.spec.ts,"Control save shortcuts commit edits, update the current file, and save a separate copy",4.982,3,4
+tests/browser/library-selection.spec.ts,Enter commits imported and generated asset names without submitting generation,4.975,2,3
+tests/browser/orphaned-clips.spec.ts,select orphaned clips includes disconnected chains and cycles without editing the graph at 1440px,4.967,3,2
+tests/browser/loras.spec.ts,LoRA dialog is stable while checking and on failure at 320px,4.964,3,4
+tests/browser/asset-volume.spec.ts,saved loops use volume without a second audio toggle at 390px,4.96,1,2
+tests/browser/still-images.spec.ts,chooses and reorders multiple image references independently for Start and End at 1440px,4.955,4,3
+tests/browser/auto-layout.spec.ts,"Auto layout brings distant clips closer only on request, with undo at 390px",4.951,1,1
+tests/browser/project-shortcuts.spec.ts,"Meta save shortcuts commit edits, update the current file, and save a separate copy",4.95,3,3
+tests/browser/project-inspector.spec.ts,ambiguous Library videos and invalid drops keep the current start and feedback layout stable,4.937,3,2
+tests/browser/loras.spec.ts,LoRA dialog is stable while checking and on failure at 390px,4.885,3,1
+tests/browser/audio.spec.ts,"composition exports and preview renders preserve audio across mixed rates, channels and silent clips",4.883,1,4
+tests/browser/interstitials.spec.ts,"composition export with crossfades disabled preserves frame counts, generated-only bounds and audio through both cuts",4.784,2,1
+tests/browser/auto-layout.spec.ts,auto layout clears compressed conditional rows and their output labels at 390px without Fit,4.782,1,4
+tests/browser/drag-placement.spec.ts,narrow library drops and saved templates use the same drag placement,4.759,1,2
+tests/browser/import-frame-rate.spec.ts,cancelling import conversion leaves the project and asset storage unchanged,4.72,2,3
+tests/browser/flow-buffering.spec.ts,Idle at volume 1 stays buffered across repeated loop boundaries,4.675,1,4
+tests/browser/flow-buffering.spec.ts,Idle at volume 0 stays buffered across repeated loop boundaries,4.647,1,3
+tests/browser/clip-metadata.spec.ts,"metadata survives packet copying, loop extraction, and a volume-adjusted video download",4.636,1,1
+tests/browser/start.spec.ts,saves an edited project to disk before closing,4.482,4,2
+tests/browser/preview-mode.spec.ts,preview controls stay fixed through buffering and errors at 1440px,4.462,3,2
+tests/browser/auto-layout.spec.ts,conditional outputs stack vertically after cleanup on a short 390px timeline,4.438,1,1
+tests/browser/new-project.spec.ts,drops multiple videos into an empty timeline at the pointer without moving the layout at 390px,4.4,3,3
+tests/browser/universal-library.spec.ts,"all panels can float, dock, maximize, and reset without changing the default workspace",4.36,4,4
+tests/browser/timeline.spec.ts,touch selects clips and edits their properties without horizontal overflow,4.203,4,2
+tests/browser/story-flow.spec.ts,"clip names accept spaces, Escape cancels, and rename is one undoable edit",4.174,4,4
+tests/browser/timeline.spec.ts,Delete and Space respect text editing while clip deletion remains undoable,4.154,4,3
+tests/browser/story-flow.spec.ts,narrow layout and loading keep graph and inspector controls in place,4.127,4,1
+tests/browser/native-timeline.spec.ts,source-only editor playback loads captions and uses the canvas transport,4.111,3,2
+tests/browser/story-flow.spec.ts,dropping a video on an existing arrow imports a separate clip and a failed batch leaves the project intact,4.081,4,1
+tests/browser/clip-metadata.spec.ts,opening a portable video directly restores it; ordinary and invalid metadata files remain sources,3.983,1,3
+tests/browser/example.spec.ts,cancels a sample project download and leaves the chooser ready for retry,3.924,1,4
+tests/browser/flow-buffering.spec.ts,loop picture and sound fade independently while retaining the incoming decoder across repeats,3.913,1,4
+tests/browser/player.spec.ts,"keyboard seeking, captions and mobile layout",3.899,3,3
+tests/browser/example.spec.ts,opens the saved sample project from the sample projects section,3.895,1,1
+tests/browser/project-module-loading.spec.ts,project sample open and export survive missing deployment chunks,3.875,3,2
+tests/browser/loading-layout.spec.ts,discarding an edit does not show a closing message on the chooser at 1440px,3.828,3,4
+tests/browser/call-response.spec.ts,subtitle import can be undone and redone in the graph player,3.77,1,3
+tests/browser/project-module-loading.spec.ts,project file open and export survive missing deployment chunks,3.57,3,2
+tests/browser/help-create.spec.ts,existing workspace layout gains Add clips without resetting preferences (locked: true),3.511,2,1
+tests/browser/frame-rate.spec.ts,cancelling a fallback conversion preserves the active project and leaves no partial assets,3.51,2,1
+tests/browser/loading-layout.spec.ts,"all clip phases preserve headers, rows and controls at 1440px",3.461,3,2
+tests/browser/loading-layout.spec.ts,"project chooser stays fixed through loading, cancellation, and error at 1440px",3.457,3,3
+tests/browser/still-images.spec.ts,chooses and reorders multiple image references independently for Start and End at 390px,3.401,4,4
+tests/browser/frame-rate.spec.ts,converts only a short generation reference from a native 25 fps source,3.397,2,2
+tests/browser/image-references.spec.ts,changing images cancels enhancement and ignores its late response,3.382,2,1
+tests/browser/example.spec.ts,failed sample project downloads and corrupt archives leave the chooser ready for retry,3.379,1,4
+tests/browser/example.spec.ts,keeps the sample project available when no sample video URL exists,3.333,1,3
+tests/browser/preview-mode.spec.ts,preview controls stay fixed through buffering and errors at 320px,3.297,3,1
+tests/browser/preview-mode.spec.ts,preview controls stay fixed through buffering and errors at 390px,3.296,3,2
+tests/browser/loading-layout.spec.ts,discarding an edit does not show a closing message on the chooser at 390px,3.25,3,3
+tests/browser/start.spec.ts,does not list every old call response autosave as a saved project,3.116,4,4
+tests/browser/help-create.spec.ts,existing workspace layout gains Add clips without resetting preferences (locked: false),3.114,2,4
+tests/browser/flow-buffering.spec.ts,"framing changes preserve the canvas playhead, speed and pending response",3.053,1,1
+tests/browser/start.spec.ts,starts with an empty project and keeps the player above its timeline,2.973,4,2
+tests/browser/loading-layout.spec.ts,discarding an edit does not show a closing message on the chooser at 320px,2.964,3,3
+tests/browser/project.spec.ts,rolls back every asset and the active project if a multi-asset import cannot commit,2.939,4,2
+tests/browser/loading-layout.spec.ts,"project chooser stays fixed through loading, cancellation, and error at 390px",2.832,3,3
+tests/browser/loading-layout.spec.ts,"all clip phases preserve headers, rows and controls at 320px",2.821,3,4
+tests/browser/loading-layout.spec.ts,"all clip phases preserve headers, rows and controls at 390px",2.816,3,1
+tests/browser/project.spec.ts,cancelling a storage transaction leaves no imported assets or active-project change,2.783,4,3
+tests/browser/flow-buffering.spec.ts,independent story fades blend pixels and audio gains on their own timelines,2.778,1,4
+tests/browser/still-images.spec.ts,opens an image directly as a silent timeline source,2.76,4,1
+tests/browser/audio.spec.ts,timeline exports apply each asset volume through audio crossfades,2.663,1,2
+tests/browser/loading-layout.spec.ts,"project chooser stays fixed through loading, cancellation, and error at 320px",2.634,3,2
+tests/browser/clip-loading.spec.ts,clip thumbnails and preview show loading without shifting at 1440px,2.585,1,3
+tests/browser/import-frame-rate.spec.ts,24 fps and fractional FPS conversions preserve audio packets and timing,2.539,2,4
+tests/browser/voice.spec.ts,disables the mic when leaving the voice panel and handles permission denial,2.458,4,1
+tests/browser/loading-layout.spec.ts,initial project read keeps the chooser steady without a loading blurb at 1440px,2.45,3,1
+tests/browser/clip-metadata.spec.ts,a direct Comfy download restores reference identities and the generated section from its saved workflow,2.431,1,4
+tests/browser/loading-layout.spec.ts,initial project read keeps the chooser steady without a loading blurb at 320px,2.398,3,3
+tests/browser/loading-layout.spec.ts,initial project read keeps the chooser steady without a loading blurb at 390px,2.359,3,2
+tests/browser/preview-mode.spec.ts,an empty project has a stable disabled preview and can return to editing,2.32,3,1
+tests/browser/flow-buffering.spec.ts,canvas playback works without MediaSource and returns to the source frames,2.22,1,4
+tests/browser/project-shortcuts.spec.ts,save shortcuts download a project when the native file picker is unavailable,2.162,3,2
+tests/browser/clip-loading.spec.ts,zoom stretches the existing filmstrip without loading more frames,2.137,1,3
+tests/browser/audio.spec.ts,call-response generation references bridge 32 kHz audio into source audio or a silent held frame,2.123,1,3
+tests/browser/clip-loading.spec.ts,replacing a loading clip ignores its late result and generation keeps the existing filmstrip,2.055,1,2
+tests/browser/project-shortcuts.spec.ts,save shortcuts prevent duplicate pickers and recover after cancellation,1.986,3,4
+tests/browser/clip-loading.spec.ts,splitting a clip reuses its video asset thumbnails without showing a new loading state,1.964,1,1
+tests/browser/clip-loading.spec.ts,a generated clip waits for its local URL without caching a failed preview at 1440px,1.945,1,4
+tests/browser/local-startup.spec.ts,local startup renders with pulled Vercel settings at 1440px,1.938,3,2
+tests/browser/frame-rate.spec.ts,normalizes variable frame spacing even when its average is 24 fps,1.935,2,1
+tests/browser/native-timeline.spec.ts,redraws a replaced clip at the same playhead position,1.919,3,3
+tests/browser/clip-loading.spec.ts,clip thumbnails and preview show loading without shifting at 390px,1.797,1,4
+tests/browser/local-startup.spec.ts,local startup renders with pulled Vercel settings at 390px,1.726,3,2
+tests/browser/clip-loading.spec.ts,a generated clip waits for its local URL without caching a failed preview at 390px,1.621,1,1
+tests/browser/native-timeline.spec.ts,opening a sparko file preserves mismatched originals and their reference bounds without preview encoding,1.605,3,3
+tests/browser/audio.spec.ts,asset exports apply volume to audio while preserving video packets and original files,1.555,1,3
+tests/browser/native-timeline.spec.ts,cancelling video validation during import preserves the active project and commits no imported assets,1.55,3,1
+tests/browser/start.spec.ts,shows the sample project without a sample video action,1.508,4,2
+tests/browser/native-timeline.spec.ts,uses the same decoded-frame pipeline without WebGPU and closes its media resources,1.465,3,4
+tests/browser/audio.spec.ts,Idle uses audio from the full render while keeping the finished loop video,1.434,1,3
+tests/browser/audio.spec.ts,"Idle soundtrack loops on the playback clock and follows pause, mute and exit",1.371,1,1
+tests/browser/resampled-audio.spec.ts,chunked 48000 Hz audio matches continuous 44100 Hz resampling,0.259,4,2
+tests/browser/resampled-audio.spec.ts,chunked 96000 Hz audio matches continuous 48000 Hz resampling,0.229,4,4
+tests/browser/resampled-audio.spec.ts,resampling yields with bounded lookahead and closes its decoder iterator on cancellation,0.228,4,4
+tests/browser/resampled-audio.spec.ts,chunked 44100 Hz audio matches continuous 48000 Hz resampling,0.226,4,2
+tests/browser/resampled-audio.spec.ts,chunked 32000 Hz audio matches continuous 48000 Hz resampling,0.213,4,4
+tests/browser/resampled-audio.spec.ts,"resampling preserves gaps and format changes, and passes matching audio through",0.197,4,2

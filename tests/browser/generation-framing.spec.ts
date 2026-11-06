@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('generation uploads keep the same center crop when original and generated references are swapped', async ({ page }) => {
+test('generation uploads keep the same center crop when original and generated references are swapped', { tag: '@slow' }, async ({ page }) => {
   await page.route('**/__generation-framing', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Reference crop</title>' }));
   await page.route('**/api/status', route => route.fulfill({ json: { uploadMode: 'local' } }));
   await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));

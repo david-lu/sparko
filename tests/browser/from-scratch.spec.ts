@@ -1,7 +1,7 @@
 import { test, expect, addDraft, readProject, saveAndReopen } from './fixtures';
 
 for (const width of [1440, 390]) for (const loop of [false, true]) for (const conditional of [false, true]) {
-  test(`create from scratch: loop ${loop}, conditional ${conditional}, ${width}px`, async ({ page }) => {
+  test(`create from scratch: loop ${loop}, conditional ${conditional}, ${width}px`, { tag: width === 1440 && loop ? '@slow' : [] }, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
     await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { comfy: true, openai: false, gemini: false } } }); });

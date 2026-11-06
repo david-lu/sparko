@@ -168,7 +168,7 @@ test('opens a saved 25 fps source without moving its drafts', async ({ page }) =
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion', exact: true })).toHaveCount(0);
 });
 
-test('prepares a large source at the configured height limit while preserving aspect ratio and the 24 fps clock', async ({ page }) => {
+test('prepares a large source at the configured height limit while preserving aspect ratio and the 24 fps clock', { tag: '@slow' }, async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { Input, BlobSource, ALL_FORMATS, Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);

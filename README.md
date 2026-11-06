@@ -299,9 +299,24 @@ Do not prefix API secrets with `VITE_`. Redeploy after changing deployment envir
 
 [The CI workflow](.github/workflows/ci.yml) runs the full TypeScript check, unit/API tests, production build, and Chrome browser tests on pull requests, pushes to `main` or `ci/**` branches, and manual runs. Browser tests are divided across four independent runners, with one browser worker per runner. Updates to an open pull request rerun CI without a duplicate branch-push run unless its branch starts with `ci/`. The required **Sparko quality checks** job succeeds only when verification and all four browser shards pass. Pull requests are optional: direct pushes to `main` are allowed once that exact commit has passed the required check. To validate a commit before a direct push, use `git push origin HEAD:ci/validate-main`, wait for its push-triggered CI run to pass, then push the same commit to `main`. Manual workflow runs do not satisfy GitHub's required-check gate.
 
-CI uses `npm run test:e2e:ci`, which excludes tests tagged `@slow` or `@generation`. The normal local `npm run test:e2e` command also excludes `@generation`. Generation scenarios are disabled even though their provider responses are mocked. The remaining browser suite continues to cover editing, playback, preview, menus, loading states, and project operations.
+CI uses `npm run test:e2e:ci`, which excludes tests tagged `@slow` or `@generation`. The normal local `npm run test:e2e` command uses the same fast selection. Tagged generation scenarios are excluded even though their provider responses are mocked. All excluded tests remain available through `npm run test:e2e:full` or `npm run test:full`. The fast browser suite continues to cover editing, playback, preview, menus, loading states, and project operations.
 
-The slow cases were selected from [PR #4's CI timings](https://github.com/david-lu/sparko/actions/runs/41590453223), including the preceding successful runs of those cases. Approximate time per test, including browser setup and teardown:
+For faster PR feedback, the ten longest individual cases from the [November 5 CI run](https://github.com/david-lu/sparko/actions/runs/42070133184) are also tagged `@slow`. The new tags apply only to the listed variants, alongside the existing exclusions:
+
+| Additional full-suite-only case | Measured CI time |
+| --- | ---: |
+| Generation reference uploads preserve cropping | 67.99s |
+| Custom masks submit independently during generation, 1440px | 29.92s |
+| Create from scratch with looping and conditions, 1440px | 28.42s |
+| Image references guide loop enhancement and generation, 1440px | 28.28s |
+| Create from scratch with looping and no conditions, 1440px | 23.67s |
+| Template grouping, moving, renaming, duplication and archives | 21.81s |
+| Fullscreen controls follow mouse activity | 19.50s |
+| Bundled sample opens its timeline and interaction groups | 16.73s |
+| Custom masks submit independently during generation, 390px | 16.38s |
+| Large-source preparation preserves size, aspect ratio and frame rate | 16.05s |
+
+The earlier slow exclusions were selected from [PR #4's CI timings](https://github.com/david-lu/sparko/actions/runs/41590453223), including the preceding successful runs of those cases. Approximate time per test, including browser setup and teardown:
 
 | Excluded slow scenario | Cases | Time per case |
 | --- | ---: | ---: |
@@ -323,6 +338,14 @@ npm test
 npm run build
 npm run test:e2e
 ```
+
+To run the complete verification sequence, including every slow and mocked-generation browser case:
+
+```sh
+npm run test:full
+```
+
+This runs typechecking, unit/API tests, the production build, and the unfiltered browser suite in order, stopping if a step fails. To run only the complete browser suite, use `npm run test:e2e:full`. You can inspect its selection without launching a browser with `npm run test:e2e:full -- --list`.
 
 CI never submits live model-generation jobs. The browser test server clears provider credentials and sets `SPARKO_TEST_MODE=1`, which blocks outbound Comfy requests even if a credential is accidentally supplied. Comfy unit tests use injected mock transports and fake credentials. Real video encoding/decoding, playback, audio, and project-file operations remain covered. Live-provider tests belong in `tests/live/`, which is excluded from the default unit and browser suites. The optional `npm run comfy:check` command calls the live readiness API without submitting a generation and is not run by CI.
 
