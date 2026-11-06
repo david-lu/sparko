@@ -9,13 +9,13 @@ vi.mock('../../src/media/media', () => ({
   timelineThumbnailCount: (duration: number) => Math.max(1, Math.min(120, Math.ceil(duration / 5))),
 }));
 
-import { assetThumbnails, clipThumbnails } from '../../src/media/assetThumbnails';
+import { assetThumbnails, clipThumbnails, releaseAssetThumbnails, THUMBNAIL_CACHE_LIMIT, THUMBNAIL_CACHE_BYTES } from '../../src/media/assetThumbnails';
 
 const frames = [2, 6, 10, 14].map(time => ({ time, url: `frame:${time}` }));
 const assetFrames = frames.map(frame => ({ ...frame, start: frame.time - 2, end: frame.time + 2 }));
 
 describe('asset thumbnails', () => {
-  beforeEach(() => { media.openInput.mockReset(); media.sampleFrames.mockReset(); });
+  beforeEach(() => { releaseAssetThumbnails(new Set()); media.openInput.mockReset(); media.sampleFrames.mockReset(); });
 
   it('decodes the full asset once while different clips select from the cached frames', async () => {
     media.sampleFrames.mockResolvedValue(frames);
@@ -55,5 +55,26 @@ describe('asset thumbnails', () => {
     media.sampleFrames.mockResolvedValue([frames[0], frames[2], frames[3]]);
     const result = await assetThumbnails({ id: 'missing-frame', name: 'video.mp4', url: 'blob:missing-frame' }, 16);
     expect(result).toEqual([assetFrames[0], assetFrames[2], assetFrames[3]]);
+  });
+  it('evicts the least recently used entry while retaining recently reused filmstrips', async () => {
+    media.sampleFrames.mockResolvedValue(frames);
+    const sources = Array.from({ length: THUMBNAIL_CACHE_LIMIT + 1 }, (_, i) => ({ id: String(i), assetId: String(i), name: 'video', url: `blob:${i}` }));
+    for (const source of sources.slice(0, -1)) await assetThumbnails(source, 16);
+    await assetThumbnails(sources[0], 16); await assetThumbnails(sources.at(-1)!, 16);
+    await assetThumbnails(sources[0], 16); expect(media.sampleFrames).toHaveBeenCalledTimes(THUMBNAIL_CACHE_LIMIT + 1);
+    await assetThumbnails(sources[1], 16); expect(media.sampleFrames).toHaveBeenCalledTimes(THUMBNAIL_CACHE_LIMIT + 2);
+  });
+  it('does not retain a filmstrip that exceeds the byte budget', async () => {
+    media.sampleFrames.mockResolvedValue([{ time: 1, url: 'x'.repeat(THUMBNAIL_CACHE_BYTES / 2 + 1) }]);
+    const source = { id: 'large', name: 'video', url: 'blob:large' };
+    await assetThumbnails(source, 2); await assetThumbnails(source, 2);
+    expect(media.sampleFrames).toHaveBeenCalledTimes(2);
+  });
+  it('does not repopulate the cache with a late result from a closed project', async () => {
+    let finish!: (value: typeof frames) => void;
+    media.sampleFrames.mockReturnValueOnce(new Promise(resolve => { finish = resolve; })).mockResolvedValue(frames);
+    const source = { id: 'late', assetId: 'late', name: 'video', url: 'blob:late' };
+    const pending = assetThumbnails(source, 16); releaseAssetThumbnails(new Set()); finish(frames); await pending;
+    await assetThumbnails(source, 16); expect(media.sampleFrames).toHaveBeenCalledTimes(2);
   });
 });

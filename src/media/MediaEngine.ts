@@ -8,7 +8,17 @@ export class MediaEngine {
   private metadata: ReturnType<typeof inspectMedia> | undefined;
   constructor(readonly source: MediaSource) {}
 
-  inspect() { this.lifecycle.signal.throwIfAborted(); return this.metadata ??= inspectMedia(this.source); }
+  inspect(signal?: AbortSignal) {
+    const operation = this.signal(signal); operation.throwIfAborted();
+    // Caller cancellation must not poison the shared metadata promise.
+    if (signal) return inspectMedia(this.source, operation);
+    if (!this.metadata) {
+      const pending = inspectMedia(this.source, operation);
+      this.metadata = pending;
+      void pending.catch(() => { if (this.metadata === pending) this.metadata = undefined; });
+    }
+    return this.metadata;
+  }
   private signal(signal?: AbortSignal) {
     return signal ? AbortSignal.any([signal, this.lifecycle.signal]) : this.lifecycle.signal;
   }

@@ -1,14 +1,32 @@
 import type { AppStatus } from '../../shared/contracts';
 
-export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, { ...options, headers: { ...appHeaders(), ...options.headers } });
-  const body = await response.json().catch(() => ({}));
+/** Authenticated transport shared by JSON requests and media downloads. */
+export async function requestResponse(path: string, options: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(appHeaders());
+  new Headers(options.headers).forEach((value, key) => headers.set(key, value));
+  const response = await fetch(path, { ...options, headers });
   if (response.status === 401) window.dispatchEvent(new Event('sparko:auth-required'));
-  if (!response.ok) throw new Error(body.error || `Request failed (${response.status}).`);
-  return body as T;
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => undefined);
+    const message = body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' ? body.error : undefined;
+    throw new Error(message || `Request failed (${response.status}).`);
+  }
+  return response;
+}
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await requestResponse(path, options);
+  if (response.status === 204) return undefined as T;
+  try { return await response.json() as T; }
+  catch (error) {
+    options.signal?.throwIfAborted();
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new Error('The server returned an unreadable response. Please try again.');
+  }
 }
 export function appHeaders() {
-  return { 'x-sparko-request': '1', 'x-sparko-password': sessionStorage.getItem('sparko:password') || '' };
+  let password = '';
+  try { password = sessionStorage.getItem('sparko:password') || ''; } catch { /* Storage may be disabled. */ }
+  return { 'x-sparko-request': '1', 'x-sparko-password': password };
 }
 let appStatus: AppStatus | undefined;
 export const getStatus = async () => appStatus = await request<AppStatus>('/api/status');

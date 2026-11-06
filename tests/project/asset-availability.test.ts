@@ -28,4 +28,22 @@ describe('local media availability', () => {
     const id = crypto.randomUUID(); vi.mocked(readAsset).mockResolvedValue({ id, name: 'empty.mp4', blob: new Blob() });
     await expect(assets.open(id)).rejects.toThrow('empty'); expect(assets.error(id)).toContain('working file'); expect(assets.url(id)).toBeUndefined();
   });
+  it('does not recreate an object URL when a released read finishes late', async () => {
+    const id = crypto.randomUUID(); let finish!: (asset: Asset) => void;
+    vi.mocked(readAsset).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const opened = assets.open(id), assertion = expect(opened).rejects.toMatchObject({ name: 'AbortError' });
+    assets.releaseExcept(new Set());
+    finish({ id, name: 'old.png', blob: new Blob(['old']) }); await assertion;
+    expect(assets.url(id)).toBeUndefined(); expect(assets.error(id)).toBeUndefined();
+  });
+  it('does not remove a newer pending read when a released read finishes', async () => {
+    const id = crypto.randomUUID(); let first!: (asset: Asset) => void, second!: (asset: Asset) => void;
+    vi.mocked(readAsset).mockReturnValueOnce(new Promise(resolve => { first = resolve; })).mockReturnValueOnce(new Promise(resolve => { second = resolve; }));
+    const stale = assets.open(id), assertion = expect(stale).rejects.toMatchObject({ name: 'AbortError' });
+    assets.releaseExcept(new Set()); const current = assets.open(id);
+    first({ id, name: 'old.png', blob: new Blob(['old']) }); await assertion;
+    const shared = assets.open(id); expect(readAsset).toHaveBeenCalledTimes(2);
+    second({ id, name: 'new.png', blob: new Blob(['new']) });
+    expect((await current).asset.name).toBe('new.png'); expect((await shared).url).toBe(assets.url(id));
+  });
 });

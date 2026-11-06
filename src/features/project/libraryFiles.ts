@@ -38,16 +38,20 @@ export async function droppedFiles(data: DataTransfer): Promise<LibraryFile[]> {
   for (const root of roots) await visit(root, '');
   return files;
 }
-export async function inspectAsset(blob: Blob, kind: LibraryAsset['kind']): Promise<Partial<LibraryAsset>> {
+export async function inspectAsset(blob: Blob, kind: LibraryAsset['kind'], signal?: AbortSignal): Promise<Partial<LibraryAsset>> {
+  signal?.throwIfAborted();
   if (kind === 'image') {
     const bitmap = await createImageBitmap(blob);
-    const dimensions = { width: bitmap.width, height: bitmap.height }; bitmap.close(); return dimensions;
+    try { signal?.throwIfAborted(); return { width: bitmap.width, height: bitmap.height }; }
+    finally { bitmap.close(); }
   }
   const element = document.createElement(kind === 'audio' ? 'audio' : 'video'), url = URL.createObjectURL(blob);
   try {
     return await new Promise((resolve, reject) => {
-      const timer = window.setTimeout(() => { cleanup(); reject(new Error('Unable to read media metadata.')); }, 20_000);
-      const cleanup = () => { clearTimeout(timer); element.onloadedmetadata = null; element.onerror = null; };
+      const timer = setTimeout(() => { cleanup(); reject(new Error('Unable to read media metadata.')); }, 20_000);
+      const cleanup = () => { clearTimeout(timer); element.onloadedmetadata = null; element.onerror = null; signal?.removeEventListener('abort', abort); };
+      const abort = () => { cleanup(); reject(signal?.reason); };
+      signal?.addEventListener('abort', abort, { once: true });
       element.onloadedmetadata = () => {
         cleanup();
         if (!Number.isFinite(element.duration) || element.duration <= 0) { reject(new Error('Media must have a finite duration.')); return; }

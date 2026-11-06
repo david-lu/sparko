@@ -8,6 +8,7 @@ import { emptyAnalysis, type Project } from '../../src/features/project/types';
 import { createNode } from '../../src/features/story-flow/model';
 import { interstitialSettings } from '../../shared/interstitials';
 import { saveInterstitials } from '../../src/features/interstitials/storage';
+import { newAssetGeneration } from '../../shared/asset-generation';
 
 vi.mock('../../src/features/project/database', async importOriginal => ({
   ...await importOriginal<typeof import('../../src/features/project/database')>(),
@@ -15,7 +16,11 @@ vi.mock('../../src/features/project/database', async importOriginal => ({
   listSavedProjects: vi.fn(async () => []), listRecentFiles: vi.fn(async () => []),
   rememberRecentFile: vi.fn(), clearActiveProject: vi.fn(),
 }));
-vi.mock('../../src/features/project/assets', () => ({ assets: { releaseExcept: vi.fn() } }));
+vi.mock('../../src/features/project/assets', () => ({ assets: { releaseExcept: vi.fn(), open: vi.fn(async () => ({})) } }));
+vi.mock('../../src/features/project/libraryFiles', async importOriginal => ({
+  ...await importOriginal<typeof import('../../src/features/project/libraryFiles')>(),
+  inspectAsset: vi.fn(async () => ({ width: 10, height: 10 })),
+}));
 vi.mock('../../src/features/project/archive', () => ({ packProject: vi.fn(async () => new Blob(['archive'])), unpackProject: vi.fn() }));
 
 const project = (): Project => ({ id: 'project', name: 'Test', source: { name: 'Empty' }, updatedAt: 0,
@@ -92,6 +97,69 @@ it('skips duplicate queued writes but retries after a browser write fails', asyn
   controller.editAssets(p => p); await settle();
   expect(writeProject).toHaveBeenCalledTimes(3);
   expect(controller.getSnapshot().dirty).toBe(true);
+});
+
+it.each(['new', 'close'] as const)('allows %s after a failed autosave without requiring another edit', async action => {
+  vi.mocked(writeProject).mockRejectedValueOnce(new Error('Temporary storage failure'));
+  controller.editAssets(p => ({ ...p, name: 'Changed' })); await settle();
+  expect(controller.getSnapshot().error).toContain('Temporary storage failure');
+  const revision = controller.getSnapshot().activationRevision;
+  if (action === 'new') {
+    await controller.newProject(); expect(controller.getSnapshot().project?.name).toBe('Untitled project');
+  } else {
+    expect(await controller.closeProject(true)).toBe(true); expect(controller.getSnapshot().project).toBeNull();
+  }
+  expect(controller.getSnapshot().error).toBeNull(); expect(controller.getSnapshot().activationRevision).toBeGreaterThan(revision);
+});
+
+it('rebases an import onto edits and completed media added while its storage transaction is pending', async () => {
+  let finish!: () => void;
+  vi.mocked(writeProject).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  const importing = controller.importAssets([{ file: new File(['image'], 'import.png', { type: 'image/png' }), path: 'import.png' }]);
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  const renderId = crypto.randomUUID();
+  controller.editAssets(p => ({ ...p, name: 'Edited during import', analysis: { ...p.analysis, instructions: 'Keep this edit' },
+    library: [...p.library ?? [], { assetId: renderId, name: 'Completed render', kind: 'image' }] }), false);
+  finish(); const imported = await importing; await settle();
+  expect(imported).toHaveLength(1);
+  expect(controller.getSnapshot().project).toMatchObject({ name: 'Edited during import', analysis: { instructions: 'Keep this edit' } });
+  expect(controller.getSnapshot().project!.library!.map(item => item.name)).toEqual(['Completed render', 'import.png']);
+  const saved = vi.mocked(writeProject).mock.calls.at(-1)![0];
+  expect(saved.name).toBe('Edited during import'); expect(saved.library).toHaveLength(2);
+});
+
+it('keeps the import unpublished when cancellation arrives during its storage transaction', async () => {
+  let finish!: () => void;
+  vi.mocked(writeProject).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  const importing = controller.importAssets([{ file: new File(['image'], 'cancelled.png', { type: 'image/png' }), path: 'cancelled.png' }]);
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  controller.cancel(); finish(); expect(await importing).toEqual([]);
+  expect(controller.getSnapshot().project!.library).toEqual([]); expect(controller.getSnapshot().busy).toBe(false);
+  await settle(); expect(vi.mocked(writeProject).mock.calls.at(-1)![0].library).toEqual([]);
+});
+
+it('restores generation controls when switching projects fails during preparation', async () => {
+  const generation = { ...newAssetGeneration('image'), phase: 'preparing' as const };
+  controller.editAssets(p => ({ ...p, clipGenerations: [generation] })); await settle();
+  vi.mocked(writeProject).mockRejectedValueOnce(new Error('Could not prepare project'));
+  await controller.newProject();
+  expect(controller.getSnapshot()).toMatchObject({ activating: false, busy: false, project: { clipGenerations: [{ phase: 'draft' }] } });
+});
+
+it('notifies canvas activation after preparation and isolates outgoing generation updates', async () => {
+  const item = jobs.add(0, 10); await settle();
+  let finish!: () => void;
+  const revision = controller.getSnapshot().activationRevision, generationRevision = controller.getSnapshot().generationRevision;
+  vi.mocked(writeProject).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  const pending = controller.newProject();
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  expect(controller.getSnapshot()).toMatchObject({ activating: true, activationRevision: revision, generationRevision: generationRevision + 1 });
+  const writes = vi.mocked(writeProject).mock.calls.length;
+  jobs.edit(item.id, { prompt: 'Late update in the outgoing document' }); await settle();
+  expect(writeProject).toHaveBeenCalledTimes(writes);
+  finish(); await pending; await settle();
+  expect(controller.getSnapshot()).toMatchObject({ activating: false, activationRevision: revision + 1, project: { interstitials: [] } });
+  expect(vi.mocked(writeProject).mock.calls.at(-1)![0].interstitials).toEqual([]);
 });
 
 it('updates live progress without writing storage or marking a saved project dirty', async () => {

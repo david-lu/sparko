@@ -45,6 +45,17 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
+  it.each(['cancel', 'remove'] as const)('does not %s a newly loaded clip with the same source and clip IDs', async action => {
+    const id = add(), item = { ...controller.getSnapshot().items[0], phase: 'error' as const, requestId: 'old-job-123' };
+    controller.load('source', [item]);
+    let finish!: () => void;
+    vi.mocked(cancelInterstitialJob).mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ requestId: 'old-job-123', status: 'CANCELLED' }); }));
+    const pending = action === 'cancel' ? controller.cancel(id) : controller.removeMany([id]);
+    controller.load('source', [{ ...item, phase: 'draft', requestId: undefined, prompt: 'New document' }]);
+    finish(); await pending;
+    expect(controller.getSnapshot().items).toHaveLength(1);
+    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'draft', prompt: 'New document' });
+  });
   it.each([undefined, 0, Number.MAX_SAFE_INTEGER])('owns seed selection before submission and saves the actual seed independently of edits (%s)', async seed => {
     const id = add(); controller.edit(id, { seed });
     let used!: number;
