@@ -291,11 +291,14 @@ export class ProjectController {
       return added;
     }) ?? [];
   }
-  private save(project: Project, record = true) {
+  private normalizeContent(project: Project) {
     project = migrateClipMedia(project);
+    return { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
+  }
+  private save(project: Project, record = true) {
+    project = this.normalizeContent(project);
     this.interstitials.setDefaultLora(projectLoraAddress(project.loras, H3_MODEL_ID), projectLoraStrength(project.loras, H3_MODEL_ID));
     for (const generation of project.clipGenerations ?? []) this.generationStates.set(generation.id, generation);
-    project = { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
     if(!record)this.history.retainGeneratedMedia(project.library!.filter(asset=>asset.generation&&!this.state.project?.library?.some(old=>old.assetId===asset.assetId)));
     const content = projectContent(project), changed = content !== this.currentContent;
     project = { ...project, updatedAt: changed ? Date.now() : this.state.project?.updatedAt ?? project.updatedAt };
@@ -380,6 +383,13 @@ export class ProjectController {
     await writeProject(project, pendingAssets, true, signal);
     await Promise.all((project.library ?? []).map(item => assets.open(item.assetId)));
     const source=await this.openSource(project);
+    // Finish metadata-dependent setup before recording the unchanged document.
+    // The player's later inspection must not turn opening a project into an edit.
+    if (source) {
+      const media = new MediaEngine(source);
+      try { this.storyDuration = (await media.inspect()).duration; signal.throwIfAborted(); }
+      finally { media.dispose(); }
+    }
     const subtitle = project.subtitle ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
     // Restore retained renders before publishing the timeline, including failed/cancelled retries.
     await Promise.all([...new Set([...project.storyFlow?.nodes.flatMap(n=>n.source?[n.source.assetId]:[])??[],...project.storyFlow?.templates.flatMap(t=>t.nodes.flatMap(n=>n.source?[n.source.assetId]:[]))??[],...project.interstitials.flatMap(item => [item.previousResult?.assetId, item.previousResult?.fullAssetId, item.result?.assetId, item.result?.fullAssetId]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
@@ -389,15 +399,19 @@ export class ProjectController {
     this.queuedContent = projectContent(project, 'browser');
     this.history.clear();
     this.fileHandle = null;
-    this.update({ project, source, subtitle, error: null, dirty: false, undoLabel: null, redoLabel: null,
-      savedProjectId, fileName: null, historyRevision: this.state.historyRevision + 1,activationRevision:this.state.activationRevision+1 });
     this.interstitials.load(project.id, project.interstitials, project.callResponse ? responseInterstitialIds(project.callResponse) : [], projectFlows(project));
-    this.interstitials.setCallResponses(activeFlows(project));
-    this.interstitials.setStoryGraph(project.storyFlow,project.source.assetId,this.storyDuration);
-    assets.releaseExcept(new Set(assetIds(project)));
-    this.switching = false;
-    const restored = { ...project, interstitials: this.interstitials.getSnapshot().items };
+    let restored = { ...project, interstitials: this.interstitials.getSnapshot().items };
+    if (source) restored = { ...restored, storyFlow: migrateGraph(restored, this.storyDuration), callResponse: undefined, callResponses: undefined,
+      analysis: restored.analysis.slice.end > this.storyDuration
+        ? { ...restored.analysis, slice: { start: 0, end: this.storyDuration } } : restored.analysis };
+    restored = this.normalizeContent(restored);
+    this.interstitials.setCallResponses(activeFlows(restored));
+    this.interstitials.setStoryGraph(restored.storyFlow,restored.source.assetId,this.storyDuration);
+    assets.releaseExcept(new Set(assetIds(restored)));
     this.savedContent = this.currentContent = projectContent(restored);
+    this.update({ project: restored, source, subtitle, error: null, dirty: false, undoLabel: null, redoLabel: null,
+      savedProjectId, fileName: null, historyRevision: this.state.historyRevision + 1,activationRevision:this.state.activationRevision+1 });
+    this.switching = false;
     this.save(restored, false);
   }
   private async prepareSource(project: Project, pendingAssets: Asset[], signal: AbortSignal, normalize = false) {

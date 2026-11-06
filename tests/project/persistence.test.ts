@@ -158,6 +158,22 @@ it('persists completed validation while treating media revalidation as unchanged
   expect(projectContent(loading, 'browser')).not.toBe(projectContent(ready, 'browser'));
 });
 
+it('ignores the temporary playback fallback while revalidating the same saved render', () => {
+  const ready = project();
+  ready.interstitials[0] = { ...ready.interstitials[0], phase: 'ready',
+    result: { assetId: 'render', url: 'asset:render', start: 0, duration: 5, totalDuration: 5 } };
+  const loading = structuredClone(ready);
+  loading.interstitials[0].phase = 'loading';
+  loading.interstitials[0].previousResult = { ...loading.interstitials[0].result!, url: 'blob:render' };
+  expect(projectContent(loading)).toBe(projectContent(ready));
+  expect(projectContent(loading, 'browser')).not.toBe(projectContent(ready, 'browser'));
+  loading.interstitials[0].previousResult.duration = 4;
+  expect(projectContent(loading)).not.toBe(projectContent(ready));
+  loading.interstitials[0].previousResult.duration = 5;
+  loading.interstitials[0].previousResult.assetId = 'older-render';
+  expect(projectContent(loading)).not.toBe(projectContent(ready));
+});
+
 it.each(['write', 'close'] as const)('only marks contents saved after a successful %s', async step => {
   const { handle, writer } = file(); await controller.saveToFile(handle);
   controller.editAssets(p => ({ ...p, name: 'Changed' }));

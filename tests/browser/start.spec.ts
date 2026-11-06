@@ -49,6 +49,10 @@ test('opens the bundled sample project with its saved videos', async ({ page }) 
   expect(project.source.name).toMatch(/\.mp4$/);
   await expect.poll(async () => (await readProject(page))?.interstitials.filter((item: { phase: string }) => item.phase === 'ready').length ?? 0,
     { timeout: 60_000 }).toBe(9);
+  await page.getByText('File', { exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Close project' }).click();
+  await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Save changes before closing?' })).toHaveCount(0);
 });
 
 test('asks before closing a project with unsaved changes', async ({ page }) => {
