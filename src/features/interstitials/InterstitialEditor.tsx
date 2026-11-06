@@ -28,6 +28,7 @@ import { maskCurveSchema } from '../../../shared/mask-curves';
 import type { ProjectController } from '../project/ProjectController';
 import { showErrorToast } from '../../shared/toasts';
 import AssetGenerationInfo from '../project/AssetGenerationInfo';
+import GeneratedVideoSeed from '../project/GeneratedVideoSeed';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -148,7 +149,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     <p className="hint reference-plan">{comfyPlan ? `${comfyPlan.insertion.duration.toFixed(3)}s generated · ${((comfyPlan.prefixFrames + comfyPlan.suffixFrames) / TIMELINE_FPS).toFixed(3)}s reference footage` : '\u00a0'}</p>
   </>;
   const outputAsset = projects?.getSnapshot().project?.library?.find(asset => asset.assetId === currentResult?.assetId);
-  const output = <>{resultDetails}{currentResult&&promptDetails}<AssetGenerationInfo asset={outputAsset} showPrompt={false} showBreakdown={!resultDetails}/>{fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
+  const output = <><GeneratedVideoSeed result={currentResult} settings={outputAsset?.generation?.provider === 'comfy' ? outputAsset.generation.settings : undefined}/>{resultDetails}{currentResult&&promptDetails}<AssetGenerationInfo asset={outputAsset} showPrompt={false} showBreakdown={!resultDetails}/>{fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
     downloadAsset={downloadAsset && { ...downloadAsset, assetId: currentResult?.fullAssetId ?? downloadAsset.assetId }}
     heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
     active={active} onPlay={onPreviewPlay} />}</>;

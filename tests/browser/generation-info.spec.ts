@@ -26,18 +26,25 @@ for (const width of [1440, 390]) test(`generation details belong to the compact 
 
   await showGenerationInfo(page);
   await expect(output.getByLabel('Generation seed', { exact: true })).toHaveText('42');
+  await expect(output.locator('.generated-video-seed')).toHaveCount(1);
+  expect((await output.locator('.generated-video-seed').boundingBox())!.y).toBeLessThan((await output.getByRole('region', { name: 'Video breakdown', exact: true }).boundingBox())!.y);
   await expect(output.getByRole('region', { name: 'Generation info', exact: true })).toContainText('Comfy · H3');
   await expect(output.locator('.interstitial-prompt-details')).toHaveCount(1);
   await expect(output.locator('.interstitial-prompt-details pre')).toHaveText(metadata.prompt);
   await expect(output.getByRole('region', { name: 'Video breakdown', exact: true })).toBeVisible();
   expect((await output.getByRole('region', { name: 'Generation info', exact: true }).boundingBox())!.height).toBeLessThan(150);
   await page.getByLabel('Video prompt', { exact: true }).fill('A future generation prompt');
+  await page.getByLabel('Generation seed mode', { exact: true }).selectOption('fixed');
+  await page.getByLabel('Generation seed value', { exact: true }).fill('99');
+  await expect(output.getByLabel('Generation seed', { exact: true })).toHaveText('42');
   await expect(output.locator('.interstitial-prompt-details pre')).toHaveText(metadata.prompt);
   const assetId = (await readProject(page)).interstitials[0].result.assetId;
   await page.getByRole('button', { name: 'Reveal in Library', exact: true }).click();
   await expect(output).not.toHaveAttribute('open');
   expect((await output.boundingBox())!.height).toBeLessThanOrEqual(30);
   await expect(await showGenerationInfo(page)).toContainText(metadata.prompt);
+  await expect(output.getByLabel('Generation seed', { exact: true })).toHaveText('42');
+  expect((await output.locator('.generated-video-seed').boundingBox())!.y).toBeLessThan((await output.locator('.asset-preview').boundingBox())!.y);
   await expect(page.locator('.asset-generation-info')).toHaveCount(1);
   expect((await readProject(page)).library.find((a: any) => a.assetId === assetId).generation.result.prompt).toBe(metadata.prompt);
   await output.locator('summary').first().scrollIntoViewIfNeeded();

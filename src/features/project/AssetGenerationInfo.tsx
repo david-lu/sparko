@@ -14,7 +14,6 @@ export default function AssetGenerationInfo({ asset, showPrompt = true, showBrea
     : metadata ? [...referenceClips(metadata.references, 'before'), ...referenceClips(metadata.references, 'after')].map(ref => ref.name) : [];
   return <section className="asset-generation-info" aria-label="Generation info">
         <dl><div><dt>Model</dt><dd>{generation.provider === 'comfy' ? 'Comfy · H3' : assetModel(generation.settings.model)?.name ?? generation.settings.model}</dd></div>
-          {showBreakdown && result && <div><dt>Seed</dt><dd>{metadata?.seed ?? 'Not recorded'}</dd></div>}
           {settings && asset?.kind !== 'audio' && <div><dt>Resolution</dt><dd>{settings.resolution}</dd></div>}
           {showBreakdown && settings && asset?.kind !== 'image' && <div><dt>Duration</dt><dd>{result?.duration ?? settings.duration} s</dd></div>}
           {showBreakdown && references.length > 0 && <div><dt>References</dt><dd>{references.join(' → ')}</dd></div>}

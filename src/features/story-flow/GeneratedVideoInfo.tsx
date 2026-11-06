@@ -35,8 +35,6 @@ export default function GeneratedVideoInfo({ item, node, nodes, items, assetAlia
     });
   };
   const opening = reference('before', range?.start ?? 0), ending = reference('after', tail);
-  const seed = <dl aria-label="Generation details"><div><dt>{result.metadata?.settings.resolution === '2k' ? 'H3 base seed' : 'Seed'}</dt>
-    <dd aria-label="Generation seed">{result.metadata?.seed ?? 'Not recorded'}</dd></div></dl>;
   const references = <dl className="generated-reference-videos">{([
     ['Start video', 'start', opening], ['End video', 'end', ending],
   ] as const).flatMap(([label, side, refs]) => refs.map((ref, index) => <div key={`${side}:${index}`}>
@@ -45,14 +43,14 @@ export default function GeneratedVideoInfo({ item, node, nodes, items, assetAlia
         : ref.name !== 'None' && ref.name !== 'Not recorded' && <small>Original clip is not in this project’s timeline</small>}
     </dd>
   </div>))}</dl>;
-  if (!range) return <section className="generated-video-info" aria-label="Video breakdown"><h3>Saved video</h3>{seed}{references}<p className="hint">{format(result.duration)} playable loop. Reference timings were not saved with this older render.</p></section>;
+  if (!range) return <section className="generated-video-info" aria-label="Video breakdown"><h3>Saved video</h3>{references}<p className="hint">{format(result.duration)} playable loop. Reference timings were not saved with this older render.</p></section>;
   const bounds = generatedBounds(node, result.duration);
   const sections = [{ id: 'reference opening', label: 'Opening reference', start: 0, end: range.start, detail: opening.map(ref => `${ref.name}: ${ref.detail}`).join(' → ') },
     { id: 'generated', label: 'Generated section', start: range.start, end, detail: 'New video created for this clip' },
     { id: 'reference ending', label: 'Ending reference', start: end, end: range.totalDuration, detail: ending.map(ref => `${ref.name}: ${ref.detail}`).join(' → ') }].filter(s => s.end - s.start > 1e-6);
   return <section className="generated-video-info" aria-label="Video breakdown"><h3>Video breakdown <span>{format(range.totalDuration)} total</span></h3>
     <p className="hint">{item.phase === 'ready' ? 'Actual timings in the saved video.' : 'Showing the last playable video while its replacement is pending.'}</p>
-    {seed}{references}
+    {references}
     <div className="generated-video-bar" aria-hidden>{sections.map(s => <span key={s.label} className={s.id} style={{ flex: s.end - s.start }} title={s.label}/>)}</div>
     <dl>{sections.map(s => <div key={s.label} className={s.id}><dt>{s.label}<small>{format(s.end - s.start)}</small></dt><dd>{span(s.start, s.end)}<small>{s.detail}</small></dd></div>)}</dl>
     <p className="generated-play-range"><strong>Used in the timeline</strong><span>{span(range.start + bounds.inFrame / TIMELINE_FPS, range.start + bounds.outFrame / TIMELINE_FPS)}</span><small>{format((bounds.outFrame - bounds.inFrame) / TIMELINE_FPS)}{behaviors(node).loop ? ' per repeat' : ''}. Reference sections stay outside the clip.</small></p>
