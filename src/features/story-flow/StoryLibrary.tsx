@@ -1,4 +1,4 @@
-import { ChevronRight, Folder, FolderPlus, GripVertical, Image, Music, Paintbrush, Plus, Search, Upload, Video } from 'lucide-react';
+import { ChevronRight, Folder, FolderPlus, GripVertical, Image, Music, Plus, Search, Upload, Video } from 'lucide-react';
 import { useEffect, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
 import type { StoryEditor, LibrarySelection } from './useStoryEditor';
 import { assets } from '../project/assets';
@@ -279,7 +279,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
         <div role="separator"/><button role="menuitem" onClick={() => requestDelete(menuSelections)}>Delete selected assets…</button>
       </>}
       {!multiple && menuAsset && <>
-        {menuAsset.kind === 'image' && <button role="menuitem" disabled={editor.projects.getSnapshot().busy} onClick={() => { setDrawing(menuAsset.assetId); setMenu(null); }}><Paintbrush size={14} aria-hidden/>Draw on image…</button>}
+        {menuAsset.kind === 'image' && <button role="menuitem" disabled={editor.projects.getSnapshot().busy} onClick={() => { setDrawing(menuAsset.assetId); setMenu(null); }}>Draw on image…</button>}
         <button role="menuitem" onClick={() => { choose({type:'asset',id:menuAsset.assetId}); setMenu(null); }}>Open in Inspector</button>
         <button role="menuitem" onClick={() => run(() => editor.addAsset(menuAsset.assetId))}>Add to timeline</button>
         <button role="menuitem" onClick={() => run(() => downloadAsset(menuAsset))}>Download</button>
