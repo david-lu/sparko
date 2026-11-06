@@ -11,7 +11,7 @@ import './asset-inspector.css';
 import AssetGenerationInfo from './AssetGenerationInfo';
 import GeneratedVideoSeed from './GeneratedVideoSeed';
 import { assetUsage } from './assetUsage';
-import ImageAssetTools from './ImageAssetTools';
+import ImageDimensions from './ImageDimensions';
 
 export function AssetPreview({ id, kind, name, onPlay }: { id?: string; kind: string; name: string; onPlay: () => void }) {
   const [url, setUrl] = useState<string>(), [error, setError] = useState('');
@@ -46,7 +46,7 @@ export default function AssetInspector({ editor }: { editor: StoryEditor; status
       onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.blur(); } }}/>
     <div className="inspector-clip-meta"><span>Media asset · {asset.generation ? 'Generated' : 'Imported'}</span></div>
     {kind === 'video' && <VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={asset.assetId}/>}
-    {kind === 'image' && <ImageAssetTools key={asset.assetId} projects={editor.projects} assetId={asset.assetId} onSaved={copy => editor.selectLibrary({ type: 'asset', id: copy.assetId })}/>}
+    {kind === 'image' && <ImageDimensions assetId={asset.assetId}/>}
     <details key={`output:${asset.assetId}`} className={`inspector-group${asset.generation ? ' inspector-output' : ''}`} open={!asset.generation}><summary>{asset.generation ? `Generated ${kind}` : 'Preview'}</summary>
       {asset.generation?.provider === 'comfy' && <GeneratedVideoSeed result={asset.generation.result} settings={asset.generation.settings}/>}
       <AssetPreview id={asset.assetId} kind={kind} name={asset.name} onPlay={() => editor.player.pause()}/>

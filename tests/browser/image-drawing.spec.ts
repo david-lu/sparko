@@ -10,6 +10,12 @@ async function openImage(page: Page) {
   await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles({ name: 'Drawing.png', mimeType: 'image/png', buffer: Buffer.from(bytes) });
   await expect(page.locator('.story-clip')).toHaveCount(1); await page.locator('.story-clip-title').click();
   await expect(page.getByLabel('Media dimensions', { exact: true })).toHaveText('320 × 180');
+  await expect(page.locator('.clip-inspector').getByRole('button', { name: 'Draw on image…', exact: true })).toHaveCount(0);
+}
+async function drawingMenu(page: Page, library = false) {
+  const trigger = library ? page.getByRole('button', { name: 'Library asset Drawing.png', exact: true }) : page.locator('.story-clip-title');
+  await trigger.click({ button: 'right' });
+  return page.getByRole('menuitem', { name: 'Draw on image…', exact: true });
 }
 async function pixels(page: Page, assetId: string) {
   return page.evaluate(async id => {
@@ -31,8 +37,8 @@ for (const width of [1440, 390]) test(`drawing saves a new image with undo, eras
   await page.setViewportSize({ width, height: 844 }); await openImage(page);
   const before = await readProject(page), original = await pixels(page, before.source.assetId);
   if (width === 390) await page.getByRole('button', { name: 'Reveal in Library', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Draw on image…', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'Draw on image…', exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.locator('.clip-inspector').getByRole('button', { name: 'Draw on image…', exact: true })).toHaveCount(0);
+  const draw = await drawingMenu(page, width === 390); await expect(draw).toBeEnabled();
   await page.screenshot({ path: `test-results/draw-image-action-${width}.png`, fullPage: true });
   await page.evaluate(() => {
     const decode = window.createImageBitmap;
@@ -43,10 +49,7 @@ for (const width of [1440, 390]) test(`drawing saves a new image with undo, eras
       return (decode as any)(...args);
     };
   });
-  if (width === 390) {
-    await page.getByRole('button', { name: 'Library asset Drawing.png', exact: true }).click({ button: 'right' });
-    await page.getByRole('menuitem', { name: 'Draw on image…', exact: true }).click();
-  } else await page.getByRole('button', { name: 'Draw on image…', exact: true }).click();
+  await draw.click();
   const dialog = page.getByRole('dialog', { name: 'Draw on image', exact: true }), canvas = dialog.getByLabel('Image drawing canvas', { exact: true });
   const geometry = () => dialog.locator('h2,.drawing-toolbar,.drawing-stage,.hint,.drawing-feedback,footer').evaluateAll(elements => elements.map(el => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }));
   await expect(dialog.getByText('Loading image…', { exact: true })).toBeVisible();
@@ -93,11 +96,13 @@ for (const width of [1440, 390]) test(`drawing saves a new image with undo, eras
 
 test('drawing can be cancelled and retried after an export error without saving partial assets', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 }); await openImage(page);
-  const before = await readProject(page), trigger = page.getByRole('button', { name: 'Draw on image…', exact: true });
-  await trigger.click(); const dialog = page.getByRole('dialog', { name: 'Draw on image', exact: true });
+  const before = await readProject(page);
+  const draw = await drawingMenu(page);
+  await page.screenshot({ path: 'test-results/draw-image-timeline-menu-390.png', fullPage: true });
+  await draw.click(); const dialog = page.getByRole('dialog', { name: 'Draw on image', exact: true });
   await expect(dialog.getByLabel('Image drawing canvas', { exact: true })).toBeVisible(); await stroke(page);
-  await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused(); expect(await readProject(page)).toEqual(before);
-  await trigger.click(); await expect(dialog.getByLabel('Image drawing canvas', { exact: true })).toBeVisible(); await stroke(page);
+  await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(page.getByLabel('Clip graph', { exact: true })).toBeFocused(); expect(await readProject(page)).toEqual(before);
+  await (await drawingMenu(page)).click(); await expect(dialog.getByLabel('Image drawing canvas', { exact: true })).toBeVisible(); await stroke(page);
   const geometry = () => dialog.locator('.drawing-stage,.drawing-feedback,footer').evaluateAll(elements => elements.map(el => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }));
   const idle = await geometry();
   await page.evaluate(() => {
@@ -111,7 +116,7 @@ test('drawing can be cancelled and retried after an export error without saving 
 
 test('cancelling an image save ignores its late PNG export', async ({ page }) => {
   await openImage(page); const before = await readProject(page);
-  await page.getByRole('button', { name: 'Draw on image…', exact: true }).click();
+  await (await drawingMenu(page)).click();
   const dialog = page.getByRole('dialog', { name: 'Draw on image', exact: true });
   await expect(dialog.getByLabel('Image drawing canvas', { exact: true })).toBeVisible(); await stroke(page);
   await page.evaluate(() => {
