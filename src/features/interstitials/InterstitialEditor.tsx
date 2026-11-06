@@ -135,6 +135,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     <MaskCurveEditor key={`curves:${selected.id}`} before={comfyPlan?comfyPlan.prefixFrames/TIMELINE_FPS:selected.useInputReference===false?0:selected.start_range}
       after={comfyPlan?comfyPlan.suffixFrames/TIMELINE_FPS:method==='comfy-extend'||selected.useOutputReference===false?0:selected.end_range}
       duration={comfyPlan?.insertion.duration??selected.duration} video={selected.videoMaskCurve} audio={selected.audioMaskCurve}
+      reference={dependency?.reference}
       videoMs={selected.videoMaskTransitionMs??selected.maskTransitionMs??MASK_TRANSITION.defaultMs}
       audioMs={selected.audioMaskTransitionMs??selected.maskTransitionMs??MASK_TRANSITION.defaultMs}
       onChange={patch=>controller.edit(selected.id,patch)}/>

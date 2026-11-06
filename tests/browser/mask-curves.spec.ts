@@ -1,5 +1,53 @@
 import {test,expect,openVideo,addBridge,readProject,saveAndReopen} from './fixtures';
 
+for(const width of [1440,390]) test(`mask editors show reference video cuts at the fitted times at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:1000});await openVideo(page);
+  const {bytes,nodeId}=await page.evaluate(async()=>{
+    const {readActiveProject,readAsset}=await import('/src/features/project/database.ts' as string);
+    const {packProject}=await import('/src/features/project/archive.ts' as string);
+    const {createNode,edge}=await import('/src/features/story-flow/model.ts' as string);
+    const project=await readActiveProject(),original=project.storyFlow.nodes[0],media=await readAsset(project.source.assetId);
+    const source=(id:string,x:number,inFrame:number,outFrame:number)=>({...original,id,name:id,x,y:60,source:{...original.source,inFrame,outFrame}});
+    const a=source('Earlier',0,0,48),b=source('Previous',100,48,96),c=source('Following',360,0,24),d=source('Later',460,24,96);
+    const {node,item}=createNode('simple');Object.assign(node,{x:200,y:60});
+    Object.assign(item,{duration:4,start_range:3,end_range:3,startReferenceType:'video',endReferenceType:'video'});
+    project.storyFlow={version:1,entryId:a.id,nodes:[a,b,node,c,d],templates:[],edges:[edge(a.id,b.id),edge(b.id,node.id),edge(node.id,c.id),edge(c.id,d.id)]};
+    project.interstitials=[item];
+    const archive=await packProject(project,[media],new AbortController().signal,()=>{});
+    return {bytes:[...new Uint8Array(await archive.arrayBuffer())],nodeId:node.id};
+  });
+  await page.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'Mask boundaries.sparko',mimeType:'application/zip',buffer:Buffer.from(bytes)});
+  await expect(page.locator('.story-clip')).toHaveCount(5);
+  await page.locator(`[data-node-id="${nodeId}"] .story-clip-title`).click();
+  await expect(page.locator('.mask-curve-preview .mask-video-boundary')).toHaveCount(4);
+  for(const channel of ['video','audio']){
+    await page.getByRole('button',{name:`Edit ${channel} mask`,exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:`${channel==='video'?'Video':'Audio'} mask editor`,exact:true});
+    const start=dialog.getByRole('img',{name:'Start video boundary at 0.333 seconds',exact:true});
+    const end=dialog.getByRole('img',{name:'End video boundary at 7.375 seconds',exact:true});
+    await expect(start).toBeVisible();await expect(end).toBeVisible();
+    await page.screenshot({path:`test-results/${channel}-mask-boundaries-${width}.png`});
+    await dialog.getByRole('button',{name:'Start',exact:true}).click();
+    await expect(start).toBeVisible();await expect(end).toHaveCount(0);
+    // The cut is at 8 of the 56 reference frames, and must not intercept adding a keyframe.
+    const plot=await dialog.locator('.mask-plot-background').boundingBox(),line=await start.locator('line').boundingBox();
+    const cutX=line!.x+line!.width/2;
+    expect(cutX-plot!.x).toBeCloseTo(plot!.width*8/56,1);
+    await page.mouse.dblclick(cutX,plot!.y+plot!.height*.5);
+    const time=dialog.getByLabel('Keyframe time',{exact:true});await expect(time).toBeEnabled();
+    // Browser double-click coordinates round to pixels, so allow less than one frame.
+    expect(Math.abs(Number(await time.inputValue())-8/24)).toBeLessThan(1/24);
+    await dialog.getByRole('button',{name:'End',exact:true}).click();
+    await expect(start).toHaveCount(0);await expect(end).toBeVisible();
+    expect(await dialog.locator('.mask-graph-editor').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+    await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+  }
+  // Reducing the range removes the earlier video from the actual generation window.
+  await page.getByLabel('start_range',{exact:true}).fill('2');
+  await expect(page.locator('.mask-curve-preview .mask-video-boundary')).toHaveCount(2);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+});
+
 for(const width of [1440,390]) test(`separate neutral mask editors preserve pins, handles, and independent settings at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:1000});
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));

@@ -55,7 +55,10 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install Chrome and browser dependencies
+        timeout-minutes: 5
         run: |
+          # The Azure mirror can stall package downloads; use Ubuntu's archive.
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chrome
           sudo apt-get install -y libvulkan1 mesa-vulkan-drivers xvfb xauth
       - name: Browser tests
