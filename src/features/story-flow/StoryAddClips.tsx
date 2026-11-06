@@ -20,7 +20,6 @@ export default function StoryAddClips({editor}:{editor:StoryEditor}) {
         <Film size={16} aria-hidden/><span>Video</span><GripVertical size={13} aria-hidden/>
       </button>
     </div>}
-    {showInterstitial&&<button className="add-clip-card" draggable aria-label="Add Kling video" onDragStart={event=>startLibraryDrag(event,{mediaKind:'video'})} onClick={event=>event.detail===0?editor.addMedia('video'):hint()}><Film size={16} aria-hidden/><span>Video · Kling</span><GripVertical size={13} aria-hidden/></button>}
     {mediaKinds.map(kind=><button key={kind} className="add-clip-card" draggable aria-label={`Add ${kind}`} title={`Drag to place ${kind}. Enter adds at the selection.`}
       onDragStart={event=>startLibraryDrag(event,{mediaKind:kind})} onClick={event=>event.detail===0?editor.addMedia(kind):hint()}>
       {kind==='image'?<Image size={16} aria-hidden/>:<Music size={16} aria-hidden/>}<span>{kind==='image'?'Image':'Audio'}</span><GripVertical size={13} aria-hidden/>

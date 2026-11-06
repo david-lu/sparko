@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { test, expect, openVideo, readProject, saveAndReopen } from './fixtures';
+import { test, expect, openVideo, readProject, saveAndReopen, showGenerationInfo } from './fixtures';
 import { writeClipMetadata } from '../../src/media/clipMetadata';
 import { clipMetadata } from '../fixtures/clip-metadata';
 
@@ -17,12 +17,12 @@ for(const width of [1440,390])test(`timeline image generation owns its recipe an
   await page.getByRole('menuitem',{name:'Add image',exact:true}).click();
   await expect(page.locator('.story-clip')).toHaveCount(2);await expect(page.getByLabel('Generation prompt',{exact:true})).toBeVisible();
   await page.getByLabel('Generation prompt',{exact:true}).fill('The saved render prompt');
-  const geometry=()=>page.locator('.clip-inspector').evaluate(el=>{const top=el.getBoundingClientRect().top;return ['.asset-render-info','.clip-generation-editor textarea','.asset-generate-actions','.asset-generation-feedback'].map(q=>{const r=el.querySelector(q)!.getBoundingClientRect();return [Math.round(r.top-top),Math.round(r.height)];});});
+  const geometry=()=>page.locator('.clip-inspector').evaluate(el=>{const top=el.getBoundingClientRect().top;return ['.inspector-output','.clip-generation-editor textarea','.asset-generate-actions','.asset-generation-feedback'].map(q=>{const r=el.querySelector(q)!.getBoundingClientRect();return [Math.round(r.top-top),Math.round(r.height)];});});
   const before=await geometry();await page.getByRole('button',{name:'Generate image',exact:true}).click();await expect.poll(()=>submissions).toBe(1);
   expect(await geometry()).toEqual(before);await expect(page.locator('[data-library-type=generation]')).toHaveCount(0);
   await page.getByLabel('Generation prompt',{exact:true}).fill('Next attempt prompt');complete=true;
   await expect.poll(async()=> (await readProject(page)).clipGenerations[0].phase).toBe('ready');
-  expect(await geometry()).toEqual(before);await expect(page.getByRole('region',{name:'Generation info'})).toContainText('The saved render prompt');
+  expect(await geometry()).toEqual(before);await expect(await showGenerationInfo(page)).toContainText('The saved render prompt');
   const current=await readProject(page),generated=current.storyFlow.nodes.find((n:any)=>n.generationId),assetId=generated.source.assetId;
   expect(current.library.find((a:any)=>a.assetId===assetId).generation.settings.prompt).toBe('The saved render prompt');
   await page.getByRole('button',{name:'Duplicate clip',exact:true}).click();
@@ -38,11 +38,11 @@ for(const width of [1440,390])test(`timeline image generation owns its recipe an
   const copyAsset=regenerated.storyFlow.nodes.at(-1).source.assetId;
   await page.getByRole('button',{name:'Delete selected clips',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(2);
   expect((await readProject(page)).library.some((a:any)=>a.assetId===copyAsset)).toBe(true);
-  await page.locator(`[data-asset-id="${assetId}"]`).click();await expect(page.getByRole('region',{name:'Generation info'})).toContainText('The saved render prompt');
+  await page.locator(`[data-asset-id="${assetId}"]`).click();await expect(await showGenerationInfo(page)).toContainText('The saved render prompt');
   await expect(page.getByLabel('Generation prompt',{exact:true})).toHaveCount(0);await expect(page.locator('.asset-inspector').getByRole('slider',{name:/volume/i})).toHaveCount(0);
   await expect(page.locator(`[data-asset-id="${assetId}"]`).getByRole('img',{name:'Image',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-  if(width===1440){await saveAndReopen(page);const saved=await readProject(page);expect(saved.clipGenerations).toHaveLength(1);await page.locator(`[data-asset-id="${saved.storyFlow.nodes.find((n:any)=>n.generationId).source.assetId}"]`).click();await expect(page.getByRole('region',{name:'Generation info'})).toContainText('The saved render prompt');}
+  if(width===1440){await saveAndReopen(page);const saved=await readProject(page);expect(saved.clipGenerations).toHaveLength(1);await page.locator(`[data-asset-id="${saved.storyFlow.nodes.find((n:any)=>n.generationId).source.assetId}"]`).click();await expect(await showGenerationInfo(page)).toContainText('The saved render prompt');}
   await page.screenshot({path:`test-results/clip-media-${width}.png`,fullPage:true});expect(errors).toEqual([]);
 });
 
@@ -60,9 +60,9 @@ test('volume belongs to each clip while Library downloads preserve original byte
 test('imported video provenance is visible in Library and every timeline placement',async({page})=>{
   await openVideo(page);const blob=await writeClipMetadata(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')],{type:'video/mp4'}),clipMetadata,new AbortController().signal);
   await page.getByLabel('Import library assets',{exact:true}).setInputFiles({name:'Generated.mp4',mimeType:'video/mp4',buffer:Buffer.from(await blob.arrayBuffer())});
-  await expect(page.getByRole('region',{name:'Generation info'})).toContainText(clipMetadata.prompt);
-  await page.getByRole('button',{name:'Add to timeline',exact:true}).click();await expect(page.getByRole('region',{name:'Generation info'})).toContainText(clipMetadata.prompt);
-  await page.getByRole('button',{name:'Delete selected clips',exact:true}).click();await page.getByRole('button',{name:'Library asset Generated.mp4',exact:true}).click();await expect(page.getByRole('region',{name:'Generation info'})).toContainText(clipMetadata.prompt);
+  await expect(await showGenerationInfo(page)).toContainText(clipMetadata.prompt);
+  await page.getByRole('button',{name:'Add to timeline',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(2);await expect(page.locator('.asset-inspector')).toHaveCount(0);await expect(await showGenerationInfo(page)).toContainText(clipMetadata.prompt);
+  await page.getByRole('button',{name:'Delete selected clips',exact:true}).click();await page.getByRole('button',{name:'Library asset Generated.mp4',exact:true}).click();await expect(await showGenerationInfo(page)).toContainText(clipMetadata.prompt);
 });
 
 test('audio clips play and save with independent clip volume',async({page})=>{

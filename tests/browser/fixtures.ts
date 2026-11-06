@@ -6,6 +6,14 @@ export const readProject = (page: Page) => page.evaluate(async () => {
   return readActiveProject();
 });
 
+export async function showGenerationInfo(page: Page) {
+  const output = page.locator('.inspector-output');
+  if (await output.getAttribute('open') === null) await output.locator(':scope > summary').click();
+  const prompt = output.locator('.interstitial-prompt-details');
+  if (await prompt.getAttribute('open') === null) await prompt.locator(':scope > summary').click();
+  return output.getByRole('region', { name: 'Generation info', exact: true });
+}
+
 export async function openVideo(page: Page) {
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();

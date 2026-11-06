@@ -2,7 +2,7 @@ import VideoFrameRate from '../project/VideoFrameRate';
 import ImageAssetTools from '../project/ImageAssetTools';
 import { FileVideo, Image, Music } from 'lucide-react';
 import { playableResult } from '../../../shared/interstitials';
-import AssetGenerationInfo from '../project/AssetGenerationInfo';
+import GeneratedAssetOutput from '../project/GeneratedAssetOutput';
 import type { StoryNode } from './model';
 import type { StoryEditor } from './useStoryEditor';
 
@@ -22,6 +22,6 @@ export default function ClipMediaSection({ node, editor }: { node: StoryNode; ed
         <option value="">{asset ? 'Replace asset…' : 'Choose an existing asset…'}</option>{candidates.filter(asset => asset.assetId !== id).map(asset => <option key={asset.assetId} value={asset.assetId}>{asset.name}</option>)}
       </select>
     </details>
-    <AssetGenerationInfo asset={asset}/>
+    {!node.interstitialId && !node.generationId && asset?.generation && <GeneratedAssetOutput asset={asset} kind={kind} onPlay={() => editor.player.pause()}/>}
   </>;
 }

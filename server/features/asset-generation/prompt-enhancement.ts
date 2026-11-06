@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { loraInstructionsSchema } from '../../../shared/loras.js';
 import type { Express } from 'express';
-import { assetModel, assetSettingsSchema, validateAssetSettings } from '../../../shared/asset-generation.js';
+import { assetModel, assetSettingsSchema } from '../../../shared/asset-generation.js';
 import { IMAGE_PROMPT_GUIDES } from '../../../shared/image-prompt-guides.js';
 import { AI_MODELS } from '../../../shared/constants.js';
 import type { AIClients } from '../../shared/ai-clients.js';
@@ -12,9 +12,9 @@ import type { Providers } from '../../providers.js';
 const inputSchema = z.object({ settings: assetSettingsSchema, loraInstructions: loraInstructionsSchema.optional(),
   images: z.array(z.string().max(32_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/)).max(14),
 }).superRefine((input, ctx) => {
-  const model = assetModel(input.settings.model), error = validateAssetSettings(input.settings);
+  const model = assetModel(input.settings.model);
   if (model?.kind !== 'image' || !IMAGE_PROMPT_GUIDES[input.settings.model]) ctx.addIssue({ code: 'custom', message: 'Choose an image model with a prompt guide.' });
-  if (error) ctx.addIssue({ code: 'custom', message: error });
+  if (!input.settings.prompt.trim()) ctx.addIssue({ code: 'custom', message: 'Enter a draft prompt to enhance.' });
   if (input.images.length !== input.settings.references.filter(r => r.kind === 'image').length) ctx.addIssue({ code: 'custom', message: 'Image previews do not match the references.' });
 });
 type Input = z.infer<typeof inputSchema> & { signal: AbortSignal };

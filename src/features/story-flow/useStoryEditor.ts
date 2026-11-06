@@ -10,7 +10,7 @@ import { captureTemplate, instantiateTemplate, makePreset } from './templates';
 import { groupClips, copyGroups, setGroupMembers } from './groups';
 import { conditionsFor, normalizeConditions, setBehavior } from './behaviors';
 import type { StoryCondition } from './model';
-import { TIMELINE_FPS } from '../../../shared/constants';
+import { INTERSTITIAL, TIMELINE_FPS } from '../../../shared/constants';
 import { ClipGenerationController } from '../project/ClipGenerationController';
 import { joinClips, joinProblems } from './joinClips';
 import type { ClipColor } from './clipColors';
@@ -120,6 +120,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   };
   const addMedia=(kind:MediaKind,placement?:{x:number;y:number},edgeId?:string,fromId?:string)=>{
     if(!graph)return;
+    if(kind==='video'){add('simple',edgeId,placement,fromId);return;}
     const generation=newAssetGeneration(kind,undefined,project?.loras);
     const node:StoryNode={id:freshId(),name:generation.name,kind:'source',mediaKind:kind,generationId:generation.id,volume:1,
       duration:kind==='image'?4:generation.settings.duration??4,loopCount:0,x:placement?.x??40,y:placement?.y??Math.max(90,...graph.nodes.map(n=>n.y))+145};
@@ -130,8 +131,23 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     change(next,[],[generation]);selectNew(node.id,!placement);
   };
   const makeGenerative=(nodeId:string)=>{
-    const node=graph?.nodes.find(n=>n.id===nodeId);if(!node||node.generationId||node.interstitialId)return;
-    const kind=node.source?.kind??'video',generation=newAssetGeneration(kind,undefined,project?.loras);
+    const node=graph?.nodes.find(n=>n.id===nodeId);if(!node||node.interstitialId)return;
+    const kind=node.source?.kind??node.mediaKind??'video';
+    if(kind==='video'){
+      const previous=project?.clipGenerations?.find(g=>g.id===node.generationId);
+      if(previous&&generationBusy(previous))return;
+      const {item}=createNode(node.loop?'looped':'simple');
+      const saved=project?.library?.find(a=>a.assetId===node.source?.assetId)?.generation;
+      item.label=node.name;item.prompt=previous?.settings.prompt??saved?.settings?.prompt??(saved?.provider==='comfy'?saved.result.prompt:undefined)??'';
+      item.duration=Math.max(INTERSTITIAL.minDuration,Math.min(INTERSTITIAL.maxDuration,previous?.settings.duration??nodeDuration(node,items)));
+      item.useInputReference=false;item.useOutputReference=false;item.startReferenceType='none';item.endReferenceType='none';
+      const images=previous?.settings.references.filter(r=>r.kind==='image');
+      if(images?.length){item.imageReferences=images.map(({assetId,name})=>({assetId,name}));item.startReferenceType='image';item.startImageIndex=0;}
+      change({...graph!,nodes:graph!.nodes.map(n=>n.id===nodeId?{...n,kind:node.loop?'looped':'simple',mediaKind:'video',generationId:undefined,interstitialId:item.id}:n)},[item]);
+      jobs.select(item.id);return;
+    }
+    if(node.generationId)return;
+    const generation=newAssetGeneration(kind,undefined,project?.loras);
     generation.name=node.name;
     if(kind==='image'&&node.source)generation.settings.references=[{assetId:node.source.assetId,name:node.name,kind:'image'}];
     change({...graph!,nodes:graph!.nodes.map(n=>n.id===nodeId?{...n,generationId:generation.id,mediaKind:kind}:n)},[],[generation]);

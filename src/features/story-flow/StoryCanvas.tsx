@@ -84,7 +84,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   },[libraryDrag,graph.templates]);
   const dragPreview=useMemo(()=>{
     if(!libraryDrag)return [];
-    if('mediaKind' in libraryDrag)return [{id:'draft',name:libraryDrag.mediaKind==='image'?'Image':'Audio',kind:'source',x:0,y:0,duration:4,color:'gray' as const}];
+    if('mediaKind' in libraryDrag)return [{id:'draft',name:libraryDrag.mediaKind==='image'?'Image':libraryDrag.mediaKind==='video'?'Video':'Audio',kind:'source',x:0,y:0,duration:4,color:'gray' as const}];
     if('kind' in libraryDrag){const {node,item}=createNode(libraryDrag.kind);return [{...node,x:0,y:0,duration:nodeDuration(node,[item])}];}
     if('assetId' in libraryDrag){const asset=library?.find(a=>a.assetId===libraryDrag.assetId);return asset && (asset.duration || asset.kind === 'image')?[{id:asset.assetId,name:asset.name,kind:'source',color:'gray' as const,x:0,y:0,duration:((asset.outFrame??(asset.duration??DEFAULT_IMAGE_DURATION)*TIMELINE_FPS)-(asset.inFrame??0))/TIMELINE_FPS}]:[];}
     return templatePreview?.graph.nodes.map(n=>({...n,duration:nodeDuration(n,templatePreview.items)}))??[];

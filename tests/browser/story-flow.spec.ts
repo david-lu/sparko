@@ -81,8 +81,8 @@ test('connected generation uses clip references, keeps controls stable, and reop
   expect(portable.prompt).toBe('Continue the scene');expect(portable.references.before.name).toBe('interstitial-reference.mp4');
   expect(portable.media).toEqual({start:1,duration:2,totalDuration:4});
   await page.locator('.inspector-output>summary').click();await expect(page.getByRole('region',{name:'Video breakdown'})).toContainText('Generated section');
-  await page.locator('.inspector-output .interstitial-prompt-details>summary').click();await expect(page.locator('.inspector-output pre')).toHaveText('Continue the scene');
-  await page.getByLabel('Video prompt',{exact:true}).fill('A different next render');await expect(page.locator('.inspector-output pre')).toHaveText('Continue the scene');await expect(page.locator('.inspector-references-panel .interstitial-prompt-details')).toHaveCount(0);
+  await page.locator('.inspector-output .interstitial-prompt-details>summary').click();await expect(page.locator('.inspector-output .interstitial-prompt-details pre')).toHaveText('Continue the scene');
+  await page.getByLabel('Video prompt',{exact:true}).fill('A different next render');await expect(page.locator('.inspector-output .interstitial-prompt-details pre')).toHaveText('Continue the scene');await expect(page.locator('.inspector-references-panel .interstitial-prompt-details')).toHaveCount(0);
   expect(await libraryControls()).toEqual(libraryBefore);
   const generated=page.locator('.story-clip.type-simple');await expect(generated).toHaveAttribute('data-duration','2');
   await expect(placeholder).toHaveCount(0);await expect(generated.locator('.video-filmstrip img').first()).toBeVisible();expect((await generated.boundingBox())!.height).toBe(draftHeight);

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { test, expect, openVideo, readProject, saveAndReopen, fitAll, type Page } from './fixtures';
+import { test, expect, openVideo, readProject, saveAndReopen, fitAll, showGenerationInfo, type Page } from './fixtures';
 import { writeClipMetadata, readClipMetadata } from '../../src/media/clipMetadata';
 import { clipMetadata as legacyClipMetadata } from '../fixtures/clip-metadata';
 const clipMetadata = { ...legacyClipMetadata, seed: Number.MAX_SAFE_INTEGER };
@@ -142,7 +142,7 @@ test('converting a generated scene creates a separate copy with its metadata and
   await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
   await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('30 fps');
   expect((await readProject(page)).storyFlow.nodes.at(-1).source).toMatchObject({assetId:copy.assetId,inFrame:24,outFrame:72});
-  await expect(page.getByRole('region',{name:'Generation info'})).toContainText(clipMetadata.prompt);
+  await expect(await showGenerationInfo(page)).toContainText(clipMetadata.prompt);
 });
 
 test('opening a portable video directly restores it; ordinary and invalid metadata files remain sources', async ({ page }) => {

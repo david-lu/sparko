@@ -318,8 +318,13 @@ export class ProjectController {
       const project = this.state.project;
       if (!project || this.switching || project.interstitials === this.interstitials.getSnapshot().items) return;
       let next = { ...project, interstitials: this.interstitials.getSnapshot().items, updatedAt: Date.now() };
+      // The asset is published during loading; switch the clip only after validation succeeds.
+      next = { ...next, storyFlow: next.storyFlow ? { ...next.storyFlow, nodes: next.storyFlow.nodes.map(node => {
+        const item = next.interstitials.find(item => item.id === node.interstitialId), old = project.interstitials.find(item => item.id === node.interstitialId);
+        const completed = item?.phase === 'ready' && item.result?.assetId && (old?.phase !== 'ready' || item.result.assetId !== old.result?.assetId);
+        return completed ? { ...node, source: undefined, trim: undefined } : node;
+      }) } : undefined };
       // An image-only project gets its playback canvas from its first render.
-      next={...next,storyFlow:next.storyFlow?{...next.storyFlow,nodes:next.storyFlow.nodes.map(n=>{const item=next.interstitials.find(i=>i.id===n.interstitialId),old=project.interstitials.find(i=>i.id===n.interstitialId);return item?.phase==='ready'&&item.result?.assetId!==old?.result?.assetId?{...n,source:undefined,trim:undefined}:n;})}:undefined};
       const first = !project.source.assetId && next.interstitials.find(item => item.phase === 'ready' && item.result?.assetId);
       const assetId = first && first.result?.assetId, url = assetId && assets.url(assetId);
       if (first && assetId && url) {

@@ -61,15 +61,25 @@ describe('model-specific image prompt enhancement', () => {
     expect(result.body).toEqual({ error });
     expect(result.text).not.toMatch(/provider secret|secret-value/);
   });
-  it('protects the route and rejects unknown, non-image, incompatible and mismatched inputs before calling the provider', async () => {
+  it('protects the route and rejects unknown, non-image, empty and mismatched inputs before calling the provider', async () => {
     const providers = createProviders({ OPENAI_API_KEY: 'test' }), app = express();
     app.use(protectRequests, express.json({ limit: '1mb' })); addImagePromptEnhancementRoutes(app, providers); app.use(errorHandler);
     const body = input();
     await request(app).post('/api/image-prompts/enhance').send(body).expect(403);
     for (const model of ['unknown', 'kling-video']) await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send({ ...body, settings: { ...body.settings, model } }).expect(400);
     await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send({ ...body, images: ['data:image/jpeg;base64,YQ=='] }).expect(400);
-    await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send({ ...body, settings: { ...body.settings, references: [{ assetId: crypto.randomUUID(), name: 'audio', kind: 'audio' }] } }).expect(400);
+    await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send({ ...body, settings: { ...body.settings, prompt: ' ' } }).expect(400);
     expect(respond).not.toHaveBeenCalled();
     await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send(body).expect(200, { prompt, model: body.settings.model, guideUrl: IMAGE_PROMPT_GUIDES[body.settings.model].url });
+  });
+  it('enhances a draft even when its generation settings need correction', async () => {
+    const value = input();
+    value.settings.lora = 'style.safetensors';
+    value.settings.count = 2; value.settings.resolution = '2K';
+    value.settings.references = [{ assetId: crypto.randomUUID(), name: 'Audio context', kind: 'audio' }];
+    const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(value);
+    expect(result.prompt).toBe(prompt);
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0][0].instructions).toContain('never invent their contents');
   });
 });

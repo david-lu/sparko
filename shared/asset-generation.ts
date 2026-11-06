@@ -10,11 +10,12 @@ export const ASSET_MODELS: AssetModel[] = [
   { id: 'nano-banana-pro', name: 'Nano Banana Pro', kind: 'image', endpoint: 'fal-ai/nano-banana-pro', editEndpoint: 'fal-ai/nano-banana-pro/edit', inputs: ['image'], maxImages: 14, resolutions: ['1K', '2K', '4K'] },
   { id: 'flux-2-max', name: 'FLUX.2 Max', kind: 'image', endpoint: 'fal-ai/flux-2-max', editEndpoint: 'fal-ai/flux-2-max/edit', inputs: ['image'], maxImages: 8, resolutions: ['1K', '2K'] },
   { id: 'ideogram-v3', name: 'Ideogram 3.0', kind: 'image', endpoint: 'fal-ai/ideogram/v3', inputs: [], maxImages: 0, resolutions: ['1K'] },
-  { id: 'kling-video', name: 'Kling 2.6 Pro', kind: 'video', endpoint: 'fal-ai/kling-video/v2.6/pro/text-to-video', editEndpoint: 'fal-ai/kling-video/v2.6/pro/image-to-video', inputs: ['image'], maxImages: 1, resolutions: [] },
   { id: 'sound-effects', name: 'ElevenLabs Sound Effects', kind: 'audio', endpoint: 'fal-ai/elevenlabs/sound-effects/v2', inputs: [], maxImages: 0, resolutions: [] },
   { id: 'stable-audio-2.5', name: 'Stable Audio 2.5 · Music & sound', kind: 'audio', endpoint: 'fal-ai/stable-audio-25/text-to-audio', editEndpoint: 'fal-ai/stable-audio-25/audio-to-audio', inputs: ['audio'], maxImages: 0, resolutions: [] },
 ];
-export const assetModel = (id: string) => ASSET_MODELS.find(model => model.id === id);
+// Retain names and queue paths for saved projects and already-submitted jobs.
+const legacyModels: AssetModel[] = [{ id: 'kling-video', name: 'Kling 2.6 Pro', kind: 'video', endpoint: 'fal-ai/kling-video/v2.6/pro/text-to-video', inputs: ['image'], maxImages: 1, resolutions: [] }];
+export const assetModel = (id: string) => ASSET_MODELS.find(model => model.id === id) ?? legacyModels.find(model => model.id === id);
 export const mediaKindSchema = z.enum(['image', 'video', 'audio']);
 export const assetReferenceSchema = z.object({ assetId: z.uuid(), name: z.string().min(1).max(1000), kind: mediaKindSchema });
 export const assetSettingsSchema = z.object({
@@ -39,20 +40,21 @@ export const assetGenerationSchema = z.object({
 export type AssetGeneration = z.infer<typeof assetGenerationSchema>;
 export const generationBusy = (g: Pick<AssetGeneration, 'phase'>) => ['preparing', 'queued', 'rendering', 'loading'].includes(g.phase);
 export function newAssetGeneration(kind: MediaKind, folderId?: string, loras?: readonly ProjectLora[]): AssetGeneration {
-  const model = ASSET_MODELS.find(m => m.kind === kind)!;
+  const model = ASSET_MODELS.find(m => m.kind === kind);
+  if (!model) throw new Error('Video generation uses Comfy H3. Add a video clip on the timeline.');
   return { id: crypto.randomUUID(), name: `Untitled ${kind}`, kind, folderId, phase: 'draft', versions: [],
     settings: { model: model.id, lora: projectLoraAddress(loras, model.id), loraStrength: projectLoraStrength(loras, model.id), prompt: '', references: [], aspectRatio: '16:9', resolution: '1K', count: 1, duration: 5 } };
 }
 export function validateAssetSettings(settings: AssetSettings): string | undefined {
   const model = assetModel(settings.model);
   if (!model) return 'Choose a supported model.';
+  if (model.kind === 'video') return 'Video generation uses Comfy H3. Use H3 for this clip.';
   if (settings.lora) return `${model.name} does not support LoRAs in the current generation integration. Choose None to generate.`;
   if (!settings.prompt.trim()) return 'Enter a prompt.';
   if (settings.references.some(ref => !model.inputs.includes(ref.kind))) return `${model.name} accepts ${model.inputs.join(', ') || 'no'} references. Remove incompatible inputs or choose another model.`;
   if (settings.references.filter(ref => ref.kind === 'image').length > model.maxImages) return `${model.name} accepts up to ${model.maxImages} images.`;
   if (['video', 'audio'].some(kind => settings.references.filter(ref => ref.kind === kind).length > 1)) return 'Use at most one video and one audio reference.';
   if (model.kind === 'image' && !model.resolutions.includes(settings.resolution)) return 'Choose a resolution supported by this model.';
-  if (model.kind === 'video' && ![5, 10].includes(settings.duration)) return 'Choose a duration of 5 or 10 seconds.';
   if (model.id === 'sound-effects' && settings.duration > 22) return 'Sound effects can be up to 22 seconds.';
   if (model.id === 'stable-audio-2.5' && !Number.isInteger(settings.duration)) return 'Choose a whole number of seconds for Stable Audio.';
   if (settings.count !== 1) return 'Generate one output at a time.';
