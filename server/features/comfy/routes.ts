@@ -5,8 +5,7 @@ import { generationSeedSchema } from '../../../shared/generation-seed.js';
 import express, { type Express } from 'express';
 import { H3_MODEL_ID, loraAddressSchema, loraStrengthSchema } from '../../../shared/loras.js';
 import { openAsBlob } from 'node:fs';
-import { Readable, Transform } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import { streamMedia, withClientCancellation } from '../../shared/streaming.js';
 import { once } from 'node:events';
 import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
 import { z } from 'zod';
@@ -189,21 +188,22 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
   });
   // Stable authenticated URL. Resolve a fresh signed URL on every download/retry.
   app.get('/api/comfy/assets/:assetId/content', authenticate, requireComfy, async (req, res) => {
-    const assetId = idSchema.parse(req.params.assetId);
-    const range = req.get('range');
-    if (range && !/^bytes=\d*-\d*$/.test(range)) throw new HttpError(400, 'Invalid media range.');
-    const operation = new AbortController();
-    res.once('close', () => operation.abort());
-    const url = await provider().assetUrl(assetId);
-    let upstream: Response;
-    try {
-      upstream = await fetch(url, { headers: range ? { Range: range } : {}, redirect: 'error', signal: AbortSignal.any([operation.signal, AbortSignal.timeout(120_000)]) });
-    } catch (error) { throw comfyRequestError(error, 'downloading the generated video', 'Retry loading this result; no new generation is needed.'); }
-    if (!upstream.ok || !upstream.body) throw new HttpError(502, `Comfy media download failed (${upstream.status}). Retry loading.`);
-    res.status(upstream.status).set({ 'Content-Type': 'video/mp4', 'Cache-Control': 'private, no-store' });
-    for (const name of ['content-length', 'content-range', 'accept-ranges']) { const value = upstream.headers.get(name); if (value) res.set(name, value); }
-    let received = 0;
-    const limit = new Transform({ transform(chunk: Buffer, _encoding, done) { received += chunk.length; done(received > 256 * 1024 ** 2 ? new Error('Comfy output exceeds 256 MB.') : null, chunk); } });
-    await pipeline(Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]), limit, res);
+    await withClientCancellation(res, async signal => {
+      const assetId = idSchema.parse(req.params.assetId);
+      const range = req.get('range');
+      if (range && !/^bytes=\d*-\d*$/.test(range)) throw new HttpError(400, 'Invalid media range.');
+      const url = await provider().assetUrl(assetId);
+      let upstream: Response;
+      try {
+        upstream = await fetch(url, { headers: range ? { Range: range } : {}, redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]) });
+      } catch (error) { throw comfyRequestError(error, 'downloading the generated video', 'Retry loading this result; no new generation is needed.'); }
+      if (!upstream.ok || !upstream.body) {
+        await upstream.body?.cancel().catch(() => undefined);
+        throw new HttpError(502, `Comfy media download failed (${upstream.status}). Retry loading.`);
+      }
+      res.status(upstream.status).set({ 'Content-Type': 'video/mp4', 'Cache-Control': 'private, no-store' });
+      for (const name of ['content-length', 'content-range', 'accept-ranges']) { const value = upstream.headers.get(name); if (value) res.set(name, value); }
+      await streamMedia(upstream, res, 256 * 1024 ** 2, 'Comfy output exceeds 256 MB.');
+    });
   });
 }

@@ -1,7 +1,19 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ComfyClient } from '../../server/features/comfy/client';
 
 describe('Comfy transport failures', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it.each(['deadline', 'caller'] as const)('aborts when the %s fires even when both signals are present', async source => {
+    const caller = new AbortController(), deadline = new AbortController();
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    const transport = vi.fn<typeof fetch>().mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+      options!.signal!.addEventListener('abort', () => reject(options!.signal!.reason), { once: true });
+    }));
+    const pending = new ComfyClient({ COMFY_CLOUD_API_KEY: 'secret' }, transport).call('/api/v2/jobs/request-123', { signal: caller.signal });
+    (source === 'deadline' ? deadline : caller).abort(new DOMException('Cancelled', source === 'deadline' ? 'TimeoutError' : 'AbortError'));
+    await expect(pending).rejects.toMatchObject({ status: 504 });
+    expect(AbortSignal.timeout).toHaveBeenCalledWith(120_000); expect(transport).toHaveBeenCalledOnce();
+  });
   it('blocks live requests in the browser test server even when credentials are present', async () => {
     const transport = vi.fn<typeof fetch>();
     const client = new ComfyClient({ SPARKO_TEST_MODE: '1', COMFY_CLOUD_API_KEY: 'accidentally-inherited-key' }, transport);

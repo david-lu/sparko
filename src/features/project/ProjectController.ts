@@ -2,6 +2,7 @@ import { H3_MODEL_ID, projectLoraAddress, projectLoraStrength, saveProjectLora, 
 import { generationModel } from '../../../shared/generation-models';
 import type { MediaInfo, MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
+import { releaseAssetThumbnails } from '../../media/assetThumbnails';
 import { canPlaySourceVideo, convertVideoFrameRate, prepareSourceVideo, type VideoDimensions } from '../../media/prepareVideo';
 import type { InterstitialController } from '../interstitials/InterstitialController';
 import { assets } from './assets';
@@ -30,8 +31,8 @@ import { savedConvertImportedVideo } from '../../shared/preferences';
 import { audioLayersSchema, type AudioLayer } from './audioLayers';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
-  busy: boolean; message: string; progress: number | null; error: string | null;
-  undoLabel: string | null; redoLabel: string | null; historyRevision: number; activationRevision: number;
+  busy: boolean; activating: boolean; message: string; progress: number | null; error: string | null;
+  undoLabel: string | null; redoLabel: string | null; historyRevision: number; activationRevision: number; generationRevision: number;
   savedProjects: { id: string; name: string; updatedAt: number }[]; savedProjectId: string | null;
   recentFiles: RecentFile[]; fileName: string | null; dirty: boolean };
 
@@ -66,12 +67,8 @@ export class ProjectController {
       const copy: LibraryAsset = { assetId: asset.id, originalAssetId: assetId, normalizedFps: fps, name: asset.name,
         kind: source.kind, folderId: source.folderId, generation: source.generation, width: info.width, height: info.height,
         duration: info.duration, inFrame: source.inFrame, outFrame: source.outFrame };
-      await this.writes; signal.throwIfAborted();
-      if (this.state.project?.id !== initial.id) throw new Error('Project changed while converting the video.');
-      await writeProject({ ...this.state.project, library: [...this.state.project.library ?? [], copy] }, [asset], false, signal);
-      await assets.open(asset.id);
       this.endHistoryGroup();
-      this.save({ ...this.state.project!, library: [...this.state.project!.library ?? [], copy] });
+      await this.commitImportedAssets([asset], [asset.id], project => ({ ...project, library: [...project.library ?? [], copy] }), signal);
       this.endHistoryGroup();
       return copy;
     });
@@ -81,16 +78,12 @@ export class ProjectController {
     if (!initial || source?.kind !== 'image') return;
     return this.task('Saving drawing', async signal => {
       if ((initial.library?.length ?? 0) >= 2000) throw new Error('A project supports up to 2,000 assets.');
-      const blob = await render(signal), info = await inspectAsset(blob, 'image');
+      const blob = await render(signal), info = await inspectAsset(blob, 'image', signal);
       const name = `${source.name.replace(/\.[^.]+$/, '').slice(0, 980)}.drawn.png`;
       const asset: Asset = { id: freshId(), name, blob };
       const copy: LibraryAsset = { assetId: asset.id, originalAssetId: assetId, name, kind: 'image', folderId: source.folderId, ...info };
-      await this.writes; signal.throwIfAborted();
-      if (this.state.project?.id !== initial.id) throw new Error('Project changed while saving the drawing.');
-      await writeProject({ ...this.state.project, library: [...this.state.project.library ?? [], copy] }, [asset], false, signal);
-      await assets.open(asset.id);
       this.endHistoryGroup();
-      this.save({ ...this.state.project!, library: [...this.state.project!.library ?? [], copy] });
+      await this.commitImportedAssets([asset], [asset.id], project => ({ ...project, library: [...project.library ?? [], copy] }), signal);
       this.endHistoryGroup();
       return copy;
     });
@@ -156,7 +149,7 @@ export class ProjectController {
         signal.throwIfAborted(); this.update({ message: `Importing ${file.name} (${index + 1}/${entries.length})`, progress: index / entries.length });
         if (mediaKind(file) === 'image' || mediaKind(file) === 'audio') {
           const kind = mediaKind(file) as 'image'|'audio';
-          const info = await inspectAsset(file, kind); signal.throwIfAborted();
+          const info = await inspectAsset(file, kind, signal); signal.throwIfAborted();
           const asset = { id: entry.assetId ?? freshId(), name: file.name, blob: file };
           if (!entry.assetId) pending.push(asset);
           const existing = initial.library?.find(a => a.assetId === asset.id);
@@ -189,25 +182,20 @@ export class ProjectController {
       const next = { ...graph, entryId: asStart ? nodes[0].id : graph.entryId || nodes[0].id, nodes: [...graph.nodes, ...nodes] };
       resolveClipReferences(next, interstitials, added, current.assetAliases);
       const firstSource = !current.source.assetId ? nodes.find(node => node.source) : undefined;
-      const project = { ...current, storyFlow: next, interstitials,
-        library: [...current.library?.filter(item => !importedLibrary.some(imported => imported.assetId === item.assetId)) ?? [], ...importedLibrary],
-        source: firstSource ? { name: firstSource.name, assetId: firstSource.source!.assetId, originalAssetId: firstSource.source!.originalAssetId } : current.source, updatedAt: Date.now() };
-      await this.writes; signal.throwIfAborted();
-      await writeProject(project, pending, false, signal);
-      await Promise.all(openedIds.map(id => assets.open(id)));
-      signal.throwIfAborted();
-      if (firstSource) { this.storyDuration = firstSource.source!.duration ?? DEFAULT_IMAGE_DURATION; this.update({ source: await this.openSource(project) }); }
-      this.switching = true;
-      try {
+      await this.commitImportedAssets(pending, openedIds, project => ({ ...project,
+        storyFlow: { ...project.storyFlow!, entryId: next.entryId, nodes: [...project.storyFlow!.nodes, ...nodes] },
+        interstitials: [...project.interstitials, ...added.filter(item => !project.interstitials.some(existing => existing.id === item.id))],
+        library: [...project.library?.filter(item => !importedLibrary.some(imported => imported.assetId === item.assetId)) ?? [], ...importedLibrary],
+        source: firstSource && !project.source.assetId ? { name: firstSource.name, assetId: firstSource.source!.assetId, originalAssetId: firstSource.source!.originalAssetId } : project.source,
+      }), signal, () => {
         added.forEach(item => this.interstitials.ensureItem(item));
-        this.interstitials.setStoryGraph(next, project.source.assetId, this.storyDuration);
-        this.save({ ...project, interstitials: this.interstitials.getSnapshot().items });
-      } finally { this.switching = false; }
+      });
+      if (firstSource) { this.storyDuration = firstSource.source!.duration ?? DEFAULT_IMAGE_DURATION; this.update({ source: await this.openSource(this.state.project!) }); }
       return nodes.map(node => node.id);
     });
   }
-  private state: State = { project: null, source: null, subtitle: null, busy: false, message: '', progress: null, error: null,
-    undoLabel: null, redoLabel: null, historyRevision: 0, activationRevision: 0, savedProjects: [], savedProjectId: null,
+  private state: State = { project: null, source: null, subtitle: null, busy: false, activating: false, message: '', progress: null, error: null,
+    undoLabel: null, redoLabel: null, historyRevision: 0, activationRevision: 0, generationRevision: 0, savedProjects: [], savedProjectId: null,
     recentFiles: [], fileName: null, dirty: false };
   private fileHandle: FileSystemFileHandle | null = null;
   private currentContent: string | null = null;
@@ -298,24 +286,54 @@ export class ProjectController {
           onProgress?.(message); this.update({ message, progress });
         }) : undefined;
         const asset = prepared?.asset ?? { id: freshId(), name: file.name.slice(0, 1000), blob: file };
-        const metadata = await inspectAsset(asset.blob, kind);
+        const metadata = await inspectAsset(asset.blob, kind, signal);
         signal.throwIfAborted(); pending.push(asset); if (prepared?.original) pending.push(prepared.original);
         const provenance=kind==='video'?await readClipMetadata(file,signal):undefined;
         const restored=provenance&&restoreClip(provenance,asset.id,metadata.duration??1);
         added.push({ generation:restored?.item.result?{provider:'comfy',settings:provenance!.settings,result:restored.item.result}:undefined, ...prepared?.library, assetId: asset.id, name: asset.name, kind, folderId: parentId, ...metadata });
       }
       if (this.state.project?.id !== initial.id) throw new Error('Project changed while importing. Import into the current project again.');
-      const project = { ...this.state.project!, library: [...this.state.project!.library ?? [], ...added],
-        libraryFolders: [...this.state.project!.libraryFolders ?? [], ...folders.filter(f => !initial.libraryFolders?.some(old => old.id === f.id))] };
-      await this.writes; signal.throwIfAborted(); await writeProject(project, pending, false, signal);
-      await Promise.all(added.map(item => assets.open(item.assetId)));
-      this.save(project);
+      await this.commitImportedAssets(pending, added.map(item => item.assetId), project => ({ ...project,
+        library: [...project.library ?? [], ...added],
+        libraryFolders: [...project.libraryFolders ?? [], ...folders.filter(f => !initial.libraryFolders?.some(old => old.id === f.id))],
+      }), signal);
       return added;
     }) ?? [];
   }
   private normalizeContent(project: Project) {
     project = migrateClipMedia(project);
     return { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
+  }
+  /** Persist media atomically, then rebase the import onto edits made while storage was busy. */
+  private async commitImportedAssets(pending: Asset[], openIds: string[], change: (project: Project) => Project, signal: AbortSignal, prepare?: () => void) {
+    const revision = this.state.activationRevision, id = this.state.project?.id;
+    const current = () => {
+      signal.throwIfAborted();
+      if (!this.state.project || this.state.project.id !== id || this.state.activationRevision !== revision) throw new Error('Project changed while importing.');
+      return this.state.project;
+    };
+    const writing = this.writes.then(() => writeProject(change(current()), pending, false, signal));
+    // Later autosaves must wait for the asset transaction, including a failed one.
+    this.writes = writing.catch(() => undefined);
+    await writing;
+    let published = false;
+    try {
+      await Promise.all(openIds.map(id => assets.open(id)));
+      let project = change(current());
+      this.switching = true;
+      try {
+        if (prepare) { prepare(); project = { ...project, interstitials: this.interstitials.getSnapshot().items }; }
+        this.interstitials.setStoryGraph(project.storyFlow, project.source.assetId, this.storyDuration);
+        this.save(project); published = true;
+      } finally { this.switching = false; }
+    } finally {
+      // Cancellation after commit must not leave an invisible import in the browser backup.
+      const latest = this.state.project;
+      if (!published && latest && latest.id === id && this.state.activationRevision === revision) {
+        this.queuedContent = null;
+        this.save(latest, false);
+      }
+    }
   }
   private save(project: Project, record = true) {
     project = this.normalizeContent(project);
@@ -343,12 +361,12 @@ export class ProjectController {
     const browserContent = projectContent(project, 'browser');
     if (browserContent === this.queuedContent) return;
     this.queuedContent = browserContent;
-    const writing = this.writes.catch(() => undefined).then(() => writeProject(project));
-    this.writes = writing;
-    void writing.catch(error => {
-      if (this.writes === writing) this.queuedContent = null;
+    const writing = this.writes.then(() => writeProject(project));
+    const settled = writing.catch(error => {
+      if (this.writes === settled) this.queuedContent = null;
       this.update({ error: storageError(error) });
     });
+    this.writes = settled;
   }
   async init(defaultSource: MediaSource) {
     this.unsubscribe ??= this.interstitials.subscribe(() => {
@@ -389,6 +407,25 @@ export class ProjectController {
     });
   }
   private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = [], savedProjectId: string | null = null, workingId = this.draftId, normalizeSource = false) {
+    const previousDuration = this.storyDuration;
+    let completed = false;
+    // Invalidate async jobs now; notify canvas fitting only after the new graph is ready.
+    this.switching = true;
+    this.update({ activating: true, generationRevision: this.state.generationRevision + 1 });
+    try { await this.prepareActivation(project, signal, pendingAssets, savedProjectId, workingId, normalizeSource); completed = true; }
+    finally {
+      this.switching = false;
+      if (!completed) {
+        this.storyDuration = previousDuration;
+        const current = this.state.project;
+        if (current) this.save({ ...current, interstitials: this.interstitials.getSnapshot().items,
+          clipGenerations: current.clipGenerations?.map(g => g.phase === 'preparing' && !g.requestId ? { ...g, phase: 'draft' as const } : g),
+        }, false);
+      }
+      this.update({ activating: false });
+    }
+  }
+  private async prepareActivation(project: Project, signal: AbortSignal, pendingAssets: Asset[], savedProjectId: string | null, workingId: string, normalizeSource: boolean) {
     project = migrateClipMedia(project);
     signal.throwIfAborted();
     assets.setDeleted(project.deletedAssetIds);
@@ -422,7 +459,7 @@ export class ProjectController {
     // The player's later inspection must not turn opening a project into an edit.
     if (source) {
       const media = new MediaEngine(source);
-      try { this.storyDuration = (await media.inspect()).duration; signal.throwIfAborted(); }
+      try { this.storyDuration = (await media.inspect(signal)).duration; signal.throwIfAborted(); }
       finally { media.dispose(); }
     }
     const subtitle = project.subtitle && !project.deletedAssetIds?.includes(project.subtitle.assetId) ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
@@ -433,6 +470,7 @@ export class ProjectController {
     this.switching = true;
     this.queuedContent = projectContent(project, 'browser');
     this.history.clear();
+    this.generationStates.clear();
     this.fileHandle = null;
     this.interstitials.load(project.id, project.interstitials, project.callResponse ? responseInterstitialIds(project.callResponse) : [], projectFlows(project));
     let restored = { ...project, interstitials: this.interstitials.getSnapshot().items };
@@ -443,9 +481,10 @@ export class ProjectController {
     this.interstitials.setCallResponses(activeFlows(restored));
     this.interstitials.setStoryGraph(restored.storyFlow,restored.source.assetId,this.storyDuration);
     assets.releaseExcept(new Set(assetIds(restored)));
+    releaseAssetThumbnails(new Set(assetIds(restored)));
     this.savedContent = this.currentContent = projectContent(restored);
     this.update({ project: restored, source, subtitle, error: null, dirty: false, undoLabel: null, redoLabel: null,
-      savedProjectId, fileName: null, historyRevision: this.state.historyRevision + 1,activationRevision:this.state.activationRevision+1 });
+      savedProjectId, fileName: null, historyRevision: this.state.historyRevision + 1, activationRevision: this.state.activationRevision + 1 });
     this.switching = false;
     this.save(restored, false);
   }
@@ -466,9 +505,9 @@ export class ProjectController {
       });
       pendingAssets = [...pendingAssets, original];
     }
-    if(original.blob.type.startsWith('audio/')){await inspectAsset(original.blob,'audio');signal.throwIfAborted();return {project,pendingAssets};}
+    if(original.blob.type.startsWith('audio/')){await inspectAsset(original.blob,'audio',signal);signal.throwIfAborted();return {project,pendingAssets};}
     if (original.blob.type.startsWith('image/') || project.storyFlow?.nodes.some(n => n.source?.assetId === original!.id && n.source.kind === 'image')) {
-      await inspectAsset(original.blob, 'image'); signal.throwIfAborted();
+      await inspectAsset(original.blob, 'image', signal); signal.throwIfAborted();
       return { project, pendingAssets };
     }
     this.update({ message: 'Checking video playback', progress: null });
@@ -776,11 +815,12 @@ export class ProjectController {
       try {
         this.fileHandle = null;
         this.currentContent = this.savedContent = this.queuedContent = null;
-        this.history.clear();
+        this.history.clear(); this.generationStates.clear();
         this.update({ project: null, source: null, subtitle: null, savedProjectId: null, fileName: null,
-          dirty: false, undoLabel: null, redoLabel: null, historyRevision: this.state.historyRevision + 1 });
+          dirty: false, undoLabel: null, redoLabel: null, historyRevision: this.state.historyRevision + 1, activationRevision: this.state.activationRevision + 1, generationRevision: this.state.generationRevision + 1 });
         this.interstitials.load('', []);
         assets.releaseExcept(new Set());
+        releaseAssetThumbnails(new Set());
       } finally { this.switching = false; }
       return true;
     });
@@ -789,7 +829,7 @@ export class ProjectController {
     file = mediaFile(file);
     await this.task('Saving media locally', async signal => {
       if (file.type.startsWith('image/')) {
-        const metadata = await inspectAsset(file, 'image'); signal.throwIfAborted();
+        const metadata = await inspectAsset(file, 'image', signal); signal.throwIfAborted();
         const asset = { id: freshId(), name: file.name, blob: file }, nodeId = freshId();
         const project: Project = { ...this.create({ id: `file:${file.name}:${file.size}:${file.lastModified}`, name: file.name, url: '' }),
           source: { name: file.name, assetId: asset.id }, library: [{ assetId: asset.id, name: file.name, kind: 'image', ...metadata }],
@@ -853,7 +893,7 @@ export class ProjectController {
   }
   private async validateVideo(blob: Blob, signal: AbortSignal) {
     const url = URL.createObjectURL(blob), engine = new MediaEngine({ id: 'validate', name: 'Project video', url, ...(blob.type.startsWith('image/') ? { kind: 'image' as const } : blob.type.startsWith('audio/')?{kind:'audio' as const}:{}), file: new File([blob], 'video.mp4') });
-    try { signal.throwIfAborted(); const info = await engine.inspect(); signal.throwIfAborted(); return info; }
+    try { signal.throwIfAborted(); const info = await engine.inspect(signal); signal.throwIfAborted(); return info; }
     finally { engine.dispose(); URL.revokeObjectURL(url); }
   }
   async importProject(file: File) {
@@ -874,14 +914,14 @@ export class ProjectController {
       }
     for(const node of [...imported.project.storyFlow?.nodes??[],...imported.project.storyFlow?.templates.flatMap(t=>t.nodes)??[]]){
       if(!node.source || deleted.has(node.source.assetId))continue;
-      if(node.source.kind==='image'){await inspectAsset(byId.get(node.source.assetId)!.blob,'image');signal.throwIfAborted();continue;}
+      if(node.source.kind==='image'){await inspectAsset(byId.get(node.source.assetId)!.blob,'image',signal);signal.throwIfAborted();continue;}
       let info=clipInfo.get(node.source.assetId);
       if(!info){info=await this.validateVideo(byId.get(node.source.assetId)!.blob,signal);clipInfo.set(node.source.assetId,info);}
       if(node.source.outFrame/TIMELINE_FPS>info.duration+1/info.fps)throw new Error('A story clip extends beyond its source media.');
     }
     for(const item of imported.project.library??[]){
       if (deleted.has(item.assetId)) continue;
-      if(item.kind==='image'||item.kind==='audio') { await inspectAsset(byId.get(item.assetId)!.blob,item.kind); continue; }
+      if(item.kind==='image'||item.kind==='audio') { await inspectAsset(byId.get(item.assetId)!.blob,item.kind,signal); continue; }
       let info=clipInfo.get(item.assetId);
       if(!info){info=await this.validateVideo(byId.get(item.assetId)!.blob,signal);clipInfo.set(item.assetId,info);}
       if((item.outFrame??0)/TIMELINE_FPS>info.duration+1/info.fps)throw new Error('A library clip extends beyond its media.');

@@ -26,14 +26,10 @@ import { captureClipOrigin } from './clipMetadata';
 import { readClipMetadata, writeClipMetadata } from '../../media/clipMetadata';
 import { defaultTurboEnabled } from '../../shared/preferences';
 import { PromptEnhancementTasks } from './PromptEnhancementTasks';
+import { abortableDelay } from '../../shared/abortableDelay';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null; sequence: GenerationSequence | null };
 type JobProgress = { phase: 'queued' | 'rendering'; progress?: number; progressDetails?: GenerationProgress; queuePosition?: number };
-const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
-  const abort = () => { clearTimeout(timer); reject(signal.reason); };
-  const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, INTERSTITIAL.pollMilliseconds);
-  signal.addEventListener('abort', abort, { once: true });
-});
 
 /** Owns persisted drafts and independently cancellable generation jobs, outside React. */
 export class InterstitialController {
@@ -54,6 +50,7 @@ export class InterstitialController {
     return { ...item, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined };
   }
   private sourceId = '';
+  private lifecycle = 0;
   private linkedDurationIds: string[] = [];
   private callResponse?: CallResponseFlow;
   private callResponses: CallResponseFlow[] = [];
@@ -355,7 +352,7 @@ export class InterstitialController {
         // snapshot must not erase progress received from its live stream.
         ...(job.status === 'IN_QUEUE' ? { progress: undefined, progressDetails: undefined }
           : job.progress !== undefined || job.progressDetails !== undefined ? { progress: job.progress, progressDetails: job.progressDetails } : {}) });
-      await wait(signal);
+      await abortableDelay(INTERSTITIAL.pollMilliseconds, signal);
     } } finally { stream.abort(); }
   }
   private async loadResult(id: string, result: NonNullable<Interstitial['result']>, signal: AbortSignal) {
@@ -442,13 +439,13 @@ export class InterstitialController {
     if (!item) return false;
     if (item.phase === 'ready') return true;
     this.tasks.get(id)?.abort(); this.tasks.delete(id);
-    const source = this.sourceId;
+    const lifecycle = this.lifecycle;
     try {
       if (item.requestId && !item.result) await cancelInterstitialJob(item.requestId);
-      if (source === this.sourceId) this.patch(id, { phase: 'cancelled', progress: undefined, error: undefined });
+      if (lifecycle === this.lifecycle) this.patch(id, { phase: 'cancelled', progress: undefined, error: undefined });
       return true;
     } catch (error) {
-      if (source === this.sourceId) this.patch(id, { phase: 'error', error: `Could not cancel the remote job. ${error instanceof Error ? error.message : ''}` });
+      if (lifecycle === this.lifecycle) this.patch(id, { phase: 'error', error: `Could not cancel the remote job. ${error instanceof Error ? error.message : ''}` });
       return false;
     }
   }
@@ -487,13 +484,13 @@ export class InterstitialController {
     const job = this.state.items.find(item => item.id === id)?.upscale;
     if (!isUpscaling(job)) return true;
     this.upscaleTasks.get(id)?.abort(); this.upscaleTasks.delete(id);
-    const source = this.sourceId;
+    const lifecycle = this.lifecycle;
     try {
       if (job!.requestId && job!.phase !== 'loading') await cancelInterstitialJob(job!.requestId);
-      if (source === this.sourceId) this.patchUpscale(id, { phase: 'cancelled', error: undefined, progress: undefined, progressDetails: undefined, queuePosition: undefined });
+      if (lifecycle === this.lifecycle) this.patchUpscale(id, { phase: 'cancelled', error: undefined, progress: undefined, progressDetails: undefined, queuePosition: undefined });
       return true;
     } catch (error) {
-      if (source === this.sourceId) this.patchUpscale(id, { phase: 'error', error: `Could not cancel the 2K job. ${error instanceof Error ? error.message : ''}` });
+      if (lifecycle === this.lifecycle) this.patchUpscale(id, { phase: 'error', error: `Could not cancel the 2K job. ${error instanceof Error ? error.message : ''}` });
       return false;
     }
   }
@@ -542,16 +539,16 @@ export class InterstitialController {
     return this.removeMany([id]);
   }
   async removeMany(ids: string[], signal?: AbortSignal) {
-    const source = this.sourceId, removed = new Set(ids);
+    const lifecycle = this.lifecycle, removed = new Set(ids);
     if (sequenceActive(this.state.sequence) && this.state.sequence!.ids.some(id => removed.has(id)) && !await this.cancelSequence('A clip was removed. Start a new sequence to include the remaining clips.')) return false;
     const items = this.state.items.filter(item => removed.has(item.id));
     // Retain the whole group if any active job cannot be cancelled.
     for (const item of items) {
-      if (signal?.aborted || source !== this.sourceId) return false;
+      if (signal?.aborted || lifecycle !== this.lifecycle) return false;
       if ((isGenerating(item) || item.phase === 'error' && item.requestId && !item.result) && !await this.cancel(item.id)) return false;
       if (isUpscaling(item.upscale) && !await this.cancelUpscale(item.id)) return false;
     }
-    if (signal?.aborted || source !== this.sourceId) return false;
+    if (signal?.aborted || lifecycle !== this.lifecycle) return false;
     this.update({ items: this.state.items.filter(item => !removed.has(item.id)), selectedId: this.state.selectedId && removed.has(this.state.selectedId) ? null : this.state.selectedId }, true);
     return true;
   }
@@ -569,6 +566,7 @@ export class InterstitialController {
     this.update({ items: edits.map(edit => ({ ...this.retained.get(edit.id)!, ...edit, seed: edit.seed })), selectedId, error: null }, true);
   }
   dispose() {
+    this.lifecycle++;
     this.promptEnhancements.dispose();
     this.sequenceOperation?.abort(); this.sequenceOperation = undefined;
     this.tasks.forEach(task => task.abort()); this.tasks.clear(); this.cancelling.clear();

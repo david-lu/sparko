@@ -54,7 +54,8 @@ export class ComfyClient {
     let response: Response;
     try {
       response = await this.transport(this.baseUrl + path, { ...options, redirect: 'error',
-        signal: options.signal || AbortSignal.timeout(120_000), headers: { Authorization: `Bearer ${this.key}`, ...(path === '/api/object_info' ? { 'X-API-Key': this.key } : {}), ...options.headers } });
+        signal: AbortSignal.any([...(options.signal ? [options.signal] : []), AbortSignal.timeout(120_000)]),
+        headers: { Authorization: `Bearer ${this.key}`, ...(path === '/api/object_info' ? { 'X-API-Key': this.key } : {}), ...options.headers } });
     } catch (error) {
       const { operation, recovery } = context(path, options);
       throw comfyRequestError(error, operation, recovery);
