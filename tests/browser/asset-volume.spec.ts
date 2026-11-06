@@ -71,7 +71,7 @@ for (const width of [1440, 390]) test(`clip volume edits playback while asset pr
   await expect(slider).toHaveCount(0);
   const positions = () => page.locator('.asset-inspector').evaluate(el => {
     const top = el.getBoundingClientRect().top;
-    return ['.asset-preview', '.asset-preview-actions', '.asset-render-info', '.inspector-group:last-child'].map(selector => {
+    return ['.asset-preview', '.asset-preview-actions', '.inspector-group:last-child'].map(selector => {
       const r = el.querySelector(selector)!.getBoundingClientRect(); return { top: r.top - top, height: r.height };
     });
   });

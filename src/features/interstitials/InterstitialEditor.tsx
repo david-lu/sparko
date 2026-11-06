@@ -27,6 +27,8 @@ import MaskCurveEditor from './MaskCurveEditor';
 import { maskCurveSchema } from '../../../shared/mask-curves';
 import type { ProjectController } from '../project/ProjectController';
 import { showErrorToast } from '../../shared/toasts';
+import AssetGenerationInfo from '../project/AssetGenerationInfo';
+import GeneratedVideoSeed from '../project/GeneratedVideoSeed';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -146,7 +148,8 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     {controller.hasLinkedDuration(selected.id) && <p className="hint">Shared duration for all response branches. Changes apply to their next generation.</p>}
     <p className="hint reference-plan">{comfyPlan ? `${comfyPlan.insertion.duration.toFixed(3)}s generated · ${((comfyPlan.prefixFrames + comfyPlan.suffixFrames) / TIMELINE_FPS).toFixed(3)}s reference footage` : '\u00a0'}</p>
   </>;
-  const output = <>{resultDetails}{currentResult&&promptDetails}{fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
+  const outputAsset = projects?.getSnapshot().project?.library?.find(asset => asset.assetId === currentResult?.assetId);
+  const output = <><GeneratedVideoSeed result={currentResult} settings={outputAsset?.generation?.provider === 'comfy' ? outputAsset.generation.settings : undefined}/>{resultDetails}{currentResult&&promptDetails}<AssetGenerationInfo asset={outputAsset} showPrompt={false} showBreakdown={!resultDetails}/>{fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
     downloadAsset={downloadAsset && { ...downloadAsset, assetId: currentResult?.fullAssetId ?? downloadAsset.assetId }}
     heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
     active={active} onPlay={onPreviewPlay} />}</>;
@@ -159,6 +162,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
           <label htmlFor={promptId}>Prompt</label>
           {changed && <span className="interstitial-edited" title="Changes apply to the next generation">Edited</span>}
           <EnhancePromptActions promptId={promptId} enhancing={enhancing} enabled={!!selected.prompt.trim() && !addingImages} connected={!!status?.providers.openai}
+            unavailableReason={addingImages ? 'Wait for reference images to finish loading.' : undefined}
             onEnhance={() => void enhance()} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
         </div>
         <textarea id={promptId} aria-label="Video prompt" rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />

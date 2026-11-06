@@ -56,6 +56,7 @@ for (const width of [1440, 390]) test(`image enhancement follows the selected mo
   expect((await readProject(page)).clipGenerations[0].settings.count).toBe(1); await expect(page.getByLabel('Image count', { exact: true })).toHaveCount(0);
   await expect(page.locator('.asset-prompt-guide')).toHaveAttribute('href', /docs.bfl.ai/);
   await model.selectOption('ideogram-v3'); await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeEnabled();
   await input.getByRole('button', { name: 'Remove reference Reference.png', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeEnabled();
   await expect(page.locator('.asset-prompt-guide')).toHaveAttribute('href', /docs.ideogram.ai/);

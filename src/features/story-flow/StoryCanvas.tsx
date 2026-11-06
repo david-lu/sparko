@@ -1,7 +1,7 @@
 import { generationBusy } from '../../../shared/asset-generation';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Combine, Copy, Flag, Hand, GripVertical, ImageOff, LayoutTemplate, Maximize, Minus, Palette, Plus, Scissors, SquareDashed, Trash2, Unplug, Upload } from 'lucide-react';
+import { Check, ChevronDown, Combine, Copy, Flag, Hand, GripVertical, ImageOff, LayoutTemplate, Maximize, Minus, Paintbrush, Palette, Plus, Scissors, SquareDashed, Trash2, Unplug, Upload } from 'lucide-react';
 import { videoAssets } from '../../../shared/video-references';
 import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
 import { TIMELINE_FPS } from '../../../shared/constants';
@@ -10,6 +10,7 @@ import { formatTime } from '../../../shared/contracts';
 import type { CallResponseFlow, PlaybackSession } from '../call-response/model';
 import { sceneFrames } from '../call-response/model';
 import { assets } from '../project/assets';
+import ImageDrawingDialog from '../project/ImageDrawingDialog';
 import { useAssetAvailability } from '../project/useAssetAvailability';
 import ContentIssues, { type ContentIssue } from '../../shared/ContentIssues';
 import { storyGenerationItem } from './referenceInputs';
@@ -57,6 +58,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const [camera,setCamera]=useState<Camera>({x:0,y:0,zoom:1,rowScale:1}),cameraRef=useRef(camera),[size,setSize]=useState({width:800,height:280}),[drag,setDrag]=useState<Record<string,Point>|null>(null);
   const [templateName,setTemplateName]=useState<string|null>(null),[follow,setFollow]=useState(false);
   const [joinError,setJoinError]=useState<string[]|null>(null);
+  const [drawing,setDrawing]=useState<string>();
   const [wire,setWire]=useState<{anchor:string;reverse?:boolean;edgeId?:string;conditionId?:string;x:number;y:number}|null>(null);
   const [panTool,setPanTool]=useState(false),[spaceHeld,setSpaceHeld]=useState(false),space=useRef({held:false,used:false}),[panning,setPanning]=useState(false);
   const [marquee,setMarquee]=useState<{start:Point;end:Point}|null>(null),gestureCancel=useRef<(()=>void)|null>(null);
@@ -76,7 +78,8 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const insertingLibrary=!!libraryDrag&&!('assetId' in libraryDrag);
   const movingInterstitial=!!movePreview&&!movePreview.groupId&&movePreview.ids.length===1&&graph.nodes.some(n=>n.id===movePreview.ids[0]&&n.kind!=='source');
   const dropConnection=insertingLibrary||movingInterstitial?graph.edges.find(e=>e.id===dropTarget):undefined;
-  const library=editor.projects.getSnapshot().project?.library;
+  const project=editor.projects.getSnapshot().project,library=project?.library;
+  useEffect(()=>setDrawing(undefined),[project?.id]);
   const templatePreview=useMemo(()=>{
     if(!libraryDrag||!('templateId' in libraryDrag))return;
     const template=graph.templates.find(t=>t.id===libraryDrag.templateId)??(builtInTemplates.some(t=>t.id===libraryDrag.templateId)?makePreset(libraryDrag.templateId):undefined);
@@ -84,7 +87,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   },[libraryDrag,graph.templates]);
   const dragPreview=useMemo(()=>{
     if(!libraryDrag)return [];
-    if('mediaKind' in libraryDrag)return [{id:'draft',name:libraryDrag.mediaKind==='image'?'Image':'Audio',kind:'source',x:0,y:0,duration:4,color:'gray' as const}];
+    if('mediaKind' in libraryDrag)return [{id:'draft',name:libraryDrag.mediaKind==='image'?'Image':libraryDrag.mediaKind==='video'?'Video':'Audio',kind:'source',x:0,y:0,duration:4,color:'gray' as const}];
     if('kind' in libraryDrag){const {node,item}=createNode(libraryDrag.kind);return [{...node,x:0,y:0,duration:nodeDuration(node,[item])}];}
     if('assetId' in libraryDrag){const asset=library?.find(a=>a.assetId===libraryDrag.assetId);return asset && (asset.duration || asset.kind === 'image')?[{id:asset.assetId,name:asset.name,kind:'source',color:'gray' as const,x:0,y:0,duration:((asset.outFrame??(asset.duration??DEFAULT_IMAGE_DURATION)*TIMELINE_FPS)-(asset.inFrame??0))/TIMELINE_FPS}]:[];}
     return templatePreview?.graph.nodes.map(n=>({...n,duration:nodeDuration(n,templatePreview.items)}))??[];
@@ -509,6 +512,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const contextGroup=graph.groups?.find(g=>g.id===context?.groupId),contextMemberGroup=graph.groups?.find(g=>g.nodeIds.includes(context?.id??''));
   const contextConnectionId=context?.edgeId??graph.edges.find(e=>e.from===context?.id&&e.event==='next')?.id;
   const contextScene=flow.scenes.find(s=>s.id===context?.id);
+  const contextNode=graph.nodes.find(node=>node.id===context?.id);
   const canCutAtPlayhead=!!contextScene&&session?.sceneId===contextScene.id&&session.frame>0&&session.frame<sceneFrames(contextScene);
   const membersToAdd=(context?.selectionIds??[]).filter(id=>!contextGroup?.nodeIds.includes(id));
   return <div ref={root} className={`story-canvas ${collapsed?'collapsed':''} ${wire||editor.connecting?'connecting':''} ${cutTool?'cut-tool':''} ${groupTool?'draw-group-tool':''} ${panTool||spaceHeld?'pan-tool':''} ${panning?'panning':''} ${dropTarget?'library-drag':''} ${libraryDrag?'dragging-library':''} ${insertingLibrary||movingInterstitial?'dragging-insert':''}`} style={{height:collapsed?'auto':height}}>
@@ -666,7 +670,9 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       <button role="menuitem" onClick={()=>setContext({...context,templates:false})}>‹ Back</button>
       {builtInTemplates.map(t=><button key={t.id} role="menuitem" onClick={()=>contextAction(()=>editor.insertTemplate(t.id,contextConnectionId,context.point,context.id))}><LayoutTemplate size={14}/>{t.name}</button>)}
       {graph.templates.map(t=><div className="story-template-row" key={t.id}><button role="menuitem" onClick={()=>contextAction(()=>editor.insertTemplate(t,contextConnectionId,context.point,context.id))}>{t.name}</button><button role="menuitem" aria-label={`Delete template ${t.name}`} onClick={()=>editor.change({...graph,templates:graph.templates.filter(x=>x.id!==t.id)})}><Trash2 size={13}/></button></div>)}
-    </>:<>{context.id&&context.colors?<>
+    </>:<>
+      {!context.colors&&!context.edgeId&&!context.groupId&&(contextNode?.source?.kind??contextNode?.mediaKind)==='image'&&<button role="menuitem" disabled={!contextNode?.source?.assetId||editor.projects.getSnapshot().busy} onClick={()=>contextAction(()=>setDrawing(contextNode?.source?.assetId))}><Paintbrush size={14} aria-hidden/>Draw on image…</button>}
+      {context.id&&context.colors?<>
       <button role="menuitem" onClick={()=>setContext({...context,colors:false})}>‹ Clip actions</button>
       {(Object.keys(clipColors) as ClipColor[]).map(color=><button key={color} role="menuitemradio" aria-checked={editor.selected.every(id=>(graph.nodes.find(n=>n.id===id)?.color??'gray')===color)} onClick={()=>contextAction(()=>editor.colorClips(color))}><i className="group-color-swatch" style={{background:clipColors[color]}}/>{clipColorName(color)}{editor.selected.every(id=>(graph.nodes.find(n=>n.id===id)?.color??'gray')===color)&&<Check size={13}/>}</button>)}
     </>:contextGroup&&context.colors?<>
@@ -689,6 +695,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
         <button role="menuitem" disabled={!graph.groups?.some(g=>g.nodeIds.some(id=>editor.selected.includes(id)))} onClick={()=>contextAction(()=>editor.ungroup())}>Ungroup selected clips <kbd>{shortcuts.label('ungroup')}</kbd></button></>}
       {!context.colors&&<><div role="separator"/><button role="menuitem" onClick={()=>contextAction(cleanup)}>Clean up layout <kbd>{shortcuts.label('layout')}</kbd></button><button role="menuitem" onClick={()=>contextAction(fitSelected)}>Fit <kbd>{shortcuts.label('fit')}</kbd></button></>}</>}</div>,document.fullscreenElement??document.body)}
     {templateName!==null&&<ModalBackdrop labelledBy="template-title" onCancel={()=>setTemplateName(null)} restoreFocus={()=>scroll.current?.focus({preventScroll:true})}><form className="project-card" onSubmit={e=>{e.preventDefault();editor.saveTemplate(templateName);setTemplateName(null);}}><h2 id="template-title">Save selected clips as a template</h2><p className="hint">Saves the group’s layout, clips, settings and internal connections. Imported clips reuse their footage; generated clips start as drafts.</p><label className="field">Template name<input autoFocus required maxLength={200} value={templateName} onChange={e=>setTemplateName(e.target.value)}/></label><div className="close-project-actions"><button type="button" className="button" onClick={()=>setTemplateName(null)}>Cancel</button><button className="button primary" type="submit">Save template</button></div></form></ModalBackdrop>}
+    {drawing&&<ImageDrawingDialog key={drawing} assetId={drawing} projects={editor.projects} onSaved={asset=>editor.selectLibrary({type:'asset',id:asset.assetId})} onClose={()=>setDrawing(undefined)} restoreFocus={()=>scroll.current?.focus({preventScroll:true})}/>}
     {joinError&&<ModalBackdrop labelledBy="join-error-title" onCancel={()=>setJoinError(null)} restoreFocus={()=>scroll.current?.focus({preventScroll:true})}><section className="project-card story-join-dialog">
       <h2 id="join-error-title">Can’t join clips</h2><p className="hint">Resolve {joinError.length===1?'this issue':'these issues'} to join the selected clips.</p>
       <ul className="story-join-reasons">{joinError.map(reason=><li key={reason}>{reason}</li>)}</ul>

@@ -15,10 +15,7 @@ export function falPayload(settings: AssetSettings, references: FalInput[]) {
   } else if (model.id === 'flux-2-pro' || model.id === 'flux-2-max') Object.assign(input, { image_size, output_format: 'png' });
   else if (model.id === 'seedream-4.5') Object.assign(input, { image_size, num_images: 1, max_images: 1 });
   else if (model.id === 'ideogram-v3') Object.assign(input, { image_size: ({ '1:1': 'square_hd', '16:9': 'landscape_16_9', '9:16': 'portrait_16_9', '4:3': 'landscape_4_3', '3:4': 'portrait_4_3' } as const)[settings.aspectRatio], num_images: 1, rendering_speed: 'QUALITY', enable_prompt_expansion: false });
-  else if (model.kind === 'video') {
-    Object.assign(input, { duration: String(settings.duration), generate_audio: true });
-    if (images.length) input.start_image_url = images[0]; else input.aspect_ratio = settings.aspectRatio;
-  } else if (model.id === 'stable-audio-2.5') {
+  else if (model.id === 'stable-audio-2.5') {
     const audio = references.find(r => r.kind === 'audio');
     Object.assign(input, audio ? { audio_url: audio.data, total_seconds: settings.duration } : { seconds_total: settings.duration });
   } else { delete input.prompt; Object.assign(input, { text: settings.prompt, duration_seconds: settings.duration }); }

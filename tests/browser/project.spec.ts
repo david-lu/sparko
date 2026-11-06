@@ -142,7 +142,7 @@ test('chooses a video, then opens and deletes an explicitly saved project', asyn
   await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
   const library = page.getByRole('region', { name: 'Recent projects' });
   await expect(library.getByText('interstitial-reference.sparko')).toBeVisible();
-  await library.getByRole('button', { name: 'Open' }).click();
+  await library.locator('.project-start-row').click({ position: { x: 20, y: 20 } });
   await expect(page.locator('.menu-document')).toHaveText('interstitial-reference.sparko');
   await expect(page.locator('.story-clip.type-source').first()).toBeVisible();
   expect((await activeProject(page)).source.name).toBe(original.source.name);

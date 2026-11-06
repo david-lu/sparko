@@ -22,7 +22,7 @@ it('deletes a generation and its inputs together, but protects uses outside the 
 });
 
 it('protects generation versions used by timeline clips or templates', () => {
-  const p = project(), generation = newAssetGeneration('video');
+  const p = project(), generation = { ...newAssetGeneration('image'), kind: 'video' as const }; generation.settings.model = 'kling-video';
   generation.versions = [{ assetId: 'output', name: 'Output.mp4', createdAt: 0, settings: generation.settings }]; p.clipGenerations = [generation];
   const node = { id: 'clip', kind: 'source' as const, name: 'Opening', x: 0, y: 0, loopCount: 0, source: { assetId: 'output', inFrame: 0, outFrame: 24 } };
   p.storyFlow = { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [{ id: 'template', name: 'Saved template', entryId: node.id, nodes: [node], edges: [], settings: {} }] };

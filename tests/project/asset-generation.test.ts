@@ -50,7 +50,7 @@ describe('fal media generations', () => {
     expect(projects.editAssets).toHaveBeenCalledTimes(1); expect(projects.editAssets).toHaveBeenCalledWith(expect.any(Function), false);
     stop();
   });
-  it('uses each model’s actual image, video, and audio API fields', () => {
+  it('uses each model’s image and audio fields and rejects new Kling generations', () => {
     const settings = newAssetGeneration('image').settings; settings.prompt = 'A sunset';
     settings.references = [{ assetId: crypto.randomUUID(), name: 'ref', kind: 'image' }];
     const images = [{ kind: 'image' as const, data: 'data:image/png;base64,YQ==' }];
@@ -58,7 +58,9 @@ describe('fal media generations', () => {
     settings.model = 'flux-2-pro';
     const flux = falPayload(settings, images); expect(flux.input).not.toHaveProperty('num_images'); expect(flux.input).toHaveProperty('image_size');
     settings.model = 'kling-video';
-    expect(falPayload(settings, images)).toMatchObject({ endpoint: 'fal-ai/kling-video/v2.6/pro/image-to-video', input: { start_image_url: images[0].data, duration: '5' } });
+    expect(() => falPayload(settings, images)).toThrow('Comfy H3');
+    expect(ASSET_MODELS.some(model => model.kind === 'video')).toBe(false);
+    expect(() => newAssetGeneration('video')).toThrow('Comfy H3');
     settings.model = 'sound-effects'; settings.references = [];
     expect(falPayload(settings, [])).toMatchObject({ input: { text: 'A sunset', duration_seconds: 5 } });
     settings.model = 'stable-audio-2.5';
@@ -95,6 +97,7 @@ describe('fal media generations', () => {
     await request(app).post('/api/library-generations').send({ settings, inputs: [] }).expect(403);
     await request(app).post('/api/library-generations').set('x-sparko-request', '1').send({ settings, inputs: [{ kind: 'video', data: 'data:image/png;base64,YQ==' }] }).expect(400);
     await request(app).post('/api/library-generations').set('x-sparko-request', '1').send({ settings: { ...settings, count: 3 }, inputs: [] }).expect(400);
+    await request(app).post('/api/library-generations').set('x-sparko-request', '1').send({ settings: { ...settings, model: 'kling-video' }, inputs: [] }).expect(400);
     expect(fetcher).not.toHaveBeenCalled();
     await request(app).post('/api/library-generations').set('x-sparko-request', '1').send({ settings, inputs: [] }).expect(200, { requestId: 'request_123' });
     await request(app).get('/api/library-generations/nano-banana-2/request_123').expect(200, { phase: 'ready', count: 1 });
