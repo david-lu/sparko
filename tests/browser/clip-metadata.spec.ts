@@ -123,8 +123,8 @@ test('converting a generated scene creates a separate copy with its metadata and
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'portable.mp4', mimeType: 'video/mp4', buffer: await video() });
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(1); await page.locator('.story-clip-title').click();
   const before = await readProject(page);
-  await page.getByRole('button', { name: 'Convert frame rate…', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Convert frame rate', exact: true });
+  await page.getByRole('button', { name: 'Convert video…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Convert video', exact: true });
   await dialog.getByLabel('Target FPS', { exact: true }).fill('30');
   await dialog.getByRole('button', { name: 'Create copy', exact: true }).click(); await expect(dialog).toHaveCount(0);
   await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('30 fps');

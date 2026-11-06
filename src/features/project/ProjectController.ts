@@ -2,7 +2,7 @@ import { H3_MODEL_ID, projectLoraAddress, projectLoraStrength, saveProjectLora, 
 import { generationModel } from '../../../shared/generation-models';
 import type { MediaInfo, MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
-import { canPlaySourceVideo, convertVideoFrameRate, prepareSourceVideo } from '../../media/prepareVideo';
+import { canPlaySourceVideo, convertVideoFrameRate, prepareSourceVideo, type VideoDimensions } from '../../media/prepareVideo';
 import type { InterstitialController } from '../interstitials/InterstitialController';
 import { assets } from './assets';
 import { clearActiveProject, deleteSavedProject, forgetRecentFile, listRecentFiles, listSavedProjects, readActiveProject, readAsset, readProject, rememberRecentFile, storageError, writeProject, type RecentFile } from './database';
@@ -51,22 +51,41 @@ export class ProjectController {
       normalizedFps: normalize ? 24 : existing?.normalizedFps };
     return { asset, original, library };
   }
-  async convertVideoAsset(assetId: string, fps: number): Promise<LibraryAsset | undefined> {
+  async convertVideoAsset(assetId: string, fps: number, dimensions?: VideoDimensions): Promise<LibraryAsset | undefined> {
     const initial = this.state.project, source = initial?.library?.find(item => item.assetId === assetId);
     if (!initial || !source || !['video', 'generated'].includes(source.kind)) return;
-    return this.task('Converting video frame rate', async signal => {
+    return this.task('Converting video', async signal => {
       if ((initial.library?.length ?? 0) >= 2000) throw new Error('A project supports up to 2,000 assets.');
       const stored = await readAsset(assetId);
       if (!stored) throw new Error('The saved video is missing.');
-      const blob = await convertVideoFrameRate(stored.blob, fps, signal, progress => this.update({ progress }));
+      const blob = await convertVideoFrameRate(stored.blob, fps, signal, progress => this.update({ progress }), dimensions);
       const info = await this.validateVideo(blob, signal);
-      const suffix = `.${fps}fps.mp4`;
+      const suffix = `${dimensions ? `.${dimensions.width}x${dimensions.height}` : ''}.${fps}fps.mp4`;
       const asset: Asset = { id: freshId(), name: source.name.replace(/\.[^.]+$/, '').slice(0, 1000 - suffix.length) + suffix, blob };
       const copy: LibraryAsset = { assetId: asset.id, originalAssetId: assetId, normalizedFps: fps, name: asset.name,
         kind: source.kind, folderId: source.folderId, generation: source.generation, width: info.width, height: info.height,
         duration: info.duration, inFrame: source.inFrame, outFrame: source.outFrame };
       await this.writes; signal.throwIfAborted();
       if (this.state.project?.id !== initial.id) throw new Error('Project changed while converting the video.');
+      await writeProject({ ...this.state.project, library: [...this.state.project.library ?? [], copy] }, [asset], false, signal);
+      await assets.open(asset.id);
+      this.endHistoryGroup();
+      this.save({ ...this.state.project!, library: [...this.state.project!.library ?? [], copy] });
+      this.endHistoryGroup();
+      return copy;
+    });
+  }
+  async saveDrawnImage(assetId: string, render: (signal: AbortSignal) => Promise<Blob>): Promise<LibraryAsset | undefined> {
+    const initial = this.state.project, source = initial?.library?.find(item => item.assetId === assetId);
+    if (!initial || source?.kind !== 'image') return;
+    return this.task('Saving drawing', async signal => {
+      if ((initial.library?.length ?? 0) >= 2000) throw new Error('A project supports up to 2,000 assets.');
+      const blob = await render(signal), info = await inspectAsset(blob, 'image');
+      const name = `${source.name.replace(/\.[^.]+$/, '').slice(0, 980)}.drawn.png`;
+      const asset: Asset = { id: freshId(), name, blob };
+      const copy: LibraryAsset = { assetId: asset.id, originalAssetId: assetId, name, kind: 'image', folderId: source.folderId, ...info };
+      await this.writes; signal.throwIfAborted();
+      if (this.state.project?.id !== initial.id) throw new Error('Project changed while saving the drawing.');
       await writeProject({ ...this.state.project, library: [...this.state.project.library ?? [], copy] }, [asset], false, signal);
       await assets.open(asset.id);
       this.endHistoryGroup();

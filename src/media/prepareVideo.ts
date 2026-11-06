@@ -39,13 +39,17 @@ export async function prepareVideo(blob: Blob, signal: AbortSignal, onProgress: 
   return convertVideo(blob, TIMELINE_FPS, signal, onProgress, reuseCompatible, maxHeight);
 }
 
-/** Change frame cadence without changing playback speed, resolution, or the audio clock. */
-export async function convertVideoFrameRate(blob: Blob, fps: number, signal: AbortSignal, onProgress: (progress: number) => void): Promise<Blob> {
+export type VideoDimensions = { width: number; height: number; fit: 'contain' | 'cover' | 'fill' };
+export const validVideoDimensions = (size: VideoDimensions) => [size.width, size.height].every(n => Number.isInteger(n) && n >= 2 && n <= 8192 && n % 2 === 0);
+
+/** Change frame cadence and optionally dimensions while preserving playback speed and the audio clock. */
+export async function convertVideoFrameRate(blob: Blob, fps: number, signal: AbortSignal, onProgress: (progress: number) => void, dimensions?: VideoDimensions): Promise<Blob> {
   if (!Number.isFinite(fps) || fps < 1 || fps > 240) throw new Error('Choose a frame rate between 1 and 240 fps.');
-  return convertVideo(blob, fps, signal, onProgress, true, 0);
+  if (dimensions && !validVideoDimensions(dimensions)) throw new Error('Choose even dimensions between 2 and 8192 pixels.');
+  return convertVideo(blob, fps, signal, onProgress, true, 0, dimensions);
 }
 
-async function convertVideo(blob: Blob, fps: number, signal: AbortSignal, onProgress: (progress: number) => void, reuseCompatible: boolean, maxHeight: number): Promise<Blob> {
+async function convertVideo(blob: Blob, fps: number, signal: AbortSignal, onProgress: (progress: number) => void, reuseCompatible: boolean, maxHeight: number, dimensions?: VideoDimensions): Promise<Blob> {
   signal.throwIfAborted();
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   let conversion: Conversion | undefined;
@@ -60,7 +64,8 @@ async function convertVideo(blob: Blob, fps: number, signal: AbortSignal, onProg
     const video = await input.getPrimaryVideoTrack();
     if (!video) throw new Error('This file has no video track.');
     const audio = await input.getPrimaryAudioTrack();
-    if (reuseCompatible && await input.getFormat() instanceof Mp4InputFormat && await video.getCodec() === 'avc'
+    const sameSize = !dimensions || dimensions.width === await video.getDisplayWidth() && dimensions.height === await video.getDisplayHeight();
+    if (reuseCompatible && sameSize && await input.getFormat() instanceof Mp4InputFormat && await video.getCodec() === 'avc'
       && (!audio || await audio.getCodec() === 'aac') && await hasFrameClock(video, fps, signal)) return blob;
     signal.throwIfAborted();
     reportProgress(0);
@@ -69,7 +74,7 @@ async function convertVideo(blob: Blob, fps: number, signal: AbortSignal, onProg
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory', metadataFormat: 'mdta' }) });
     conversion = await Conversion.init({ input, output, tracks: 'primary', trim: { start: 0 },
       video: { codec: 'avc', frameRate: fps, forceTranscode: true, keyFrameInterval: 1, quality: new Quality('high'),
-        ...(maxHeight > 0 && await video.getDisplayHeight() > maxHeight ? { height: maxHeight } : {}) },
+        ...(dimensions ?? (maxHeight > 0 && await video.getDisplayHeight() > maxHeight ? { height: maxHeight } : {})) },
       audio: { codec: 'aac' },
     });
     signal.throwIfAborted();

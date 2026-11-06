@@ -10,6 +10,7 @@ import VideoFrameRate from './VideoFrameRate';
 import './asset-inspector.css';
 import AssetGenerationInfo from './AssetGenerationInfo';
 import { assetUsage } from './assetUsage';
+import ImageAssetTools from './ImageAssetTools';
 
 export function AssetPreview({ id, kind, name, onPlay }: { id?: string; kind: string; name: string; onPlay: () => void }) {
   const [url, setUrl] = useState<string>(), [error, setError] = useState('');
@@ -44,11 +45,12 @@ export default function AssetInspector({ editor }: { editor: StoryEditor; status
       onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.blur(); } }}/>
     <div className="inspector-clip-meta"><span>Media asset · {asset.generation ? 'Generated' : 'Imported'}</span></div>
     {kind === 'video' && <VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={asset.assetId}/>}
+    {kind === 'image' && <ImageAssetTools key={asset.assetId} projects={editor.projects} assetId={asset.assetId} onSaved={copy => editor.selectLibrary({ type: 'asset', id: copy.assetId })}/>}
     <details className="inspector-group" open><summary>Preview</summary><AssetPreview id={asset.assetId} kind={kind} name={asset.name} onPlay={() => editor.player.pause()}/>
       <div className="asset-preview-actions"><AssetDownload asset={asset}/><button className="text-button" onClick={() => void editor.addAsset(asset.assetId)}>Add to timeline</button></div>
     </details>
     <AssetGenerationInfo asset={asset}/>
-    <details className="inspector-group" open><summary>Properties</summary><p className="hint">{asset.width && asset.height ? `${asset.width} × ${asset.height} · ` : ''}{asset.duration ? `${asset.duration.toFixed(2)} seconds` : ''}</p></details>
+    {!!asset.duration && kind !== 'image' && <details className="inspector-group" open><summary>Properties</summary><p className="hint">{asset.duration.toFixed(2)} seconds</p></details>}
     <details className="inspector-group" open><summary>Used in project<span>{uses.length}</span></summary>{uses.length ? uses.map((use, i) => <p className="hint" key={i}>{use.owner} · {use.role}</p>) : <p className="hint">Not used on the timeline.</p>}</details>
   </div>;
 }

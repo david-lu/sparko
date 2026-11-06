@@ -1,0 +1,9 @@
+.image-drawing-dialog{width:min(100%,900px);max-height:calc(100dvh - 32px);padding:20px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.image-drawing-dialog h2,.image-drawing-dialog .hint{margin:0}.drawing-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:12px}
+.drawing-toolbar label{display:flex;align-items:center;gap:6px}.drawing-toolbar input[type=color]{width:32px;height:30px;padding:2px;border:1px solid var(--line);background:var(--input);border-radius:4px}
+.drawing-toolbar button{padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--surface);font-size:11px}.drawing-tool-buttons,.drawing-history{display:flex;gap:4px}.drawing-toolbar button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.drawing-size input{width:100px;accent-color:var(--accent)}.drawing-size output{width:45px;font-variant-numeric:tabular-nums}.drawing-history{flex-wrap:wrap}
+.drawing-stage{position:relative;display:flex;align-items:center;justify-content:center;height:clamp(180px,45dvh,500px);min-height:180px;flex-shrink:0;overflow:hidden;border:1px solid var(--line);border-radius:4px;background:repeating-conic-gradient(#24221f 0% 25%,#1c1b18 0% 50%) 0 0/16px 16px}
+.drawing-stage canvas{display:block;max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;cursor:crosshair}.drawing-loading{position:absolute;color:var(--muted);font-size:12px}
+.drawing-feedback{height:32px;flex-shrink:0;overflow:auto;color:var(--error,#e7b6ae);font-size:11px}.drawing-actions{display:flex;justify-content:flex-end;gap:8px}.drawing-actions .primary{min-width:160px}
+@media(max-width:500px){.image-drawing-dialog{padding:14px;gap:10px}.drawing-stage{height:32dvh}.drawing-toolbar{gap:8px}.drawing-size input{width:90px}}

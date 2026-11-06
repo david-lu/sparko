@@ -1,4 +1,5 @@
 import VideoFrameRate from '../project/VideoFrameRate';
+import ImageAssetTools from '../project/ImageAssetTools';
 import { FileVideo, Image, Music } from 'lucide-react';
 import { playableResult } from '../../../shared/interstitials';
 import AssetGenerationInfo from '../project/AssetGenerationInfo';
@@ -14,6 +15,7 @@ export default function ClipMediaSection({ node, editor }: { node: StoryNode; ed
   return <>
     <details className="inspector-group" open><summary>Media asset</summary>
       {kind==='video'&&<VideoFrameRate assetId={id} projects={editor.projects} onConverted={asset=>editor.selectLibrary({type:'asset',id:asset.assetId})}/>}
+      {kind==='image'&&<ImageAssetTools key={id} assetId={id} projects={editor.projects} onSaved={asset=>editor.selectLibrary({type:'asset',id:asset.assetId})}/>}
       <div className="clip-media-asset"><Icon size={14} aria-hidden/><span>{asset?.name ?? 'Draft · no media yet'}</span></div>
       <div className="clip-media-actions"><button type="button" className="text-button" disabled={!asset} onClick={() => asset && editor.selectLibrary({ type: 'asset', id: asset.assetId })}>Reveal in Library</button>{!node.generationId&&!node.interstitialId&&<button type="button" className="text-button" onClick={()=>editor.makeGenerative(node.id)}>Generate a new version</button>}</div>
       <select className="clip-media-picker" aria-label="Replace clip asset" value="" onChange={event => { if (event.target.value) editor.replaceAsset(node.id, event.target.value); }}>

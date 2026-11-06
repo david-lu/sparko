@@ -34,6 +34,37 @@ async function holdConversion(page: Page) {
   });
 }
 
+for (const width of [1440, 390]) test(`dimension conversion creates a resized copy without changing clips at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 844 }); await openVideo(page);
+  await page.locator('.story-clip-title').click();
+  const before = await readProject(page), original = await rate(page, before.source.assetId);
+  await expect(page.getByLabel('Media dimensions', { exact: true })).toHaveText(`${original.width} × ${original.height}`);
+  await page.getByRole('button', { name: 'Convert video…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Convert video', exact: true }), create = dialog.getByRole('button', { name: 'Create copy', exact: true });
+  await dialog.getByLabel('Target FPS', { exact: true }).fill(String(original.fps));
+  await dialog.getByLabel('Resize video', { exact: true }).check();
+  await dialog.getByLabel('Width (px)', { exact: true }).fill('320');
+  await expect(dialog.getByLabel('Height (px)', { exact: true })).toHaveValue(String(Math.max(2, Math.round(320 * original.height / original.width / 2) * 2)));
+  await dialog.getByLabel('Lock aspect ratio', { exact: true }).uncheck();
+  await dialog.getByLabel('Height (px)', { exact: true }).fill('180');
+  await dialog.getByLabel('Width (px)', { exact: true }).fill('321'); await expect(create).toBeDisabled();
+  await dialog.getByLabel('Width (px)', { exact: true }).fill('8194'); await expect(create).toBeDisabled();
+  await dialog.getByLabel('Width (px)', { exact: true }).fill('320');
+  await dialog.getByLabel('Fit', { exact: true }).selectOption('cover');
+  await dialog.screenshot({ path: `test-results/convert-dimensions-${width}.png` });
+  await create.click(); await expect(dialog).toHaveCount(0);
+  await expect(page.getByLabel('Media dimensions', { exact: true })).toHaveText('320 × 180');
+  const after = await readProject(page), copy = after.library.find((a: any) => a.assetId !== before.source.assetId);
+  expect(copy).toMatchObject({ width: 320, height: 180, normalizedFps: original.fps, originalAssetId: before.source.assetId });
+  const converted = await rate(page, copy.assetId);
+  expect([converted.width, converted.height, converted.fps]).toEqual([320, 180, original.fps]);
+  expect(converted.audio).toEqual(original.audio); expect(converted.duration).toBeCloseTo(original.duration, 4);
+  expect(after.storyFlow).toEqual(before.storyFlow); expect(await rate(page, before.source.assetId)).toEqual(original);
+  await saveAndReopen(page);
+  await page.getByRole('button', { name: `Library asset ${copy.name}`, exact: true }).click();
+  await expect(page.getByLabel('Media dimensions', { exact: true })).toHaveText('320 × 180');
+});
+
 for (const [width, fps] of [[1440, 29.97], [390, 30]]) test(`explicit FPS conversion creates an independent Library copy with stable layout at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
   await openVideo(page);
@@ -41,8 +72,8 @@ for (const [width, fps] of [[1440, 29.97], [390, 30]]) test(`explicit FPS conver
   await preferenceDialog.getByRole('button', { name: 'Done', exact: true }).click();
   await page.locator('.story-clip-title').click();
   const before = await readProject(page), original = await rate(page, before.source.assetId);
-  await page.getByRole('button', { name: 'Convert frame rate…', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Convert frame rate', exact: true }), target = dialog.getByLabel('Target FPS', { exact: true });
+  await page.getByRole('button', { name: 'Convert video…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Convert video', exact: true }), target = dialog.getByLabel('Target FPS', { exact: true });
   const create = dialog.getByRole('button', { name: 'Create copy', exact: true });
   await target.fill('241'); await expect(create).toBeDisabled();
   await target.fill('0'); await expect(create).toBeDisabled();
@@ -91,8 +122,8 @@ test('explicit conversion can be cancelled or retried after failure without a pa
   await page.setViewportSize({ width: 390, height: 844 }); await openVideo(page);
   await page.getByRole('button', { name: 'Library asset interstitial-reference.mp4', exact: true }).click();
   const before = await readProject(page);
-  await page.getByRole('button', { name: 'Convert frame rate…', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Convert frame rate', exact: true });
+  await page.getByRole('button', { name: 'Convert video…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Convert video', exact: true });
   await holdConversion(page); await dialog.getByRole('button', { name: 'Create copy', exact: true }).click();
   await expect.poll(() => page.evaluate(() => !!(window as any).releaseImportConversion)).toBe(true);
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -100,7 +131,7 @@ test('explicit conversion can be cancelled or retried after failure without a pa
   await page.evaluate(() => (window as any).releaseImportConversion());
   await expect(page.locator('.project-status')).toHaveCount(0);
   expect(await readProject(page)).toEqual(before);
-  await page.getByRole('button', { name: 'Convert frame rate…', exact: true }).click();
+  await page.getByRole('button', { name: 'Convert video…', exact: true }).click();
   const positions = () => dialog.locator('input,.frame-rate-actions,button').evaluateAll(nodes => nodes.map(node => {
     const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
   }));
@@ -242,7 +273,8 @@ test('24 fps and fractional FPS conversions preserve audio packets and timing', 
       } finally { input.dispose(); }
     };
     const fractional = await convertVideoFrameRate(original, 29.97, new AbortController().signal, () => undefined);
-    return { original: await inspect(original), converted: await inspect(converted), fractional: await inspect(fractional) };
+    const resized = await convertVideoFrameRate(original, 25, new AbortController().signal, () => undefined, { width: 80, height: 48, fit: 'contain' });
+    return { original: await inspect(original), converted: await inspect(converted), fractional: await inspect(fractional), resized: await inspect(resized) };
   });
   expect(result.original.fps).toBe(25); expect(result.converted.fps).toBeCloseTo(24, 5);
   expect(result.converted.packets).toEqual(result.original.packets);
@@ -252,4 +284,7 @@ test('24 fps and fractional FPS conversions preserve audio packets and timing', 
   expect(result.fractional.packets).toEqual(result.original.packets);
   expect(result.fractional.rate).toBe(result.original.rate);
   expect(Math.abs(result.fractional.duration - result.original.duration)).toBeLessThanOrEqual(1 / 29.97);
+  expect(result.resized.packets).toEqual(result.original.packets);
+  expect(result.resized.rate).toBe(result.original.rate);
+  expect(result.resized.duration).toBeCloseTo(result.original.duration, 5);
 });

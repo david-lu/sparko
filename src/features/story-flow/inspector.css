@@ -24,6 +24,8 @@
 .frame-rate-dialog{--property-label:80px}.frame-rate-source{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .frame-rate-dialog .hint{margin-top:14px;line-height:1.5}.frame-rate-feedback{height:40px;margin:12px 0;overflow:auto;font-size:11px;color:var(--error,#e7b6ae)}
 .frame-rate-actions{display:flex;justify-content:flex-end;gap:8px}.frame-rate-actions .primary{min-width:150px}
+.media-dimensions{height:28px}.media-dimensions output{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.conversion-toggle{display:flex;align-items:center;gap:8px;min-height:32px;font-size:12px}.conversion-toggle input{width:14px;height:14px;accent-color:var(--accent)}
 .inspector-options{display:flex;min-width:0;border:1px solid var(--line);border-radius:3px;overflow:hidden}
 .inspector-options button{flex:1;min-width:0;min-height:24px;padding:2px 4px;background:transparent;color:var(--muted);font-size:10px;white-space:nowrap}
 .inspector-options button+button{border-left:1px solid var(--line)}
