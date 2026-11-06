@@ -54,15 +54,13 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Verify preinstalled Chrome and software rendering
+      - name: Install Chrome and browser dependencies
+        timeout-minutes: 5
         run: |
-          # The hosted Ubuntu image supplies Chrome, Xvfb, and Xauth.
-          # Our browser flags use Chrome's bundled SwiftShader, not Mesa.
-          # Avoid redundant apt downloads consuming the browser-test timeout.
-          google-chrome --version
-          command -v xvfb-run
-          command -v xauth
-          test -r /opt/google/chrome/libvk_swiftshader.so
+          # The Azure mirror can stall package downloads; use Ubuntu's archive.
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
+          npx playwright install --with-deps chrome
+          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers xvfb xauth
       - name: Browser tests
         # Linux WebGPU canvas capture needs a display compositor, even with software rendering.
         run: xvfb-run -a npm run test:e2e:ci -- --headed --shard=${{ matrix.shard }}/4
