@@ -1,4 +1,4 @@
-import { ChevronRight, Folder, FolderPlus, GripVertical, Image, Music, Plus, Search, Upload, Video } from 'lucide-react';
+import { ChevronRight, Folder, FolderPlus, GripVertical, Image, Music, Paintbrush, Plus, Search, Upload, Video } from 'lucide-react';
 import { useEffect, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
 import type { StoryEditor, LibrarySelection } from './useStoryEditor';
 import { assets } from '../project/assets';
@@ -13,6 +13,7 @@ import AssetThumbnail from '../project/AssetThumbnail';
 import LibraryContextMenu from './LibraryContextMenu';
 import LibraryFolderDialog from './LibraryFolderDialog';
 import { downloadAsset } from '../project/assetExports';
+import ImageDrawingDialog from '../project/ImageDrawingDialog';
 
 const folderDragType = 'application/x-sparko-folder';
 type MenuTarget = LibraryMoveSelection | { type: 'folder'; id: string } | { type: 'background'; folderId?: string };
@@ -23,6 +24,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set()), [dropping, setDropping] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
   const [menu, setMenu] = useState<{ x: number; y: number; target: MenuTarget; selection: LibraryMoveSelection[] } | null>(null), [submenu, setSubmenu] = useState(false);
   const [folderDialog, setFolderDialog] = useState<FolderDialog | null>(null);
+  const [drawing, setDrawing] = useState<string>();
   const folderTrigger = useRef<HTMLElement | null>(null);
   const [deleting, setDeleting] = useState<ReturnType<typeof planAssetDeletion> | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -63,7 +65,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
     finally { setRemoving(false); }
   };
   useEffect(() => setDeleteError(''), [deleting]);
-  useEffect(() => { setFolderId(undefined); setMessage(''); setDeleting(null); setMenu(null); setFolderDialog(null); importDestination.current = undefined; }, [project?.id]);
+  useEffect(() => { setFolderId(undefined); setMessage(''); setDeleting(null); setMenu(null); setFolderDialog(null); setDrawing(undefined); importDestination.current = undefined; }, [project?.id]);
   useEffect(() => {
     const end = () => { setDropping(false); setDropFolder(undefined); draggedFolder.current = undefined; };
     end(); selectionAnchor.current = null;
@@ -277,6 +279,7 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
         <div role="separator"/><button role="menuitem" onClick={() => requestDelete(menuSelections)}>Delete selected assets…</button>
       </>}
       {!multiple && menuAsset && <>
+        {menuAsset.kind === 'image' && <button role="menuitem" disabled={editor.projects.getSnapshot().busy} onClick={() => { setDrawing(menuAsset.assetId); setMenu(null); }}><Paintbrush size={14} aria-hidden/>Draw on image…</button>}
         <button role="menuitem" onClick={() => { choose({type:'asset',id:menuAsset.assetId}); setMenu(null); }}>Open in Inspector</button>
         <button role="menuitem" onClick={() => run(() => editor.addAsset(menuAsset.assetId))}>Add to timeline</button>
         <button role="menuitem" onClick={() => run(() => downloadAsset(menuAsset))}>Download</button>
@@ -289,6 +292,8 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
         <button role="menuitem" onClick={() => requestDelete([{type:'asset',id:menuAsset.assetId}])}>Delete asset…</button>
       </>}
     </LibraryContextMenu>}
+    {drawing && <ImageDrawingDialog key={drawing} assetId={drawing} projects={editor.projects} onSaved={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} onClose={() => setDrawing(undefined)}
+      restoreFocus={() => menuTrigger.current?.focus({ preventScroll: true })}/>}
     {folderDialog && <LibraryFolderDialog initialName={folderDialog.mode === 'rename' ? folderDialog.name : undefined} onSubmit={saveFolder} onCancel={() => setFolderDialog(null)}
       restoreFocus={() => { const trigger = folderTrigger.current?.isConnected ? folderTrigger.current : input.current?.closest<HTMLElement>('.asset-library'); trigger?.focus({ preventScroll: true }); }}/>}
     {deleting && <ModalBackdrop labelledBy="delete-asset-title" onCancel={() => { if (!removing) setDeleting(null); }} restoreFocus={() => input.current?.closest<HTMLElement>('.asset-library')?.focus({ preventScroll: true })}><div className="project-card asset-delete-dialog"><h2 id="delete-asset-title">Delete {deleting.targets.length > 1 ? `${deleting.targets.length} assets` : deleting.targets[0].name}?</h2>

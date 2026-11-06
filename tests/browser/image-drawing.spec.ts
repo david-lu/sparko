@@ -32,6 +32,8 @@ for (const width of [1440, 390]) test(`drawing saves a new image with undo, eras
   const before = await readProject(page), original = await pixels(page, before.source.assetId);
   if (width === 390) await page.getByRole('button', { name: 'Reveal in Library', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Draw on image…', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Draw on image…', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `test-results/draw-image-action-${width}.png`, fullPage: true });
   await page.evaluate(() => {
     const decode = window.createImageBitmap;
     const loading = new Promise<void>(resolve => { (window as any).loadDrawing = () => { window.createImageBitmap = decode; resolve(); }; });
@@ -41,7 +43,10 @@ for (const width of [1440, 390]) test(`drawing saves a new image with undo, eras
       return (decode as any)(...args);
     };
   });
-  await page.getByRole('button', { name: 'Draw on image…', exact: true }).click();
+  if (width === 390) {
+    await page.getByRole('button', { name: 'Library asset Drawing.png', exact: true }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Draw on image…', exact: true }).click();
+  } else await page.getByRole('button', { name: 'Draw on image…', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Draw on image', exact: true }), canvas = dialog.getByLabel('Image drawing canvas', { exact: true });
   const geometry = () => dialog.locator('h2,.drawing-toolbar,.drawing-stage,.hint,.drawing-feedback,footer').evaluateAll(elements => elements.map(el => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }));
   await expect(dialog.getByText('Loading image…', { exact: true })).toBeVisible();

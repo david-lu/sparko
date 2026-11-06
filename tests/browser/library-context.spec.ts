@@ -34,7 +34,7 @@ for (const width of [1440, 390]) test(`asset thumbnails and context menus work w
   await expect(audio.getByRole('img', { name: 'Waveform of voice-answer.wav' })).toBeVisible();
 
   await audio.click(); await image.click({ button: 'right' });
-  await expect(actions(page).getByRole('menuitem').allTextContents()).resolves.toEqual(['Open in Inspector', 'Add to timeline', 'Download', 'Rename asset…', 'Delete asset…']);
+  await expect(actions(page).getByRole('menuitem').allTextContents()).resolves.toEqual(['Draw on image…', 'Open in Inspector', 'Add to timeline', 'Download', 'Rename asset…', 'Delete asset…']);
   await expect(image).toHaveAttribute('aria-pressed', 'true'); await expect(audio).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByLabel('Asset name', { exact: true })).toHaveValue('Reference.png');
   await page.keyboard.press('Escape'); await expect(image).toBeFocused();
@@ -140,5 +140,5 @@ test('generation controls stay on the clip while the Library exposes completed m
   await page.getByRole('button',{name:'Cancel',exact:true}).click();await expect.poll(()=>cancelled).toBe(1);
   complete=true;await page.getByRole('button',{name:'Check result',exact:true}).click();
   const output=asset(page,'Untitled image · v1');await expect(output).toBeVisible();await output.click({button:'right'});
-  expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Open in Inspector','Add to timeline','Download','Rename asset…','Delete asset…']);
+  expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Draw on image…','Open in Inspector','Add to timeline','Download','Rename asset…','Delete asset…']);
 });
