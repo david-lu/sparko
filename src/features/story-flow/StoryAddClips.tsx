@@ -1,4 +1,4 @@
-import { Film, GripVertical, LayoutTemplate, Search } from 'lucide-react';
+import { Film, Image, Music, GripVertical, LayoutTemplate, Search } from 'lucide-react';
 import { useState } from 'react';
 import type { StoryEditor } from './useStoryEditor';
 import { builtInTemplates } from './templates';
@@ -8,7 +8,7 @@ import './add-clips.css';
 export default function StoryAddClips({editor}:{editor:StoryEditor}) {
   const [query,setQuery]=useState('');
   const matches=(name:string)=>name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
-  const showInterstitial=matches('Video');
+  const showInterstitial=matches('Video'),mediaKinds=(['image','audio'] as const).filter(kind=>matches(kind));
   const templates=[...builtInTemplates,...(editor.graph?.templates??[])].filter(template=>matches(template.name));
   const hint=()=>editor.setNotice('Drag a video or template onto the timeline to place it. Drop onto a clip or wire to attach it.');
   return <section className="add-clips-panel" aria-label="Videos and templates">
@@ -20,6 +20,11 @@ export default function StoryAddClips({editor}:{editor:StoryEditor}) {
         <Film size={16} aria-hidden/><span>Video</span><GripVertical size={13} aria-hidden/>
       </button>
     </div>}
+    {showInterstitial&&<button className="add-clip-card" draggable aria-label="Add Kling video" onDragStart={event=>startLibraryDrag(event,{mediaKind:'video'})} onClick={event=>event.detail===0?editor.addMedia('video'):hint()}><Film size={16} aria-hidden/><span>Video · Kling</span><GripVertical size={13} aria-hidden/></button>}
+    {mediaKinds.map(kind=><button key={kind} className="add-clip-card" draggable aria-label={`Add ${kind}`} title={`Drag to place ${kind}. Enter adds at the selection.`}
+      onDragStart={event=>startLibraryDrag(event,{mediaKind:kind})} onClick={event=>event.detail===0?editor.addMedia(kind):hint()}>
+      {kind==='image'?<Image size={16} aria-hidden/>:<Music size={16} aria-hidden/>}<span>{kind==='image'?'Image':'Audio'}</span><GripVertical size={13} aria-hidden/>
+    </button>)}
     {templates.length>0&&<div className="add-clips-section"><h3>Templates <span>{templates.length}</span></h3>
       {templates.map(template=><button className="add-clip-card" key={template.id} draggable aria-label={`Add template ${template.name}`}
         title={`${'description' in template?template.description:'Saved in this project.'} Drag to place. Enter adds at the selection.`} onDragStart={event=>startLibraryDrag(event,{templateId:template.id})}
@@ -27,6 +32,6 @@ export default function StoryAddClips({editor}:{editor:StoryEditor}) {
         <LayoutTemplate size={16} aria-hidden/><span>{template.name}</span><GripVertical size={13} aria-hidden/>
       </button>)}
     </div>}
-    {!showInterstitial&&!templates.length&&<p className="hint">No matching videos or templates.</p>}
+    {!showInterstitial&&!mediaKinds.length&&!templates.length&&<p className="hint">No matching videos or templates.</p>}
   </section>;
 }

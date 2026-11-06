@@ -1,3 +1,5 @@
+import ClipMediaSection from './ClipMediaSection';
+import ClipGenerationEditor from './ClipGenerationEditor';
 import { Copy, Flag, Scissors, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AppStatus } from '../../../shared/contracts';
@@ -21,7 +23,7 @@ import { useShortcuts } from '../../shared/shortcuts';
 import LoopReferenceHelp from './LoopReferenceHelp';
 import StoryReferences from './StoryReferences';
 import AssetInspector, { AssetSelectionInspector } from '../project/AssetInspector';
-import AssetVolumeControl from '../project/AssetVolumeControl';
+import ClipVolumeControl from './ClipVolumeControl';
 import ProjectInspector from './ProjectInspector';
 import ContentIssues from '../../shared/ContentIssues';
 import { assets } from '../project/assets';
@@ -48,7 +50,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   if (editor.librarySelection?.type === 'asset' || editor.librarySelection?.type === 'generation') return <AssetInspector editor={editor} status={status}/>;
   if (editor.librarySelection?.type === 'job') {
     const job = items.find(i => i.id === editor.librarySelection!.id);
-    if (job) return <div className="story-inspector clip-inspector" data-project-edit><h2>{job.label}</h2><VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={playableResult(job)?.assetId}/><InterstitialEditor projects={editor.projects} compact selected={job} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}/><AssetVolumeControl projects={editor.projects} assetId={playableResult(job)?.assetId}/></div>;
+    if (job) return <div className="story-inspector clip-inspector" data-project-edit><h2>{job.label}</h2><VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={playableResult(job)?.assetId}/><InterstitialEditor projects={editor.projects} compact selected={job} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}/></div>;
   }
   if (!graph) return null;
   const node = graph.nodes.find(n => n.id === editor.selectedId), connection = graph.edges.find(e => e.id === editor.selectedEdge);
@@ -71,7 +73,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <div className="inspector-clip-tools" role="group" aria-label="Clip actions">
         <button className="icon-button small" aria-label="Duplicate clip" title={shortcuts.title('duplicate')} onClick={editor.duplicate}><Copy size={13} /></button>
         <button className="icon-button small" aria-label="Split at playhead" title={shortcuts.title('split')} onClick={() => editor.split()}><Scissors size={13} /></button>
-        <button className="icon-button small" aria-label="Delete selected clips" title={shortcuts.title('delete')} onClick={editor.remove}><Trash2 size={13} /></button>
+        <button className="icon-button small" aria-label="Delete selected clips" disabled={editor.removingClips} aria-busy={editor.removingClips} title={shortcuts.title('delete')} onClick={editor.remove}><Trash2 size={13} /></button>
       </div>
     </div>
     <div className="inspector-clip-meta">
@@ -80,7 +82,6 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       {graph.entryId===node.id&&<span className="inspector-entry" title="The experience starts with this video"><Flag size={11}/>Start video</span>}
     </div>
     <ClipColorPicker color={editor.selected.every(id => (graph.nodes.find(n => n.id === id)?.color ?? 'gray') === (node.color ?? 'gray')) ? node.color ?? 'gray' : undefined} onChange={editor.colorClips}/>
-    {node.source?.kind !== 'image' && <VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={node.source?.assetId ?? (item && playableResult(item)?.assetId)}/>}
     <BehaviorSection key={`loop:${node.id}`} name="Loop" enabled={behavior.loop} onToggle={enabled=>editor.toggleBehavior(node.id,'loop',enabled)} help={!item && <LoopReferenceHelp />}>
       <label className="inspector-property"><span>Loop count</span><input aria-label="Loop count" type="number" min={0} max={10000} value={node.loopCount} title="0 repeats until a condition matches or Continue is pressed." onChange={e=>Number.isFinite(e.target.valueAsNumber)&&editor.patch(node.id,{loopCount:Math.max(0,Math.min(10000,Math.round(e.target.valueAsNumber)))})}/></label>
       <p className="inspector-behavior-hint">{node.loopCount?`Play up to ${node.loopCount} times; a choice can exit sooner.`:behavior.conditional?'Repeat until a condition matches.':'Repeat until Continue is pressed.'}</p>
@@ -101,12 +102,14 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <button className="text-button inspector-add-choice" disabled={conditions.length>=100} onClick={()=>editor.updateConditions(node.id,[...conditions,{id:freshId(),label:`Condition ${conditions.length+1}`,values:[]}])}>+ Add condition</button>
       <p className="hint">Drag each labeled output on the clip to its destination.</p>
     </BehaviorSection>
+    <ClipMediaSection node={node} editor={editor}/>
+    {node.generationId && editor.projects.getSnapshot().project?.clipGenerations?.filter(g=>g.id===node.generationId).map(generation=><ClipGenerationEditor key={generation.id} editor={editor} generation={generation} status={status}/>)}
     {item && <InterstitialEditor key={item.id} projects={editor.projects} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
       generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} issues={editor.jobs.dependency(item.id)?.issues} labels={{ start: referenceLabel(referenceIds('before', refs.input)), end: referenceLabel(referenceIds('after', refs.output)) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
       resultDetails={<GeneratedVideoInfo item={item} node={node} nodes={graph.nodes} items={items} assetAliases={editor.projects.getSnapshot().project?.assetAliases} onSelectReference={editor.revealClip} />} />}
-    {node.source?.kind === 'image' && <label className="inspector-property"><span>Duration (s)</span><input aria-label="Image duration" title={`Minimum: 1 frame (1/${TIMELINE_FPS} second). Arrow keys adjust one frame.`} type="number" min={1 / TIMELINE_FPS} step={1 / TIMELINE_FPS} value={duration} onChange={e => {
+    {(node.source?.kind??node.mediaKind) === 'image' && <label className="inspector-property"><span>Duration (s)</span><input aria-label="Image duration" title={`Minimum: 1 frame (1/${TIMELINE_FPS} second). Arrow keys adjust one frame.`} type="number" min={1 / TIMELINE_FPS} step={1 / TIMELINE_FPS} value={duration} onChange={e => {
       const frames = Math.max(1, Math.round(e.target.valueAsNumber * TIMELINE_FPS));
-      if (Number.isSafeInteger(frames)) editor.patch(node.id, { source: { ...node.source!, outFrame: node.source!.inFrame + frames } });
+      if (Number.isSafeInteger(frames)) editor.patch(node.id, { duration:frames/TIMELINE_FPS, ...(node.source?{source: { ...node.source, outFrame: node.source.inFrame + frames }}:{}) });
     }}/></label>}
     {node.source && node.source.kind !== 'image' && <div className="inspector-source-range">{(['inFrame', 'outFrame'] as const).map(field => <label className="inspector-property" key={field}><span>{field === 'inFrame' ? 'Source in' : 'Source out'}</span><input type="number" step={1 / TIMELINE_FPS} min={field === 'inFrame' ? 0 : (node.source!.inFrame + 1) / TIMELINE_FPS} max={field === 'inFrame' ? (node.source!.outFrame - 1) / TIMELINE_FPS : node.source!.duration ?? info?.duration}
       value={Number((node.source![field] / TIMELINE_FPS).toFixed(3))} onChange={e => {
@@ -114,6 +117,6 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
         if (Number.isFinite(frame)) editor.patch(node.id, { source: { ...node.source!, [field]: field === 'inFrame' ? Math.max(0, Math.min(node.source!.outFrame - 1, frame)) : Math.max(node.source!.inFrame + 1, Math.min(Math.floor((node.source!.duration ?? info?.duration ?? Infinity) * TIMELINE_FPS), frame)) } });
       }} /></label>)}</div>}
     {node.trim && <div className="inspector-trim"><span>Trim: {(node.trim.inFrame / TIMELINE_FPS).toFixed(2)}–{(node.trim.outFrame / TIMELINE_FPS).toFixed(2)} s</span><button className="text-button" onClick={() => editor.patch(node.id, { trim: undefined })}>Restore full clip</button></div>}
-    {node.source?.kind !== 'image' && <AssetVolumeControl projects={editor.projects} assetId={node.source?.assetId ?? (item && playableResult(item)?.assetId)}/>}
+    {(node.source?.kind??node.mediaKind) !== 'image' && <ClipVolumeControl node={node} editor={editor}/>}
   </div>;
 }

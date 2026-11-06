@@ -16,3 +16,7 @@
 .library-drag-thumbnail{position:absolute;display:grid;place-items:center;width:80px;height:48px;background:var(--surface);color:var(--text);border:1px solid var(--line-strong);border-radius:3px;box-shadow:0 2px 4px #0008;overflow:hidden;box-sizing:border-box}
 .library-drag-thumbnail>.library-thumb,.library-drag-thumbnail>.image-reference-thumb{width:100%;height:100%;border-radius:0}.library-drag-thumbnail img{display:block;width:100%;height:100%;object-fit:cover}.library-drag-thumbnail:empty:after{content:'';width:16px;height:20px;border:1px solid var(--muted);border-radius:2px}
 .library-drag-count{position:absolute;right:0;bottom:0;z-index:5;min-width:22px;height:22px;box-sizing:border-box;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink);border:2px solid var(--surface);border-radius:11px;padding:0 5px;font-size:11px;font-weight:700;box-shadow:0 1px 3px #0008}
+
+.library-asset-name strong { display:flex; align-items:center; gap:5px; }
+.library-type-icon { display:inline-flex; flex-shrink:0; color:var(--muted); }
+.library-type-icon svg { width:12px; height:12px; }

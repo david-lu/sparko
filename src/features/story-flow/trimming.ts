@@ -12,6 +12,7 @@ export function clipTrimRange(node: StoryNode, items: Interstitial[], sourceDura
     const totalFrames = node.source.kind === 'image' ? Infinity : Number.isFinite(duration) ? Math.max(1, Math.floor(duration! * TIMELINE_FPS)) : node.source.outFrame;
     return { inFrame: node.source.inFrame, outFrame: node.source.outFrame, totalFrames };
   }
+  if(node.generationId)return {inFrame:0,outFrame:Math.round((node.duration??4)*TIMELINE_FPS),totalFrames:node.mediaKind==='image'?Infinity:Math.round((node.duration??4)*TIMELINE_FPS)};
   const item = items.find(item => item.id === node.interstitialId);
   const duration = item && playableResult(item)?.duration || item?.duration || 6;
   return { ...generatedBounds(node, duration), totalFrames: Math.max(1, Math.round(duration * TIMELINE_FPS)) };
@@ -25,7 +26,7 @@ export function trimClip(node: StoryNode, items: Interstitial[], side: TrimSide,
   if (inFrame === range.inFrame && outFrame === range.outFrame) return node;
   // A start trim leaves the opposite end in place on the canvas.
   return { ...node, x: node.x + (inFrame - range.inFrame) / TIMELINE_FPS * PIXELS_PER_SECOND,
-    ...(node.source ? { source: { ...node.source, inFrame, outFrame } }
+    ...(!node.source&&node.generationId?{duration:(outFrame-inFrame)/TIMELINE_FPS}:node.source ? { source: { ...node.source, inFrame, outFrame } }
       : { trim: inFrame === 0 && outFrame === range.totalFrames ? undefined : { inFrame, outFrame } }) };
 }
 

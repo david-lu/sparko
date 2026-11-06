@@ -1,7 +1,7 @@
 import { audioVolume } from '../../media/audioVolume';
 import type { LibraryAsset } from './types';
 
-/** Prepared video copies share their original asset's audio setting. */
+/** Legacy migration only: resolve the audio setting inherited by prepared copies. */
 export function volumeAssetId(library: LibraryAsset[] | undefined, id: string) {
   const seen = new Set<string>();
   let asset = library?.find(asset => asset.assetId === id);

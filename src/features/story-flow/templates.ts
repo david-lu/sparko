@@ -1,3 +1,4 @@
+import type { AssetGeneration } from '../../../shared/asset-generation';
 import { interstitialSettings, type Interstitial } from '../../../shared/interstitials';
 import { autoLayout, createNode, edge, freshId, withReferenceFade, type StoryEdge, type StoryGraph, type StoryTemplate } from './model';
 
@@ -22,9 +23,11 @@ export function instantiateTemplate(graph:StoryGraph,template:StoryTemplate,item
   const remap=new Map(template.nodes.map(n=>[n.id,freshId()])), itemIds=new Map(template.nodes.map(n=>[n.id,freshId()]));
   const connection=graph.edges.find(e=>e.id===connectionId);
   const entry=template.nodes.find(n=>n.id===template.entryId)!,offset=placement?{x:placement.x-entry.x,y:placement.y-entry.y}:{x:0,y:0};
-  const nodes=template.nodes.map(n=>({...n,conditions:conditionsFor(template,n),x:n.x+offset.x,y:n.y+offset.y,id:remap.get(n.id)!,interstitialId:n.kind==='source'?undefined:itemIds.get(n.id)!,referenceId:remap.get(n.referenceId??'')??(n.id===template.entryId?connection?.from:undefined)}));
+  const generations=(template.generations??[]).map(g=>({...structuredClone(g),id:freshId(),phase:g.selectedAssetId?'ready' as const:'draft' as const,requestId:undefined,submitted:undefined,error:undefined}));
+  const generationIds=new Map((template.generations??[]).map((g,index)=>[g.id,generations[index].id]));
+  const nodes=template.nodes.map(n=>({...n,generationId:n.generationId?generationIds.get(n.generationId):undefined,conditions:conditionsFor(template,n),x:n.x+offset.x,y:n.y+offset.y,id:remap.get(n.id)!,interstitialId:n.interstitialId?itemIds.get(n.id)!:undefined,referenceId:remap.get(n.referenceId??'')??(n.id===template.entryId?connection?.from:undefined)}));
   // Built-ins inherit the current creation default; saved templates retain their explicit settings.
-  const added:Interstitial[]=template.nodes.filter(n=>n.kind!=='source').map(n=>({id:itemIds.get(n.id)!,label:n.name,time:0,kind:'regular',phase:'draft',...interstitialSettings(template.settings[n.id]),...(builtIn?{turbo:undefined}:{})}));
+  const added:Interstitial[]=template.nodes.filter(n=>n.interstitialId).map(n=>({id:itemIds.get(n.id)!,label:n.name,time:0,kind:'regular',phase:'draft',...interstitialSettings(template.settings[n.id]),...(builtIn?{turbo:undefined}:{})}));
   const edges:StoryEdge[]=template.edges.map(e=>({...e,conditionId:e.event==='answer'?e.conditionId??e.id:undefined,id:freshId(),from:remap.get(e.from)!,to:remap.get(e.to)!,points:e.points?.map(p=>({...p,id:freshId(),x:p.x+offset.x,y:p.y+offset.y}))}));
   if(connection){edges.push(withReferenceFade({...connection,id:freshId(),to:remap.get(template.entryId)!,points:undefined},[...graph.nodes,...nodes]));
     for(const node of nodes.filter(n=>!edges.some(e=>e.from===n.id&&e.to!==n.id)))edges.push(withReferenceFade(edge(node.id,connection.to),[...graph.nodes,...nodes]));}
@@ -37,13 +40,13 @@ export function instantiateTemplate(graph:StoryGraph,template:StoryTemplate,item
   const group={id:freshId(),name:template.name,nodeIds:nodes.map(n=>n.id),color:template.color??'blue' as const};
   const next=normalizeConditions({...graph,entryId:graph.entryId||remap.get(template.entryId)!,nodes:[...graph.nodes,...nodes],edges:[...graph.edges.filter(e=>e.id!==connectionId),...edges],groups:[...(graph.groups??[]),group]});
   const result=placement?next:autoLayout(next,[...items,...added]);
-  return {graph:result,items:added,selectedId:remap.get(template.entryId)!,groupId:group.id};
+  return {graph:result,items:added,generations,selectedId:remap.get(template.entryId)!,groupId:group.id};
 }
-export function captureTemplate(graph:StoryGraph,ids:string[],items:Interstitial[],name:string):StoryTemplate|undefined {
+export function captureTemplate(graph:StoryGraph,ids:string[],items:Interstitial[],name:string,generations:AssetGeneration[]=[]):StoryTemplate|undefined {
   const nodes=graph.nodes.filter(n=>ids.includes(n.id));if(!nodes.length)return;
   const selected=new Set(nodes.map(n=>n.id)),edges=graph.edges.filter(e=>selected.has(e.from)&&selected.has(e.to));
   const entry=nodes.find(n=>!edges.some(e=>e.to===n.id&&e.from!==n.id))??nodes[0];
   const settings=Object.fromEntries(nodes.filter(n=>n.interstitialId).map(n=>[n.id,interstitialSettings(items.find(i=>i.id===n.interstitialId)!)]));
   const group=graph.groups?.find(g=>g.nodeIds.length===nodes.length&&g.nodeIds.every(id=>selected.has(id)));
-  return {id:freshId(),name:name.trim().slice(0,200)||'My template',entryId:entry.id,nodes:nodes.map(n=>({...n,conditions:conditionsFor(graph,n),referenceId:selected.has(n.referenceId??'')?n.referenceId:undefined})),edges,settings,color:group?.color};
+  return {id:freshId(),name:name.trim().slice(0,200)||'My template',entryId:entry.id,nodes:nodes.map(n=>({...n,conditions:conditionsFor(graph,n),referenceId:selected.has(n.referenceId??'')?n.referenceId:undefined})),edges,settings,generations:structuredClone(generations.filter(g=>nodes.some(n=>n.generationId===g.id))),color:group?.color};
 }

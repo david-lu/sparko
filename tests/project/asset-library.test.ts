@@ -17,7 +17,7 @@ function fixture() {
   const generation = newAssetGeneration('image'); generation.name = 'Poster';
   generation.settings.references = [{ assetId: image, name: 'Character.png', kind: 'image' }];
   const project: Project = { id: 'project', name: 'Assets', updatedAt: 0, source: { name: 'Empty' }, subtitle: null, analysis: emptyAnalysis(),
-    interstitials: [item], assetGenerations: [generation], storyFlow: { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [] },
+    interstitials: [item], clipGenerations: [generation], storyFlow: { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [] },
     library: [{ assetId: image, name: 'Character.png', kind: 'image' }, { assetId: video, name: 'Motion.mp4', kind: 'video', duration: 10 }] };
   return { project, image, video, output, node, item, generation };
 }
@@ -73,7 +73,7 @@ describe('universal asset references', () => {
     expect(ids).toHaveLength(3); expect(ids.some(id => ([image, video, output] as string[]).includes(id))).toBe(false);
     expect(result.project.libraryFolders).toEqual(project.libraryFolders);
     expect(result.project.library?.find(asset => asset.name === 'Motion.mp4')?.volume).toBe(.35);
-    const restored = result.project.assetGenerations![0];
+    const restored = result.project.clipGenerations![0];
     expect(restored.settings.references[0].assetId).toBe(result.project.interstitials[0].imageReferences![0].assetId);
     expect(restored.versions[0].assetId).toBe(restored.selectedAssetId);
     expect(restored.submitted?.references).toEqual(restored.versions[0].settings.references);
@@ -87,12 +87,13 @@ describe('universal asset references', () => {
   });
   it('groups a volume drag into one undo step and keeps mute as a separate edit', () => {
     const { project, video } = fixture(), history = new ProjectHistory();
-    const volume = (value: number) => ({ ...project, library: project.library?.map(asset => asset.assetId === video ? { ...asset, volume: value } : asset) });
+    project.storyFlow={version:1,entryId:'clip',nodes:[{id:'clip',name:'Clip',kind:'source',x:0,y:0,loopCount:0,source:{assetId:video,inFrame:0,outFrame:24}}],edges:[],templates:[]};
+    const volume = (value: number) => ({ ...project, storyFlow:{...project.storyFlow!,nodes:project.storyFlow!.nodes.map(n=>({...n,volume:value}))} });
     history.record(project, volume(.7), 100); history.record(volume(.7), volume(.35), 200);
-    expect(history.undoLabel).toBe('Change asset volume');
-    expect(history.target('undo')?.library).toEqual(project.library);
+    expect(history.undoLabel).toBe('Edit clip');
+    expect(history.target('undo')?.storyFlow).toEqual(project.storyFlow);
     history.endGroup(); history.record(volume(.35), volume(0), 300);
-    expect(history.target('undo')?.library?.find(asset => asset.assetId === video)?.volume).toBe(.35);
-    history.commit('undo'); expect(history.target('undo')?.library).toEqual(project.library);
+    expect(history.target('undo')?.storyFlow?.nodes[0].volume).toBe(.35);
+    history.commit('undo'); expect(history.target('undo')?.storyFlow).toEqual(project.storyFlow);
   });
 });

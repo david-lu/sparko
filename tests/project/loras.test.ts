@@ -3,7 +3,7 @@ import { generationLoraInstructions, loraAddressSchema, loraStrengthSchema, proj
 import { newAssetGeneration, validateAssetSettings } from '../../shared/asset-generation';
 import { hasUnsubmittedChanges, interstitialSettings } from '../../shared/interstitials';
 import { InterstitialController } from '../../src/features/interstitials/InterstitialController';
-import { AssetGenerationController } from '../../src/features/project/AssetGenerationController';
+import { ClipGenerationController } from '../../src/features/project/ClipGenerationController';
 import { createNode } from '../../src/features/story-flow/model';
 import { makePreset, instantiateTemplate } from '../../src/features/story-flow/templates';
 import { ProjectHistory } from '../../src/features/project/ProjectHistory';
@@ -94,19 +94,19 @@ describe('project LoRAs', () => {
     const generation = newAssetGeneration('image', undefined, [{ ...entry, model: 'nano-banana-2' }]);
     generation.settings.loraInstructions = 'Old model guidance';
     generation.submitted = structuredClone(generation.settings);
-    let project = { ...empty(), loras: [entry, { ...entry, model: 'flux-2-pro', address: 'flux.safetensors', strength: 0 }], assetGenerations: [generation] };
+    let project = { ...empty(), loras: [entry, { ...entry, model: 'flux-2-pro', address: 'flux.safetensors', strength: 0 }], clipGenerations: [generation] };
     const projects = { getSnapshot: () => ({ project }), editAssets: (change: (p: Project) => Project) => { project = change(project) as typeof project; } };
-    const jobs = new AssetGenerationController(projects as unknown as ProjectController);
+    const jobs = new ClipGenerationController(projects as unknown as ProjectController);
     expect(generation.settings.lora).toBe(address);
     expect(generation.settings.loraStrength).toBe(1.4);
     jobs.edit(generation.id, { settings: { ...generation.settings, model: 'flux-2-pro' } });
-    expect(project.assetGenerations[0].settings.lora).toBe('flux.safetensors');
-    expect(project.assetGenerations[0].settings.loraInstructions).toBeUndefined();
-    expect(project.assetGenerations[0].settings.loraStrength).toBe(0);
-    expect(project.assetGenerations[0].submitted?.loraStrength).toBe(1.4);
-    expect(project.assetGenerations[0].submitted?.lora).toBe(address);
+    expect(project.clipGenerations[0].settings.lora).toBe('flux.safetensors');
+    expect(project.clipGenerations[0].settings.loraInstructions).toBeUndefined();
+    expect(project.clipGenerations[0].settings.loraStrength).toBe(0);
+    expect(project.clipGenerations[0].submitted?.loraStrength).toBe(1.4);
+    expect(project.clipGenerations[0].submitted?.lora).toBe(address);
     jobs.edit(generation.id, { settings: { ...generation.settings, model: 'nano-banana-pro' } });
-    expect(project.assetGenerations[0].settings.lora).toBeNull();
+    expect(project.clipGenerations[0].settings.lora).toBeNull();
     expect(validateAssetSettings({ ...generation.settings, prompt: 'A scene' })).toContain('does not support LoRAs');
   });
 

@@ -28,6 +28,7 @@ export class FrameDecoder {
   duration = 0;
   hasAudio = false;
   error?: Error;
+  private audioOnly=false;
   constructor(source: MediaSource, time: number, private audioSampleRate: number) {
     if (source.kind === 'image') {
       void loadStillImage(source, this.lifecycle.signal).then(image => {
@@ -36,11 +37,18 @@ export class FrameDecoder {
       }).catch(error => { if (!this.disposed) this.error = error; });
       return;
     }
+    this.audioOnly=source.kind==='audio';
     this.input = openInput(source); this.requested = time;
     void this.open().catch(error => { if (!this.disposed) this.error = error; });
   }
   private async open() {
     const [video, audio] = await Promise.all([this.input!.getPrimaryVideoTrack(), this.input!.getPrimaryAudioTrack()]);
+    if(this.audioOnly&&audio){
+      if(!await audio.canDecode())throw new Error('This browser cannot decode this audio.');
+      const duration=await audio.computeDuration();if(this.disposed)return;
+      const canvas=new OffscreenCanvas(1280,720),context=canvas.getContext('2d')!;context.fillStyle='black';context.fillRect(0,0,1280,720);
+      this.image=new VideoSample(canvas,{timestamp:0,duration:1});this.duration=duration;this.audioSink=new AudioBufferSink(audio);this.hasAudio=true;this.initialized=true;this.reset(this.requested);return;
+    }
     if (!video || !await video.canDecode()) throw new Error('This browser cannot decode this video.');
     if (audio && !await audio.canDecode()) throw new Error('This browser cannot decode this audio.');
     const [first, duration, width, height] = await Promise.all([video.getFirstTimestamp(), video.computeDuration(), video.getDisplayWidth(), video.getDisplayHeight()]);
@@ -56,7 +64,7 @@ export class FrameDecoder {
     void this.videoIterator?.return().catch(() => undefined); void this.audioIterator?.return().catch(() => undefined);
     this.frames.forEach(frame => frame.close()); this.frames = []; this.audio = [];
     this.videoEnded = false; this.audioEnded = !this.audioSink; this.videoPump = false; this.audioPump = false;
-    this.videoIterator = this.videoSink!.samples(this.start);
+    this.videoIterator = this.videoSink?.samples(this.start);
     // A little preroll warms the codec and resampling filter when seeking into a clip.
     this.audioIterator = this.audioSink ? resampledAudio(this.audioSink.buffers(Math.max(0, time - .1)), this.audioSampleRate) : undefined;
     this.fillVideo(); this.fillAudio();
@@ -96,7 +104,11 @@ export class FrameDecoder {
   }
   at(time: number) {
     if (this.error) throw this.error;
-    if (this.image) return this.image;
+    if(this.image){
+      if(this.audioOnly){if(time<this.requested-.05||time>this.requested+.5)this.reset(time);this.requested=time;
+        while(this.audio.length&&this.audio[0].timestamp+this.audio[0].duration<time-.05)this.audio.shift();this.fillAudio();}
+      return this.image;
+    }
     this.requested = time;
     if (!this.initialized) return;
     const target = this.clamp(time), last = this.frames.at(-1);

@@ -1,3 +1,5 @@
+import { newAssetGeneration, generationBusy, type AssetGeneration, type MediaKind } from '../../../shared/asset-generation';
+import { assetPlacement } from '../project/migrateClipMedia';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { playableResult, type Interstitial } from '../../../shared/interstitials';
 import type { ProjectController } from '../project/ProjectController';
@@ -9,7 +11,7 @@ import { groupClips, copyGroups, setGroupMembers } from './groups';
 import { conditionsFor, normalizeConditions, setBehavior } from './behaviors';
 import type { StoryCondition } from './model';
 import { TIMELINE_FPS } from '../../../shared/constants';
-import { AssetGenerationController } from '../project/AssetGenerationController';
+import { ClipGenerationController } from '../project/ClipGenerationController';
 import { joinClips, joinProblems } from './joinClips';
 import type { ClipColor } from './clipColors';
 export type LibrarySelection = { type: 'asset' | 'generation' | 'job'; id: string };
@@ -19,15 +21,16 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   const project = projects.getSnapshot().project;
   useEffect(() => {
     setLibrarySelections(old => {
-      const next = old.filter(s => s.type === 'asset' ? project?.library?.some(a => a.assetId === s.id) : s.type === 'generation' ? project?.assetGenerations?.some(g => g.id === s.id) : items.some(i => i.id === s.id));
+      const next = old.filter(s => s.type === 'asset' ? project?.library?.some(a => a.assetId === s.id) : s.type === 'generation' ? project?.clipGenerations?.some(g => g.id === s.id) : items.some(i => i.id === s.id));
       return next.length === old.length ? old : next;
     });
-  }, [project?.library, project?.assetGenerations, items]);
+  }, [project?.library, project?.clipGenerations, items]);
   const librarySelection = librarySelections.at(-1) ?? null;
   const [clipDrag,setClipDrag]=useState<{id:string;overStart:boolean}|null>(null);
-  const [assetJobs] = useState(() => new AssetGenerationController(projects));
-  useEffect(() => assetJobs.watch(), [assetJobs]);
+  const [clipJobs] = useState(() => new ClipGenerationController(projects));
+  useEffect(() => clipJobs.watch(), [clipJobs]);
   const [selected,setSelection]=useState<string[]>([]),[selectedGroupId,setSelectedGroupId]=useState<string|null>(null),[selectedEdge,setSelectedEdge]=useState<string|null>(null),[connecting,setConnecting]=useState<{from:string;edgeId?:string}|null>(null);
+  const [removingClips,setRemovingClips]=useState(false);
   const [notice,setNotice]=useState(''),[focusRevision,setFocusRevision]=useState(0),[inspectorRevision,setInspectorRevision]=useState(0);
   const joinedClip=useRef<string|null>(null);
   useEffect(()=>{const id=joinedClip.current;if(!id)return;joinedClip.current=null;
@@ -61,7 +64,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   useEffect(()=>{setSelected([]);setSelectedEdge(null);setConnecting(null);setNotice('');},[activationRevision]);
   const selectConnection=(id:string)=>{setSelectedEdge(id);setSelected([]);jobs.select(null);setInspectorRevision(n=>n+1);};
   useEffect(()=>{setSelection(ids=>ids.filter(id=>graph?.nodes.some(n=>n.id===id)));setSelectedGroupId(id=>graph?.groups?.some(g=>g.id===id)?id:null);setSelectedEdge(id=>graph?.edges.some(e=>e.id===id)?id:null);setConnecting(null);},[graph?.entryId,graph?.nodes.length,graph?.groups?.length,projects.getSnapshot().historyRevision]);
-  const change=(next:StoryGraph,added:Interstitial[]=[])=>{player.pause();projects.updateStoryFlow(next,added);};
+  const change=(next:StoryGraph,added:Interstitial[]=[],generations:AssetGeneration[]=[])=>{player.pause();projects.updateStoryFlow(next,added,generations);};
   const setStartVideo=(id:string)=>{
     const current=projects.getSnapshot().project?.storyFlow;
     if(!current||projects.getSnapshot().busy||current.entryId===id||!current.nodes.some(n=>n.id===id))return;
@@ -115,7 +118,32 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     change(!placement&&(connection||fromId)?autoLayout(next,[...items,item]):next,[item]);selectNew(node.id,!placement);jobs.select(item.id);
     if(placement)setNotice(connection?'Video inserted into the connection.':fromId?'Video attached to the clip.':'Video placed. Drag its sockets to connect it.');
   };
-  const patch=(id:string,patch:Partial<StoryNode>)=>{if(graph)change({...graph,nodes:graph.nodes.map(n=>n.id===id?{...n,...patch}:n)});};
+  const addMedia=(kind:MediaKind,placement?:{x:number;y:number},edgeId?:string,fromId?:string)=>{
+    if(!graph)return;
+    const generation=newAssetGeneration(kind,undefined,project?.loras);
+    const node:StoryNode={id:freshId(),name:generation.name,kind:'source',mediaKind:kind,generationId:generation.id,volume:1,
+      duration:kind==='image'?4:generation.settings.duration??4,loopCount:0,x:placement?.x??40,y:placement?.y??Math.max(90,...graph.nodes.map(n=>n.y))+145};
+    const connection=graph.edges.find(e=>e.id===edgeId),nodes=[...graph.nodes,node];
+    let next={...graph,entryId:graph.entryId||node.id,nodes,edges:graph.edges.filter(e=>e.id!==edgeId)};
+    if(connection)next.edges.push({...connection,to:node.id,points:undefined},edge(node.id,connection.to));
+    else if(fromId)next=connect(next,fromId,node.id);
+    change(next,[],[generation]);selectNew(node.id,!placement);
+  };
+  const makeGenerative=(nodeId:string)=>{
+    const node=graph?.nodes.find(n=>n.id===nodeId);if(!node||node.generationId||node.interstitialId)return;
+    const kind=node.source?.kind??'video',generation=newAssetGeneration(kind,undefined,project?.loras);
+    generation.name=node.name;
+    if(kind==='image'&&node.source)generation.settings.references=[{assetId:node.source.assetId,name:node.name,kind:'image'}];
+    change({...graph!,nodes:graph!.nodes.map(n=>n.id===nodeId?{...n,generationId:generation.id,mediaKind:kind}:n)},[],[generation]);
+  };
+  const replaceAsset=(nodeId:string,assetId:string)=>{
+    if(!graph)return;
+    const asset=project?.library?.find(asset=>asset.assetId===assetId),node=graph.nodes.find(node=>node.id===nodeId);
+    if(!asset||!node)return;
+    const source=assetPlacement(asset,nodeDuration(node,items));
+    projects.endHistoryGroup();change({...graph,nodes:graph.nodes.map(n=>n.id===nodeId?{...n,source,trim:undefined}:n)});projects.endHistoryGroup();
+  };
+  const patch=(id:string,patch:Partial<StoryNode>)=>{if(!graph)return;const next={...graph,nodes:graph.nodes.map(n=>n.id===id?{...n,...patch}:n)};if(Object.keys(patch).every(key=>key==='volume'))projects.updateStoryFlow(next);else change(next);};
   const colorClips=(color:ClipColor)=>{
     if(!graph||!selected.length)return;
     projects.endHistoryGroup();
@@ -132,28 +160,48 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   };
   const attach=(to:string)=>{if(graph&&connecting){change(connect(graph,connecting.from,to,connecting.edgeId));setConnecting(null);setNotice('Connection saved.');}};
   const disconnect=()=>{if(graph&&selectedEdge){change({...graph,edges:graph.edges.filter(e=>e.id!==selectedEdge)});setSelectedEdge(null);setNotice('Connection removed. Clips are retained.');}};
-  const remove=()=>{player.pause();if(selectedGroup){ungroup(selectedGroup.id);return;}if(selectedEdge){disconnect();return;}if(graph&&selected.length){void projects.removeStoryNodes(selected);setConnecting(null);}};
+  const remove=()=>{if(removingClips)return;player.pause();if(selectedGroup){ungroup(selectedGroup.id);return;}if(selectedEdge){disconnect();return;}if(graph&&selected.length){setRemovingClips(true);const projectId=project?.id;void (async()=>{try{
+      for(const node of graph.nodes.filter(n=>selected.includes(n.id))){
+        const generation=projects.getSnapshot().project?.clipGenerations?.find(g=>g.id===node.generationId);
+        if(generation&&(generationBusy(generation)||generation.phase==='error'&&generation.requestId)){
+          await clipJobs.cancel(generation.id);if(projects.getSnapshot().project?.id!==projectId)return;
+          const cancelled=projects.getSnapshot().project?.clipGenerations?.find(g=>g.id===generation.id);
+          if(cancelled?.phase!=='cancelled'){setNotice(cancelled?.error??'Unable to cancel this generation. Try deleting the clip again.');return;}
+        }
+      }
+      if(projects.getSnapshot().project?.id===projectId)await projects.removeStoryNodes(selected);
+    }finally{setRemovingClips(false);}})();setConnecting(null);}};
   const duplicate=()=>{
     if(!graph)return;
     if(selectedGroup&&!selectedGroup.nodeIds.length&&selectedGroup.bounds){const group={...selectedGroup,id:freshId(),name:`${selectedGroup.name} copy`.slice(0,200),bounds:{...selectedGroup.bounds,y:selectedGroup.bounds.y+160}},next={...graph,groups:[...(graph.groups??[]),group]};change(next);selectGroup(group.id,next);setFocusRevision(n=>n+1);return;}
     if(!selected.length)return;
-    const chosen=graph.nodes.filter(n=>selected.includes(n.id)),remap=new Map(chosen.map(n=>[n.id,freshId()])),added:Interstitial[]=[];
+    const chosen=graph.nodes.filter(n=>selected.includes(n.id)),remap=new Map(chosen.map(n=>[n.id,freshId()])),added:Interstitial[]=[],generations:AssetGeneration[]=[];
     const internal=graph.edges.filter(e=>remap.has(e.from)&&remap.has(e.to)),rows=[...chosen.map(n=>n.y),...internal.flatMap(e=>(e.points??[]).map(p=>p.y))];
     const offsetY=selectedGroup?Math.max(...rows)-Math.min(...rows)+200:160;
     const nodes=chosen.map(originalNode=>{const n={...originalNode,conditions:conditionsFor(graph,originalNode)};const original=items.find(i=>i.id===n.interstitialId);const itemId=original?freshId():undefined;
       if(original){const result=playableResult(original);added.push({...original,lora:original.lora??null,id:itemId!,label:`${original.label} copy`,phase:result?'ready':'draft',result,requestPrompt:result?.prompt??(original.phase==='ready'?original.requestPrompt:undefined),requestId:undefined,previousResult:undefined,error:undefined});}
-      return {...n,id:remap.get(n.id)!,name:`${n.name} copy`,interstitialId:itemId,referenceId:remap.get(n.referenceId??'')??n.referenceId,y:n.y+offsetY};});
+      const recipe=project?.clipGenerations?.find(g=>g.id===n.generationId);
+      const generation=recipe?{...structuredClone(recipe),id:freshId(),name:`${n.name} copy`,phase:n.source?'ready' as const:'draft' as const,requestId:undefined,submitted:undefined,error:undefined}:undefined;
+      if(generation)generations.push(generation);
+      return {...n,generationId:generation?.id,id:remap.get(n.id)!,name:`${n.name} copy`,interstitialId:itemId,referenceId:remap.get(n.referenceId??'')??n.referenceId,y:n.y+offsetY};});
     const edges=internal.map(e=>({...e,conditionId:e.event==='answer'?e.conditionId??e.id:undefined,id:freshId(),from:remap.get(e.from)!,to:remap.get(e.to)!,points:e.points?.map(p=>({...p,id:freshId(),y:p.y+offsetY}))}));
     const groups=copyGroups(graph,remap,offsetY),next={...graph,nodes:[...graph.nodes,...nodes],edges:[...graph.edges,...edges],groups:[...(graph.groups??[]),...groups]};
-    change(next,added);if(selectedGroup&&groups.length===1)selectGroup(groups[0].id,next);else setSelected(nodes.map(n=>n.id));setFocusRevision(n=>n+1);setNotice('Duplicated clips are disconnected from the original path.');
+    change(next,added,generations);if(selectedGroup&&groups.length===1)selectGroup(groups[0].id,next);else setSelected(nodes.map(n=>n.id));setFocusRevision(n=>n+1);setNotice('Duplicated clips are disconnected from the original path.');
   };
   const split=(clipId?:string,atFrame?:number)=>{if(!graph)return false;const id=clipId??selected[0],session=player.getSnapshot().flow;
     const frame=atFrame??(session?.sceneId===id?session.frame:0),result=splitClip(graph,items,id,frame);
     if(result.graph===graph){setNotice('Place the playhead inside a clip to split it.');return false;}
-    change(autoLayout(result.graph,[...items,...result.items]),result.items);setSelected([id]);setNotice('Clip split. Media is preserved; outgoing connections follow the second half.');return true;};
+    const generations:AssetGeneration[]=[];
+    result.graph.nodes=result.graph.nodes.map(n=>{
+      if(graph.nodes.some(old=>old.id===n.id)||!n.generationId)return n;
+      const recipe=project?.clipGenerations?.find(g=>g.id===n.generationId);if(!recipe)return n;
+      const copy={...structuredClone(recipe),id:freshId(),name:n.name,phase:n.source?'ready' as const:'draft' as const,requestId:undefined,submitted:undefined,error:undefined};generations.push(copy);return {...n,generationId:copy.id};
+    });
+    change(autoLayout(result.graph,[...items,...result.items]),result.items,generations);setSelected([id]);setNotice('Clip split. Media is preserved; outgoing connections follow the second half.');return true;};
   const projectBusy=projects.getSnapshot().busy;
   const joinReasons=useMemo(()=>[...(graph?joinProblems(graph,items,selected):['Open a project and select at least two clips to join.']),
-    ...(projectBusy?['Wait for the current project operation to finish before joining clips.']:[])],[graph,items,selected,projectBusy]);
+    ...(project?.clipGenerations?.some(g=>generationBusy(g)&&graph?.nodes.some(n=>selected.includes(n.id)&&n.generationId===g.id))?['Wait for selected clips to finish generating before joining.']:[]),
+    ...(projectBusy?['Wait for the current project operation to finish before joining clips.']:[])],[graph,items,selected,projectBusy,project?.clipGenerations]);
   const join=()=>{
     if(joinReasons.length||!graph)return joinReasons;
     const result=joinClips(graph,items,selected);if(!result.ok)return result.reasons;
@@ -172,8 +220,8 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
       }
       result.graph=connect(result.graph,fromId,result.selectedId);if(!placement)result.graph=autoLayout(result.graph,[...items,...result.items]);
     }
-    change(result.graph,result.items);selectGroup(result.groupId,result.graph);if(!placement)setFocusRevision(n=>n+1);setNotice(`${t.name} added as a group. Drag its header to move it.`);};
-  const saveTemplate=(name:string)=>{if(!graph)return;const template=captureTemplate(graph,selected,items,name);if(!template){setNotice('Select clips or a group to save a template.');return;}
+    change(result.graph,result.items,result.generations);selectGroup(result.groupId,result.graph);if(!placement)setFocusRevision(n=>n+1);setNotice(`${t.name} added as a group. Drag its header to move it.`);};
+  const saveTemplate=(name:string)=>{if(!graph)return;const template=captureTemplate(graph,selected,items,name,project?.clipGenerations);if(!template){setNotice('Select clips or a group to save a template.');return;}
     const grouped=selectedGroup?{graph,group:selectedGroup}:groupClips(graph,selected,template.name,template.color);
     const next={...grouped.graph,templates:[...graph.templates,template]};change(next);if(grouped.group)selectGroup(grouped.group.id,next);setNotice(`Saved group to templates: ${template.name}`);};
   const rename=(id:string,name:string)=>{if(!graph)return;const node=graph.nodes.find(n=>n.id===id);if(!node)return;
@@ -188,6 +236,6 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice('Added clip from the library.');}
   };
   return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,revealClip,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
-    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,librarySelections,selectLibrary,assetJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame,colorClips};
+    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,librarySelections,selectLibrary,clipJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame,colorClips,addMedia,replaceAsset,makeGenerative,removingClips};
 }
 export type StoryEditor=ReturnType<typeof useStoryEditor>;

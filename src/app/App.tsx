@@ -10,7 +10,6 @@ import { INTERSTITIAL_CROSSFADE_FRAMES } from '../../shared/constants';
 import InterstitialPanel from '../features/interstitials/InterstitialPanel';
 import { InterstitialController } from '../features/interstitials/InterstitialController';
 import { ProjectController } from '../features/project/ProjectController';
-import { assetVolume } from '../features/project/assetVolume';
 import { TimelineComposition } from '../media/TimelineComposition';
 import ResizeHandle from '../shared/ResizeHandle';
 import { MediaEngine } from '../media/MediaEngine';
@@ -147,12 +146,11 @@ export default function App() {
   const sourceVersion = useRef(0);
   const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
   useEffect(()=>{if(info&&projectState.source)projects.initializeStoryFlow(info.duration);},[info,projectState.source,projects]);
-  const assetVolumes = useMemo(() => Object.fromEntries((projectState.project?.library ?? []).map(asset => [asset.assetId, assetVolume(projectState.project?.library, asset.assetId)])), [projectState.project?.library]);
   const flow = useMemo(() => {
     const flow = storyGraph ? runtimeFlow(storyGraph,interstitialState.items,source.assetId??'',info?.duration??0) : info&&source.assetId?composeFlows(savedFlows, interstitialState.items, source.assetId, info.duration):undefined;
-    return flow && { ...flow, scenes: flow.scenes.map(scene => ({ ...scene, volume: assetVolumes[scene.clip.assetId] ?? 1 })) };
-  }, [storyGraph,savedFlows, readyKey, info, source.assetId, assetVolumes]);
-  const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, crossfadeFrames, matchFraming, assetVolumes }) : null, [source, info, readyKey, crossfade, crossfadeFrames, matchFraming, assetVolumes]);
+    return flow;
+  }, [storyGraph,savedFlows, readyKey, info, source.assetId]);
+  const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, crossfadeFrames, matchFraming }) : null, [source, info, readyKey, crossfade, crossfadeFrames, matchFraming]);
   useEffect(() => { if (!projectState.source) return; if (flow && info) controller.setFlow(flow, info, matchFraming, crossfade, crossfadeFrames); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming, crossfade, crossfadeFrames, projectState.source]);
   useEffect(() => {
     controller.pause(); setSelectedFlowScene(null); setSelectedFlowEdge(null);

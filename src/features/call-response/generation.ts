@@ -43,7 +43,7 @@ export async function generationSource(item: Interstitial, input: GenerationRefe
       const image = clip.kind === 'image' || opened.asset.blob.type.startsWith('image/');
       const frames = still ? timing.after : clip.outFrame - clip.inFrame;
       segments.push({ id: `${side}:${index}`, kind: 'source', label: opened.asset.name,
-        source: { id: clip.assetId, assetId: clip.assetId, name: opened.asset.name, url: opened.url, ...(image ? { kind: 'image' } : {}) },
+        source: { id: clip.assetId, assetId: clip.assetId, name: opened.asset.name, url: opened.url, ...(image ? { kind: 'image' as const } : clip.kind==='audio'?{kind:'audio' as const}:{}) },
         sourceStart: image ? 0 : clip.inFrame / TIMELINE_FPS, startFrame: cursor, endFrame: cursor + frames,
         still: still || image, muted: still || image });
       cursor += frames;

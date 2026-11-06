@@ -10,7 +10,6 @@ import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import type { InterstitialController } from './InterstitialController';
 import { assets } from '../project/assets';
-import { assetVolume } from '../project/assetVolume';
 import { useAssetAvailability } from '../project/useAssetAvailability';
 import { phaseLabel, renderingProgress } from './status';
 import InterstitialTimeField from './InterstitialTimeField';
@@ -148,7 +147,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     <p className="hint reference-plan">{comfyPlan ? `${comfyPlan.insertion.duration.toFixed(3)}s generated · ${((comfyPlan.prefixFrames + comfyPlan.suffixFrames) / TIMELINE_FPS).toFixed(3)}s reference footage` : '\u00a0'}</p>
   </>;
   const output = <>{resultDetails}{currentResult&&promptDetails}{fullVideoUrl && <InterstitialPreview url={fullVideoUrl} label={selected.label} downloadName={downloadName}
-    downloadAsset={downloadAsset && { ...downloadAsset, volume: assetVolume(projects?.getSnapshot().project?.library, downloadAsset.assetId), assetId: currentResult?.fullAssetId ?? downloadAsset.assetId }}
+    downloadAsset={downloadAsset && { ...downloadAsset, assetId: currentResult?.fullAssetId ?? downloadAsset.assetId }}
     heading={currentResult?.fullAssetId ? 'Full generated video, including references' : trimmedLoop ? 'Loop video' : 'Generated video'}
     active={active} onPlay={onPreviewPlay} />}</>;
   const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>

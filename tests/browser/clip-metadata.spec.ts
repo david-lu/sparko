@@ -51,10 +51,12 @@ for (const [width, normalize] of [[1440, true], [390, false]] as const) test(`dr
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(page.locator('.story-clip')).toHaveCount(0);
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
   await page.getByRole('button', { name: 'Library asset Across the doorway', exact: true }).dblclick();
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
-  const duplicate = await readProject(page); expect(new Set(duplicate.interstitials.map((i: any) => i.id)).size).toBe(2);
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
+  const duplicate = await readProject(page); expect(duplicate.interstitials).toHaveLength(1);expect(duplicate.storyFlow.nodes.at(-1).source.assetId).toBe(duplicate.interstitials[0].result.assetId);
   expect(new Set(duplicate.interstitials.map((i: any) => i.result.assetId)).size).toBe(1);
-  await saveAndReopen(page); await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
+  await saveAndReopen(page); await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
   expect((await readProject(page)).interstitials.every((i: any) => i.result.metadata.references.before.name === 'Opening video')).toBe(true);
   expect(errors).toEqual([]);
 });
@@ -107,10 +109,12 @@ for (const width of [1440, 390]) test(`imported scene references stay disconnect
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
   expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
   await page.getByRole('button', { name: 'Library asset Across the doorway', exact: true }).dblclick();
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  await expect(page.locator('.story-clip.type-source')).toHaveCount(3);
   expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
   await saveAndReopen(page);
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  await expect(page.locator('.story-clip.type-source')).toHaveCount(3);
   expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
 });
 
@@ -134,9 +138,11 @@ test('converting a generated scene creates a separate copy with its metadata and
   }, copy.assetId);
   expect(saved).toEqual(clipMetadata);
   await page.getByRole('button', { name: `Library asset ${copy.name}`, exact: true }).dblclick();
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+  await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
   await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('30 fps');
-  expect((await readProject(page)).interstitials[1].result).toMatchObject({ assetId: copy.assetId, metadata: clipMetadata, start: 1, duration: 2 });
+  expect((await readProject(page)).storyFlow.nodes.at(-1).source).toMatchObject({assetId:copy.assetId,inFrame:24,outFrame:72});
+  await expect(page.getByRole('region',{name:'Generation info'})).toContainText(clipMetadata.prompt);
 });
 
 test('opening a portable video directly restores it; ordinary and invalid metadata files remain sources', async ({ page }) => {

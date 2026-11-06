@@ -1,3 +1,5 @@
+import { TIMELINE_FPS } from '../../../shared/constants';
+import { assetPlacement } from './migrateClipMedia';
 import { projectLoraAddress, projectLoraStrength } from '../../../shared/loras';
 import { generationBusy, validateAssetSettings, type AssetGeneration } from '../../../shared/asset-generation';
 import { request, appHeaders } from '../../shared/api';
@@ -9,23 +11,27 @@ import type { ProjectController } from './ProjectController';
 import type { LibraryAsset } from './types';
 
 /** Jobs belong to the document, not to mounted inspectors. */
-export class AssetGenerationController {
+export class ClipGenerationController {
   private tasks = new Map<string, AbortController>();
   constructor(private projects: ProjectController) {}
-  private get(id: string) { return this.projects.getSnapshot().project?.assetGenerations?.find(g => g.id === id); }
+  private get(id: string) { const project=this.projects.getSnapshot().project; return project?.storyFlow?.nodes.some(n=>n.generationId===id) ? project.clipGenerations?.find(g => g.id === id) : undefined; }
+  selectVersion(id:string,assetId:string){
+    const g=this.get(id);if(!g?.versions.some(v=>v.assetId===assetId))return;
+    this.projects.editAssets(project=>{const asset=project.library?.find(a=>a.assetId===assetId);if(!asset)return project;return {...project,clipGenerations:project.clipGenerations?.map(g=>g.id===id?{...g,selectedAssetId:assetId}:g),storyFlow:project.storyFlow?{...project.storyFlow,nodes:project.storyFlow.nodes.map(n=>n.generationId===id?{...n,source:assetPlacement(asset,n.source?(n.source.outFrame-n.source.inFrame)/TIMELINE_FPS:n.duration),trim:undefined}:n)}:undefined};});
+  }
   edit(id: string, patch: Partial<AssetGeneration>, record = true) {
-    this.projects.editAssets(project => ({ ...project, assetGenerations: project.assetGenerations?.map(g => g.id === id ? { ...g, ...patch,
+    this.projects.editAssets(project => ({ ...project, clipGenerations: project.clipGenerations?.map(g => g.id === id ? { ...g, ...patch,
       ...(patch.settings && patch.settings.model !== g.settings.model ? { settings: { ...patch.settings, lora: projectLoraAddress(project.loras, patch.settings.model), loraInstructions: undefined, loraStrength: projectLoraStrength(project.loras, patch.settings.model) } } : {}),
     } : g) }), record);
   }
   watch() {
     const check = () => {
       const project = this.projects.getSnapshot().project;
-      if (project?.assetGenerations?.some(g => g.settings.count !== 1)) {
-        this.projects.editAssets(p => ({ ...p, assetGenerations: p.assetGenerations?.map(g => g.settings.count === 1 ? g : { ...g, settings: { ...g.settings, count: 1 } }) }), false);
+      if (project?.clipGenerations?.some(g => g.settings.count !== 1)) {
+        this.projects.editAssets(p => ({ ...p, clipGenerations: p.clipGenerations?.map(g => g.settings.count === 1 ? g : { ...g, settings: { ...g.settings, count: 1 } }) }), false);
         return;
       }
-      for (const g of project?.assetGenerations ?? []) if (generationBusy(g) && g.requestId && g.submitted && !this.tasks.has(`${project!.id}:${g.id}`)) void this.resume(g.id);
+      for (const g of project?.clipGenerations ?? []) if (generationBusy(g) && g.requestId && g.submitted && !this.tasks.has(`${project!.id}:${g.id}`)) void this.resume(g.id);
     };
     const unsubscribe = this.projects.subscribe(check); check();
     return () => { unsubscribe(); for (const task of this.tasks.values()) task.abort(); this.tasks.clear(); };
@@ -54,7 +60,7 @@ export class AssetGenerationController {
       const { requestId } = await request<{ requestId: string }>('/api/library-generations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: submitted, inputs }) });
       if (this.projects.getSnapshot().project?.id !== projectId) {
         const previous = await readProject(projectId);
-        if (previous?.assetGenerations?.some(item => item.id === id)) await writeProject({ ...previous, assetGenerations: previous.assetGenerations.map(item => item.id === id ? { ...item, submitted, requestId, phase: 'queued' } : item) });
+        if (previous?.clipGenerations?.some(item => item.id === id)) await writeProject({ ...previous, clipGenerations: previous.clipGenerations.map(item => item.id === id ? { ...item, submitted, requestId, phase: 'queued' } : item) });
         else await request(`/api/library-generations/${submitted.model}/${requestId}`, { method: 'DELETE' });
         return;
       }
@@ -92,11 +98,11 @@ export class AssetGenerationController {
           if (!blob.size || !blob.type.startsWith(`${kind}/`)) throw new Error('Generated media has an unexpected format.');
           const metadata = await inspectAsset(blob, kind), name = `${g.name} · v${g.versions.length + i + 1}`;
           const asset = await assets.save(blob, name, task.signal); await assets.open(asset.id);
-          added.push({ assetId: asset.id, name, kind: kind === 'video' ? 'generated' : kind, generationId: id, folderId: g.folderId, ...metadata });
+          added.push({ assetId: asset.id, name, kind: kind === 'video' ? 'generated' : kind, generationId: id, generation:{provider:'fal',settings:structuredClone(g.submitted),createdAt:Date.now()}, ...metadata });
           versions.push({ assetId: asset.id, name, createdAt: Date.now(), settings: g.submitted });
         }
         task.signal.throwIfAborted(); if (this.projects.getSnapshot().project?.id !== projectId) return;
-        this.projects.editAssets(project => ({ ...project, library: [...project.library ?? [], ...added], assetGenerations: project.assetGenerations?.map(item => item.id === id ? {
+        this.projects.editAssets(project => ({ ...project, library: [...project.library ?? [], ...added], storyFlow:project.storyFlow?{...project.storyFlow,nodes:project.storyFlow.nodes.map(n=>n.generationId===id&&added[0]?{...n,source:assetPlacement(added[0],n.source?(n.source.outFrame-n.source.inFrame)/TIMELINE_FPS:n.duration),trim:undefined}:n)}:undefined, clipGenerations: project.clipGenerations?.map(item => item.id === id ? {
           ...item, phase: 'ready', error: undefined, versions: [...item.versions, ...versions], selectedAssetId: versions[0]?.assetId,
         } : item) }), false);
         return;

@@ -23,7 +23,7 @@ export class TimelineComposition {
   readonly crossfade: boolean;
   readonly crossfadeFrames: number;
   readonly matchFraming: boolean;
-  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean; assetVolumes?: Record<string, number> } = {}) {
+  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean } = {}) {
     this.crossfade = options.crossfade ?? true;
     this.crossfadeFrames = options.crossfadeFrames ?? INTERSTITIAL_CROSSFADE_FRAMES;
     this.matchFraming = options.matchFraming ?? false;
@@ -34,7 +34,7 @@ export class TimelineComposition {
     const ready = items.filter(item => !item.groupId && item.kind !== 'call-response' && playableResult(item) && item.time <= Math.max(info.duration, this.sourceDuration)).sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
     const addSource = (end: number) => {
       if (end > sourceFrame) {
-        this.segments.push({ id: `source:${sourceFrame}`, kind: 'source', label: source.name, source: { ...source, volume: options.assetVolumes?.[source.assetId ?? source.id] ?? source.volume }, sourceStart: sourceFrame / this.fps, startFrame: cursor, endFrame: cursor + end - sourceFrame });
+        this.segments.push({ id: `source:${sourceFrame}`, kind: 'source', label: source.name, source: { ...source, volume: source.volume }, sourceStart: sourceFrame / this.fps, startFrame: cursor, endFrame: cursor + end - sourceFrame });
         cursor += end - sourceFrame;
       }
       sourceFrame = end;
@@ -44,7 +44,7 @@ export class TimelineComposition {
       const result = playableResult(item)!;
       const frames = Math.max(1, Math.round(result.duration * this.fps));
       this.segments.push({ id: item.id, kind: 'interstitial', label: item.label, generated: result,
-        source: { id: item.id, name: item.label, assetId: result.assetId, volume: result.assetId ? options.assetVolumes?.[result.assetId] : undefined, url: result.assetId ? assets.url(result.assetId) || result.url : result.url }, sourceStart: result.start, startFrame: cursor, endFrame: cursor + frames });
+        source: { id: item.id, name: item.label, assetId: result.assetId, url: result.assetId ? assets.url(result.assetId) || result.url : result.url }, sourceStart: result.start, startFrame: cursor, endFrame: cursor + frames });
       cursor += frames;
     }
     addSource(total);

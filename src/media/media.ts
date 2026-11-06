@@ -8,7 +8,7 @@ import { DEFAULT_IMAGE_DURATION, loadStillImage, stillCanvas } from './stillImag
 import { TIMELINE_FPS } from '../../shared/constants';
 import { audioVolume, scaleAudioSample } from './audioVolume';
 
-export type MediaSource = { id: string; name: string; url: string; file?: File; assetId?: string; volume?: number; kind?: 'image'; duration?: number };
+export type MediaSource = { id: string; name: string; url: string; file?: File; assetId?: string; volume?: number; kind?: 'image'|'audio'; duration?: number };
 export type MediaInfo = { duration: number; videoDuration?: number; width: number; height: number; codec: string; fps: number; hasAudio: boolean };
 export type Thumbnail = { time: number; url: string };
 type TaskOptions = { signal?: AbortSignal; onProgress?: (progress: number) => void };
@@ -34,6 +34,7 @@ export async function inspectMedia(source: MediaSource): Promise<MediaInfo> {
   const input = openInput(source);
   try {
     const video = await input.getPrimaryVideoTrack();
+    if(!video&&source.kind==='audio')return {duration:await input.computeDuration(),width:1280,height:720,codec:(await input.getPrimaryAudioTrack())?.codec??'audio',fps:TIMELINE_FPS,hasAudio:true};
     if (!video) throw new Error('This file has no video track.');
     const [duration, width, height, codec, audio, stats, videoDuration] = await Promise.all([
       input.computeDuration(), video.getDisplayWidth(), video.getDisplayHeight(),
@@ -56,6 +57,7 @@ function jpeg(canvas: HTMLCanvasElement | OffscreenCanvas): string {
 /** Decode the frame displayed at an exact media timestamp. */
 export async function sampleFrame(source: MediaSource, time: number, width = 180, signal?: AbortSignal): Promise<Thumbnail> {
   signal?.throwIfAborted();
+  if(source.kind==='audio'){const canvas=document.createElement('canvas');canvas.width=width;canvas.height=Math.round(width*9/16);return {time,url:jpeg(canvas)};}
   if (source.kind === 'image') {
     const image = await loadStillImage(source, signal);
     try { return { time, url: jpeg(stillCanvas(image, width, Math.max(1, Math.round(width * image.height / image.width)))) }; }
@@ -79,7 +81,7 @@ export async function sampleFrame(source: MediaSource, time: number, width = 180
 }
 
 export async function sampleFrames(source: MediaSource, slice: Slice, count: number, width = 768, signal?: AbortSignal): Promise<Thumbnail[]> {
-  if (source.kind === 'image') return [await sampleFrame(source, slice.start, width, signal)];
+  if (source.kind === 'image'||source.kind==='audio') return [await sampleFrame(source, slice.start, width, signal)];
   const input = openInput(source);
   const abort = () => input.dispose();
   signal?.throwIfAborted();

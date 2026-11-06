@@ -11,13 +11,13 @@ import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metad
 import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
 import { maskCurveSchema } from '../../../shared/mask-curves';
 import { videoReferenceSettings } from '../../../shared/video-references';
-import { assetGenerationSchema } from '../../../shared/asset-generation';
+import { assetGenerationSchema, assetSettingsSchema } from '../../../shared/asset-generation';
 
 const MAX_BYTES = 8 * 1024 ** 3;
 const MAX_MANIFEST = 8 * 1024 ** 2;
 const number = z.number().finite().nonnegative();
 const text = z.string().max(50_000);
-const clipReferenceSchema = z.object({ kind: z.literal('image').optional(), sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
+const clipReferenceSchema = z.object({ kind: z.enum(['image','audio']).optional(), sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
 const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge', 'custom']).optional(), before: clipReferenceSchema.optional(), after: clipReferenceSchema.optional(), beforeClips: z.array(clipReferenceSchema).max(1000).optional(), afterClips: z.array(clipReferenceSchema).max(1000).optional() });
 const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(), prompt:z.string().max(8000).optional(), metadata: clipMetadataSchema.optional(),
   fullRange: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
@@ -66,13 +66,16 @@ const projectSchema = z.object({
     }), 'Invalid folder hierarchy.').optional(),
   loras: projectLorasSchema.optional(),
   assetAliases: z.record(z.uuid(), z.uuid()).optional(),
-  assetGenerations: z.array(assetGenerationSchema).max(1000).refine(items => new Set(items.map(g => g.id)).size === items.length, 'Duplicate generations.').optional(),
+  mediaModelVersion: z.literal(1).optional(),
+  assetGenerations: z.array(assetGenerationSchema).max(1000).optional(),
+  clipGenerations: z.array(assetGenerationSchema).max(1000).refine(items => new Set(items.map(g => g.id)).size === items.length, 'Duplicate generations.').optional(),
   library: z.array(z.object({ assetId: z.uuid(), originalAssetId: z.uuid().optional(), normalizedFps: z.number().finite().min(1).max(240).optional(), name: z.string().min(1).max(1000),
+    generation:z.discriminatedUnion('provider',[z.object({provider:z.literal('comfy'),settings:settingsSchema.optional(),result:resultSchema}),z.object({provider:z.literal('fal'),settings:assetSettingsSchema,createdAt:number})]).optional(),
     kind: z.enum(['video', 'generated', 'subtitle', 'image', 'audio']), folderId: z.uuid().optional(), generationId: z.uuid().optional(), width: number.int().optional(), height: number.int().optional(), duration: number.positive().optional(), inFrame: number.int().optional(), outFrame: number.int().positive().optional(), volume: z.number().min(0).max(1).optional(),
   }).refine(item => item.outFrame === undefined || item.outFrame > (item.inFrame ?? 0), 'Invalid library clip boundaries.')).max(2000)
     .refine(items => new Set(items.map(item => item.assetId)).size === items.length, 'Duplicate library assets.')
     // Accept legacy subtitle entries, but keep subtitles exclusively on the project track.
-    .transform(items => items.filter((item): item is LibraryAsset => item.kind !== 'subtitle')).optional(),
+    .transform(items => items.filter((item): item is typeof item & {kind:LibraryAsset['kind']} => item.kind !== 'subtitle')).optional(),
   source: z.object({ name: z.string().min(1).max(1000), assetId: z.uuid().optional(), originalAssetId: z.uuid().optional() }),
   interstitials: z.array(z.preprocess(preserveLegacyJobProvider, z.object({
     id: z.string().min(1).max(200), label: z.string().max(1000), time: number, kind: z.enum(['regular', 'call-response']).optional(), groupId: text.optional(),
@@ -94,15 +97,17 @@ const projectSchema = z.object({
   }),
 }).refine(project => (project.callResponses ?? (project.callResponse ? [project.callResponse] : [])).every(flow => flow.scenes.every(scene => !scene.interstitialId || project.interstitials.some(item => item.id === scene.interstitialId))), 'A scene references a missing video.')
   .refine(project=>!project.storyFlow||project.storyFlow.nodes.every(n=>!n.interstitialId||project.interstitials.some(i=>i.id===n.interstitialId)),'A story clip references a missing video.')
+  .refine(project=>!project.mediaModelVersion||project.storyFlow?.nodes.every(n=>!n.generationId||project.clipGenerations?.some(g=>g.id===n.generationId)),'A clip references missing generation settings.')
+  .refine(project=>!project.mediaModelVersion||(project.clipGenerations??[]).every(g=>project.storyFlow?.nodes.filter(n=>n.generationId===g.id).length===1),'Generation settings must belong to exactly one timeline clip.')
   .refine(project=>!!project.source.assetId||!!project.storyFlow&&!project.callResponse&&!project.callResponses?.length,'A legacy project is missing its source video.');
-const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), project: projectSchema,
+const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]), project: projectSchema,
   assets: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(1000), mime: z.string().max(200), size: number.int().positive().max(MAX_BYTES) })).max(2000),
 });
 type Progress = (message: string, fraction: number) => void;
 
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
   const supplied = new Set(assets.map(asset => asset.id));
-  const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.assetGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
+  const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
     ...project,
     assetAliases: project.assetAliases ? Object.fromEntries(Object.entries(project.assetAliases).filter(([, id]) => supplied.has(id))) : undefined,
     interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
@@ -145,7 +150,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const entry = entries.find(entry => entry.filename === 'project.json');
     if (!entry || entry.directory || entry.uncompressedSize > MAX_MANIFEST) throw new Error('The archive is missing a valid project.json manifest.');
     const raw = JSON.parse(await entry.getData(new TextWriter(), { signal, checkSignature: true }));
-    if (![1, 2, 3, 4].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
+    if (![1, 2, 3, 4, 5].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
     const parsed = manifestSchema.safeParse(raw);
     if (!parsed.success) throw new Error(`Invalid project metadata: ${parsed.error.issues[0].message}`);
     const { project, assets: descriptions } = parsed.data;
@@ -157,19 +162,21 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     // MP4 provenance retains its original IDs. Keep every earlier ID mapped directly to the new local asset.
     const assetAliases = Object.fromEntries([...remap, ...Object.entries(project.assetAliases ?? {})
       .filter(([, id]) => remap.has(id)).map(([alias, id]) => [alias, remap.get(id)!])]);
-    const remapAssetSettings = (settings: import('../../../shared/asset-generation').AssetSettings) => ({ ...settings, references: settings.references.map(ref => ({ ...ref, assetId: remap.get(ref.assetId)! })) });
-    const remapVideo = (ref: import('../../../shared/video-references').VideoAssetReference) => ({ ...ref, assetId: remap.get(ref.assetId)! });
+    const remapAssetSettings = (settings: import('../../../shared/asset-generation').AssetSettings) => ({ ...settings, references: settings.references.map(ref => ({ ...ref, assetId: remap.get(ref.assetId)??ref.assetId })) });
+    const remapVideo = (ref: import('../../../shared/video-references').VideoAssetReference) => ({ ...ref, assetId: remap.get(ref.assetId)??ref.assetId });
     const remapSettings = (settings: Parameters<typeof interstitialSettings>[0]) => ({ ...interstitialSettings(settings),
       startVideoAssets: settings.startVideoAssets?.map(remapVideo), endVideoAssets: settings.endVideoAssets?.map(remapVideo),
       startVideoAsset: settings.startVideoAsset ? { ...settings.startVideoAsset, assetId: remap.get(settings.startVideoAsset.assetId)! } : undefined,
       endVideoAsset: settings.endVideoAsset ? { ...settings.endVideoAsset, assetId: remap.get(settings.endVideoAsset.assetId)! } : undefined,
-      ...(settings.imageReferences?.length ? { imageReferences: settings.imageReferences.map(image => ({ ...image, assetId: remap.get(image.assetId)! })) } : {}),
+      ...(settings.imageReferences?.length ? { imageReferences: settings.imageReferences.map(image => ({ ...image, assetId: remap.get(image.assetId)??image.assetId })) } : {}),
     });
     const remapClip = (clip: z.infer<typeof clipReferenceSchema>) => ({ ...clip,
       ...(clip.sceneId.startsWith('asset:') ? { sceneId: `asset:${remap.get(clip.assetId)}` } : {}), assetId: remap.get(clip.assetId)! });
     const remapReference = (input?: z.infer<typeof generationReferenceSchema>) => input ? { ...input,
       before: input.before && remapClip(input.before), after: input.after && remapClip(input.after),
       beforeClips: input.beforeClips?.map(remapClip), afterClips: input.afterClips?.map(remapClip) } : undefined;
+    const remapGeneration=(g:import('../../../shared/asset-generation').AssetGeneration)=>({...g,settings:remapAssetSettings(g.settings),submitted:g.submitted?remapAssetSettings(g.submitted):undefined,selectedAssetId:g.selectedAssetId?remap.get(g.selectedAssetId)!:undefined,versions:g.versions.map(v=>({...v,assetId:remap.get(v.assetId)!,settings:remapAssetSettings(v.settings)}))});
+    const remapResult=(result:z.infer<typeof resultSchema>)=>({...result,reference:remapReference(result.reference),assetId:remap.get(result.assetId)??result.assetId,fullAssetId:result.fullAssetId?remap.get(result.fullAssetId)??result.fullAssetId:undefined,url:`asset:${remap.get(result.assetId)??result.assetId}`});
     const assets: Asset[] = []; let read = 0;
     for (const asset of descriptions) {
       signal.throwIfAborted();
@@ -183,13 +190,14 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     }
     return { project: {
       ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(), assetAliases,
-      library: project.library?.map(item => ({ ...item, assetId: remap.get(item.assetId)!, originalAssetId: item.originalAssetId ? remap.get(item.originalAssetId)! : undefined })),
-      assetGenerations: project.assetGenerations?.map(g => ({ ...g, settings: remapAssetSettings(g.settings), submitted: g.submitted ? remapAssetSettings(g.submitted) : undefined,
+      library: project.library?.map(item => ({ ...item, generation:item.generation?.provider==='comfy'?{...item.generation,result:remapResult(item.generation.result),settings:item.generation.settings?remapSettings(item.generation.settings):undefined}:item.generation?{...item.generation,settings:remapAssetSettings(item.generation.settings)}:undefined, assetId: remap.get(item.assetId)!, originalAssetId: item.originalAssetId ? remap.get(item.originalAssetId)! : undefined })),
+      assetGenerations:project.assetGenerations?.map(remapGeneration),
+      clipGenerations: project.clipGenerations?.map(g => ({ ...g, settings: remapAssetSettings(g.settings), submitted: g.submitted ? remapAssetSettings(g.submitted) : undefined,
         selectedAssetId: g.selectedAssetId ? remap.get(g.selectedAssetId)! : undefined,
         phase: g.phase === 'preparing' ? 'draft' : g.phase,
         versions: g.versions.map(v => ({ ...v, assetId: remap.get(v.assetId)!, settings: remapAssetSettings(v.settings) })) })),
       storyFlow: project.storyFlow ? {...project.storyFlow,nodes:project.storyFlow.nodes.map(n=>({...n,source:n.source?{...n.source,assetId:remap.get(n.source.assetId)!,originalAssetId:n.source.originalAssetId?remap.get(n.source.originalAssetId)!:undefined}:undefined})),
-        templates:project.storyFlow.templates.map(t=>({...t,settings:Object.fromEntries(Object.entries(t.settings).map(([id,settings])=>[id,remapSettings(settings)])),nodes:t.nodes.map(n=>({...n,source:n.source?{...n.source,assetId:remap.get(n.source.assetId)!,originalAssetId:n.source.originalAssetId?remap.get(n.source.originalAssetId)!:undefined}:undefined}))}))}:undefined,
+        templates:project.storyFlow.templates.map(t=>({...t,generations:t.generations?.map(remapGeneration),settings:Object.fromEntries(Object.entries(t.settings).map(([id,settings])=>[id,remapSettings(settings)])),nodes:t.nodes.map(n=>({...n,source:n.source?{...n.source,assetId:remap.get(n.source.assetId)!,originalAssetId:n.source.originalAssetId?remap.get(n.source.originalAssetId)!:undefined}:undefined}))}))}:undefined,
       callResponse: project.callResponse ? { ...project.callResponse, scenes: project.callResponse.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) } : undefined,
       callResponses: project.callResponses?.map(flow => ({ ...flow, scenes: flow.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: remap.get(scene.clip.assetId)! } })) })),
       source: { ...project.source, assetId: project.source.assetId?remap.get(project.source.assetId)!:undefined, originalAssetId: project.source.originalAssetId ? remap.get(project.source.originalAssetId)! : undefined },

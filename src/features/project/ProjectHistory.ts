@@ -1,19 +1,20 @@
+import { assetPlacement } from './migrateClipMedia';
 import { interstitialSettings, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
-import type { Project } from './types';
+import type { LibraryAsset, Project } from './types';
 
 export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId'> & InterstitialSettings;
-export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'libraryFolders' | 'subtitle' | 'crossfadeFrames' | 'loras'> & { interstitials: InterstitialEdit[]; assetGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings'>[] };
+export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'libraryFolders' | 'subtitle' | 'crossfadeFrames' | 'loras'> & { interstitials: InterstitialEdit[]; clipGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings' | 'versions' | 'selectedAssetId'>[] };
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
   return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [] })),
     callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, libraryFolders: project.libraryFolders,
-    loras: project.loras, assetGenerations: project.assetGenerations?.map(({id,name,kind,folderId,settings}) => ({id,name,kind,folderId,settings})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
+    loras: project.loras, clipGenerations: project.clipGenerations?.map(({id,name,kind,folderId,settings,versions,selectedAssetId}) => ({id,name,kind,folderId,settings,versions,selectedAssetId})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }
 function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' | 'key'> {
   if (!same(before.loras, after.loras)) return { label: 'Edit project LoRAs' };
   if (!same(before.libraryFolders, after.libraryFolders)) return { label: 'Organize library folders' };
-  if (!same(before.assetGenerations, after.assetGenerations)) return { label: 'Edit generation', key: 'asset-generation' };
+  if (!same(before.clipGenerations, after.clipGenerations)) return { label: 'Edit generation', key: 'asset-generation' };
   if (!same(before.storyFlow, after.storyFlow)) {
     const a=before.storyFlow,b=after.storyFlow;
     if(!a || !b) return {label:'Create story flow'};
@@ -45,11 +46,6 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
   }
   if (!same(before.subtitle, after.subtitle)) return { label: 'Change subtitles' };
   if (!same(before.library, after.library)) {
-    const withoutVolume = (library: Project['library']) => library?.map(({ volume: _volume, ...asset }) => asset);
-    if (same(withoutVolume(before.library), withoutVolume(after.library))) {
-      const ids = after.library?.filter(asset => asset.volume !== before.library?.find(old => old.assetId === asset.assetId)?.volume).map(asset => asset.assetId).sort();
-      return { label: 'Change asset volume', key: `volume:${ids?.join('|')}` };
-    }
     return { label: 'Update library' };
   }
   if (!same(before.callResponses, after.callResponses)) return { label: 'Edit call-response video' };
@@ -87,6 +83,18 @@ export class ProjectHistory {
       if (this.past.length > this.limit) this.past.shift();
     }
     this.future = []; this.merge = true;
+  }
+  /** Async renders are retained even when undo returns to an edit made before completion. */
+  retainGeneratedMedia(added: LibraryAsset[]) {
+    if(!added.length)return;
+    for(const entry of [...this.past,...this.future])for(const snapshot of [entry.before,entry.after]){
+      const ids=new Set(snapshot.library?.map(asset=>asset.assetId));
+      snapshot.library=[...snapshot.library??[],...added.filter(asset=>!ids.has(asset.assetId))];
+      if(snapshot.storyFlow)snapshot.storyFlow={...snapshot.storyFlow,nodes:snapshot.storyFlow.nodes.map(node=>{
+        const asset=added.find(asset=>asset.generationId&&asset.generationId===node.generationId);
+        return asset&&!node.source?{...node,source:assetPlacement(asset,node.duration)}:node;
+      })};
+    }
   }
   target(direction: 'undo' | 'redo') { return direction === 'undo' ? this.past.at(-1)?.before : this.future.at(-1)?.after; }
   commit(direction: 'undo' | 'redo') {
