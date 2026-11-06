@@ -162,7 +162,6 @@ function CurveDialog({before,after,duration,videoMs,audioMs,initial,boundaries,a
               {[...(before?[before]:[]),...(after?[before+duration]:[])].map(time=><line key={time} className="mask-reference-boundary" x1={x(time)} x2={x(time)} y1={top} y2={bottom}/>)}
               <VideoBoundaries boundaries={boundaries} from={from} to={to} x={x} top={top} bottom={bottom}/>
               <path className="mask-curve-line" d={curvePath(curve,before,duration,after,from,to,x,y)}/>
-              <line className="mask-time-indicator" x1={x(cursor)} x2={x(cursor)} y1={top-5} y2={bottom+5}/>
               {(['start','end'] as const).filter(side=>side==='start'?before:after).flatMap(side=>curve[side].map((p,index)=>{
                 const time=seconds(side,p);if(time<from||time>to)return null;
                 const chosen=selection?.side===side&&selection.index===index;
