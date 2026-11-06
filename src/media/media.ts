@@ -25,23 +25,32 @@ export function openInput(source: MediaSource): Input {
   });
 }
 
-export async function inspectMedia(source: MediaSource): Promise<MediaInfo> {
+export async function inspectMedia(source: MediaSource, signal?: AbortSignal): Promise<MediaInfo> {
+  signal?.throwIfAborted();
   if (source.kind === 'image') {
-    const image = await loadStillImage(source);
+    const image = await loadStillImage(source, signal);
     try { return { duration: source.duration ?? DEFAULT_IMAGE_DURATION, width: image.width, height: image.height, codec: 'image', fps: TIMELINE_FPS, hasAudio: false }; }
     finally { image.close(); }
   }
   const input = openInput(source);
+  const abort = () => input.dispose();
+  signal?.addEventListener('abort', abort, { once: true });
   try {
     const video = await input.getPrimaryVideoTrack();
-    if(!video&&source.kind==='audio')return {duration:await input.computeDuration(),width:1280,height:720,codec:(await input.getPrimaryAudioTrack())?.codec??'audio',fps:TIMELINE_FPS,hasAudio:true};
+    if (!video && source.kind === 'audio') {
+      const duration = await input.computeDuration(), audio = await input.getPrimaryAudioTrack();
+      signal?.throwIfAborted();
+      return { duration, width: 1280, height: 720, codec: audio?.codec ?? 'audio', fps: TIMELINE_FPS, hasAudio: true };
+    }
     if (!video) throw new Error('This file has no video track.');
     const [duration, width, height, codec, audio, stats, videoDuration] = await Promise.all([
       input.computeDuration(), video.getDisplayWidth(), video.getDisplayHeight(),
       video.getCodec(), input.getPrimaryAudioTrack(), video.computePacketStats(100), video.computeDuration(),
     ]);
+    signal?.throwIfAborted();
     return { duration, videoDuration, width, height, codec: codec || 'unknown', hasAudio: !!audio, fps: stats.averagePacketRate || 30 };
-  } finally { input.dispose(); }
+  } catch (error) { signal?.throwIfAborted(); throw error; }
+  finally { signal?.removeEventListener('abort', abort); input.dispose(); }
 }
 
 function jpeg(canvas: HTMLCanvasElement | OffscreenCanvas): string {

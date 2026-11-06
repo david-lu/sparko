@@ -1,5 +1,6 @@
 import { assetModel, validateAssetSettings, type AssetSettings, type MediaKind } from '../../../shared/asset-generation.js';
 import { HttpError } from '../../shared/http.js';
+import { z } from 'zod';
 
 export type FalInput = { kind: MediaKind; data: string };
 export function falPayload(settings: AssetSettings, references: FalInput[]) {
@@ -28,22 +29,34 @@ export function falRequestPath(modelId: string, requestId: string) {
   return `${model.endpoint.split('/').slice(0, 2).join('/')}/requests/${requestId}`;
 }
 export type FalFile = { url: string; content_type?: string };
-export function falFiles(body: Record<string, unknown>, kind: MediaKind): FalFile[] {
-  const raw = kind === 'image' ? body.images : [kind === 'video' ? body.video : body.audio];
+const objectSchema = z.record(z.string(), z.unknown());
+const fileSchema = z.object({ url: z.url(), content_type: z.string().regex(/^(image|video|audio)\/[\w.+-]+$/).optional() });
+export function falFiles(body: unknown, kind: MediaKind): FalFile[] {
+  const object = objectSchema.safeParse(body);
+  if (!object.success) throw new HttpError(502, 'fal returned no usable media.');
+  const raw = kind === 'image' ? object.data.images : [kind === 'video' ? object.data.video : object.data.audio];
   const entries = Array.isArray(raw) ? raw.map(file => typeof file === 'string' ? { url: file } : file) : raw;
-  if (!Array.isArray(entries) || !entries.length || entries.length > 4 || entries.some(v => !v || typeof v.url !== 'string')) throw new HttpError(502, 'fal returned no usable media.');
-  return entries;
+  const result = z.array(fileSchema).min(1).max(4).safeParse(entries);
+  if (!result.success) throw new HttpError(502, 'fal returned no usable media.');
+  return result.data;
 }
 export function createFalClient(key: string, fetcher: typeof fetch = fetch) {
-  async function json(path: string, method = 'GET', body?: unknown) {
+  async function json(path: string, method = 'GET', body?: unknown, signal?: AbortSignal) {
     const response = await fetcher(`https://queue.fal.run/${path}`, { method, headers: { Authorization: `Key ${key}`, 'Content-Type': 'application/json' },
-      ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(90_000), redirect: 'error' });
+      ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(90_000)]), redirect: 'error' });
     if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
       // Never forward provider diagnostics: they may contain inputs or credentials.
       throw new HttpError(response.status === 429 ? 429 : response.status === 422 ? 422 : 502,
         response.status === 429 ? 'fal quota or rate limit reached. Try again later.' : response.status === 401 || response.status === 403 ? 'fal rejected the API key or model access.' : 'fal could not complete this request. Check the inputs or retry.');
     }
-    return await response.json() as Record<string, any>;
+    if (response.status === 204 && method === 'PUT') return {};
+    let value: unknown;
+    try { value = await response.json(); }
+    catch { signal?.throwIfAborted(); throw new HttpError(502, 'fal returned an unreadable response. Check the existing job before retrying.'); }
+    const result = objectSchema.safeParse(value);
+    if (!result.success) throw new HttpError(502, 'fal returned an invalid response.');
+    return result.data;
   }
   return {
     async submit(settings: AssetSettings, inputs: FalInput[]) {
@@ -51,19 +64,23 @@ export function createFalClient(key: string, fetcher: typeof fetch = fetch) {
       if (typeof result.request_id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(result.request_id)) throw new HttpError(502, 'fal returned an invalid request ID.');
       return { requestId: result.request_id as string };
     },
-    async status(model: string, id: string) {
-      const result = await json(`${falRequestPath(model, id)}/status`);
+    async status(model: string, id: string, signal?: AbortSignal) {
+      const result = await json(`${falRequestPath(model, id)}/status`, 'GET', undefined, signal);
       if (result.error || result.error_type) throw new HttpError(422, 'fal generation failed or was cancelled. Review the inputs before retrying.');
-      if (!['IN_QUEUE', 'IN_PROGRESS', 'COMPLETED'].includes(result.status)) throw new HttpError(502, 'Unexpected fal job status.');
+      if (typeof result.status !== 'string' || !['IN_QUEUE', 'IN_PROGRESS', 'COMPLETED'].includes(result.status)) throw new HttpError(502, 'Unexpected fal job status.');
       return { phase: result.status === 'IN_QUEUE' ? 'queued' as const : result.status === 'IN_PROGRESS' ? 'rendering' as const : 'ready' as const };
     },
-    async result(model: string, id: string) { return falFiles(await json(falRequestPath(model, id)), assetModel(model)!.kind); },
+    async result(model: string, id: string, signal?: AbortSignal) { return falFiles(await json(falRequestPath(model, id), 'GET', undefined, signal), assetModel(model)!.kind); },
     async cancel(model: string, id: string) { return json(`${falRequestPath(model, id)}/cancel`, 'PUT'); },
-    async content(file: FalFile) {
-      const url = new URL(file.url);
+    async content(file: FalFile, signal?: AbortSignal) {
+      let url: URL;
+      try { url = new URL(file.url); } catch { throw new HttpError(502, 'fal returned an unsupported media URL.'); }
       if (url.protocol !== 'https:' || url.username || url.password || url.port || !(url.hostname === 'fal.media' || url.hostname.endsWith('.fal.media'))) throw new HttpError(502, 'fal returned an unsupported media URL.');
-      const response = await fetcher(url, { signal: AbortSignal.timeout(120_000), redirect: 'error' });
-      if (!response.ok || !response.body) throw new HttpError(502, 'Unable to download the generated asset. Check result to retry.');
+      const response = await fetcher(url, { signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(120_000)]), redirect: 'error' });
+      if (!response.ok || !response.body) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new HttpError(502, 'Unable to download the generated asset. Check result to retry.');
+      }
       return response;
     },
   };

@@ -19,13 +19,16 @@ async function hasFrameClock(track: InputVideoTrack, fps: number, signal: AbortS
 export async function canPlaySourceVideo(blob: Blob, signal: AbortSignal): Promise<boolean> {
   signal.throwIfAborted();
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+  const abort = () => input.dispose();
+  signal.addEventListener('abort', abort, { once: true });
   try {
     const video = await input.getPrimaryVideoTrack();
     if (!video) throw new Error('This file has no video track.');
     const audio = await input.getPrimaryAudioTrack();
     const playable = await video.canDecode() && (!audio || await audio.canDecode());
     signal.throwIfAborted(); return playable;
-  } finally { input.dispose(); }
+  } catch (error) { signal.throwIfAborted(); throw error; }
+  finally { signal.removeEventListener('abort', abort); input.dispose(); }
 }
 
 /** Optional import normalization preserves resolution; compatibility fallback keeps its size limit. */
