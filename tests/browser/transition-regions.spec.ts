@@ -42,8 +42,9 @@ for (const width of [1440, 390]) test(`transition regions match playback, connec
   }) });
   const before = await layout();
   const geometry = [];
+  // Wires remain selectable at every zoom, including overviews that hide fade buttons.
   for (const id of [ids.incoming, ids.outgoing]) {
-    await page.locator(`.story-edge[data-edge-id="${id}"] .story-crossfade`).press('Enter');
+    await page.locator(`.story-edge[data-edge-id="${id}"] .story-edge-hit`).press('Enter');
     await expect(regions).toHaveCount(2);
     geometry.push(...await regions.evaluateAll(nodes => nodes.map(node => {
       const span = node as HTMLElement, parent = span.parentElement!.getBoundingClientRect(), rect = span.getBoundingClientRect();
@@ -62,12 +63,12 @@ for (const width of [1440, 390]) test(`transition regions match playback, connec
   expect(geometry.filter(r => r.channel === 'audio').map(r => [r.start, r.end])).toEqual([[.25, 1], [3, 3.75]]);
   const entry = page.locator(`.story-edge[data-edge-id="${ids.incoming}"]`);
   await expect(entry).toHaveAttribute('data-reference-state', 'mismatch');
-  await entry.locator('.story-crossfade').click();
+  await entry.locator('.story-edge-hit').press('Enter');
   await expect(page.locator('.story-transition-region')).toHaveCount(4);
   await expect(page.locator(`.story-transition-region.selected[data-edge-id="${ids.incoming}"]`)).toHaveCount(4);
   await expect(page.getByLabel('Video crossfade timing')).toContainText('0.500 s dissolve');
   await expect(page.getByLabel('Reference matching')).toContainText('Configured crossfades still apply');
-  await exit.locator('.story-crossfade').click();
+  await exit.locator('.story-edge-hit').press('Enter');
   await expect(page.locator(`.story-transition-region.selected[data-edge-id="${ids.outgoing}"]`)).toHaveCount(4);
   await expect(page.getByLabel('Video crossfade timing')).toContainText('0.500 s dissolve');
   await expect(page.getByLabel('Audio crossfade timing')).toContainText('0.750 s fade');
@@ -97,7 +98,7 @@ for (const width of [1440, 390]) test(`selecting a branch transition highlights 
   const before = await positions();
   for (const [edgeId, destination] of [[ids.outgoing, 'after'], [ids.alternate, 'alternate']]) {
     const edge = page.locator(`.story-edge[data-edge-id="${edgeId}"]`);
-    await edge.locator('.story-crossfade').press('Enter');
+    await edge.locator('.story-edge-hit').press('Enter');
     await expect(edge).toHaveClass(/selected/);
     const regions = page.locator('.story-transition-region');
     await expect(regions).toHaveCount(4);
@@ -126,7 +127,7 @@ for (const width of [1440, 390]) test(`selecting a branch transition highlights 
   await page.locator('.story-canvas').screenshot({ path: `test-results/selected-transition-${width}.png` });
   await page.locator(`[data-node-id="${ids.node}"] .story-clip-title`).click();
   await expect(page.locator('.story-transition-region')).toHaveCount(0);
-  await page.locator(`.story-edge[data-edge-id="${ids.alternate}"] .story-crossfade`).press('Enter');
+  await page.locator(`.story-edge[data-edge-id="${ids.alternate}"] .story-edge-hit`).press('Enter');
   await expect(page.locator('.story-transition-region')).toHaveCount(4);
   await fitAll(page);
   await expect(page.locator('.story-transition-region')).toHaveCount(0);
