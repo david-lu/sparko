@@ -17,7 +17,11 @@ test('independent behaviors expose named condition sockets with separate draggab
   await expect(clip.locator('[data-condition-id]')).toHaveCount(2);await expect(clip.locator('[data-condition-id]').first()).toHaveText('Yes');await expect(clip.locator('[data-condition-id]').last()).toHaveText('No');
   await expect(clip.locator('.story-port.output')).toHaveCount(2);await expect(page.getByRole('radio',{name:'Use condition 1 as default',exact:true})).toBeChecked();
   await page.getByRole('radio',{name:'Use condition 2 as default',exact:true}).check();await expect(page.getByRole('radio',{name:'Use condition 1 as default',exact:true})).not.toBeChecked();await expect(clip.locator('[data-default=true]')).toHaveText('No');
-  expect((await clip.boundingBox())!.height).toBe(76);await expect(page.locator('.clip-inspector select')).toHaveCount(0);await expect(page.getByLabel('Next clip',{exact:true})).toHaveCount(0);
+  expect((await clip.boundingBox())!.height).toBe(76);
+  // Connections use sockets; the separate media section can still offer asset replacement.
+  await expect(loopSection.or(conditionalSection).getByRole('combobox')).toHaveCount(0);
+  await expect(page.getByLabel('Next clip',{exact:true})).toHaveCount(0);
+  await expect(page.getByRole('combobox',{name:'Replace clip asset',exact:true})).toBeVisible();
   const yes=clip.locator('[data-condition-id]').first(),no=clip.locator('[data-condition-id]').last();
   await yes.dragTo(page.locator(`[data-node-id="${b.id}"] .story-port.input`));await no.dragTo(page.locator(`[data-node-id="${c.id}"] .story-port.input`));
   let graph=(await saved(page)).storyFlow;const yesId=graph.nodes[0].conditions[0].id,noId=graph.nodes[0].conditions[1].id;
