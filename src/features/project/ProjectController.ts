@@ -11,7 +11,7 @@ import { TIMELINE_FPS } from '../../../shared/constants';
 import { maxCrossfadeFrames, savedCrossfadeFrames } from '../player/preferences';
 import { groupCallResponse, lockCallResponseStructure, migrateDefaultAnswerLabels, removeAnswer, responseInterstitialIds, type CallResponseFlow } from '../call-response/model';
 import { createCallResponseDraft } from '../call-response/draft';
-import { frameTime, type Interstitial } from '../../../shared/interstitials';
+import { frameTime, playableResult, type Interstitial } from '../../../shared/interstitials';
 import { ProjectHistory } from './ProjectHistory';
 // Open/save must remain available in an already-open tab after a deployment
 // removes old hashed chunks. Load archive support with the application.
@@ -321,7 +321,7 @@ export class ProjectController {
       // The asset is published during loading; switch the clip only after validation succeeds.
       next = { ...next, storyFlow: next.storyFlow ? { ...next.storyFlow, nodes: next.storyFlow.nodes.map(node => {
         const item = next.interstitials.find(item => item.id === node.interstitialId), old = project.interstitials.find(item => item.id === node.interstitialId);
-        const completed = item?.phase === 'ready' && item.result?.assetId && (old?.phase !== 'ready' || item.result.assetId !== old.result?.assetId);
+        const completed = item?.phase === 'ready' && item.result?.assetId && item.result.assetId !== (old && playableResult(old)?.assetId);
         return completed ? { ...node, source: undefined, trim: undefined } : node;
       }) } : undefined };
       // An image-only project gets its playback canvas from its first render.

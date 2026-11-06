@@ -34,9 +34,10 @@ for (const width of [1440, 390]) test(`drawing saves a new image with undo, eras
   await expect(page.getByRole('button', { name: 'Draw on image…', exact: true })).toBeEnabled();
   await page.evaluate(() => {
     const decode = window.createImageBitmap;
+    const loading = new Promise<void>(resolve => { (window as any).loadDrawing = () => { window.createImageBitmap = decode; resolve(); }; });
+    // Thumbnail decoding can race with the popup. Hold every decode until the test releases it.
     window.createImageBitmap = async (...args: any[]) => {
-      window.createImageBitmap = decode;
-      await new Promise<void>(resolve => { (window as any).loadDrawing = resolve; });
+      await loading;
       return (decode as any)(...args);
     };
   });

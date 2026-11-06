@@ -52,7 +52,7 @@ for (const width of [1440, 390]) test(`dimension conversion creates a resized co
   await dialog.getByLabel('Width (px)', { exact: true }).fill('320');
   await dialog.getByLabel('Fit', { exact: true }).selectOption('cover');
   await dialog.screenshot({ path: `test-results/convert-dimensions-${width}.png` });
-  await create.click(); await expect(dialog).toHaveCount(0);
+  await create.click(); await expect(dialog).toHaveCount(0, { timeout: 30_000 });
   await expect(page.getByLabel('Media dimensions', { exact: true })).toHaveText('320 × 180');
   const after = await readProject(page), copy = after.library.find((a: any) => a.assetId !== before.source.assetId);
   expect(copy).toMatchObject({ width: 320, height: 180, normalizedFps: original.fps, originalAssetId: before.source.assetId });

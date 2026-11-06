@@ -289,7 +289,9 @@ export class InterstitialController {
     if (!item || this.tasks.has(id) || this.cancelling.has(id)) return;
     const operation = new AbortController(); this.tasks.set(id, operation);
     try {
-      this.patch(id, { phase: item.result ? 'loading' : 'queued', error: undefined, progress: undefined, progressDetails: undefined, queuePosition: undefined });
+      this.patch(id, { phase: item.result ? 'loading' : 'queued', error: undefined, progress: undefined, progressDetails: undefined, queuePosition: undefined,
+        // Reopening validates the same saved render; keep its identity and playback while it loads.
+        previousResult: item.phase === 'ready' ? item.result : item.previousResult });
       if (item.result) await this.loadResult(id, item.result, operation.signal);
       else if (item.requestId) await this.poll(id, item.requestId, operation.signal, item.requestInsertion);
       else throw new Error('No generation job was saved. Retry to generate the scene.');
