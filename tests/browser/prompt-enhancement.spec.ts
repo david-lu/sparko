@@ -1,4 +1,6 @@
-import { expect, test, openVideo, addBridge, saveAndReopen } from './fixtures';
+import { expect, test, openVideo, addBridge, saveAndReopen, readProject } from './fixtures';
+import { readFile } from 'node:fs/promises';
+import { readClipMetadata } from '../../src/media/clipMetadata';
 
 const original = 'She asks, "What is 2 + 2?", and waits.';
 const enhanced = 'In the same continuous shot, she gently asks, "What is 2 + 2?", and pauses. Preserve her position, pose, scale, background and framing. No position snaps or camera changes. All dialogue is in English.';
@@ -73,6 +75,56 @@ test('preserves the draft on errors and ignores a late result after the user edi
   await expect(prompt).toHaveValue('My newer draft');
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.locator('.task-status')).not.toContainText('could not reach');
+});
+
+test('carries enhanced dialogue timing through regeneration into the downloaded video', async ({ page }) => {
+  for (const side of ['Start', 'End']) await page.getByRole('group', { name: `${side} reference`, exact: true }).getByRole('button', { name: 'None', exact: true }).click();
+  const draft = 'integrated_multimodal_description: [Shot 1] She holds a rock and asks <d>[English] A rock?</d>, then holds a bowl and asks <d>[English] Old vegetables?</d>\noverall_soundscape: Quiet room.\nnon_diegetic_music: N/A';
+  const timed = 'integrated_multimodal_description: [Shot 1] Static camera. From 0 to 3 seconds: She holds the rock while asking <d>[English] A rock?</d> From 3 to 6 seconds: She puts down the rock and holds the bowl while asking <d>[English] Old vegetables?</d>\noverall_soundscape: Quiet room.\nnon_diegetic_music: N/A';
+  const prompt = page.getByLabel('Video prompt');
+  await prompt.fill(draft);
+  await page.route('**/api/comfy/status*', route => route.fulfill({ json: { ready: true } }));
+  const submitted: string[] = [];
+  await page.route('**/api/comfy/interstitials', async route => {
+    const form = await new Response(Uint8Array.from(route.request().postDataBuffer()!), { headers: { 'Content-Type': route.request().headers()['content-type'] } }).formData();
+    submitted.push(String(form.get('prompt')).replace(/\r\n/g, '\n'));
+    await route.fulfill({ status: 202, json: { requestId: `timing-job-${submitted.length}`, status: 'IN_QUEUE', insertion: { start: 0, duration: 6, totalDuration: 6 } } });
+  });
+  await page.route('**/api/comfy/jobs/timing-job-*', route => route.fulfill({ json: { requestId: route.request().url().split('/').at(-1), status: 'COMPLETED', videoUrl: '/api/comfy/assets/timing-result/content' } }));
+  await page.route('**/api/comfy/jobs/timing-job-*/events', route => route.fulfill({ contentType: 'text/event-stream', body: '' }));
+  const bytes = await page.evaluate(async () => {
+    const { Output, BufferTarget, Mp4OutputFormat, CanvasSource } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
+    const canvas = new OffscreenCanvas(160, 96), ctx = canvas.getContext('2d')!;
+    const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
+    const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 });
+    output.addVideoTrack(video, { frameRate: 24 }); await output.start();
+    ctx.fillStyle = '#00ee00'; ctx.fillRect(0, 0, 160, 96);
+    for (let frame = 0; frame < 144; frame++) await video.add(frame / 24, 1 / 24);
+    video.close(); await output.finalize(); return [...new Uint8Array(output.target.buffer)];
+  });
+  await page.route('**/api/comfy/assets/timing-result/content', route => route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) }));
+  const saved = async () => (await readProject(page)).interstitials[0];
+  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
+  const previous = (await saved()).result;
+  await page.route('**/api/interstitials/enhance-prompt', async route => {
+    expect(route.request().postDataJSON().prompt).toBe(draft);
+    await route.fulfill({ json: { prompt: timed, model: 'test' } });
+  });
+  await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
+  await expect(prompt).toHaveValue(timed);
+  await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+  await expect.poll(async () => (await saved()).result?.metadata?.id).not.toBe(previous.metadata.id);
+  await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
+  expect(submitted).toEqual([draft, timed]);
+  const current = (await saved()).result;
+  expect(current.assetId).not.toBe(previous.assetId);
+  await page.locator('.inspector-output > summary').click();
+  const pending = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Download full video' }).click();
+  const download = await pending;
+  const metadata = await readClipMetadata(new Blob([await readFile((await download.path())!)]), new AbortController().signal);
+  expect(metadata).toMatchObject({ id: current.metadata.id, prompt: timed, settings: { prompt: timed } });
 });
 
 for (const width of [1440, 390]) test(`keeps the multi-line draft and layout stable when timing does not fit at ${width}px`, async ({ page }) => {
