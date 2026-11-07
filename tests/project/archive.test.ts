@@ -31,6 +31,20 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('retains intentionally missing references without packaging their deleted media', async () => {
+    const snapshot = structuredClone(project);
+    snapshot.deletedAssetIds = [sourceId, sceneId];
+    snapshot.interstitials[0].imageReferences = [{ assetId: sourceId, name: 'Deleted reference' }];
+    const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
+    expect(restored.assets).toHaveLength(1);
+    expect(restored.assets[0].id).toBe(restored.project.subtitle!.assetId);
+    expect(restored.project.deletedAssetIds).toContain(restored.project.source.assetId);
+    expect(restored.project.deletedAssetIds).toContain(restored.project.interstitials[1].result!.assetId);
+    expect(restored.project.interstitials[0].imageReferences![0]).toEqual({ assetId: restored.project.source.assetId, name: 'Deleted reference' });
+    expect(restored.project.deletedAssetIds).not.toContain(sourceId);
+    expect(assetIds(restored.project)).toEqual([restored.project.subtitle!.assetId]);
+    await expect(packProject(restored.project, restored.assets, signal(), progress)).resolves.toBeInstanceOf(Blob);
+  });
   it.each([undefined, 0, Number.MAX_SAFE_INTEGER])('preserves the seed setting (%s), submitted seed and template settings', async seed => {
     const snapshot = structuredClone(project), item = snapshot.interstitials[0];
     item.seed = seed; item.requestSeed = 42; item.generationSettings = interstitialSettings(item);

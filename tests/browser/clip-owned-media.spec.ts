@@ -16,6 +16,7 @@ for(const width of [1440,390])test(`timeline image generation owns its recipe an
   await page.locator('.story-scroll').click({button:'right',position:{x:12,y:12}});
   await page.getByRole('menuitem',{name:'Add image',exact:true}).click();
   await expect(page.locator('.story-clip')).toHaveCount(2);await expect(page.getByLabel('Generation prompt',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Image duration',{exact:true})).toHaveValue('1');
   await page.getByLabel('Generation prompt',{exact:true}).fill('The saved render prompt');
   const geometry=()=>page.locator('.clip-inspector').evaluate(el=>{const top=el.getBoundingClientRect().top;return ['.inspector-output','.clip-generation-editor textarea','.asset-generate-actions','.asset-generation-feedback'].map(q=>{const r=el.querySelector(q)!.getBoundingClientRect();return [Math.round(r.top-top),Math.round(r.height)];});});
   const before=await geometry();await page.getByRole('button',{name:'Generate image',exact:true}).click();await expect.poll(()=>submissions).toBe(1);
@@ -24,6 +25,7 @@ for(const width of [1440,390])test(`timeline image generation owns its recipe an
   await expect.poll(async()=> (await readProject(page)).clipGenerations[0].phase).toBe('ready');
   expect(await geometry()).toEqual(before);await expect(await showGenerationInfo(page)).toContainText('The saved render prompt');
   const current=await readProject(page),generated=current.storyFlow.nodes.find((n:any)=>n.generationId),assetId=generated.source.assetId;
+  expect(generated.source.outFrame-generated.source.inFrame).toBe(24);
   expect(current.library.find((a:any)=>a.assetId===assetId).generation.settings.prompt).toBe('The saved render prompt');
   await page.getByRole('button',{name:'Duplicate clip',exact:true}).click();
   const duplicated=await readProject(page),copies=duplicated.storyFlow.nodes.filter((n:any)=>n.generationId);

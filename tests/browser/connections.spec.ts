@@ -13,6 +13,18 @@ async function drag(page:Page,from:string,to:string|{x:number;y:number},cancel=f
   await page.mouse.move(box!.x+box!.width/2,box!.y+box!.height/2);await page.mouse.down();await page.mouse.move(target.x,target.y,{steps:8});
   if(cancel)await page.keyboard.press('Escape');await page.mouse.up();
 }
+for (const width of [1440, 390]) test(`adjacent short clips keep straight wires when zoomed out at ${width}px`, async ({page}) => {
+  await page.setViewportSize({width,height:1000});
+  await open(page);
+  for (let step=0;step<8;step++) await page.getByRole('button',{name:'Zoom out story',exact:true}).click();
+  const links = await page.locator('.story-edge-line').evaluateAll(paths => paths.map(element => {
+    const path=element as SVGPathElement,length=path.getTotalLength(),start=path.getPointAtLength(0),end=path.getPointAtLength(length);
+    return {length,direct:Math.hypot(end.x-start.x,end.y-start.y),backward:end.x<start.x,height:path.getBBox().height};
+  }));
+  expect(links.some(link=>link.backward)).toBe(true);
+  for (const link of links) { expect(link.length).toBeCloseTo(link.direct,2); expect(link.height).toBeLessThan(.01); }
+  await page.screenshot({path:`test-results/direct-connections-${width}.png`});
+});
 test('sockets detach, connect backwards, reconnect, and cancel while retaining the connection fade',async({page})=>{
   const project=await open(page),[first,middle,last]=project.storyFlow.nodes;
   const input=(id:string)=>`[data-node-id="${id}"] .story-port.input`,output=(id:string)=>`[data-node-id="${id}"] .story-port.output`;

@@ -297,6 +297,8 @@ export class ProjectController {
   }
   private save(project: Project, record = true) {
     project = this.normalizeContent(project);
+    const deletionChanged = JSON.stringify(project.deletedAssetIds ?? []) !== JSON.stringify(this.state.project?.deletedAssetIds ?? []);
+    assets.setDeleted(project.deletedAssetIds);
     this.interstitials.setDefaultLora(projectLoraAddress(project.loras, H3_MODEL_ID), projectLoraStrength(project.loras, H3_MODEL_ID));
     for (const generation of project.clipGenerations ?? []) this.generationStates.set(generation.id, generation);
     if(!record)this.history.retainGeneratedMedia(project.library!.filter(asset=>asset.generation&&!this.state.project?.library?.some(old=>old.assetId===asset.assetId)));
@@ -306,6 +308,16 @@ export class ProjectController {
     this.currentContent = content;
     // Publish runtime progress even when it does not need to be saved.
     this.update({ project, dirty: content !== this.savedContent, undoLabel: this.history.undoLabel, redoLabel: this.history.redoLabel });
+    if (deletionChanged && (project.deletedAssetIds?.includes(this.state.source?.assetId ?? '')
+      || (project.source.assetId && !project.deletedAssetIds?.includes(project.source.assetId) && this.state.source?.assetId !== project.source.assetId))) {
+      const snapshot = project;
+      const isCurrent = () => this.state.project?.id === snapshot.id
+        && this.state.project.source.assetId === snapshot.source.assetId
+        && JSON.stringify(this.state.project.deletedAssetIds) === JSON.stringify(snapshot.deletedAssetIds);
+      void this.openSource(snapshot).then(source => {
+        if (isCurrent()) this.update({ source });
+      }).catch(error => { if (isCurrent()) this.update({ error: storageError(error) }); });
+    }
     const browserContent = projectContent(project, 'browser');
     if (browserContent === this.queuedContent) return;
     this.queuedContent = browserContent;
@@ -357,6 +369,7 @@ export class ProjectController {
   private async activate(project: Project, signal: AbortSignal, pendingAssets: Asset[] = [], savedProjectId: string | null = null, workingId = this.draftId, normalizeSource = false) {
     project = migrateClipMedia(project);
     signal.throwIfAborted();
+    assets.setDeleted(project.deletedAssetIds);
     this.storyDuration = 0;
     project = { ...project, id: workingId, saved: false, crossfadeFrames: project.crossfadeFrames ?? savedCrossfadeFrames(),storyFlow:project.storyFlow?migrateFades(project.storyFlow):undefined };
     const renamedClips = new Map<string, { before: string; after: string }>();
@@ -390,10 +403,10 @@ export class ProjectController {
       try { this.storyDuration = (await media.inspect()).duration; signal.throwIfAborted(); }
       finally { media.dispose(); }
     }
-    const subtitle = project.subtitle ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
+    const subtitle = project.subtitle && !project.deletedAssetIds?.includes(project.subtitle.assetId) ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
     // Restore retained renders before publishing the timeline, including failed/cancelled retries.
     await Promise.all([...new Set([...project.storyFlow?.nodes.flatMap(n=>n.source?[n.source.assetId]:[])??[],...project.storyFlow?.templates.flatMap(t=>t.nodes.flatMap(n=>n.source?[n.source.assetId]:[]))??[],...project.interstitials.flatMap(item => [item.previousResult?.assetId, item.previousResult?.fullAssetId, item.result?.assetId, item.result?.fullAssetId]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
-      .filter((id): id is string => !!id))].map(id => assets.open(id)));
+      .filter((id): id is string => !!id && !project.deletedAssetIds?.includes(id)))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
     this.queuedContent = projectContent(project, 'browser');
@@ -415,6 +428,7 @@ export class ProjectController {
     this.save(restored, false);
   }
   private async prepareSource(project: Project, pendingAssets: Asset[], signal: AbortSignal, normalize = false) {
+    if (project.source.assetId && project.deletedAssetIds?.includes(project.source.assetId)) return { project, pendingAssets };
     if(project.storyFlow&&!project.source.assetId&&!project.source.url)return {project,pendingAssets};
     const previousSourceId = project.source.assetId;
     let original = pendingAssets.find(asset => asset.id === project.source.assetId);
@@ -439,7 +453,7 @@ export class ProjectController {
     let restoredOriginal = false;
     // Deliberate import conversions remain working copies when reopening, even after the preference changes.
     const normalized = project.library?.some(item => item.assetId === previousSourceId && item.normalizedFps !== undefined);
-    if (!normalize && !normalized && project.source.originalAssetId && project.source.originalAssetId !== original.id) {
+    if (!normalize && !normalized && project.source.originalAssetId && !project.deletedAssetIds?.includes(project.source.originalAssetId) && project.source.originalAssetId !== original.id) {
       const retained = pendingAssets.find(asset => asset.id === project.source.originalAssetId) ?? await readAsset(project.source.originalAssetId);
       const playable = retained && await canPlaySourceVideo(retained.blob, signal).catch(() => { signal.throwIfAborted(); return false; });
       if (retained && playable) { original = retained; restoredOriginal = true; }
@@ -466,7 +480,7 @@ export class ProjectController {
   private async prepareGenerated(project: Project, pendingAssets: Asset[], signal: AbortSignal) {
     const generated = [...new Set([...(project.library ?? []).filter(item => item.kind === 'generated').map(item => item.assetId), ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId]),
       ...projectFlows(project).flatMap(flow => flow.scenes.filter(scene => !scene.draft).map(scene => scene.clip.assetId))])]
-      .filter((id): id is string => !!id && id !== project.source.assetId && id !== project.source.originalAssetId);
+      .filter((id): id is string => !!id && !project.deletedAssetIds?.includes(id) && id !== project.source.assetId && id !== project.source.originalAssetId);
     if (!generated.length) return;
     const get = async (id: string) => pendingAssets.find(asset => asset.id === id) ?? await readAsset(id);
     // The canvas samples each asset's timestamps and scales it to the source
@@ -481,7 +495,7 @@ export class ProjectController {
   }
   private async prepareGraphSources(project:Project,pendingAssets:Asset[],signal:AbortSignal){
     let graph=project.storyFlow;if(!graph)return {project,pendingAssets};
-    const ids=[...new Set(graph.nodes.flatMap(node=>node.source && !node.source.kind?[node.source.assetId]:[]))].filter(id => id !== project.source.assetId);
+    const ids=[...new Set(graph.nodes.flatMap(node=>node.source && !node.source.kind?[node.source.assetId]:[]))].filter(id => id !== project.source.assetId && !project.deletedAssetIds?.includes(id));
     for(const [index,id] of ids.entries()){
       signal.throwIfAborted();const original=pendingAssets.find(asset=>asset.id===id)??await readAsset(id);if(!original)throw new Error('An imported video is missing.');
       this.update({message:`Checking video ${index+1} of ${ids.length}`,progress:index/ids.length});
@@ -499,8 +513,11 @@ export class ProjectController {
   }
   private async openSource(project:Project):Promise<MediaSource|null>{
     if(!project.source.assetId)return null;
-    const {asset,url}=await assets.open(project.source.assetId);
-    return {id:project.id,name:project.source.name,url,assetId:asset.id,file:new File([asset.blob],project.source.name,{type:asset.blob.type}),
+    const fallback = project.deletedAssetIds?.includes(project.source.assetId) ? project.library?.find(asset => !project.deletedAssetIds?.includes(asset.assetId)) : undefined;
+    if (project.deletedAssetIds?.includes(project.source.assetId) && !fallback) return null;
+    const {asset,url}=await assets.open(fallback?.assetId ?? project.source.assetId);
+    const name = fallback?.name ?? project.source.name;
+    return {id:project.id,name,url,assetId:asset.id,file:new File([asset.blob],name,{type:asset.blob.type}),
       ...(asset.blob.type.startsWith('audio/') ? {kind:'audio' as const} : {}),
       ...(asset.blob.type.startsWith('image/') || project.storyFlow?.nodes.some(n => n.source?.assetId === asset.id && n.source.kind === 'image') ? { kind: 'image', duration: DEFAULT_IMAGE_DURATION } : {})};
   }
@@ -665,7 +682,8 @@ export class ProjectController {
     await this.task(direction === 'undo' ? 'Undoing edit' : 'Redoing edit', async signal => {
       const target = this.history.target(direction), project = this.state.project;
       if (!target || !project) return;
-      const subtitle = target.subtitle ? { name: target.subtitle.name, url: (await assets.open(target.subtitle.assetId)).url } : null;
+      assets.setDeleted(target.deletedAssetIds);
+      const subtitle = target.subtitle && !target.deletedAssetIds?.includes(target.subtitle.assetId) ? { name: target.subtitle.name, url: (await assets.open(target.subtitle.assetId)).url } : null;
       signal.throwIfAborted();
       let restored = false;
       this.switching = true;
@@ -677,7 +695,7 @@ export class ProjectController {
       } finally {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
-          ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, storyFlow: target.storyFlow, library: target.library, libraryFolders: target.libraryFolders,
+          ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, storyFlow: target.storyFlow, library: target.library, libraryFolders: target.libraryFolders, deletedAssetIds: target.deletedAssetIds,
             loras: target.loras, clipGenerations: target.clipGenerations?.map(g => {
               const cached=this.generationStates.get(g.id),versions=[...new Map([...cached?.versions??[],...g.versions].map(v=>[v.assetId,v])).values()].filter(v=>target.library?.some(a=>a.assetId===v.assetId));
               const pinned=target.storyFlow?.nodes.find(n=>n.generationId===g.id)?.source?.assetId;
@@ -723,7 +741,7 @@ export class ProjectController {
     this.update({ busy: true, message, progress: null, error: null });
     try { return await work(operation.signal); }
     catch (error) { if (!operation.signal.aborted) this.update({ error: storageError(error) }); }
-    finally { this.operation = null; this.update({ busy: false, message: '', progress: null }); }
+    finally { assets.setDeleted(this.state.project?.deletedAssetIds); this.operation = null; this.update({ busy: false, message: '', progress: null }); }
   }
   cancel() { this.operation?.abort(); }
   async closeProject(discardChanges = false) {
@@ -801,7 +819,7 @@ export class ProjectController {
       if (fileName) snapshot.name = fileName;
       signal.throwIfAborted();
       if (!snapshot.source.assetId&&!snapshot.storyFlow) throw new Error('Wait for the source video to finish preparing.');
-      if (snapshot.interstitials.some(item => item.result && (!item.result.assetId || item.phase !== 'ready'))) throw new Error('A video result has not finished loading. Finish loading or retry the video before exporting.');
+      if (snapshot.interstitials.some(item => item.result && (!item.result.assetId || item.phase !== 'ready' && !snapshot.deletedAssetIds?.includes(item.result.assetId)))) throw new Error('A video result has not finished loading. Finish loading or retry the video before exporting.');
       const stored: Asset[] = [];
       for (const id of assetIds(snapshot)) {
         const asset = await readAsset(id); signal.throwIfAborted();
@@ -823,21 +841,24 @@ export class ProjectController {
     const imported = await unpackProject(file, signal, (message, progress) => this.update({ message, progress }));
     this.update({ message: 'Checking project media', progress: null });
     const byId = new Map(imported.assets.map(asset => [asset.id, asset]));
-    const source = imported.project.source.assetId?await this.validateVideo(byId.get(imported.project.source.assetId)!.blob, signal):undefined;
+    const deleted = new Set(imported.project.deletedAssetIds);
+    const source = imported.project.source.assetId && !deleted.has(imported.project.source.assetId)?await this.validateVideo(byId.get(imported.project.source.assetId)!.blob, signal):undefined;
       const clipInfo = new Map<string,MediaInfo>(source?[[imported.project.source.assetId!, source]]:[]);
       for (const scene of projectFlows(imported.project).flatMap(flow => flow.scenes)) {
+        if (deleted.has(scene.clip.assetId)) continue;
         let info = clipInfo.get(scene.clip.assetId);
         if (!info) { info = await this.validateVideo(byId.get(scene.clip.assetId)!.blob, signal); clipInfo.set(scene.clip.assetId, info); }
         if (scene.clip.outFrame / TIMELINE_FPS > info.duration + 1 / info.fps) throw new Error('A scene clip extends beyond its media.');
       }
     for(const node of [...imported.project.storyFlow?.nodes??[],...imported.project.storyFlow?.templates.flatMap(t=>t.nodes)??[]]){
-      if(!node.source)continue;
+      if(!node.source || deleted.has(node.source.assetId))continue;
       if(node.source.kind==='image'){await inspectAsset(byId.get(node.source.assetId)!.blob,'image');signal.throwIfAborted();continue;}
       let info=clipInfo.get(node.source.assetId);
       if(!info){info=await this.validateVideo(byId.get(node.source.assetId)!.blob,signal);clipInfo.set(node.source.assetId,info);}
       if(node.source.outFrame/TIMELINE_FPS>info.duration+1/info.fps)throw new Error('A story clip extends beyond its source media.');
     }
     for(const item of imported.project.library??[]){
+      if (deleted.has(item.assetId)) continue;
       if(item.kind==='image'||item.kind==='audio') { await inspectAsset(byId.get(item.assetId)!.blob,item.kind); continue; }
       let info=clipInfo.get(item.assetId);
       if(!info){info=await this.validateVideo(byId.get(item.assetId)!.blob,signal);clipInfo.set(item.assetId,info);}
@@ -847,12 +868,12 @@ export class ProjectController {
     for (const item of imported.project.interstitials) {
       if (!imported.project.storyFlow&&source&&item.time > source.duration + Math.max(1 / source.fps, 1 / TIMELINE_FPS)) throw new Error('A video anchor lies outside the source video.');
       for (const result of [item.result, item.previousResult]) {
-        if (!result) continue;
+        if (!result || deleted.has(result.assetId!)) continue;
         const info = await this.validateVideo(byId.get(result.assetId!)!.blob, signal);
         if (result.start + result.duration > info.duration + 1 / info.fps) throw new Error('A video asset is shorter than its saved scene boundaries.');
       }
     }
-    if (imported.project.subtitle) {
+    if (imported.project.subtitle && !deleted.has(imported.project.subtitle.assetId)) {
       const blob = byId.get(imported.project.subtitle.assetId)!.blob;
       if (blob.size > 8 * 1024 ** 2 || !(await blob.text()).replace(/^\uFEFF/, '').startsWith('WEBVTT')) throw new Error('The project subtitle asset is invalid.');
     }

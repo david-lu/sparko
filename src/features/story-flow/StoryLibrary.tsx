@@ -8,7 +8,7 @@ import { LIBRARY_MOVE_TYPE, readLibraryMove, showLibraryDragImage, startLibraryD
 import './library.css';
 import ModalBackdrop from '../../shared/ModalBackdrop';
 import { assetUsage } from '../project/assetUsage';
-import { planAssetDeletion } from '../project/assetDeletion';
+import { applyAssetDeletion, planAssetDeletion } from '../project/assetDeletion';
 import AssetThumbnail from '../project/AssetThumbnail';
 import LibraryContextMenu from './LibraryContextMenu';
 import LibraryFolderDialog from './LibraryFolderDialog';
@@ -48,16 +48,15 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
     setMenu(null);
   };
   const remove = async () => {
-    if (!deleting || deleting.usages.length || removing) return;
+    if (!deleting || removing) return;
     setRemoving(true); setDeleteError('');
     try {
       const current = editor.projects.getSnapshot().project;
       if (!current || current.id !== deleting.projectId) return;
-      // Cancellation can race with completion. Include any newly saved versions and recheck uses.
+      // Include any newly saved versions in the same deletion transaction.
       const latest = planAssetDeletion(current, deleting.targets);
-      if (latest.usages.length) throw new Error('A selected asset is now in use. Close this dialog and review its uses before deleting.');
       editor.projects.endHistoryGroup();
-      editor.projects.editAssets(p => ({ ...p, library: p.library?.filter(a => !latest.assetIds.has(a.assetId)), clipGenerations: p.clipGenerations?.map(g=>({...g,versions:g.versions.filter(v=>!latest.assetIds.has(v.assetId)),selectedAssetId:latest.assetIds.has(g.selectedAssetId??'')?undefined:g.selectedAssetId})) }));
+      editor.projects.editAssets(p => applyAssetDeletion(p, latest));
       editor.projects.endHistoryGroup();
       clearSelection(); setDeleting(null);
       setMessage(deleting.targets.length === 1 ? 'Asset deleted. Undo restores it.' : `${deleting.targets.length} assets deleted. Undo restores them.`);
@@ -298,9 +297,9 @@ export default function StoryLibrary({ editor }: { editor: StoryEditor }) {
       restoreFocus={() => { const trigger = folderTrigger.current?.isConnected ? folderTrigger.current : input.current?.closest<HTMLElement>('.asset-library'); trigger?.focus({ preventScroll: true }); }}/>}
     {deleting && <ModalBackdrop labelledBy="delete-asset-title" onCancel={() => { if (!removing) setDeleting(null); }} restoreFocus={() => input.current?.closest<HTMLElement>('.asset-library')?.focus({ preventScroll: true })}><div className="project-card asset-delete-dialog"><h2 id="delete-asset-title">Delete {deleting.targets.length > 1 ? `${deleting.targets.length} assets` : deleting.targets[0].name}?</h2>
       {deleting.targets.length > 1 && <ul className="asset-delete-targets" aria-label="Assets to delete">{deleting.targets.map(target => <li key={`${target.type}:${target.id}`}>{target.name}</li>)}</ul>}
-      {deleting.usages.length ? <><p>{deleting.targets.length > 1 ? 'Some selected assets are being used.' : 'This asset is being used.'} Remove or replace these uses before deleting:</p><ul>{deleting.usages.map((use, i) => <li key={i}><strong>{use.owner}</strong> — {use.role}</li>)}</ul></> : <p>This removes {deleting.targets.length > 1 ? 'the selected assets' : 'the asset'} from this project. Undo can restore {deleting.targets.length > 1 ? 'them' : 'it'}.</p>}
+      {deleting.usages.length ? <><p>Deleting will leave missing media in these remaining uses. You can replace the missing references or undo the deletion.</p><ul>{deleting.usages.map((use, i) => <li key={i}><strong>{use.owner}</strong> — {use.role}</li>)}</ul></> : <p>This removes {deleting.targets.length > 1 ? 'the selected assets' : 'the asset'} from this project. Undo can restore {deleting.targets.length > 1 ? 'them' : 'it'}.</p>}
       <div className="library-feedback" role="status">{deleteError}</div>
-      <div className="close-project-actions"><button className="button" autoFocus disabled={removing} onClick={() => setDeleting(null)}>{deleting.usages.length ? deleting.targets.length > 1 ? 'Keep assets' : 'Keep asset' : 'Cancel'}</button><button className="button danger" style={{ minWidth: 110 }} disabled={!!deleting.usages.length || removing} onClick={() => void remove()}>{removing ? 'Deleting…' : deleting.targets.length > 1 ? 'Delete assets' : 'Delete asset'}</button></div>
+      <div className="close-project-actions"><button className="button" autoFocus disabled={removing} onClick={() => setDeleting(null)}>Cancel</button><button className="button danger" style={{ minWidth: 110 }} disabled={removing} onClick={() => void remove()}>{removing ? 'Deleting…' : deleting.targets.length > 1 ? 'Delete assets' : 'Delete asset'}</button></div>
     </div></ModalBackdrop>}
   </section>;
 }

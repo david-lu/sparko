@@ -1,5 +1,6 @@
 import { newAssetGeneration, generationBusy, type AssetGeneration, type MediaKind } from '../../../shared/asset-generation';
 import { assetPlacement } from '../project/migrateClipMedia';
+import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { playableResult, type Interstitial } from '../../../shared/interstitials';
 import type { ProjectController } from '../project/ProjectController';
@@ -123,7 +124,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     if(kind==='video'){add('simple',edgeId,placement,fromId);return;}
     const generation=newAssetGeneration(kind,undefined,project?.loras);
     const node:StoryNode={id:freshId(),name:generation.name,kind:'source',mediaKind:kind,generationId:generation.id,volume:1,
-      duration:kind==='image'?4:generation.settings.duration??4,loopCount:0,x:placement?.x??40,y:placement?.y??Math.max(90,...graph.nodes.map(n=>n.y))+145};
+      duration:kind==='image'?DEFAULT_IMAGE_DURATION:generation.settings.duration??4,loopCount:0,x:placement?.x??40,y:placement?.y??Math.max(90,...graph.nodes.map(n=>n.y))+145};
     const connection=graph.edges.find(e=>e.id===edgeId),nodes=[...graph.nodes,node];
     let next={...graph,entryId:graph.entryId||node.id,nodes,edges:graph.edges.filter(e=>e.id!==edgeId)};
     if(connection)next.edges.push({...connection,to:node.id,points:undefined},edge(node.id,connection.to));

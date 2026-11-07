@@ -13,11 +13,14 @@ import GeneratedVideoSeed from './GeneratedVideoSeed';
 import { assetUsage } from './assetUsage';
 import ImageDimensions from './ImageDimensions';
 
-export function AssetPreview({ id, kind, name, onPlay }: { id?: string; kind: string; name: string; onPlay: () => void }) {
+export function AssetPreview({ id, kind, name, onPlay, showErrorDetails = false }: { id?: string; kind: string; name: string; onPlay: () => void; showErrorDetails?: boolean }) {
   const [url, setUrl] = useState<string>(), [error, setError] = useState('');
   useEffect(() => { let active = true; setUrl(undefined); setError(''); if (id) void assets.open(id).then(result => { if (active) setUrl(result.url); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [id]);
   const failed = () => setError(`The ${kind} file cannot be played or decoded. It may be damaged or unsupported by this browser. Reimport a working file${kind === 'image' ? ' (PNG, JPEG or WebP)' : ''}, or select another generated version.`);
-  return <div className="asset-preview"><ContentIssues className="asset-preview-issues" label="Preview errors" issues={error ? [{ key: 'preview', title: `${name} is unavailable`, message: error }] : []}/>{url && !error ? kind === 'image' ? <img src={url} alt={name} onError={failed}/> : kind === 'audio' ? <><Music size={28}/><audio src={url} controls aria-label={`Preview ${name}`} onPlay={onPlay} onError={failed}/></> : <video src={url} controls playsInline preload="metadata" aria-label={`Preview ${name}`} onPlay={onPlay} onError={failed}/> : <><Image size={24}/><span>{error ? 'Preview unavailable · click the red icon for details' : id ? 'Loading preview…' : `Your ${kind} will appear here`}</span></>}</div>;
+  return <div className="asset-preview">
+    {!showErrorDetails && <ContentIssues className="asset-preview-issues" label="Preview errors" issues={error ? [{ key: 'preview', title: `${name} is unavailable`, message: error }] : []}/>}
+    {url && !error ? kind === 'image' ? <img src={url} alt={name} onError={failed}/> : kind === 'audio' ? <><Music size={28}/><audio src={url} controls aria-label={`Preview ${name}`} onPlay={onPlay} onError={failed}/></> : <video src={url} controls playsInline preload="metadata" aria-label={`Preview ${name}`} onPlay={onPlay} onError={failed}/> : <><Image size={24}/><span role={showErrorDetails ? 'status' : undefined}>{error ? showErrorDetails ? error : 'Preview unavailable · click the red icon for details' : id ? 'Loading preview…' : `Your ${kind} will appear here`}</span></>}
+  </div>;
 }
 export function AssetSelectionInspector({ editor }: { editor: StoryEditor }) {
   const project = editor.projects.getSnapshot().project;

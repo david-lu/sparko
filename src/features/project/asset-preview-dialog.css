@@ -1,0 +1,5 @@
+.asset-preview-dialog{width:min(100%,800px);display:flex;flex-direction:column;gap:14px}
+.asset-preview-dialog h2{margin:0;font-size:16px;overflow-wrap:anywhere}
+.asset-preview-dialog>.asset-preview{height:min(55dvh,450px);min-height:140px;flex-shrink:0}
+.asset-preview-dialog-actions{display:flex;justify-content:flex-end}
+.asset-preview-button{flex-shrink:0}

@@ -21,6 +21,15 @@ export function clipTrimRange(node: StoryNode, items: Interstitial[], sourceDura
 export function trimClip(node: StoryNode, items: Interstitial[], side: TrimSide, frame: number, sourceDuration?: number): StoryNode {
   if (!Number.isFinite(frame)) return node;
   const range = clipTrimRange(node, items, sourceDuration);
+  if ((node.source?.kind ?? node.mediaKind) === 'image') {
+    const delta = side === 'start' ? Math.min(range.outFrame - range.inFrame - 1, Math.round(frame) - range.inFrame) : 0;
+    const frames = side === 'start' ? range.outFrame - range.inFrame - delta : Math.max(1, Math.round(frame) - range.inFrame);
+    if (frames === range.outFrame - range.inFrame) return node;
+    // An image has no missing footage before frame zero. Resize its hold while
+    // retaining valid media coordinates and anchoring the opposite canvas edge.
+    return { ...node, x: node.x + delta / TIMELINE_FPS * PIXELS_PER_SECOND, duration: frames / TIMELINE_FPS,
+      ...(node.source ? { source: { ...node.source, outFrame: range.inFrame + frames } } : {}) };
+  }
   const inFrame = side === 'start' ? Math.max(0, Math.min(range.outFrame - 1, Math.round(frame))) : range.inFrame;
   const outFrame = side === 'end' ? Math.max(inFrame + 1, Math.min(range.totalFrames, Math.round(frame))) : range.outFrame;
   if (inFrame === range.inFrame && outFrame === range.outFrame) return node;

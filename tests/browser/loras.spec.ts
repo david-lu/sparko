@@ -197,9 +197,10 @@ for (const width of [1440, 390, 320]) test(`Turbo persists and keeps video contr
   await page.getByLabel('Video prompt', { exact: true }).fill('Sema waves');
   const turbo = page.getByRole('switch', { name: 'Turbo', exact: true });
   await expect(selection(page)).toHaveValue(''); await expect(strength(page)).toHaveCount(0);
-  await expect(turbo).not.toBeChecked(); await turbo.focus(); await turbo.press('Space'); await expect(turbo).toBeChecked();
-  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(turbo).not.toBeChecked();
-  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(turbo).toBeChecked();
+  await expect(turbo).toBeChecked(); await turbo.focus(); await turbo.press('Space'); await expect(turbo).not.toBeChecked();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(turbo).toBeChecked();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(turbo).not.toBeChecked();
+  await turbo.check();
   const controls = () => page.locator('.interstitial-editor').evaluate(el => {
     const top = el.getBoundingClientRect().top;
     return ['.generation-lora select', '.generation-turbo', 'textarea', '.interstitial-resolution', '.interstitial-time-fields', 'button[type=submit]', '.task-status'].map(selector => {

@@ -14,17 +14,20 @@ const zoom=async(page:Page,delta:number,meta=false)=>{
 };
 
 for (const width of [1440, 390]) test(`Turbo default applies to new clips and templates, persists and resets at ${width}px`, async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sparko:default-turbo', 'false'));
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 }); await open(page);
   await addDraft(page, 'Existing clip');
   const turbo = page.getByRole('switch', { name: 'Turbo', exact: true });
+  await expect(turbo).toBeChecked(); await turbo.uncheck();
   await expect(turbo).not.toBeChecked();
   let dialog = await preferences(page);
   const preference = () => dialog.getByRole('switch', { name: 'Enable Turbo by default', exact: true });
-  await expect(preference()).not.toBeChecked();
+  await expect(preference()).toBeChecked();
   const positions = () => dialog.locator('input, select, footer').evaluateAll(elements => elements.map(element => {
     const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
   }));
-  const before = await positions(); await preference().check(); expect(await positions()).toEqual(before);
+  const before = await positions(); await preference().uncheck(); expect(await positions()).toEqual(before);
+  await preference().check(); expect(await positions()).toEqual(before);
   await dialog.screenshot({ path: `test-results/turbo-preferences-${width}.png` });
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(turbo).not.toBeChecked();
@@ -36,14 +39,19 @@ for (const width of [1440, 390]) test(`Turbo default applies to new clips and te
   expect(project.interstitials.filter((item: any) => !['Existing clip', 'Override clip'].includes(item.label)).every((item: any) => item.turbo)).toBe(true);
   await saveAndReopen(page);
   dialog = await preferences(page); await expect(preference()).toBeChecked();
+  await preference().uncheck(); await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await addDraft(page, 'Standard clip'); await expect(turbo).not.toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem('sparko:default-turbo:v2'))).toBe('false');
+  await saveAndReopen(page);
+  dialog = await preferences(page); await expect(preference()).not.toBeChecked();
   await dialog.getByRole('button', { name: 'Reset default', exact: true }).click();
-  await expect(preference()).not.toBeChecked();
+  await expect(preference()).toBeChecked();
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   project = await readProject(page);
-  expect(project.interstitials.filter((item: any) => ['Existing clip', 'Override clip'].includes(item.label)).every((item: any) => item.turbo === false)).toBe(true);
-  expect(project.interstitials.filter((item: any) => !['Existing clip', 'Override clip'].includes(item.label)).every((item: any) => item.turbo)).toBe(true);
-  await addDraft(page, 'Standard clip'); await expect(turbo).not.toBeChecked();
-  expect(await page.evaluate(() => localStorage.getItem('sparko:default-turbo'))).toBe('false');
+  expect(project.interstitials.filter((item: any) => ['Existing clip', 'Override clip', 'Standard clip'].includes(item.label)).every((item: any) => item.turbo === false)).toBe(true);
+  expect(project.interstitials.filter((item: any) => !['Existing clip', 'Override clip', 'Standard clip'].includes(item.label)).every((item: any) => item.turbo)).toBe(true);
+  await addDraft(page, 'Turbo clip'); await expect(turbo).toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem('sparko:default-turbo:v2'))).toBe('true');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
 

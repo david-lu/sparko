@@ -5,6 +5,6 @@ import { assets } from './assets';
 export function useAssetAvailability(ids: (string | undefined)[]) {
   const revision = useSyncExternalStore(assets.subscribe, assets.getSnapshot);
   const key = JSON.stringify([...new Set(ids.filter((id): id is string => !!id))].sort());
-  useEffect(() => { for (const id of JSON.parse(key) as string[]) assets.check(id); }, [key]);
+  useEffect(() => { for (const id of JSON.parse(key) as string[]) assets.check(id); }, [key, revision]);
   return revision;
 }

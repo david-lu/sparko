@@ -5,8 +5,8 @@ import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
 import AssetInput from '../project/AssetInput';
 import type { ProjectController } from '../project/ProjectController';
 
-export default function VideoReferenceSequence({ projects, label, clips, onChange }: {
-  projects: ProjectController; label: string; clips: VideoAssetReference[]; onChange: (clips: VideoAssetReference[]) => void;
+export default function VideoReferenceSequence({ projects, label, clips, onChange, onPreviewPlay }: {
+  projects: ProjectController; label: string; clips: VideoAssetReference[]; onChange: (clips: VideoAssetReference[]) => void; onPreviewPlay?: () => void;
 }) {
   const library = projects.getSnapshot().project?.library ?? [];
   const update = (index: number, patch: Partial<VideoAssetReference>) => onChange(clips.map((clip, i) => i === index ? { ...clip, ...patch } : clip));
@@ -14,7 +14,7 @@ export default function VideoReferenceSequence({ projects, label, clips, onChang
     const next = [...clips]; [next[index], next[index + direction]] = [next[index + direction], next[index]]; onChange(next);
   };
   return <>
-    <AssetInput projects={projects} label={`${label} video`} kinds={['video', 'image']} value={clips.map(clip => ({ assetId: clip.assetId, name: clip.name, kind: clip.kind ?? 'video' }))} onChange={refs => onChange(refs.map(ref => {
+    <AssetInput projects={projects} label={`${label} video`} kinds={['video', 'image']} onPreviewPlay={onPreviewPlay} value={clips.map(clip => ({ assetId: clip.assetId, name: clip.name, kind: clip.kind ?? 'video' }))} onChange={refs => onChange(refs.map(ref => {
       const existing = clips.find(clip => clip.assetId === ref.assetId), media = library.find(asset => asset.assetId === ref.assetId)
         ?? projects.getSnapshot().project?.library?.find(asset => asset.assetId === ref.assetId);
       return existing ?? { assetId: ref.assetId, name: ref.name, ...(ref.kind === 'image' ? { kind: 'image' as const } : {}),

@@ -26,7 +26,7 @@ export default function CallResponsePanel({ value, items, onBack, renderControls
     <div className="interstitial-title"><InterstitialName key={value.flow.interstitial.id} name={value.flow.interstitial.label} onChange={value.onRenameInterstitial} />
       <button className="icon-button small" aria-label={`Remove ${value.flow.interstitial.label}`} onClick={() => value.onRemoveInterstitial()}><Trash2 size={14} /></button>
     </div>
-    <ContinuityBriefEditor value={value} engine={editor.engine} info={editor.info} status={editor.status} />
+    <ContinuityBriefEditor value={value} engine={editor.engine} info={editor.info} status={editor.status} player={editor.player} />
     <fieldset className="response-buttons-editor" aria-label="Question and responses" data-project-edit>
       <legend>Question and responses</legend>
       <p className="hint">Shown together on the video while Idle waits for an answer.</p>

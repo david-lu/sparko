@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 import { newAssetGeneration } from '../../shared/asset-generation';
-import { planAssetDeletion } from '../../src/features/project/assetDeletion';
-import { emptyAnalysis, type Project } from '../../src/features/project/types';
+import { applyAssetDeletion, planAssetDeletion } from '../../src/features/project/assetDeletion';
+import { assetIds, emptyAnalysis, type Project } from '../../src/features/project/types';
+import { collectLibrary } from '../../src/features/project/library';
 
 const project = (): Project => ({ id: 'project', name: 'Project', updatedAt: 0, source: { name: 'Empty' }, subtitle: null,
   analysis: emptyAnalysis(), interstitials: [], library: [{ assetId: 'input', name: 'Input.png', kind: 'image' }] });
@@ -39,4 +40,37 @@ it('deduplicates selections, ignores missing items and includes newly completed 
   generation.versions.push({ assetId: 'finished', name: 'Finished.png', createdAt: 0, settings: generation.settings });
   p.library!.push({ assetId: 'other-version', name: 'Other.png', kind: 'image', generationId: generation.id });
   expect([...planAssetDeletion(p, before.targets).assetIds].sort()).toEqual(['finished', 'input', 'other-version']);
+});
+
+it('excludes dependencies within an entire deleted asset chain, including orphan generation history', () => {
+  const p = project(); p.storyFlow = { version: 1, entryId: '', nodes: [], edges: [], templates: [] };
+  const a = newAssetGeneration('image'), b = newAssetGeneration('image');
+  a.name = 'A'; b.name = 'B';
+  a.settings.references = [{ assetId: 'input', name: 'Input.png', kind: 'image' }];
+  b.settings.references = [{ assetId: 'a', name: 'A.png', kind: 'image' }];
+  for (const [g, id] of [[a, 'a'], [b, 'b']] as const) {
+    g.submitted = structuredClone(g.settings);
+    g.versions = [{ assetId: id, name: `${id}.png`, createdAt: 0, settings: structuredClone(g.settings) }];
+    p.library!.push({ assetId: id, name: `${id}.png`, kind: 'image', generationId: g.id, generation: { provider: 'fal', settings: structuredClone(g.settings), createdAt: 0 } });
+  }
+  p.clipGenerations = [a, b];
+  const plan = planAssetDeletion(p, ['input', 'a', 'b'].map(id => ({ type: 'asset', id })));
+  expect(plan.usages).toEqual([]);
+  const deleted = applyAssetDeletion(p, plan);
+  expect(deleted.clipGenerations).toEqual([]); expect(collectLibrary(deleted)).toEqual([]);
+  expect(assetIds(deleted)).toEqual([]);
+  p.library!.push({ assetId: 'survivor', name: 'Surviving image', kind: 'image', generation: { provider: 'fal', settings: structuredClone(b.settings), createdAt: 0 } });
+  expect(planAssetDeletion(p, plan.targets).usages).toEqual([{ owner: 'Surviving image', role: 'Saved version input' }]);
+});
+
+it('keeps surviving clip references identifiable without re-adding deleted media to the Library', () => {
+  const p = project(), generation = newAssetGeneration('image');
+  generation.settings.references = [{ assetId: 'input', name: 'Input.png', kind: 'image' }];
+  p.clipGenerations = [generation];
+  p.storyFlow = { version: 1, entryId: 'clip', nodes: [{ id: 'clip', kind: 'source', name: 'Image clip', x: 0, y: 0, loopCount: 0, generationId: generation.id, source: { assetId: 'input', kind: 'image', inFrame: 0, outFrame: 24 } }], edges: [], templates: [] };
+  const plan = planAssetDeletion(p, [{ type: 'asset', id: 'input' }]), deleted = applyAssetDeletion(p, plan);
+  expect(plan.usages).toContainEqual({ owner: 'Image clip', role: 'Timeline footage' });
+  expect(deleted.clipGenerations![0].settings.references).toEqual(generation.settings.references);
+  expect(deleted.storyFlow!.nodes[0].source!.assetId).toBe('input');
+  expect(collectLibrary(deleted)).toEqual([]); expect(assetIds(deleted)).toEqual([]);
 });

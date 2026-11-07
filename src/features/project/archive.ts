@@ -67,6 +67,7 @@ const projectSchema = z.object({
   loras: projectLorasSchema.optional(),
   assetAliases: z.record(z.uuid(), z.uuid()).optional(),
   mediaModelVersion: z.literal(1).optional(),
+  deletedAssetIds: z.array(z.uuid()).max(100000).optional(),
   assetGenerations: z.array(assetGenerationSchema).max(1000).optional(),
   clipGenerations: z.array(assetGenerationSchema).max(1000).refine(items => new Set(items.map(g => g.id)).size === items.length, 'Duplicate generations.').optional(),
   library: z.array(z.object({ assetId: z.uuid(), originalAssetId: z.uuid().optional(), normalizedFps: z.number().finite().min(1).max(240).optional(), name: z.string().min(1).max(1000),
@@ -106,6 +107,7 @@ const manifestSchema = z.object({ format: z.literal('sparko-project'), version: 
 type Progress = (message: string, fraction: number) => void;
 
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
+  assets = assets.filter(asset => !project.deletedAssetIds?.includes(asset.id));
   const supplied = new Set(assets.map(asset => asset.id));
   const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
     ...project,
@@ -158,7 +160,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     if (ids.size !== descriptions.length || entries.length !== descriptions.length + 1 || assetIds(project).some(id => !ids.has(id))) throw new Error('The project has missing or duplicate assets.');
     const total = descriptions.reduce((sum, asset) => sum + asset.size, 0);
     if (total > MAX_BYTES) throw new Error('This project exceeds the 8 GB import limit.');
-    const remap = new Map(descriptions.map(asset => [asset.id, crypto.randomUUID()]));
+    const remap = new Map([...descriptions.map(asset => asset.id), ...project.deletedAssetIds ?? []].map(id => [id, crypto.randomUUID()]));
     // MP4 provenance retains its original IDs. Keep every earlier ID mapped directly to the new local asset.
     const assetAliases = Object.fromEntries([...remap, ...Object.entries(project.assetAliases ?? {})
       .filter(([, id]) => remap.has(id)).map(([alias, id]) => [alias, remap.get(id)!])]);
@@ -190,6 +192,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     }
     return { project: {
       ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(), assetAliases,
+      deletedAssetIds: project.deletedAssetIds?.map(id => remap.get(id)!),
       library: project.library?.map(item => ({ ...item, generation:item.generation?.provider==='comfy'?{...item.generation,result:remapResult(item.generation.result),settings:item.generation.settings?remapSettings(item.generation.settings):undefined}:item.generation?{...item.generation,settings:remapAssetSettings(item.generation.settings)}:undefined, assetId: remap.get(item.assetId)!, originalAssetId: item.originalAssetId ? remap.get(item.originalAssetId)! : undefined })),
       assetGenerations:project.assetGenerations?.map(remapGeneration),
       clipGenerations: project.clipGenerations?.map(g => ({ ...g, settings: remapAssetSettings(g.settings), submitted: g.submitted ? remapAssetSettings(g.submitted) : undefined,

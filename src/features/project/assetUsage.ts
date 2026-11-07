@@ -22,9 +22,24 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     for (const side of ['before', 'after'] as const) for (const ref of referenceClips(item.requestReference, side)) add(ref.assetId, owner, `Submitted ${side === 'before' ? 'start' : 'end'} reference`);
   }
   for (const g of project.clipGenerations ?? []) {
+    if (project.storyFlow && !project.storyFlow.nodes.some(n => n.generationId === g.id) && !g.versions.length) continue;
     for (const ref of g.settings.references) add(ref.assetId, g.name, `${g.kind} generation input`);
     for (const ref of g.submitted?.references ?? []) add(ref.assetId, g.name, 'Submitted generation input');
     for (const version of g.versions) for (const ref of version.settings.references) add(ref.assetId, g.name, 'Saved version input');
+  }
+  const recordedOutputs = new Set([
+    ...project.clipGenerations?.flatMap(g => g.versions.map(v => v.assetId)) ?? [],
+    ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId]),
+  ]);
+  for (const asset of project.library ?? []) {
+    if (!asset.generation || recordedOutputs.has(asset.assetId)) continue;
+    if (asset.generation.provider === 'fal') {
+      for (const ref of asset.generation.settings.references) add(ref.assetId, asset.name, 'Saved version input');
+    } else {
+      for (const ref of asset.generation.settings?.imageReferences ?? []) add(ref.assetId, asset.name, 'Saved image input');
+      for (const side of ['start', 'end'] as const) for (const ref of videoAssets(asset.generation.settings ?? {}, side)) add(ref.assetId, asset.name, `Saved ${side} video input`);
+      for (const side of ['before', 'after'] as const) for (const ref of referenceClips(asset.generation.result.reference, side)) add(ref.assetId, asset.name, 'Saved video reference');
+    }
   }
   for (const template of project.storyFlow?.templates ?? []) {
     for(const generation of template.generations??[]){for(const ref of generation.settings.references)add(ref.assetId,template.name,'Template generation input');for(const version of generation.versions){add(version.assetId,template.name,'Template generation version');for(const ref of version.settings.references)add(ref.assetId,template.name,'Template version input');}}

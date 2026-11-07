@@ -3,10 +3,15 @@ export const defaultPinchZoomSensitivity = 3;
 export const minPinchZoomSensitivity = .5;
 export const maxPinchZoomSensitivity = 5;
 
-export const defaultTurboPreference = 'sparko:default-turbo';
-export const defaultTurboEnabled = false;
+// The old key auto-saved the previous off default even without a user choice.
+// Start the enabled default once, then persist subsequent preference changes.
+export const defaultTurboPreference = 'sparko:default-turbo:v2';
+export const defaultTurboEnabled = true;
 export function savedDefaultTurbo(): boolean {
-  try { return localStorage.getItem(defaultTurboPreference) === 'true'; }
+  try {
+    const saved = localStorage.getItem(defaultTurboPreference);
+    return saved === 'true' ? true : saved === 'false' ? false : defaultTurboEnabled;
+  }
   catch { return defaultTurboEnabled; }
 }
 

@@ -21,7 +21,7 @@ async function importImage(page: Page) {
   return png;
 }
 
-test('Library background deselects; deletion identifies clip inputs and unused deletion supports undo', async ({ page }) => {
+test('deleting referenced media shows missing inputs, supports undo and survives project export', async ({ page }) => {
   await openVideo(page); await importImage(page);
   const asset = page.getByRole('button', { name: 'Library asset Character.png', exact: true });
   await expect(page.getByLabel('Asset name', { exact: true })).toHaveValue('Character.png');
@@ -38,14 +38,47 @@ test('Library background deselects; deletion identifies clip inputs and unused d
   await asset.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Delete asset…', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Character scene'); await expect(dialog).toContainText('image input');
-  await expect(dialog.getByRole('button', { name: 'Delete asset', exact: true })).toBeDisabled();
-  await dialog.getByRole('button', { name: 'Keep asset', exact: true }).click();
-  await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await page.getByRole('button', { name: 'Remove Picture 1', exact: true }).click();
-  await asset.click(); await asset.press('Delete');
+  await expect(dialog.getByRole('button', { name: 'Delete asset', exact: true })).toBeEnabled();
   await dialog.getByRole('button', { name: 'Delete asset', exact: true }).click();
   await expect(asset).toHaveCount(0); await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.locator('.story-clip.type-simple .story-clip-title').click();
+  await page.getByRole('button', { name: 'Picture 1 errors', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Picture 1 errors', exact: true })).toContainText('Character.png');
+  await expect(page.getByRole('dialog', { name: 'Picture 1 errors', exact: true })).toContainText('deleted');
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(asset).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Picture 1 errors', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(asset).toHaveCount(0);
+  await saveAndReopen(page);
+  await expect(asset).toHaveCount(0);
+  await page.locator('.story-clip.type-simple .story-clip-title').click();
+  await expect(page.getByRole('button', { name: 'Picture 1 errors', exact: true })).toBeVisible();
+});
+
+for (const width of [1440, 390]) test(`deleted image inputs report their names without moving generation controls at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 }); await falStatus(page); await openVideo(page); await importImage(page); await create(page, 'Image');
+  const asset = page.getByRole('button', { name: 'Library asset Character.png', exact: true });
+  await page.getByLabel('Generation prompt', { exact: true }).fill('A warm portrait');
+  await dragIntoView(page, asset, page.getByRole('group', { name: 'Reference assets', exact: true }));
+  const positions = () => page.locator('.clip-generation-editor').evaluate(el => {
+    const top = el.getBoundingClientRect().top;
+    return ['textarea', 'button[type=submit]', '.asset-generation-feedback'].map(selector => {
+      const r = el.querySelector(selector)!.getBoundingClientRect(); return { top: r.top - top, height: r.height };
+    });
+  });
+  const before = await positions();
+  await asset.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Delete asset…', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete asset', exact: true }).click();
+  await page.getByRole('button', { name: 'Select Untitled image', exact: true }).press('Enter');
+  await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeDisabled();
+  expect(await positions()).toEqual(before);
+  await page.getByRole('button', { name: 'Generation errors', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Generation errors', exact: true })).toContainText('Character.png');
+  await expect(page.getByRole('dialog', { name: 'Generation errors', exact: true })).toContainText('deleted');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeEnabled();
+  expect(await positions()).toEqual(before);
 });
 
 for (const width of [1440, 390]) test(`image generation keeps Inspector controls stable at ${width}px and saves its submitted inputs`, async ({ page }) => {
