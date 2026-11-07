@@ -6,9 +6,11 @@ import type { MediaEngine } from '../../media/MediaEngine';
 import { request } from '../../shared/api';
 import { assets } from '../project/assets';
 import { referenceImagePreviews } from './image-references';
+import { capturePromptFrame, type PromptFramePlayer } from '../player/promptFrame';
 
 export async function enhancePrompt(item: Pick<Interstitial, 'prompt' | 'time' | 'duration' | 'continuity' | 'dialogue' | 'imageReferences' | 'startImageIndex' | 'endImageIndex' | 'loraInstructions'>, kind: PromptClipKind, reference: GenerationReference | undefined,
-  engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, target?: 'continuity') {
+  engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, { target, player }: { target?: 'continuity'; player?: PromptFramePlayer } = {}) {
+  const currentFrame = await capturePromptFrame(player, signal);
   const referenceFrames: string[] = [];
   if (reference) {
     if (reference.before) {
@@ -27,7 +29,8 @@ export async function enhancePrompt(item: Pick<Interstitial, 'prompt' | 'time' |
   }
   signal.throwIfAborted();
   const imageReferences = await referenceImagePreviews(item.imageReferences, signal);
+  signal.throwIfAborted();
   return request<PromptEnhancement>('/api/interstitials/enhance-prompt', { method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, duration: item.duration, kind, target, referenceFrames, imageReferences,
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, duration: item.duration, kind, target, currentFrame, referenceFrames, imageReferences,
       imageGuides: { start: item.startImageIndex, end: item.endImageIndex }, continuity: item.continuity, dialogue: item.dialogue, loraInstructions: item.loraInstructions }) });
 }

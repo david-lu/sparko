@@ -403,7 +403,7 @@ export default function App() {
         {playerElement}
       </section><Activity mode={preview ? 'hidden' : 'visible'}><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Workspace panels">
         {storyGraph?<WorkspacePanels workspace={workspace} inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} create={<StoryAddClips editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={resetWorkspace}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
-        <InterstitialPanel projects={projects} items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
+        <InterstitialPanel player={controller} projects={projects} items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
           callResponse={panelTimeline} groups={groupTimelines}
           renderClipControls={clipControls}
           connectedIds={groupTimelines.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []))}

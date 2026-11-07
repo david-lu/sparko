@@ -29,6 +29,7 @@ import type { ProjectController } from '../project/ProjectController';
 import { showErrorToast } from '../../shared/toasts';
 import AssetGenerationInfo from '../project/AssetGenerationInfo';
 import GeneratedVideoSeed from '../project/GeneratedVideoSeed';
+import type { PromptFramePlayer } from '../player/promptFrame';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -36,8 +37,9 @@ export type InterstitialEditorProps = {
   resultDetails?: ReactNode;
   compact?: boolean; generationSettings?: ReactNode;
   projects?: ProjectController;
+  player?: PromptFramePlayer;
 };
-export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, generationSettings, projects }: InterstitialEditorProps) {
+export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, generationSettings, projects, player }: InterstitialEditorProps) {
   const promptId = useId(), resolutionId = useId();
   const dependency = controller.dependency(selected.id);
   useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId)]);
@@ -57,7 +59,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     const operation = new AbortController(); enhancement.current = operation;
     setEnhancing(true);
     try {
-      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal);
+      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal, { player });
       const current = controller.getSnapshot().items.find(item => item.id === selected.id);
       if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt && current.lora === selected.lora
         && generationLoraInstructions(current, projects?.getSnapshot().project?.loras, H3_MODEL_ID) === loraInstructions

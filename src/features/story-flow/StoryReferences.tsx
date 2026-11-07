@@ -10,9 +10,9 @@ import VideoReferenceSequence from './VideoReferenceSequence';
 import { IMAGE_REFERENCE } from '../../../shared/image-references';
 import ContentIssues, { type ContentIssue } from '../../shared/ContentIssues';
 
-export default function StoryReferences({ item, loop, labels, onChange, projects, issues = [] }: {
+export default function StoryReferences({ item, loop, labels, onChange, projects, issues = [], onPreviewPlay }: {
   item: Interstitial; loop: boolean; labels: { start: string; end: string }; onChange: (settings: Partial<InterstitialSettings>) => void; projects: ProjectController;
-  issues?: ContentIssue[];
+  issues?: ContentIssue[]; onPreviewPlay?: () => void;
 }) {
   return <div className="inspector-references">
     {(loop ? ['start'] as const : ['start', 'end'] as const).map(side => {
@@ -34,7 +34,7 @@ export default function StoryReferences({ item, loop, labels, onChange, projects
           </div>
         </div>
         {type === 'video' && projects && <label className="reference-video-toggle"><input type="checkbox" aria-label={`Use arbitrary ${label.toLowerCase()} video`} checked={!!arbitrary} onChange={e => onChange({ [arbitraryField]: e.target.checked })}/>Choose other videos / images <small>{arbitrary ? 'Library sequence' : side === 'start' ? 'Previous clips' : 'Next clips'}</small></label>}
-        {type === 'video' && arbitrary && <VideoReferenceSequence key={`${item.id}:${side}:video`} projects={projects} label={label} clips={clips} onChange={next => onChange({
+        {type === 'video' && arbitrary && <VideoReferenceSequence key={`${item.id}:${side}:video`} projects={projects} label={label} clips={clips} onPreviewPlay={onPreviewPlay} onChange={next => onChange({
           [sequenceField]: next, [assetField]: side === 'start' ? next.at(-1) : next[0],
         })}/>}
         {type === 'image' && <AssetInput key={`${item.id}:${side}:image`} projects={projects} kinds={['image']} multiple={false} label={`${label} reference image`} imageFormats={['image/png', 'image/jpeg', 'image/webp']}

@@ -4,8 +4,10 @@ import type { LibraryAsset, Project } from './types';
 /** The library owns media independently of its instances on the timeline. */
 export function collectLibrary(project: Project, sourceDuration?: number): LibraryAsset[] {
   // Older working copies may still contain subtitles in the library.
-  const entries = new Map((project.library ?? []).filter(item => ['video', 'generated', 'image', 'audio'].includes(item.kind)).map(item => [item.assetId, item]));
+  const deleted = new Set(project.deletedAssetIds);
+  const entries = new Map((project.library ?? []).filter(item => !deleted.has(item.assetId) && ['video', 'generated', 'image', 'audio'].includes(item.kind)).map(item => [item.assetId, item]));
   const add = (item: LibraryAsset) => {
+    if (deleted.has(item.assetId)) return;
     const existing = entries.get(item.assetId);
     entries.set(item.assetId, existing ? { ...item, ...existing, duration: existing.duration ?? item.duration } : item);
   };

@@ -36,7 +36,7 @@ for (const width of [1440, 390]) test(`still image import, duration, playback an
   expect(await workspaceBounds(page)).toEqual(idle);
   await page.locator('.story-clip-title').click();
   const duration = page.getByLabel('Image duration', { exact: true });
-  await expect(duration).toHaveValue('4');
+  await expect(duration).toHaveValue('1');
   await duration.fill('0.001');
   await expect.poll(async () => (await readProject(page)).storyFlow.nodes[0].source.outFrame).toBe(1);
   await expect(duration).toHaveValue(String(1 / 24));
@@ -49,6 +49,8 @@ for (const width of [1440, 390]) test(`still image import, duration, playback an
   await duration.fill('1');
   await page.getByRole('slider', { name: 'Trim end of Still.png', exact: true }).press('Home');
   await expect(duration).toHaveValue(String(1 / 24));
+  await page.getByRole('slider', { name: 'Trim end of Still.png', exact: true }).press('ArrowRight');
+  await expect(duration).toHaveValue(String(2 / 24));
   await duration.fill('9.5'); await duration.press('Tab');
   await expect.poll(async () => (await readProject(page)).storyFlow.nodes[0].source.outFrame).toBe(228);
   await expect(page.locator('.story-clip .video-filmstrip img')).toBeVisible();
@@ -88,6 +90,94 @@ for (const width of [1440, 390]) test(`still image import, duration, playback an
   await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles({ name: 'Broken.png', mimeType: 'image/png', buffer: Buffer.from('invalid image') });
   await expect(page.getByRole('alert')).toBeVisible(); await expect(page.locator('.project-status')).toHaveCount(0);
   expect(await workspaceBounds(page)).toEqual(beforeFailure); expect(await readProject(page)).toEqual(projectBeforeFailure);
+  expect(errors).toEqual([]);
+});
+
+for (const width of [1440, 390]) test(`one-frame clips keep usable trim handles and fixed connection circles at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
+  await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles(await imageFile(page));
+  await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Select Still.png', exact: true }).press('Enter');
+  await page.getByRole('slider', { name: 'Trim end of Still.png', exact: true }).press('Home');
+  await fitAll(page);
+  const [video, still] = (await readProject(page)).storyFlow.nodes;
+  expect(still.source.outFrame - still.source.inFrame).toBe(1);
+  const imageClip = page.locator(`[data-node-id="${still.id}"]`), videoClip = page.locator(`[data-node-id="${video.id}"]`);
+  const circleSizes = () => page.locator('.story-port').evaluateAll(elements => elements.map(el => {
+    const bounds = el.getBoundingClientRect(); return { width: bounds.width, height: bounds.height };
+  }));
+  expect(await circleSizes()).toEqual(Array(4).fill({ width: 14, height: 14 }));
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Zoom out story', exact: true }).click();
+  expect(await circleSizes()).toEqual(Array(4).fill({ width: 14, height: 14 }));
+  const input = await imageClip.locator('.story-port.input').boundingBox(), output = await imageClip.locator('.story-port.output').boundingBox();
+  expect(output!.x - input!.x - input!.width).toBeGreaterThanOrEqual(10);
+  await videoClip.locator('.story-port.output').dragTo(imageClip.locator('.story-port.input'));
+  await expect.poll(async () => (await readProject(page)).storyFlow.edges.length).toBe(1);
+  await imageClip.locator('.story-port.output').dragTo(videoClip.locator('.story-port.input'));
+  await expect.poll(async () => (await readProject(page)).storyFlow.edges.length).toBe(2);
+  await imageClip.locator('.story-clip-title').press('Enter');
+  const handle = page.getByRole('slider', { name: 'Trim end of Still.png', exact: true });
+  await expect(handle).toBeVisible();
+  await handle.press('ArrowRight'); await expect(page.getByLabel('Image duration', { exact: true })).toHaveValue(String(2 / 24));
+  await handle.press('Home'); await expect(page.getByLabel('Image duration', { exact: true })).toHaveValue(String(1 / 24));
+  const bounds = (await handle.boundingBox())!;
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height * .8); await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 24, bounds.y + bounds.height * .8, { steps: 6 }); await page.mouse.up();
+  await expect.poll(async () => (await readProject(page)).storyFlow.nodes[1].source.outFrame).toBeGreaterThan(1);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByLabel('Image duration', { exact: true })).toHaveValue(String(1 / 24));
+  await videoClip.locator('.story-clip-title').press('Enter');
+  await page.getByRole('slider', { name: `Trim end of ${video.name}`, exact: true }).press('Home');
+  expect(await circleSizes()).toEqual(Array(4).fill({ width: 14, height: 14 }));
+  await expect(page.getByRole('slider', { name: `Trim end of ${video.name}`, exact: true })).toBeVisible();
+  await page.screenshot({ path: `test-results/one-frame-handles-${width}.png`, fullPage: true });
+  await saveAndReopen(page);
+  const restored = (await readProject(page)).storyFlow;
+  expect(restored.edges).toHaveLength(2);
+  expect(restored.nodes.map((node: any) => node.source.outFrame - node.source.inFrame)).toEqual([1, 1]);
+  expect(await circleSizes()).toEqual(Array(4).fill({ width: 14, height: 14 }));
+});
+
+for (const width of [1440, 390]) test(`the left image handle extends, shortens, cancels and saves a held frame at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles(await imageFile(page));
+  await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Select Still.png', exact: true }).press('Enter');
+  await page.getByRole('slider', { name: 'Trim end of Still.png', exact: true }).press('Home');
+  await page.getByRole('button', { name: 'Fit', exact: true }).click();
+  const node = async () => (await readProject(page)).storyFlow.nodes[1], original = await node();
+  const right = (node: any) => node.x + (node.source.outFrame - node.source.inFrame) / 24 * 32;
+  const handle = page.getByRole('slider', { name: 'Trim start of Still.png', exact: true });
+  const scrub = page.getByRole('slider', { name: 'Scrub Still.png', exact: true });
+  await scrub.press('Home'); await handle.press('Shift+ArrowLeft');
+  await expect.poll(async () => (await node()).source.outFrame).toBe(11);
+  expect((await node()).source.inFrame).toBe(0); expect(right(await node())).toBeCloseTo(right(original));
+  await expect(handle).toHaveAttribute('aria-valuenow', String(11 / 24));
+  await expect(scrub).toHaveAttribute('aria-valuenow', String(10 / 24));
+  await handle.press('ArrowRight'); await expect.poll(async () => (await node()).source.outFrame).toBe(10);
+  await expect(scrub).toHaveAttribute('aria-valuenow', String(9 / 24));
+  await handle.press('End'); await expect.poll(async () => (await node()).source.outFrame).toBe(1);
+  expect((await node()).x).toBeCloseTo(original.x);
+  await page.getByRole('button', { name: 'Fit', exact: true }).click();
+  const before = await workspaceBounds(page);
+  const dragLeft = async (cancel = false) => {
+    await handle.scrollIntoViewIfNeeded(); const bounds = (await handle.boundingBox())!;
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height * .8); await page.mouse.down();
+    await page.mouse.move(bounds.x + bounds.width / 2 - 64, bounds.y + bounds.height * .8, { steps: 6 });
+    await expect(page.locator('.story-clip.trimming')).toHaveCount(1);
+    expect(await workspaceBounds(page)).toEqual(before);
+    if (cancel) await page.keyboard.press('Escape');
+    await page.mouse.up();
+  };
+  await dragLeft(); await expect.poll(async () => (await node()).source.outFrame).toBeGreaterThan(1);
+  const extended = await node(); expect(extended.x).toBeLessThan(original.x); expect(right(extended)).toBeCloseTo(right(original));
+  expect(extended.source.inFrame).toBe(0); expect(await workspaceBounds(page)).toEqual(before);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect.poll(async () => (await node()).source.outFrame).toBe(1);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect.poll(node).toEqual(extended);
+  await dragLeft(true); expect(await node()).toEqual(extended); expect(await workspaceBounds(page)).toEqual(before);
+  await saveAndReopen(page); expect((await node()).source).toMatchObject({ kind: 'image', inFrame: 0, outFrame: extended.source.outFrame });
+  expect((await node()).x).toBeCloseTo(extended.x);
   expect(errors).toEqual([]);
 });
 
@@ -183,7 +273,7 @@ test('opens an image directly as a silent timeline source', async ({ page }) => 
   await expect(page.locator('.story-clip')).toHaveCount(1);
   await expect(page.locator('.playback-canvas')).toHaveAttribute('data-layer-count', '1');
   const project = await readProject(page);
-  expect(project.storyFlow.nodes[0].source).toMatchObject({ kind: 'image', inFrame: 0, outFrame: 96 });
+  expect(project.storyFlow.nodes[0].source).toMatchObject({ kind: 'image', inFrame: 0, outFrame: 24 });
   expect(project.library[0].kind).toBe('image'); expect(project.library[0].duration).toBeUndefined();
 });
 
@@ -191,6 +281,8 @@ test('Preview seeks and plays across a video-to-image connection', async ({ page
   await openVideo(page);
   await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles(await imageFile(page));
   await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Select Still.png', exact: true }).click();
+  await page.getByLabel('Image duration', { exact: true }).fill('4');
   const project = await readProject(page), [video, still] = project.storyFlow.nodes;
   await fitAll(page);
   await page.locator(`[data-node-id="${video.id}"] .story-port.output`).dragTo(page.locator(`[data-node-id="${still.id}"] .story-port.input`));

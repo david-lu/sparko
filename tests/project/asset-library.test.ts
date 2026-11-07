@@ -15,9 +15,10 @@ function fixture() {
   Object.assign(item, { imageReferences: [{ assetId: image, name: 'Character.png' }], useStartVideoAsset: true, useEndVideoAsset: true,
     startReferenceType: 'video', endReferenceType: 'video', startVideoAsset: { assetId: video, name: 'Motion.mp4', inFrame: 24, outFrame: 72 }, endVideoAsset: { assetId: video, name: 'Motion.mp4', inFrame: 96, outFrame: 144 } });
   const generation = newAssetGeneration('image'); generation.name = 'Poster';
+  const generationNode = { id: crypto.randomUUID(), name: generation.name, kind: 'source' as const, generationId: generation.id, x: 0, y: 0, loopCount: 0 };
   generation.settings.references = [{ assetId: image, name: 'Character.png', kind: 'image' }];
   const project: Project = { id: 'project', name: 'Assets', updatedAt: 0, source: { name: 'Empty' }, subtitle: null, analysis: emptyAnalysis(),
-    interstitials: [item], clipGenerations: [generation], storyFlow: { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [] },
+    interstitials: [item], clipGenerations: [generation], storyFlow: { version: 1, entryId: node.id, nodes: [node, generationNode], edges: [], templates: [] },
     library: [{ assetId: image, name: 'Character.png', kind: 'image' }, { assetId: video, name: 'Motion.mp4', kind: 'video', duration: 10 }] };
   return { project, image, video, output, node, item, generation };
 }

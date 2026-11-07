@@ -35,8 +35,8 @@ export class VideoPlayerController {
   get video(): HTMLVideoElement | null { return this.timeline?.video ?? this.flowPlayback?.video ?? this.element; }
   get subtitleVideo(): HTMLVideoElement | null { return this.element; }
   get canvas() { return this.timeline?.canvas ?? this.flowPlayback?.canvas; }
-  async captureFrame() {
-    this.pause();
+  async captureFrame({ pause = true }: { pause?: boolean } = {}) {
+    if (pause) this.pause();
     const playback = this.timeline ?? this.flowPlayback;
     if (!playback || !this.state.duration || this.state.error) throw new Error('No video frame is available to capture.');
     if (this.state.buffering) throw new Error('Wait for the video frame to finish loading.');

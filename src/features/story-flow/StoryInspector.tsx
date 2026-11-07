@@ -50,7 +50,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   if (editor.librarySelection?.type === 'asset' || editor.librarySelection?.type === 'generation') return <AssetInspector editor={editor} status={status}/>;
   if (editor.librarySelection?.type === 'job') {
     const job = items.find(i => i.id === editor.librarySelection!.id);
-    if (job) return <div className="story-inspector clip-inspector" data-project-edit><h2>{job.label}</h2><VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={playableResult(job)?.assetId}/><InterstitialEditor projects={editor.projects} compact selected={job} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}/></div>;
+    if (job) return <div className="story-inspector clip-inspector" data-project-edit><h2>{job.label}</h2><VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={playableResult(job)?.assetId}/><InterstitialEditor player={editor.player} projects={editor.projects} compact selected={job} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}/></div>;
   }
   if (!graph) return null;
   const node = graph.nodes.find(n => n.id === editor.selectedId), connection = graph.edges.find(e => e.id === editor.selectedEdge);
@@ -102,10 +102,10 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <button className="text-button inspector-add-choice" disabled={conditions.length>=100} onClick={()=>editor.updateConditions(node.id,[...conditions,{id:freshId(),label:`Condition ${conditions.length+1}`,values:[]}])}>+ Add condition</button>
       <p className="hint">Drag each labeled output on the clip to its destination.</p>
     </BehaviorSection>
-    <ClipMediaSection node={node} editor={editor}/>
+    <ClipMediaSection key={node.id} node={node} editor={editor}/>
     {node.generationId && editor.projects.getSnapshot().project?.clipGenerations?.filter(g=>g.id===node.generationId).map(generation=><ClipGenerationEditor key={generation.id} editor={editor} generation={generation} status={status}/>)}
-    {item && <InterstitialEditor key={item.id} projects={editor.projects} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
-      generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} issues={editor.jobs.dependency(item.id)?.issues} labels={{ start: referenceLabel(referenceIds('before', refs.input)), end: referenceLabel(referenceIds('after', refs.output)) }} onChange={settings => editor.jobs.edit(item.id, settings)} />}
+    {item && <InterstitialEditor player={editor.player} key={item.id} projects={editor.projects} compact selected={item} controller={editor.jobs} engine={engine} info={info} status={status} active onPreviewPlay={() => editor.player.pause()}
+      generationSettings={<StoryReferences item={item} projects={editor.projects} loop={behavior.loop} issues={editor.jobs.dependency(item.id)?.issues} labels={{ start: referenceLabel(referenceIds('before', refs.input)), end: referenceLabel(referenceIds('after', refs.output)) }} onChange={settings => editor.jobs.edit(item.id, settings)} onPreviewPlay={() => editor.player.pause()} />}
       resultDetails={<GeneratedVideoInfo item={item} node={node} nodes={graph.nodes} items={items} assetAliases={editor.projects.getSnapshot().project?.assetAliases} onSelectReference={editor.revealClip} />} />}
     {(node.source?.kind??node.mediaKind) === 'image' && <label className="inspector-property"><span>Duration (s)</span><input aria-label="Image duration" title={`Minimum: 1 frame (1/${TIMELINE_FPS} second). Arrow keys adjust one frame.`} type="number" min={1 / TIMELINE_FPS} step={1 / TIMELINE_FPS} value={duration} onChange={e => {
       const frames = Math.max(1, Math.round(e.target.valueAsNumber * TIMELINE_FPS));

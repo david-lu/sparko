@@ -74,3 +74,28 @@ test('preserves the draft on errors and ignores a late result after the user edi
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.locator('.task-status')).not.toContainText('could not reach');
 });
+
+for (const width of [1440, 390]) test(`keeps the multi-line draft and layout stable when timing does not fit at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const draft = 'She holds a rock and asks "A rock?", then sets it down, lifts a bowl and asks "Old vegetables?"';
+  const prompt = page.getByLabel('Video prompt');
+  await prompt.fill(draft);
+  let finish!: () => void;
+  const waiting = new Promise<void>(resolve => { finish = resolve; });
+  await page.route('**/api/interstitials/enhance-prompt', async route => {
+    expect(route.request().postDataJSON().prompt).toBe(draft);
+    await waiting;
+    await route.fulfill({ status: 422, json: { error: 'This sequence needs about 9 seconds for its dialogue and actions. Increase the duration or split it into shorter clips, then enhance again. Your draft has been kept.' } });
+  });
+  const enhance = page.getByRole('button', { name: 'Enhance prompt', exact: true });
+  await enhance.scrollIntoViewIfNeeded();
+  const before = await prompt.boundingBox();
+  await enhance.click();
+  await expect(page.getByRole('button', { name: 'Enhancing…', exact: true })).toBeDisabled();
+  expect(await prompt.boundingBox()).toEqual(before);
+  finish();
+  await expect(page.getByRole('alert')).toContainText('Increase the duration or split it');
+  await expect(prompt).toHaveValue(draft);
+  await expect(enhance).toBeEnabled();
+  expect(await prompt.boundingBox()).toEqual(before);
+});

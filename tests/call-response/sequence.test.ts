@@ -16,7 +16,7 @@ vi.mock('../../src/features/call-response/generation', () => ({ generationSource
 vi.mock('../../src/features/call-response/finishLoop', () => ({ finishLoop: vi.fn(async (blob, result) => ({ blob, result })) }));
 vi.mock('../../src/media/clipMetadata', () => ({ writeClipMetadata: vi.fn(async blob => blob) }));
 vi.mock('../../src/media/MediaEngine', () => ({ MediaEngine: class { inspect() { return Promise.resolve({ duration: 30, fps: 24 }); } dispose() {} } }));
-vi.mock('../../src/features/project/assets', () => ({ assets: { fetch: vi.fn(), save: vi.fn(), open: vi.fn() } }));
+vi.mock('../../src/features/project/assets', () => ({ assets: { fetch: vi.fn(), save: vi.fn(), open: vi.fn(), error: vi.fn() } }));
 
 const info = { duration: 20, fps: 24, width: 320, height: 180, codec: 'avc', hasAudio: true };
 const media = {} as MediaEngine;

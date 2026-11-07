@@ -17,6 +17,7 @@ import { ClipStatusBadge, clipStatus } from '../call-response/ClipStatus';
 import { sequenceActive } from '../call-response/sequence';
 import InterstitialName from './InterstitialName';
 import InterstitialHelp from './InterstitialHelp';
+import type { PromptFramePlayer } from '../player/promptFrame';
 
 function RemoveInterstitialButton({ item, controller, disabled = false, onRemove }: { item: Interstitial; controller: InterstitialController; disabled?: boolean; onRemove?: (id: string) => void }) {
   const handledTouch = useRef(false);
@@ -36,8 +37,9 @@ function RemoveInterstitialButton({ item, controller, disabled = false, onRemove
     }}><Trash2 size={14} /></button>;
 }
 
-export default function InterstitialPanel({ items, selectedId, controller, projects, engine, info, status, active, onAddRegular, onAddCallResponse, onSelect, onRemove, onPreviewPlay, connectedIds = [], callResponse, groups = callResponse ? [callResponse] : [], renderClipControls }: {
+export default function InterstitialPanel({ items, selectedId, controller, projects, engine, info, status, active, onAddRegular, onAddCallResponse, onSelect, onRemove, onPreviewPlay, connectedIds = [], callResponse, groups = callResponse ? [callResponse] : [], renderClipControls, player }: {
   projects?: ProjectController;
+  player?: PromptFramePlayer;
   items: Interstitial[]; selectedId: string | null; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null; status: AppStatus | null;
   active: boolean; onAddRegular: () => void; onAddCallResponse: () => void; onSelect: (id: string | null) => void; onPreviewPlay: () => void;
   connectedIds?: string[];
@@ -56,7 +58,7 @@ export default function InterstitialPanel({ items, selectedId, controller, proje
   </div>;
   if (callResponse && renderClipControls && (callResponse.selectedInterstitial || members.some(scene => scene.interstitialId === selectedId || scene.id === callResponse.selectedSceneId))) {
     return <CallResponsePanel value={callResponse} items={items} onBack={() => onSelect(null)} renderControls={renderClipControls}
-      projects={projects} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />;
+      projects={projects} player={player} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />;
   }
   if (!selected) return <div className="panel-content interstitial-panel">
     <div className="panel-intro"><h2>Videos</h2><InterstitialHelp /></div>
@@ -102,6 +104,6 @@ export default function InterstitialPanel({ items, selectedId, controller, proje
       {selected.phase === 'draft' && <span className="interstitial-draft">Draft</span>}
       <RemoveInterstitialButton item={selected} controller={controller} onRemove={onRemove} disabled={connectedIds.includes(selected.id)} />
     </div>
-    <InterstitialEditor projects={projects} selected={selected} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />
+    <InterstitialEditor projects={projects} player={player} selected={selected} controller={controller} engine={engine} info={info} status={status} active={active} onPreviewPlay={onPreviewPlay} />
   </div>;
 }

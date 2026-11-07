@@ -5,16 +5,19 @@ import type { ProjectController } from './ProjectController';
 import { fileEntries, mediaFile, mediaKind } from './libraryFiles';
 import { readLibraryDrag, readLibraryMove, LIBRARY_MOVE_TYPE, startLibraryDrag, STORY_DRAG_TYPE } from '../story-flow/libraryDrag';
 import AssetThumbnail from './AssetThumbnail';
+import LibraryAssetPicker from './LibraryAssetPicker';
+import AssetPreviewButton from './AssetPreviewButton';
 import { assets } from './assets';
 import { useAssetAvailability } from './useAssetAvailability';
 import ContentIssues from '../../shared/ContentIssues';
 import './asset-input.css';
 
-export default function AssetInput({ projects, value, kinds, onChange, label = 'Reference assets', multiple = true, maxCount = 16, imageFormats, validate }: {
+export default function AssetInput({ projects, value, kinds, onChange, label = 'Reference assets', multiple = true, maxCount = 16, imageFormats, validate, onPreviewPlay }: {
   projects: ProjectController; value: AssetReference[]; kinds: MediaKind[]; onChange: (value: AssetReference[]) => void; label?: string; multiple?: boolean;
-  maxCount?: number; imageFormats?: string[]; validate?: (reference: AssetReference) => string | undefined;
+  maxCount?: number; imageFormats?: string[]; validate?: (reference: AssetReference) => string | undefined; onPreviewPlay?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null), operation = useRef<AbortController | null>(null);
+  const choose = useRef<HTMLButtonElement>(null), [picking, setPicking] = useState(false);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [dragging, setDragging] = useState(false);
   const projectId = projects.getSnapshot().project?.id, library = projects.getSnapshot().project?.library ?? [];
   useAssetAvailability(value.map(ref => ref.assetId));
@@ -32,11 +35,11 @@ export default function AssetInput({ projects, value, kinds, onChange, label = '
     }
     const next = multiple ? [...value, ...refs.filter(r => !value.some(v => v.assetId === r.assetId))] : refs.slice(-1);
     if (next.length > maxCount) throw new Error(`Use up to ${maxCount} references.`);
-    signal.throwIfAborted(); if (projects.getSnapshot().project?.id !== projectId) return;
+    signal.throwIfAborted(); if (projects.getSnapshot().project?.id !== projectId) throw new Error('The active project changed. Choose an asset from the current Library.');
     onChange(next);
   };
   const receive = async (files: File[], ids: string[] = []) => {
-    if (operation.current) return;
+    if (operation.current) return false;
     const task = new AbortController(); operation.current = task; setBusy(true); setError('');
     try {
       if (files.length) {
@@ -51,7 +54,8 @@ export default function AssetInput({ projects, value, kinds, onChange, label = '
         await add(ids, task.signal);
       }
       else throw new Error('This generation has no output yet. Generate it first.');
-    } catch (e) { if (!task.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to add reference.'); }
+      return true;
+    } catch (e) { if (!task.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to add reference.'); return false; }
     finally { if (!task.signal.aborted) { operation.current = null; setBusy(false); } }
   };
   const dropLabel = multiple ? `Drag ${kinds.length === 1 ? kinds[0] + 's' : 'assets'} from Library` : `Drag ${kinds[0]} from Library`;
@@ -68,11 +72,19 @@ export default function AssetInput({ projects, value, kinds, onChange, label = '
       {!value.length && <div className="asset-input-empty"><Upload size={17}/><span>{dropLabel}</span></div>}
       {value.map(ref => { const error = assets.error(ref.assetId) || (!kinds.includes(ref.kind) ? `This model does not accept ${ref.kind} references. Remove this reference or choose a compatible model.` : undefined); return <div className="asset-reference-chip" key={ref.assetId} draggable={!busy} onDragStart={e => { e.stopPropagation(); startLibraryDrag(e, { assetId: ref.assetId }); }}>
         <AssetThumbnail asset={library.find(a => a.assetId === ref.assetId) ?? { assetId: ref.assetId, kind: ref.kind }} kind={ref.kind} name={ref.name}/>
-        <span title={ref.name}>{ref.name}</span><ContentIssues label={`${ref.name} reference errors`} issues={error ? [{ key: ref.assetId, title: ref.name, message: error }] : []}/><GripVertical size={12}/><button type="button" className="icon-button small" disabled={busy} aria-label={`Remove reference ${ref.name}`} onClick={() => { setError(''); onChange(value.filter(v => v.assetId !== ref.assetId)); }}><X size={12}/></button>
+        <span title={ref.name}>{ref.name}</span><ContentIssues label={`${ref.name} reference errors`} issues={error ? [{ key: ref.assetId, title: ref.name, message: error }] : []}/>
+        <AssetPreviewButton assetId={ref.assetId} kind={ref.kind} name={ref.name} disabled={busy} onPlay={onPreviewPlay}/>
+        <GripVertical size={12}/><button type="button" className="icon-button small" disabled={busy} aria-label={`Remove reference ${ref.name}`} onClick={() => { setError(''); onChange(value.filter(v => v.assetId !== ref.assetId)); }}><X size={12}/></button>
       </div>; })}
     </div>
-    <div className="asset-input-actions"><span>{busy ? 'Importing…' : value.length ? multiple ? 'Drop to add references' : 'Drop to replace' : 'or drop a file'}</span><button type="button" className="text-button" disabled={busy || !kinds.length} onClick={() => input.current?.click()}>Browse files</button></div>
+    <div className="asset-input-actions"><span>{busy ? 'Adding…' : value.length ? multiple ? 'Drop to add references' : 'Drop to replace' : 'or drop a file'}</span>
+      <button ref={choose} type="button" className="text-button" aria-label={`Choose ${label} from Library`} disabled={busy || !kinds.length} onClick={() => { setError(''); setPicking(true); }}>Choose from Library</button>
+      <button type="button" className="text-button" disabled={busy || !kinds.length} onClick={() => input.current?.click()}>Browse files</button>
+    </div>
     <input ref={input} type="file" hidden multiple={multiple} accept={imageFormats?.join(',') ?? kinds.map(k => `${k}/*`).join(',')} aria-label={`Upload ${label}`} onChange={e => { const files = [...e.target.files ?? []]; if (files.length) void receive(files); e.target.value = ''; }}/>
     <div className="asset-input-feedback"><ContentIssues label={`${label} errors`} issues={error ? [{ key: 'drop', title: 'Reference could not be added', message: error }] : []}/><span role="status" title={error}>{error}</span></div>
+    {picking && <LibraryAssetPicker key={projectId} library={library} kinds={kinds} label={label} selectedIds={value.map(ref => ref.assetId)} multiple={multiple} maxCount={maxCount}
+      busy={busy} error={error} onClose={() => setPicking(false)} restoreFocus={() => choose.current?.focus()} onPreviewPlay={onPreviewPlay}
+      onChoose={ids => { void receive([], ids).then(added => { if (added) setPicking(false); }); }}/>}
   </div>;
 }

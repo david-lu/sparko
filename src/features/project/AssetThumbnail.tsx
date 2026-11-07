@@ -5,6 +5,7 @@ import { TIMELINE_FPS } from '../../../shared/constants';
 import { sampleFrame } from '../../media/media';
 import { assets } from './assets';
 import type { LibraryAsset } from './types';
+import { useAssetAvailability } from './useAssetAvailability';
 
 type PreviewAsset = Pick<LibraryAsset, 'assetId' | 'kind' | 'duration' | 'inFrame' | 'outFrame'>;
 const cache = new Map<string, Promise<string>>();
@@ -65,6 +66,8 @@ function thumbnail(asset: PreviewAsset): Promise<string> {
 
 export default function AssetThumbnail({ asset, kind, name, eager = false }: { asset?: PreviewAsset; kind: LibraryAsset['kind']; name: string; eager?: boolean }) {
   const element = useRef<HTMLSpanElement>(null), [visible, setVisible] = useState(eager);
+  useAssetAvailability([visible ? asset?.assetId : undefined]);
+  const unavailable = !!asset && !!assets.error(asset.assetId);
   const key = asset ? `${asset.assetId}:${asset.kind}:${asset.inFrame ?? 0}:${asset.outFrame ?? ''}` : '';
   const [preview, setPreview] = useState<{ key: string; url?: string; failed?: boolean }>();
   useEffect(() => {
@@ -73,12 +76,12 @@ export default function AssetThumbnail({ asset, kind, name, eager = false }: { a
     if (element.current) observer.observe(element.current); return () => observer.disconnect();
   }, [eager]);
   useEffect(() => {
-    if (!visible || !asset) return;
+    if (!visible || !asset || unavailable) return;
     let active = true;
     void thumbnail(asset).then(url => { if (active) setPreview({ key, url }); }).catch(() => { if (active) setPreview({ key, failed: true }); });
     return () => { active = false; };
-  }, [key, visible, kind]);
-  const current = preview?.key === key ? preview : undefined;
+  }, [key, visible, kind, unavailable]);
+  const current = unavailable ? { failed: true, url: undefined } : preview?.key === key ? preview : undefined;
   const state = !asset ? 'placeholder' : current?.url ? 'ready' : current?.failed ? 'unavailable' : 'loading';
   const Icon = current?.failed ? ImageOff : kind === 'image' ? Image : kind === 'audio' ? Music : Video;
   return <span ref={element} className="library-thumb" data-preview-state={state} aria-busy={state === 'loading'} title={state === 'unavailable' ? `Preview unavailable for ${name}` : undefined}>

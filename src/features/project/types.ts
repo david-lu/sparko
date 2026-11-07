@@ -24,6 +24,8 @@ export type Project = {
   callResponses?: CallResponseFlow[];
   storyFlow?: StoryGraph;
   library?: LibraryAsset[];
+  /** Intentionally unavailable media. Keep IDs and references so undo and missing-input errors work. */
+  deletedAssetIds?: string[];
   libraryFolders?: LibraryFolder[];
   clipGenerations?: AssetGeneration[];
   /** Legacy Library-only recipes, consumed by the project migration. */
@@ -48,4 +50,4 @@ export const assetIds = (project: Project) => [...new Set([project.source.assetI
   ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId)),
   ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId,
     ...[item, item.generationSettings].flatMap(settings => [...videoAssets(settings ?? {}, 'start').map(r => r.assetId), ...videoAssets(settings ?? {}, 'end').map(r => r.assetId), ...settings?.imageReferences?.map(image => image.assetId) ?? []]),
-    ...[item.result?.reference, item.previousResult?.reference, item.requestReference].flatMap(input => [...referenceClips(input, 'before'), ...referenceClips(input, 'after')].map(r => r.assetId))])].filter((id): id is string => !!id))];
+    ...[item.result?.reference, item.previousResult?.reference, item.requestReference].flatMap(input => [...referenceClips(input, 'before'), ...referenceClips(input, 'after')].map(r => r.assetId))])].filter((id): id is string => !!id && !project.deletedAssetIds?.includes(id)))];
