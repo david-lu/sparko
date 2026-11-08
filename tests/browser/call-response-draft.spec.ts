@@ -11,14 +11,14 @@ test('template clips keep independent audio/video masks and reference choices', 
   };
   await clip('Wait for the viewer').click();
   await page.getByRole('group', { name: 'Loop reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
+  await expect(page.locator('.inspector-references-panel')).toBeVisible();
   await editMask('video', '35');
   await expect(page.getByRole('group', { name: 'End reference', exact: true })).toHaveCount(0);
   await clip('Celebrate').click();
   await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
   await editMask('audio', '65');
   await clip('Encourage').click();
-  await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
+  await expect(page.locator('.inspector-references-panel')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Mask injection:/ })).toHaveCount(0);
   await saveAndReopen(page); await fitAll(page);
   const items = (await readProject(page)).interstitials;

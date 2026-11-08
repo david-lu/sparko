@@ -8,7 +8,7 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
   for (const channel of ['video', 'audio']) {
     const title = channel === 'video' ? 'Video' : 'Audio';
     await page.getByRole('button', { name: `Edit ${channel} mask`, exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: `${title} mask editor`, exact: true });
+    const dialog = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
     const menu = dialog.getByRole('menu', { name: 'Mask keyframe actions' });
     const keys = dialog.locator('.mask-keyframe-hit');
     const key = (side: string, index: number) => dialog.getByRole('button', { name: `${title} ${side} keyframe ${index}`, exact: true });
@@ -59,7 +59,7 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
     await expect(menu.getByRole('menuitem', { name: 'Add keyframe' })).toBeDisabled();
     await page.keyboard.press('Escape'); await expect(key('start', 1)).toBeFocused();
     await dialog.getByRole('button', { name: 'Fit', exact: true }).click();
-    await dialog.locator('.mask-generated-region').click({ button: 'right' });
+    await dialog.locator('.mask-editor-graph .mask-generated-region').click({ button: 'right' });
     await expect(menu.getByRole('menuitem', { name: 'Add keyframe' })).toBeDisabled();
     await expect(menu.getByRole('menuitem', { name: 'Delete keyframe' })).toBeDisabled();
     await page.keyboard.press('Escape'); await expect(dialog).toBeVisible();
@@ -92,7 +92,7 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
   // Cancelling a context-menu edit preserves the saved curve.
   const saved = (await readProject(page)).interstitials[0].audioMaskCurve;
   await page.getByRole('button', { name: 'Edit audio mask', exact: true }).click();
-  const audio = page.getByRole('dialog', { name: 'Audio mask editor', exact: true });
+  const audio = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
   await audio.getByRole('button', { name: 'Start', exact: true }).click();
   await audio.getByRole('button', { name: 'Audio start keyframe 2', exact: true }).click({ button: 'right' });
   await audio.getByRole('menuitem', { name: 'Delete keyframe' }).click();

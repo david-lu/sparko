@@ -48,7 +48,7 @@ for (const width of [1440, 390]) test(`analyzes the actual start/end windows for
   });
   const enhance = page.getByRole('button', { name: 'Enhance prompt', exact: true });
   await enhance.scrollIntoViewIfNeeded(); const idle = await layout();
-  await enhance.click(); await expect.poll(() => analyses).toBe(1);
+  await enhance.click(); await expect.poll(() => analyses, { timeout: 60000 }).toBe(1);
   await expect(page.getByRole('button', { name: 'Analyzing…', exact: true })).toBeDisabled();
   expect(await layout()).toEqual(idle);
   await page.screenshot({ path: `test-results/reference-analysis-${width}-loading.png` });

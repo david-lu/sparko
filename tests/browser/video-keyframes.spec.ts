@@ -25,9 +25,9 @@ for (const width of [1440, 390]) test(`timed image keyframes, masks and generati
   await page.getByLabel('Video prompt', { exact: true }).fill('Lift the rock, then put it down.');
   await page.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
-  await page.getByLabel('Keyframe time in seconds', { exact: true }).fill('2');
-  await expect(page.getByLabel('Keyframe frame', { exact: true })).toHaveValue('48');
-  await expect(page.locator('.video-keyframe-footer')).toContainText('Full video: 3.625s');
+  await page.getByLabel('Keyframe time in seconds', { exact: true }).fill('3.625');
+  await expect(page.getByLabel('Keyframe frame', { exact: true })).toHaveValue('87');
+  await expect(page.locator('.video-keyframe-footer')).toContainText('Generated: 2.000s · frame 48');
   const before = await layout(page);
   await page.evaluate(() => {
     const original = window.createImageBitmap, gate = new Promise<void>(resolve => { (window as any).finishKeyframe = resolve; });
@@ -45,7 +45,7 @@ for (const width of [1440, 390]) test(`timed image keyframes, masks and generati
   await expect(page.getByRole('dialog', { name: 'Preview pose.png', exact: true }).locator('img')).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Edit audio mask', exact: true }).click();
-  const mask = page.getByRole('dialog', { name: 'Audio mask editor', exact: true });
+  const mask = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
   await expect(mask.getByRole('img', { name: 'Image guide pose.png at 3.625 seconds', exact: true })).toBeVisible();
   const box = (await mask.boundingBox())!; expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width);
   await page.keyboard.press('Escape');
@@ -70,8 +70,8 @@ for (const width of [1440, 390]) test(`timed image keyframes, masks and generati
   await picker.getByRole('button', { name: 'pose.png', exact: true }).click(); await picker.getByRole('button', { name: 'Use asset', exact: true }).click();
   await expect(picker).toBeHidden();
   await expect(page.getByRole('group', { name: 'Keyframe image', exact: true })).toHaveAttribute('aria-busy', 'false');
-  await page.getByLabel('Keyframe frame', { exact: true }).fill('48');
-  await expect(page.getByLabel('Keyframe frame', { exact: true })).toHaveValue('48');
+  await page.getByLabel('Keyframe frame', { exact: true }).fill('87');
+  await expect(page.getByLabel('Keyframe frame', { exact: true })).toHaveValue('87');
   await expect.poll(async () => (await readProject(page))!.interstitials[0].keyframes.map((k: any) => k.frame)).toEqual([48, 48]);
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
   await page.locator('.video-keyframe-footer').getByRole('checkbox', { name: 'Enabled', exact: true }).uncheck();
@@ -139,6 +139,10 @@ test('changing a timed image cancels enhancement, and shortening duration cannot
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
   await expect(page.locator('.video-keyframe-error')).toContainText('Outside the generated section');
   await expect(page.getByLabel('Keyframe frame', { exact: true })).toHaveValue('120');
+  await page.locator('.video-keyframe-footer').getByRole('checkbox', { name: 'Enabled', exact: true }).uncheck();
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
+  expect(await page.locator('.interstitial-editor form').evaluate((form: HTMLFormElement) => form.checkValidity())).toBe(true);
+  await page.locator('.video-keyframe-footer').getByRole('checkbox', { name: 'Enabled', exact: true }).check();
   await page.getByLabel('Keyframe frame', { exact: true }).fill('24');
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
 });

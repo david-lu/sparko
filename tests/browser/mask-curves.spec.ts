@@ -19,10 +19,10 @@ for(const width of [1440,390]) test(`mask editors show reference video cuts at t
   await page.getByLabel('Choose project file',{exact:true}).setInputFiles({name:'Mask boundaries.sparko',mimeType:'application/zip',buffer:Buffer.from(bytes)});
   await expect(page.locator('.story-clip')).toHaveCount(5);
   await page.locator(`[data-node-id="${nodeId}"] .story-clip-title`).click();
-  await expect(page.locator('.mask-curve-preview .mask-video-boundary')).toHaveCount(4);
+  await expect(page.locator('.generation-cut-line')).toHaveCount(2);
   for(const channel of ['video','audio']){
     await page.getByRole('button',{name:`Edit ${channel} mask`,exact:true}).click();
-    const dialog=page.getByRole('dialog',{name:`${channel==='video'?'Video':'Audio'} mask editor`,exact:true});
+    const dialog=page.getByRole('dialog',{name:'Generation timeline',exact:true});
     const start=dialog.getByRole('img',{name:'Start video boundary at 0.333 seconds',exact:true});
     const end=dialog.getByRole('img',{name:'End video boundary at 7.375 seconds',exact:true});
     await expect(start).toBeVisible();await expect(end).toBeVisible();
@@ -44,7 +44,7 @@ for(const width of [1440,390]) test(`mask editors show reference video cuts at t
   }
   // Reducing the range removes the earlier video from the actual generation window.
   await page.getByLabel('start_range',{exact:true}).fill('2');
-  await expect(page.locator('.mask-curve-preview .mask-video-boundary')).toHaveCount(2);
+  await expect(page.locator('.generation-cut-line')).toHaveCount(1);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
 
@@ -53,7 +53,7 @@ for(const width of [1440,390]) test(`separate neutral mask editors preserve pins
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await openVideo(page);await addBridge(page);
   const item=async()=>(await readProject(page)).interstitials[0];
-  const previews=page.locator('.mask-curve-preview');await expect(previews).toHaveCount(2);
+  const previews=page.locator('.generation-mask-lane');await expect(previews).toHaveCount(2);
   const positions=()=>page.locator('.interstitial-editor').evaluate(root=>{
     const top=root.getBoundingClientRect().top;
     return ['.mask-curve-control','.interstitial-resolution','.interstitial-time-fields','button[type=submit]','.task-status'].map(selector=>{
@@ -62,8 +62,8 @@ for(const width of [1440,390]) test(`separate neutral mask editors preserve pins
   });
   const before=await positions();
   await page.getByRole('button',{name:'Edit video mask',exact:true}).click();
-  const video=page.getByRole('dialog',{name:'Video mask editor',exact:true});await expect(video).toBeVisible();
-  await expect(video.locator('.mask-curve-line')).toHaveCount(1);
+  const video=page.getByRole('dialog',{name:'Generation timeline',exact:true});await expect(video).toBeVisible();
+  await expect(video.locator('.mask-editor-graph .mask-curve-line')).toHaveCount(1);
   await expect(video.getByRole('button',{name:'Audio',exact:true})).toHaveCount(0);
   await video.getByRole('button',{name:'Add keyframe',exact:true}).click();
   await video.getByLabel('Keyframe regeneration',{exact:true}).fill('35');
@@ -85,7 +85,7 @@ for(const width of [1440,390]) test(`separate neutral mask editors preserve pins
   await expect(page.getByRole('button',{name:'Edit video mask',exact:true})).toBeFocused();
 
   await page.getByRole('button',{name:'Edit audio mask',exact:true}).click();
-  const audio=page.getByRole('dialog',{name:'Audio mask editor',exact:true});await expect(audio.locator('.mask-curve-line')).toHaveCount(1);
+  const audio=page.getByRole('dialog',{name:'Generation timeline',exact:true});await expect(audio.locator('.mask-editor-graph .mask-curve-line')).toHaveCount(1);
   await audio.getByRole('button',{name:'Add keyframe',exact:true}).click();
   await audio.getByLabel('Keyframe regeneration').fill('80');
   await audio.getByLabel('Mask curve interpolation').selectOption('smooth');
@@ -138,7 +138,7 @@ for(const width of [1440,390]) test(`custom masks submit independently and keep 
   const idle=await positions();await page.getByRole('button',{name:'Generate',exact:true}).click();
   // Preparing real reference media takes longer on CI's software renderer.
   await expect.poll(()=>submitted,{timeout:60000}).toBeTruthy();expect(submitted).toEqual({videoMaskCurve:curve,audioMaskCurve:null});expect(await positions()).toEqual(idle);
-  await page.getByRole('button',{name:'Edit audio mask',exact:true}).click();await expect(page.getByRole('dialog',{name:'Audio mask editor'})).toBeVisible();
+  await page.getByRole('button',{name:'Edit audio mask',exact:true}).click();await expect(page.getByRole('dialog',{name:'Generation timeline'})).toBeVisible();
   await page.getByRole('button',{name:'Cancel',exact:true}).click();complete=true;
   await expect.poll(async()=>(await readProject(page)).interstitials[0].phase,{timeout:60000}).toBe('ready');
   expect(await positions()).toEqual(idle);expect((await readProject(page)).interstitials[0].generationSettings.videoMaskCurve).toEqual(curve);

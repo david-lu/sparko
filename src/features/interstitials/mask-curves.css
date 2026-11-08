@@ -1,10 +1,4 @@
 .mask-curve-control{display:grid;gap:8px;margin:10px 0}
-.mask-curve-preview{display:block;width:100%;min-width:0;padding:9px 10px 7px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--text);text-align:left;cursor:pointer}
-.mask-curve-preview:hover{border-color:var(--line-strong);background:var(--hover)}
-.mask-curve-preview-heading{display:flex;align-items:center;gap:6px;font-size:11px}
-.mask-curve-preview-heading>span{margin-left:auto;color:var(--muted);font-size:10px}
-.mask-curve-preview svg{display:block;width:100%;height:48px;margin:6px 0;overflow:visible}
-.mask-curve-preview-heading svg{display:inline-block;width:13px;height:13px;margin:0}
 .mask-curve-legend{display:flex;justify-content:space-between;gap:8px;font-size:9px;color:var(--muted)}
 .mask-simple-transitions{font-size:10px;margin:8px 0}
 .mask-simple-transitions>summary{padding:5px 0;color:var(--text-secondary);cursor:pointer}

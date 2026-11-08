@@ -66,7 +66,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(page.getByRole('button', { name: 'Use last seed', exact: true })).toBeDisabled();
   await seedMode.selectOption('fixed'); await seedValue.fill('0');
   await expect(seedValue).toHaveValue('0');
-  await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
+  await expect(page.locator('.inspector-references-panel')).toBeVisible();
   await page.getByText('Simple transition durations',{exact:true}).click();
   const audioTransition = page.getByRole('spinbutton', { name: 'Audio mask transition duration', exact: true });
   const videoTransition = page.getByRole('spinbutton', { name: 'Video mask transition duration', exact: true });
@@ -166,7 +166,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await saveAndReopen(page);
   await fitAll(page);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
+  await expect(page.locator('.inspector-references-panel')).toBeVisible();
   await page.getByText('Simple transition durations', { exact: true }).click();
   await expect(audioTransition).toHaveValue('0');
   await expect(videoTransition).toHaveValue('1000');

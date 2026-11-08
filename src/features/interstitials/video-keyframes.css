@@ -1,21 +1,10 @@
 .video-keyframes{min-width:0;display:flex;flex-direction:column;gap:8px}
-.video-keyframes-heading,.video-keyframe-heading,.video-keyframe-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px}
-.video-keyframes-heading .text-button{display:flex;align-items:center;gap:5px;font-size:10px;white-space:nowrap}
-.video-keyframe-track{height:32px;position:relative;margin:2px 12px;background:#ffffff08;border-radius:4px;isolation:isolate}
-.video-keyframe-body{position:absolute;top:0;bottom:0;background:#d7b58b25;border-inline:1px dashed #d7b58b70}
-.video-keyframe-marker{position:absolute;top:2px;transform:translateX(-50%);width:28px;height:28px;background:transparent;display:grid;place-items:center;z-index:1}
-.video-keyframe-marker span{width:9px;height:9px;transform:rotate(45deg);background:#a7a39b;border:1px solid #272623}
-.video-keyframe-marker[data-selected=true]{z-index:2}
-.video-keyframe-marker[data-selected=true] span{background:#e9c496;outline:2px solid #e9c49655;outline-offset:2px}
-.video-keyframe-marker[data-enabled=false] span{background:#403d38;border-color:#8c8880}
-.video-keyframe-marker:focus-visible{outline:2px solid #e9c496;border-radius:3px}
-.video-keyframe-scale{display:flex;justify-content:space-between;gap:8px;font-size:9px!important;font-variant-numeric:tabular-nums}
+.video-keyframe-heading,.video-keyframe-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px}
 .video-keyframe-card{padding:10px;border:1px solid #ffffff20;border-radius:5px;display:flex;flex-direction:column;gap:8px;background:#ffffff03}
 .video-keyframe-heading select{min-width:0;flex:1;width:0}
 .video-keyframe-time{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:10px}
 .video-keyframe-time label{display:flex;flex-direction:column;gap:5px;font-size:10px;color:#aaa7a1}
 .video-keyframe-time input{min-width:0;width:100%;font-variant-numeric:tabular-nums}
-.video-keyframe-position{width:100%;margin:0;accent-color:#e9c496}
 .video-keyframe-footer label{display:flex;align-items:center;gap:6px}
 .video-keyframe-error{min-height:2.7em;margin:0!important;color:#e8b38f!important}
 .video-keyframes .asset-input-actions{height:40px;display:grid;grid-template-columns:1fr auto;gap:2px 6px}

@@ -1,20 +1,20 @@
-import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { Activity, DiamondPlus, RotateCcw, Undo2, Redo2, X } from 'lucide-react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { DiamondPlus, RotateCcw, Undo2, Redo2, X } from 'lucide-react';
 import { defaultMaskCurve, maskStrength, type MaskCurve, type MaskPoint, type MaskSide } from '../../../shared/mask-curves';
-import type { GenerationReference, InterstitialSettings } from '../../../shared/interstitials';
-import { maskVideoBoundaries } from './mask-video-boundaries';
-import ModalBackdrop from '../../shared/ModalBackdrop';
+import type { InterstitialSettings } from '../../../shared/interstitials';
+import type { maskVideoBoundaries } from './mask-video-boundaries';
 import { useExclusiveMenu } from '../../shared/DropdownMenu';
 import './mask-curves.css';
 
-type Channel = 'video' | 'audio';
-type Curves = Record<Channel, MaskCurve>;
+export type MaskChannel = 'video' | 'audio';
+type Channel = MaskChannel;
+export type MaskCurves = Record<Channel, MaskCurve>;
+type Curves = MaskCurves;
 type Selection = { side: MaskSide; index: number };
 type KeyframeContext = { x:number; y:number; time:number; strength:number; selection:Selection|null; target:SVGElement };
-type Props = { before: number; after: number; duration: number; video?: MaskCurve; audio?: MaskCurve;
-  reference?: GenerationReference; imageKeyframes?: { id: string; name: string; time: number }[];
+type Props = { before: number; after: number; duration: number;
+  imageKeyframes?: { id: string; name: string; time: number }[];
   videoMs: number; audioMs: number; onChange: (patch: Partial<InterstitialSettings>) => void };
-const channels = ['video', 'audio'] as const;
 const title = (channel: Channel) => channel === 'video' ? 'Video' : 'Audio';
 const clamp = (n: number, min = 0, max = 1) => Math.max(min, Math.min(max, n));
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -52,29 +52,9 @@ function ImageKeyframeMarkers({ values = [], from, to, x, top, bottom }: {
   </g>);
 }
 
-export default function MaskCurveEditor(props: Props) {
-  const [open,setOpen] = useState<Channel|null>(null), triggers = useRef<Partial<Record<Channel,HTMLButtonElement|null>>>({});
-  const total = props.before+props.duration+props.after;
-  const boundaries = maskVideoBoundaries(props.reference,props.before,props.duration,props.after);
-  const curves = {video:props.video??defaultMaskCurve(props.before,props.after,props.videoMs),audio:props.audio??defaultMaskCurve(props.before,props.after,props.audioMs)};
-  return <div className="mask-curve-control">{channels.map(channel=><button key={channel} ref={element=>{triggers.current[channel]=element;}} className="mask-curve-preview" type="button" onClick={()=>setOpen(channel)} aria-label={`Edit ${channel} mask`}>
-      <span className="mask-curve-preview-heading"><Activity size={13}/><strong>{title(channel)} mask</strong><span>Edit curve ↗</span></span>
-      <svg viewBox="0 0 300 70" preserveAspectRatio="none" aria-hidden="true">
-        <rect x={props.before/total*300} y={0} width={props.duration/total*300} height={70} className="mask-generated-region"/>
-        {[0,.5,1].map(v=><line key={v} x1={0} x2={300} y1={62-v*54} y2={62-v*54} className="mask-grid-line"/>)}
-        {[...(props.before?[props.before]:[]),...(props.after?[props.before+props.duration]:[])].map(time=><line key={time} className="mask-reference-boundary" x1={time/total*300} x2={time/total*300} y1={8} y2={62}/>)}
-        <VideoBoundaries boundaries={boundaries} from={0} to={total} x={time=>time/total*300} top={8} bottom={62}/>
-        <ImageKeyframeMarkers values={props.imageKeyframes} from={0} to={total} x={time=>time/total*300} top={8} bottom={62}/>
-        <path className="mask-curve-line" d={curvePath(curves[channel],props.before,props.duration,props.after,0,total,t=>t/total*300,v=>62-v*54)}/>
-      </svg>
-      <span className="mask-curve-legend"><span>0% keep · 100% regenerate</span><span>Time →</span></span>
-    </button>)}
-    {open&&<CurveDialog {...props} boundaries={boundaries} active={open} initial={curves} onClose={()=>setOpen(null)} restoreFocus={()=>triggers.current[open]?.focus({preventScroll:true})}/>}
-  </div>;
-}
-
-function CurveDialog({before,after,duration,imageKeyframes,videoMs,audioMs,initial,boundaries,active,onChange,onClose,restoreFocus}: Props & {
-  initial:Curves; boundaries:ReturnType<typeof maskVideoBoundaries>; active:Channel; onClose:()=>void; restoreFocus:()=>void;
+export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoMs, audioMs, initial, boundaries, active, onChange, onClose, headingId, onPreview }: Props & {
+  initial: Curves; boundaries: ReturnType<typeof maskVideoBoundaries>; active: Channel; onClose: () => void; headingId?: string;
+  onPreview?: (value: Curves) => void;
 }) {
   const id=useId(), graph=useRef<SVGSVGElement>(null), container=useRef<HTMLDivElement>(null);
   const [width,setWidth]=useState(720), [draft,setDraft]=useState(initial), [selection,setSelection]=useState<Selection|null>(null);
@@ -86,6 +66,7 @@ function CurveDialog({before,after,duration,imageKeyframes,videoMs,audioMs,initi
     const observer=new ResizeObserver(([entry])=>setWidth(Math.max(230,entry.contentRect.width)));
     observer.observe(container.current!); return ()=>observer.disconnect();
   },[]);
+  useEffect(() => { onPreview?.(draft); }, [draft, onPreview]);
   const total=before+duration+after, height=290, left=38, right=width-18, top=37, bottom=height-31;
   const from=view==='end'?before+duration:0, to=view==='start'?before:total, span=to-from;
   const x=(time:number)=>left+(time-from)/span*(right-left), y=(strength:number)=>bottom-strength*(bottom-top);
@@ -160,12 +141,13 @@ function CurveDialog({before,after,duration,imageKeyframes,videoMs,audioMs,initi
       y:'key' in event?box.top+y(p.strength)/height*box.height:event.clientY});
   };
   const contextSide=context&&region(context.time);
-  return <ModalBackdrop labelledBy={id} onCancel={()=>context?setContext(null):drag.current?endDrag(true):onClose()} restoreFocus={restoreFocus}>
+  return <>
     <div className="mask-graph-editor" onKeyDown={event=>{
       event.stopPropagation();
+      if(event.key==='Escape' && (context || drag.current)){event.preventDefault();context?setContext(null):endDrag(true);}
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.shiftKey?redo():undo();}
     }}>
-      <header className="mask-editor-header"><div><span className="eyebrow">GENERATION · VALUE GRAPH</span><h2 id={id}>{title(active)} mask editor</h2></div>
+      <header className="mask-editor-header"><div><span className="eyebrow">GENERATION · VALUE GRAPH</span><h2 id={headingId ?? id}>{title(active)} mask editor</h2></div>
         <button type="button" className="icon-button" aria-label="Cancel mask edits" onClick={onClose}><X size={17}/></button></header>
       <div className="mask-editor-toolbar">
         <div className="mask-editor-history"><button type="button" className="icon-button" aria-label="Undo mask edit" disabled={!past.length} onClick={undo}><Undo2 size={15}/></button><button type="button" className="icon-button" aria-label="Redo mask edit" disabled={!future.length} onClick={redo}><Redo2 size={15}/></button></div>
@@ -254,7 +236,7 @@ function CurveDialog({before,after,duration,imageKeyframes,videoMs,audioMs,initi
       canAdd={!context.selection&&!!contextSide&&curve[contextSide].length<16} canDelete={removable(context.selection)}
       onAdd={()=>{add(context.time,context.strength);setContext(null);graph.current?.focus({preventScroll:true});}}
       onDelete={()=>{remove(context.selection);setContext(null);graph.current?.focus({preventScroll:true});}}/>}
-  </ModalBackdrop>;
+  </>;
 }
 
 function KeyframeMenu({x,y,onClose,restoreFocus,canAdd,canDelete,onAdd,onDelete}: {
