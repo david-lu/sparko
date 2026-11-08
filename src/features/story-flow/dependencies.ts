@@ -39,6 +39,11 @@ export function storyDependency(graph: StoryGraph, items: Interstitial[], assetI
   for (const [index, image] of (item.imageReferences ?? []).entries()) {
     if (!imageEndpoints.has(index) && assetError(image.assetId)) issues.push({ key: `image:${index}`, title: `Picture ${index + 1}`, message: `${image.name}: ${assetError(image.assetId)}` });
   }
+  for (const [index, keyframe] of (item.keyframes ?? []).entries()) {
+    if (!keyframe.enabled) continue;
+    const error = keyframe.image ? assetError(keyframe.image.assetId) : 'Choose an image for this keyframe.';
+    if (error) issues.push({ key: `keyframe:${keyframe.id}`, title: `Image keyframe ${index + 1}`, message: `${keyframe.image?.name ?? 'Keyframe ' + (index + 1)}: ${error}` });
+  }
   for (const side of ['input', 'output'] as const) {
     if (loop && side === 'output') continue;
     if (!(side === 'input' ? item.useInputReference : item.useOutputReference)) continue;

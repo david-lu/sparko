@@ -53,7 +53,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     ...graph.nodes.flatMap(node=>{
       const saved=editor.items.find(item=>item.id===node.interstitialId); if(!saved)return [];
       const item=storyGenerationItem(saved,node);
-      return [...(item.imageReferences??[]).map(ref=>ref.assetId),...(item.useInputReference&&item.useStartVideoAsset?videoAssets(item,'start').map(ref=>ref.assetId):[]),...(item.useOutputReference&&item.useEndVideoAsset&&item.method!=='comfy-loop'?videoAssets(item,'end').map(ref=>ref.assetId):[])];
+      return [...(item.imageReferences??[]).map(ref=>ref.assetId),...(item.keyframes??[]).flatMap(k=>k.image?[k.image.assetId]:[]),...(item.useInputReference&&item.useStartVideoAsset?videoAssets(item,'start').map(ref=>ref.assetId):[]),...(item.useOutputReference&&item.useEndVideoAsset&&item.method!=='comfy-loop'?videoAssets(item,'end').map(ref=>ref.assetId):[])];
     }),
   ]);
   const [camera,setCamera]=useState<Camera>({x:0,y:0,zoom:1,rowScale:1}),cameraRef=useRef(camera),[size,setSize]=useState({width:800,height:280}),[drag,setDrag]=useState<Record<string,Point>|null>(null);

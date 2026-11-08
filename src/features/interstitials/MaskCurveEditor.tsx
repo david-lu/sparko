@@ -12,7 +12,7 @@ type Curves = Record<Channel, MaskCurve>;
 type Selection = { side: MaskSide; index: number };
 type KeyframeContext = { x:number; y:number; time:number; strength:number; selection:Selection|null; target:SVGElement };
 type Props = { before: number; after: number; duration: number; video?: MaskCurve; audio?: MaskCurve;
-  reference?: GenerationReference;
+  reference?: GenerationReference; imageKeyframes?: { id: string; name: string; time: number }[];
   videoMs: number; audioMs: number; onChange: (patch: Partial<InterstitialSettings>) => void };
 const channels = ['video', 'audio'] as const;
 const title = (channel: Channel) => channel === 'video' ? 'Video' : 'Audio';
@@ -42,6 +42,16 @@ function VideoBoundaries({boundaries,from,to,x,top,bottom}: {
   </g>);
 }
 
+function ImageKeyframeMarkers({ values = [], from, to, x, top, bottom }: {
+  values: Props['imageKeyframes']; from: number; to: number; x: (time: number) => number; top: number; bottom: number;
+}) {
+  return values.filter(value => value.time >= from && value.time <= to).map(value => <g key={value.id} className="mask-image-keyframe" role="img" aria-label={`Image guide ${value.name} at ${value.time.toFixed(3)} seconds`}>
+    <title>Image guide: {value.name} · {value.time.toFixed(3)}s</title>
+    <line x1={x(value.time)} x2={x(value.time)} y1={top} y2={bottom}/>
+    <path d={`M${x(value.time)},${top}l4,4 -4,4 -4,-4Z`}/>
+  </g>);
+}
+
 export default function MaskCurveEditor(props: Props) {
   const [open,setOpen] = useState<Channel|null>(null), triggers = useRef<Partial<Record<Channel,HTMLButtonElement|null>>>({});
   const total = props.before+props.duration+props.after;
@@ -54,6 +64,7 @@ export default function MaskCurveEditor(props: Props) {
         {[0,.5,1].map(v=><line key={v} x1={0} x2={300} y1={62-v*54} y2={62-v*54} className="mask-grid-line"/>)}
         {[...(props.before?[props.before]:[]),...(props.after?[props.before+props.duration]:[])].map(time=><line key={time} className="mask-reference-boundary" x1={time/total*300} x2={time/total*300} y1={8} y2={62}/>)}
         <VideoBoundaries boundaries={boundaries} from={0} to={total} x={time=>time/total*300} top={8} bottom={62}/>
+        <ImageKeyframeMarkers values={props.imageKeyframes} from={0} to={total} x={time=>time/total*300} top={8} bottom={62}/>
         <path className="mask-curve-line" d={curvePath(curves[channel],props.before,props.duration,props.after,0,total,t=>t/total*300,v=>62-v*54)}/>
       </svg>
       <span className="mask-curve-legend"><span>0% keep · 100% regenerate</span><span>Time →</span></span>
@@ -62,7 +73,7 @@ export default function MaskCurveEditor(props: Props) {
   </div>;
 }
 
-function CurveDialog({before,after,duration,videoMs,audioMs,initial,boundaries,active,onChange,onClose,restoreFocus}: Props & {
+function CurveDialog({before,after,duration,imageKeyframes,videoMs,audioMs,initial,boundaries,active,onChange,onClose,restoreFocus}: Props & {
   initial:Curves; boundaries:ReturnType<typeof maskVideoBoundaries>; active:Channel; onClose:()=>void; restoreFocus:()=>void;
 }) {
   const id=useId(), graph=useRef<SVGSVGElement>(null), container=useRef<HTMLDivElement>(null);
@@ -178,6 +189,7 @@ function CurveDialog({before,after,duration,videoMs,audioMs,initial,boundaries,a
               {Array.from({length:9},(_,i)=><line key={i} className="mask-grid-line" x1={x(from+span*i/8)} x2={x(from+span*i/8)} y1={top} y2={bottom}/>)}
               {[...(before?[before]:[]),...(after?[before+duration]:[])].map(time=><line key={time} className="mask-reference-boundary" x1={x(time)} x2={x(time)} y1={top} y2={bottom}/>)}
               <VideoBoundaries boundaries={boundaries} from={from} to={to} x={x} top={top} bottom={bottom}/>
+              <ImageKeyframeMarkers values={imageKeyframes} from={from} to={to} x={x} top={top} bottom={bottom}/>
               {(['start','end'] as const).map(side=>{
                 const lo=Math.max(from,side==='start'?0:before+duration),hi=Math.min(to,side==='start'?before:total);
                 return hi>lo?<path key={side} className="mask-curve-hit" d={curvePath(curve,before,duration,after,lo,hi,x,y)}
@@ -235,7 +247,7 @@ function CurveDialog({before,after,duration,videoMs,audioMs,initial,boundaries,a
       <div className="mask-curve-options"><label>Interpolation<select aria-label="Mask curve interpolation" value={curve.interpolation} onChange={event=>change({...draft,[active]:{...curve,interpolation:event.target.value as MaskCurve['interpolation']}})}>
         <option value="linear">Linear</option><option value="smooth">Easy ease</option><option value="bezier">Bézier</option></select></label>
         <button type="button" onClick={reset}><RotateCcw size={12}/>Reset {active}</button></div>
-      <p className="mask-editor-help">Solid vertical lines mark cuts between reference clips; dashed lines bound the generated section. Click the curve to add a keyframe, or right-click to add or delete one. Drag diamonds to move them; use Bézier handles to shape the curve. The empty middle stays at 100%.</p>
+      <p className="mask-editor-help">Solid vertical lines mark cuts between reference clips; dashed lines bound the generated section. Click the curve to add a keyframe, or right-click to add or delete one. Drag diamonds to move them; use Bézier handles to shape the curve. The empty middle stays at 100%. Gold markers show image guides; these guide composition independently of the mask.</p>
       <footer className="mask-editor-footer"><span>Applies to the next generation.</span><button type="button" className="button" onClick={onClose}>Cancel</button><button type="button" className="button primary" onClick={apply}>Apply {active} mask</button></footer>
     </div>
     {context&&<KeyframeMenu x={context.x} y={context.y} onClose={()=>setContext(null)} restoreFocus={()=>context.target.focus({preventScroll:true})}

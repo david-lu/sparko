@@ -82,3 +82,7 @@
   .mask-curve-options label{gap:8px}
   .mask-editor-help{padding:0 15px 12px}
 }
+
+.mask-image-keyframe{pointer-events:none}
+.mask-image-keyframe line{stroke:#e9c496;stroke-dasharray:2 4;opacity:.65}
+.mask-image-keyframe path{fill:#e9c496}

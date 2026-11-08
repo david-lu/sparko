@@ -1,3 +1,4 @@
+import { videoKeyframeInputsSchema, validateVideoKeyframeInputs } from '../../../shared/video-keyframes.js';
 import { generationSeedSchema } from '../../../shared/generation-seed.js';
 import express, { type Express } from 'express';
 import { H3_MODEL_ID, loraAddressSchema, loraStrengthSchema } from '../../../shared/loras.js';
@@ -30,6 +31,10 @@ const maskCurve = z.preprocess(value => {
   try { return JSON.parse(value); } catch { return value; }
 }, maskCurveSchema.optional());
 const schema = z.object({
+  keyframes: z.preprocess(value => {
+    if (typeof value !== 'string' || value.length > 10000) return value;
+    try { return JSON.parse(value); } catch { return value; }
+  }, videoKeyframeInputsSchema.optional()),
   seed: z.preprocess(value => typeof value === 'string' && value.trim() ? Number(value) : value, generationSeedSchema.optional()),
   lora: loraAddressSchema.optional(),
   turbo: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
@@ -75,6 +80,8 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
   app.post('/api/comfy/interstitials', authenticate, requireComfy, ...receive('video'), async (req, res) => {
     const parsed = schema.parse(req.body);
     const images = parseImageReferences(req.body.imageReferences);
+    const keyframeImages = parseImageReferences(req.body.keyframeImages);
+    const imageArgs: [Blob[], Blob[]] | [Blob[]] | [] = keyframeImages.length ? [images, keyframeImages] : images.length ? [images] : [];
     const settings = parsed;
     for (const [index, footage] of [[settings.startImageIndex, settings.before], [settings.endImageIndex, settings.after]]) {
       if (index !== undefined && (!images[index] || footage)) throw new HttpError(400, 'Choose an uploaded image or video footage for each endpoint.');
@@ -82,12 +89,15 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     if (settings.mode === 'loop' && settings.startImageIndex !== undefined && settings.endImageIndex !== undefined && settings.startImageIndex !== settings.endImageIndex) throw new HttpError(400, 'A loop uses the same image at both ends.');
     if (settings.loopImageGuide && !images.length) throw new HttpError(400, 'Choose an image as the shared loop reference.');
     let plan;
-    try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); validateComfyResolution(plan,settings.resolution); }
+    try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); validateComfyResolution(plan,settings.resolution);
+      const imageLoop = settings.mode === 'loop' && !plan.prefixFrames && !plan.suffixFrames && (settings.startImageIndex !== undefined || settings.endImageIndex !== undefined || settings.loopImageGuide !== false && images.length > 0);
+      validateVideoKeyframeInputs(settings.keyframes ?? [], plan.middleFrames, keyframeImages.length, imageLoop || settings.startImageIndex !== undefined, imageLoop || settings.endImageIndex !== undefined);
+    }
     catch (error) { throw new HttpError(400, (error as Error).message); }
     if (Math.round(settings.before * TIMELINE_FPS) !== plan.prefixFrames || Math.round(settings.after * TIMELINE_FPS) !== plan.suffixFrames) throw new HttpError(400, 'Prepare the Comfy reference on the H3 frame grid.');
     if (!plan.prefixFrames && !plan.suffixFrames) {
       if (!settings.width || !settings.height) throw new HttpError(400, 'Set the video dimensions for generation without references.');
-      const job = await provider().submit(undefined, { ...settings, ...comfyDimensions(settings.width, settings.height, settings.resolution), hasAudio: false }, ...(images.length ? [images] as const : []));
+      const job = await provider().submit(undefined, { ...settings, ...comfyDimensions(settings.width, settings.height, settings.resolution), hasAudio: false }, ...imageArgs);
       if (res.destroyed) { await provider().cancel(job.requestId).catch(() => undefined); return; }
       res.status(202).json(job); return;
     }
@@ -108,7 +118,7 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
       throw new HttpError(400, 'Unable to read the Comfy reference MP4.');
     } finally { media.dispose(); }
     if (res.destroyed) return;
-    const job = await provider().submit(file, { ...settings, ...dimensions, hasAudio }, ...(images.length ? [images] as const : []));
+    const job = await provider().submit(file, { ...settings, ...dimensions, hasAudio }, ...imageArgs);
     if (res.destroyed) { await provider().cancel(job.requestId).catch(() => undefined); return; }
     res.status(202).json(job);
   });

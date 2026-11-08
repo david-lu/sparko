@@ -113,6 +113,20 @@ describe('portable project archives', () => {
     expect(idFor('style.jpg')).not.toBe(images[1].id);
     expect(hasUnsubmittedChanges(restored.project.interstitials[0])).toBe(true);
   });
+  it('preserves timed keyframes in draft, submitted settings and templates, remapping their image assets', async () => {
+    const images = ['draft-pose.jpg', 'submitted-pose.jpg', 'template-pose.jpg'].map(name => ({ id: crypto.randomUUID(), name, blob: new Blob([name], { type: 'image/jpeg' }) }));
+    const pose = (i: number) => ({ id: `pose-${i}`, frame: 24 * (i + 1), enabled: i !== 2, image: { assetId: images[i].id, name: images[i].name } });
+    const snapshot = structuredClone(project), item = snapshot.interstitials[0];
+    item.keyframes = [pose(1)]; item.generationSettings = interstitialSettings(item);
+    item.keyframes = [pose(0)];
+    const node = { id: 'node', name: 'Scene', kind: 'simple' as const, interstitialId: item.id, x: 0, y: 0, loopCount: 0 };
+    snapshot.storyFlow = { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [{ id: 'poses', name: 'Poses', entryId: node.id, nodes: [node], edges: [], settings: { node: { ...interstitialSettings(item), keyframes: [pose(2)] } } }] };
+    expect(assetIds(snapshot)).toEqual(expect.arrayContaining(images.map(image => image.id)));
+    const restored = await unpackProject(await packProject(snapshot, [...media, ...images], signal(), progress), signal(), progress);
+    const settings = [restored.project.interstitials[0], restored.project.interstitials[0].generationSettings, restored.project.storyFlow!.templates[0].settings.node];
+    settings.forEach((value, i) => expect(value?.keyframes).toEqual([{ ...pose(i), image: { ...pose(i).image, assetId: restored.assets.find(asset => asset.name === images[i].name)!.id } }]));
+    expect(hasUnsubmittedChanges(restored.project.interstitials[0])).toBe(true);
+  });
   it('saves and restores an empty project without a source asset',async()=>{
     const empty:Project={...project,source:{name:'Untitled project'},name:'Untitled project',interstitials:[],subtitle:null,library:[],storyFlow:{version:1,entryId:'',nodes:[],edges:[],templates:[]}};
     const restored=await unpackProject(await packProject(empty,[],signal(),progress),signal(),progress);

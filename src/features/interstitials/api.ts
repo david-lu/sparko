@@ -1,3 +1,4 @@
+import { activeVideoKeyframes, validateVideoKeyframes } from '../../../shared/video-keyframes';
 import { chooseGenerationSeed } from '../../../shared/generation-seed';
 import { INTERSTITIAL, MASK_TRANSITION } from '../../../shared/constants';
 import type { GenerationJob } from '../../../shared/contracts';
@@ -31,18 +32,22 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   for (const index of [startImageIndex, endImageIndex]) {
     if (index !== undefined && !item.imageReferences?.[index]) throw new Error('Choose an image for each image reference before generating.');
   }
-  if (startImageIndex !== undefined || endImageIndex !== undefined) query.set('imageGuides', 'true');
+  const range = comfyReferenceRange(item, info?.duration ?? item.duration);
+  const keyframes = activeVideoKeyframes(item.keyframes);
+  validateVideoKeyframes(item.keyframes, range.plan.middleFrames, startImageIndex !== undefined, endImageIndex !== undefined || item.method === 'comfy-loop' && startImageIndex !== undefined);
+  if (keyframes.length || startImageIndex !== undefined || endImageIndex !== undefined) query.set('imageGuides', 'true');
   if (item.method === 'comfy-loop' && startImageIndex !== undefined) query.set('imageLoop', 'true');
   const readiness = await request<{ ready: boolean; message?: string }>(`/api/comfy/status${query.size ? `?${query}` : ''}`, { signal });
   if (!readiness.ready) throw new Error(readiness.message || 'Comfy Cloud is not ready.');
   if ((!engine || !info) && !hasNoVideoInput(item)) throw new Error('Connect reference footage or set Start and End to None or Image.');
-  const range = comfyReferenceRange(item, info?.duration ?? item.duration);
   if (!item.prompt.trim()) throw new Error('Describe the video before generating.');
   onProgress('preparing', 0);
   const images = await referenceImageData(item.imageReferences, signal);
+  const keyframeImages = await referenceImageData(keyframes.map(keyframe => keyframe.image!), signal);
   let canvas = info;
-  if (!canvas && item.imageReferences?.length) {
-    const { asset } = await assets.open(item.imageReferences![0].assetId), bitmap = await createImageBitmap(asset.blob);
+  const canvasImage = item.imageReferences?.[0] ?? keyframes[0]?.image;
+  if (!canvas && canvasImage) {
+    const { asset } = await assets.open(canvasImage.assetId), bitmap = await createImageBitmap(asset.blob);
     try { canvas = { width: bitmap.width, height: bitmap.height, duration: item.duration, fps: INTERSTITIAL.referenceFps, hasAudio: false, codec: '' }; }
     finally { bitmap.close(); }
   }
@@ -58,6 +63,10 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   body.set('seed', String(seed));
   if (item.requestOrigin) body.set('clipOrigin', JSON.stringify(item.requestOrigin));
   if (images.length) body.set('imageReferences', JSON.stringify(images));
+  if (keyframes.length) {
+    body.set('keyframeImages', JSON.stringify(keyframeImages));
+    body.set('keyframes', JSON.stringify(keyframes.map((keyframe, imageIndex) => ({ frame: keyframe.frame, imageIndex }))));
+  }
   if (startImageIndex !== undefined) body.set('startImageIndex', String(startImageIndex));
   if (endImageIndex !== undefined) body.set('endImageIndex', String(endImageIndex));
   if (clip) body.set('video', clip, 'comfy-reference.mp4');

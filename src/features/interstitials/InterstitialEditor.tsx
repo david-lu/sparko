@@ -1,3 +1,5 @@
+import VideoKeyframes from './VideoKeyframes';
+import { activeVideoKeyframes, validateVideoKeyframes } from '../../../shared/video-keyframes';
 import GenerationLora from '../project/GenerationLora';
 import { H3_MODEL_ID, generationLoraInstructions } from '../../../shared/loras';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -43,7 +45,7 @@ export type InterstitialEditorProps = {
 export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, generationSettings, projects, player }: InterstitialEditorProps) {
   const promptId = useId(), resolutionId = useId(), analysisId = useId();
   const dependency = controller.dependency(selected.id);
-  useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId)]);
+  useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId), ...(selected.keyframes ?? []).flatMap(k => k.image ? [k.image.assetId] : [])]);
   const kind = controller.clipKind(selected.id);
   const loraInstructions = generationLoraInstructions(selected, projects?.getSnapshot().project?.loras, H3_MODEL_ID);
   const [enhancing, setEnhancing] = useState(false);
@@ -55,7 +57,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   useEffect(() => {
     setEnhancing(false); setAnalyzing(false);
     return () => { enhancement.current?.abort(); enhancement.current = null; };
-  }, [controller, engine, info?.duration, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, selected.start_range, selected.end_range, selected.method, selected.resolution, selected.useInputReference, selected.useOutputReference, selected.analyzeReferences, selected.audioMaskCurve, selected.audioMaskTransitionMs, selected.maskTransitionMs, kind, referenceKey, selected.imageReferences, selected.startImageIndex, selected.endImageIndex, selected.lora, loraInstructions]);
+  }, [controller, engine, info?.duration, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, selected.start_range, selected.end_range, selected.method, selected.resolution, selected.useInputReference, selected.useOutputReference, selected.analyzeReferences, selected.audioMaskCurve, selected.audioMaskTransitionMs, selected.maskTransitionMs, kind, referenceKey, selected.imageReferences, selected.keyframes, selected.startImageIndex, selected.endImageIndex, selected.lora, loraInstructions]);
   const enhance = async (editInstructions?: string): Promise<PromptEditResult> => {
     if (enhancement.current || !status?.providers.openai || !selected.prompt.trim()) return { applied: false };
     const operation = new AbortController(); enhancement.current = operation;
@@ -66,6 +68,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
       const current = controller.getSnapshot().items.find(item => item.id === selected.id);
       if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt && current.lora === selected.lora
         && generationLoraInstructions(current, projects?.getSnapshot().project?.loras, H3_MODEL_ID) === loraInstructions
+        && JSON.stringify(current.keyframes ?? []) === JSON.stringify(selected.keyframes ?? [])
         && JSON.stringify(current.imageReferences ?? []) === JSON.stringify(selected.imageReferences ?? [])) {
         controller.edit(selected.id, { prompt: result.prompt });
         return { applied: true };
@@ -107,11 +110,16 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     validateMaskTransitionMs(selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Audio mask transition');
     validateMaskTransitionMs(selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Video mask transition');
     for (const curve of [selected.videoMaskCurve, selected.audioMaskCurve]) if (curve) maskCurveSchema.parse(curve);
-    if ((hasSource || noVideo) && !dependency?.blocked) {
+    if (hasSource || noVideo) {
       const timing = dependency?.reference && referenceTiming(selected, dependency.reference);
       const input = timing ? { ...selected, time: timing.time } : selected;
       const duration = timing?.duration || info?.duration || selected.duration;
       comfyPlan = comfyReferenceRange(input, duration).plan;
+      validateVideoKeyframes(selected.keyframes, comfyPlan.middleFrames, selected.useInputReference === false && selected.startImageIndex !== undefined, selected.useOutputReference === false && selected.endImageIndex !== undefined || method === 'comfy-loop' && selected.startImageIndex !== undefined);
+      for (const keyframe of activeVideoKeyframes(selected.keyframes)) {
+        const error = keyframe.image && assets.error(keyframe.image.assetId);
+        if (error) throw new Error(`${keyframe.image!.name}: ${error}`);
+      }
     }
     validateH3PromptLength(selected.prompt);
   } catch (error) { validationError = (error as Error).message; }
@@ -151,7 +159,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     <MaskCurveEditor key={`curves:${selected.id}`} before={comfyPlan?comfyPlan.prefixFrames/TIMELINE_FPS:selected.useInputReference===false?0:selected.start_range}
       after={comfyPlan?comfyPlan.suffixFrames/TIMELINE_FPS:method==='comfy-extend'||selected.useOutputReference===false?0:selected.end_range}
       duration={comfyPlan?.insertion.duration??selected.duration} video={selected.videoMaskCurve} audio={selected.audioMaskCurve}
-      reference={dependency?.reference}
+      reference={dependency?.reference} imageKeyframes={activeVideoKeyframes(selected.keyframes).filter(k => k.frame < (comfyPlan?.middleFrames ?? selected.duration * TIMELINE_FPS)).map(k => ({ id: k.id, name: k.image?.name ?? 'Keyframe', time: ((comfyPlan?.prefixFrames ?? 0) + k.frame) / TIMELINE_FPS }))}
       videoMs={selected.videoMaskTransitionMs??selected.maskTransitionMs??MASK_TRANSITION.defaultMs}
       audioMs={selected.audioMaskTransitionMs??selected.maskTransitionMs??MASK_TRANSITION.defaultMs}
       onChange={patch=>controller.edit(selected.id,patch)}/>
@@ -210,6 +218,15 @@ export default function InterstitialEditor({ selected, controller, engine, info,
             ...(saved.startImageIndex !== undefined && startImageIndex === undefined ? { startReferenceType: 'none' } : {}),
             ...(saved.endImageIndex !== undefined && endImageIndex === undefined ? { endReferenceType: 'none' } : {}) });
         }} />
+      </div></details>
+      <details className="inspector-group" open><summary>Keyframes &amp; masks<span>Optional</span></summary><div className="inspector-group-body">
+        {projects && <VideoKeyframes key={selected.id} projects={projects} value={selected.keyframes}
+          middleFrames={comfyPlan?.middleFrames ?? Math.round(selected.duration * TIMELINE_FPS)} prefixFrames={comfyPlan?.prefixFrames ?? 0} suffixFrames={comfyPlan?.suffixFrames ?? 0}
+          onPreviewPlay={onPreviewPlay} onChange={update => {
+            const current = controller.getSnapshot().items.find(item => item.id === selected.id);
+            if (current) controller.edit(selected.id, { keyframes: update(current.keyframes ?? []) });
+          }}/>}
+        {noVideo && <p className="hint">Audio and video masks become available with start/end video references. The generated section is always fully regenerated.</p>}
         {referenceSettings}
       </div></details>
       <div className="field interstitial-resolution">

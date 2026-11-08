@@ -29,6 +29,18 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it('accepts timed images separately and rejects malformed or unresolvable guides before submission', async () => {
+    const keyframeImages = JSON.stringify(['data:image/jpeg;base64,/9j/2Q==']);
+    await submit('1.625', '1.625', 'Timed pose', { keyframes: JSON.stringify([{ frame: 24, imageIndex: 0 }]), keyframeImages }).expect(202);
+    expect(comfy.submit.mock.calls[0][1].keyframes).toEqual([{ frame: 24, imageIndex: 0 }]);
+    expect(comfy.submit.mock.calls[0][2]).toEqual([]);
+    expect(comfy.submit.mock.calls[0][3][0]).toBeInstanceOf(Blob);
+    for (const keyframes of ['{', JSON.stringify([{ frame: 24, imageIndex: 1 }]), JSON.stringify([{ frame: 24, imageIndex: 0 }, { frame: 24, imageIndex: 0 }]), JSON.stringify([{ frame: 148, imageIndex: 0 }])]) {
+      await submit('1.625', '1.625', 'Bad guide', { keyframes, keyframeImages }).expect(400);
+    }
+    await submit('1.625', '1.625', 'Missing image', { keyframes: JSON.stringify([{ frame: 24, imageIndex: 0 }]) }).expect(400);
+    expect(comfy.submit).toHaveBeenCalledOnce();
+  });
   it('accepts 7,000 prompt characters after line-ending normalization and rejects 7,001 without submitting', async () => {
     const prompt = `${'A'.repeat(6997)}\nB\n`;
     await submit('1.625', '1.625', prompt.replaceAll('\n', '\r\n')).expect(202);

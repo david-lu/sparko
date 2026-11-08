@@ -7,7 +7,7 @@ export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'stor
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
-  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [] })),
+  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [], keyframes: item.keyframes ?? [] })),
     callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, libraryFolders: project.libraryFolders, deletedAssetIds: project.deletedAssetIds,
     loras: project.loras, clipGenerations: project.clipGenerations?.map(({id,name,kind,folderId,settings,versions,selectedAssetId}) => ({id,name,kind,folderId,settings,versions,selectedAssetId})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }

@@ -31,6 +31,7 @@ export function collectLibrary(project: Project, sourceDuration?: number): Libra
   }
   for (const generation of [...project.clipGenerations ?? [], ...project.assetGenerations ?? []]) for (const version of generation.versions) add({ assetId: version.assetId, name: version.name, kind: generation.kind === 'video' ? 'generated' : generation.kind, generationId: generation.id, folderId: generation.folderId,
     generation: { provider: 'fal', settings: version.settings, createdAt: version.createdAt } });
+  for (const item of project.interstitials) for (const keyframe of item.keyframes ?? []) if (keyframe.image) add({ ...keyframe.image, kind: 'image' });
   for (const item of project.interstitials) for (const ref of item.imageReferences ?? []) add({ assetId: ref.assetId, name: ref.name, kind: 'image' });
   return [...entries.values()];
 }

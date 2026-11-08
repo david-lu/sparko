@@ -7,15 +7,16 @@ import { maskCurveSchema, type MaskCurve } from '../../../shared/mask-curves.js'
 import { isLoraFilename, loraStrengthSchema, LORA_STRENGTH } from '../../../shared/loras.js';
 import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 import { CLIP_METADATA_TAG, serializeClipMetadata, type ClipOrigin } from '../../../shared/clip-metadata.js';
+import { MAX_VIDEO_KEYFRAMES, validateVideoKeyframeInputs, type VideoKeyframeInput } from '../../../shared/video-keyframes.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown>; _meta?: Record<string, unknown> }>;
-export type BridgeInput = { seed?: number; clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
+export type BridgeInput = { keyframes?: VideoKeyframeInput[]; seed?: number; clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Separately encoded references stay frozen outside their soft transitions.
  * The original source footage is kept by Sparko's compositor, outside this render.
  */
-export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, _legacyMaskAssetId?: string, imageAssetIds: string[] = []): Workflow {
+export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, _legacyMaskAssetId?: string, imageAssetIds: string[] = [], keyframeImageIds: string[] = []): Workflow {
   validateH3PromptLength(input.prompt);
   input = { ...input, prompt: normalizeH3Prompt(input.prompt) };
   if (imageAssetIds.length > IMAGE_REFERENCE.maxCount) throw new Error('H3 supports up to 9 image references.');
@@ -25,6 +26,8 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   const imageLoop = input.mode === 'loop' && !prefixFrames && !suffixFrames;
   const startImageIndex = input.startImageIndex ?? (imageLoop ? input.endImageIndex ?? (input.loopImageGuide !== false && imageAssetIds.length ? 0 : undefined) : undefined);
   const endImageIndex = imageLoop ? startImageIndex : input.endImageIndex;
+  if (keyframeImageIds.length > MAX_VIDEO_KEYFRAMES) throw new Error('Use up to 9 image keyframes.');
+  validateVideoKeyframeInputs(input.keyframes ?? [], plan.middleFrames, keyframeImageIds.length, startImageIndex !== undefined && !prefixFrames, endImageIndex !== undefined && !suffixFrames);
   if (input.loopImageGuide && !imageAssetIds.length) throw new Error('Choose an image as the shared loop reference.');
   for (const [index, footage] of [[startImageIndex, prefixFrames], [endImageIndex, suffixFrames]]) {
     if (index !== undefined && (!Number.isInteger(index) || !imageAssetIds[index] || footage)) throw new Error('Choose an uploaded image or video footage for each endpoint.');
@@ -63,6 +66,10 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   });
   if (startImageIndex !== undefined) positive = add(imageLoop ? 'loop_start' : 'guide_start', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: [`reference_image_${startImageIndex}`, 0], frame_idx: 0 });
   if (endImageIndex !== undefined) positive = add(imageLoop ? 'loop_end' : 'guide_end', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: [`reference_image_${endImageIndex}`, 0], frame_idx: -1 });
+  for (const [index, keyframe] of [...input.keyframes ?? []].sort((a, b) => a.frame - b.frame).entries()) {
+    const image = add(`keyframe_image_${index}`, 'LoadImage', { image: { __type: 'core/ASSET', info: { id: keyframeImageIds[keyframe.imageIndex] } } });
+    positive = add(`keyframe_guide_${index}`, 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image, frame_idx: prefixFrames + keyframe.frame });
+  }
   const empty = add('empty_streams', 'LTXVSeparateAVLatent', { av_latent: ['conditioning', 1] });
   const target = empty;
   const startLatent = before ? add('encode_before', 'VAEEncode', { pixels: before, vae }) : undefined;

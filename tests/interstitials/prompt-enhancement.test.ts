@@ -23,6 +23,23 @@ beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
 
 describe('interstitial prompt enhancement', () => {
+  it('shows timed image anchors with both clocks in enhancement and the timing pass', async () => {
+    const referenceTiming = { prefixFrames: 39, suffixFrames: 0 }, timeline = promptTimeline(6, referenceTiming);
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) })
+      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ requiredDuration: 3, opening: 'Static camera.', beats: [
+        { start: 0, end: Number(timeline.generatedDuration.toFixed(3)), action: 'She holds the rock at two seconds.', speech: { line: 0, delivery: 'S1 asks clearly' } },
+      ] }) });
+    await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, referenceTiming, keyframes: [{ frame: 48, image: 'data:image/jpeg;base64,Yg==' }] });
+    expect(respond).toHaveBeenCalledTimes(2);
+    for (const [call] of respond.mock.calls) {
+      expect(call.instructions).toContain('Timed image guides specify');
+      expect(call.input[0].content).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'input_text', text: expect.stringContaining('generated frame 48, 2 seconds') }),
+        expect.objectContaining({ type: 'input_text', text: expect.stringContaining('3.625 seconds on the full-video clock') }),
+        expect.objectContaining({ type: 'input_image', image_url: 'data:image/jpeg;base64,Yg==' }),
+      ]));
+    }
+  });
   it.each([undefined, 'Keep the same question, but sound more excited.'])('uses the actual generated window for enhancement and editing: %s', async editInstructions => {
     const referenceTiming = { prefixFrames: 39, suffixFrames: 39 }, timeline = promptTimeline(6, referenceTiming);
     const plan = { requiredDuration: 3, opening: 'Static camera; one uninterrupted shot.', beats: [
@@ -502,6 +519,15 @@ describe('prompt enhancement API', () => {
   beforeEach(() => { configured.openai = true; enhancePrompt.mockResolvedValue({ prompt: `A restrained gesture.\n\n${continuity}`, model: AI_MODELS.promptEnhancement }); });
   const send = (body: object) => request(app).post('/api/interstitials/enhance-prompt').set('x-sparko-request', '1').send(body);
   const body = { prompt: input.prompt, kind: input.kind, duration: input.duration, referenceFrames: input.referenceFrames };
+  it('validates timed image anchors before calling the enhancement provider', async () => {
+    const image = 'data:image/jpeg;base64,Yg==';
+    await send({ ...body, referenceTiming: { prefixFrames: 39, suffixFrames: 0 }, keyframes: [{ frame: 48, image }] }).expect(200);
+    for (const keyframes of [[{ frame: -1, image }], [{ frame: 360, image }], [{ frame: 48, image }, { frame: 48, image }], [{ frame: 48, image: 'https://example.com/image.jpg' }]]) {
+      await send({ ...body, keyframes }).expect(400);
+    }
+    await send({ ...body, imageGuides: { start: 0 }, keyframes: [{ frame: 0, image }] }).expect(400);
+    expect(enhancePrompt).toHaveBeenCalledOnce();
+  });
   it('accepts analysis only for the matching current reference windows', async () => {
     const referenceTiming = { prefixFrames: 39, suffixFrames: 0 }, description = { side: 'start', frames: 39, description: '0–1.625s: a wave.' };
     await send({ ...body, referenceTiming, referenceDescriptions: [description] }).expect(200);

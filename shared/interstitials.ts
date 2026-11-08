@@ -5,6 +5,7 @@ import type { ClipMetadata, ClipOrigin } from './clip-metadata.js';
 import type { ImageReference } from './image-references.js';
 import { maskCurveSchema, type MaskCurve } from './mask-curves.js';
 import type { VideoAssetReference } from './video-references.js';
+import { videoKeyframesSchema, type VideoKeyframe } from './video-keyframes.js';
 
 export type GenerationMethod = 'comfy' | 'comfy-extend' | 'comfy-loop';
 export const generationMethods = ['comfy', 'comfy-extend', 'comfy-loop'] as const;
@@ -55,6 +56,7 @@ export type InterstitialSettings = {
   seed?: number;
   /** Ordered H3 references, addressed as <Picture 1>, <Picture 2>, etc. */
   imageReferences?: ImageReference[];
+  keyframes?: VideoKeyframe[];
   /** Zero-based Picture indexes used as first/last-frame guides when footage is disabled. */
   startImageIndex?: number; endImageIndex?: number;
   startReferenceType?: ReferenceType; endReferenceType?: ReferenceType;
@@ -115,12 +117,13 @@ export type Interstitial = InterstitialSettings & {
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
 // Keep Turbo's off value explicit so undo can clear a previously enabled setting.
-export const interstitialSettings = ({ lora, loraInstructions, loraStrength, turbo, seed, useStartVideoAsset, useEndVideoAsset, startVideoAsset, endVideoAsset, startVideoAssets, endVideoAssets, start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, analyzeReferences, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
+export const interstitialSettings = ({ lora, loraInstructions, loraStrength, turbo, seed, useStartVideoAsset, useEndVideoAsset, startVideoAsset, endVideoAsset, startVideoAssets, endVideoAssets, start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, analyzeReferences, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, keyframes, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
   ({ ...(lora !== undefined ? { lora } : {}), ...(loraInstructions !== undefined ? { loraInstructions } : {}), ...(loraStrength !== undefined ? { loraStrength } : {}), turbo: turbo === true, ...(seed !== undefined ? { seed } : {}), start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
     ...(useStartVideoAsset !== undefined ? { useStartVideoAsset } : {}), ...(useEndVideoAsset !== undefined ? { useEndVideoAsset } : {}),
     ...(startVideoAsset ? { startVideoAsset: { ...startVideoAsset } } : {}), ...(endVideoAsset ? { endVideoAsset: { ...endVideoAsset } } : {}),
     ...(startVideoAssets ? { startVideoAssets: startVideoAssets.map(ref => ({ ...ref })) } : {}),
     ...(endVideoAssets ? { endVideoAssets: endVideoAssets.map(ref => ({ ...ref })) } : {}),
+    ...(keyframes !== undefined ? { keyframes: videoKeyframesSchema.parse(keyframes) } : {}),
     ...(imageReferences?.length ? { imageReferences: imageReferences.map(image => ({ ...image })) } : {}),
     ...(startImageIndex !== undefined ? { startImageIndex } : {}), ...(endImageIndex !== undefined ? { endImageIndex } : {}),
     ...(startReferenceType !== undefined ? { startReferenceType } : {}), ...(endReferenceType !== undefined ? { endReferenceType } : {}),
@@ -132,7 +135,7 @@ export const interstitialSettings = ({ lora, loraInstructions, loraStrength, tur
     ...(continuity !== undefined ? { continuity } : {}), ...(dialogue !== undefined ? { dialogue } : {}), ...(analyzeReferences !== undefined ? { analyzeReferences } : {}), ...(loopAudio !== undefined ? { loopAudio } : {}) });
 export const hasUnsubmittedChanges = (item: Interstitial) => !!item.generationSettings &&
   ([...new Set([...Object.keys(interstitialSettings(item)), ...Object.keys(interstitialSettings(item.generationSettings))])] as (keyof InterstitialSettings)[])
-    .some(key => !['loopAudio', 'continuity', 'dialogue', 'loraInstructions', 'analyzeReferences'].includes(key) && (['imageReferences', 'audioMaskCurve', 'videoMaskCurve', 'startVideoAsset', 'endVideoAsset', 'startVideoAssets', 'endVideoAssets'].includes(key)
+    .some(key => !['loopAudio', 'continuity', 'dialogue', 'loraInstructions', 'analyzeReferences'].includes(key) && (['imageReferences', 'keyframes', 'audioMaskCurve', 'videoMaskCurve', 'startVideoAsset', 'endVideoAsset', 'startVideoAssets', 'endVideoAssets'].includes(key)
       ? JSON.stringify(item[key] ?? []) !== JSON.stringify(item.generationSettings![key] ?? [])
       : key === 'loraStrength' ? !!(item.lora || item.generationSettings!.lora) && (item.loraStrength ?? LORA_STRENGTH.default) !== (item.generationSettings!.loraStrength ?? LORA_STRENGTH.default)
       : key === 'lora' ? (item.lora ?? null) !== (item.generationSettings!.lora ?? null)

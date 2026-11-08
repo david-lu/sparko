@@ -1,3 +1,5 @@
+import { activeVideoKeyframes, validateVideoKeyframes } from '../../../shared/video-keyframes';
+import { promptTimeline } from '../../../shared/prompt-timing';
 import { MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
 import { defaultMaskCurve } from '../../../shared/mask-curves';
 import type { PromptClipKind, PromptEnhancement } from '../../../shared/contracts';
@@ -13,7 +15,7 @@ import { referenceTiming } from '../../../shared/reference-clips';
 import type { PromptReferenceTiming, PromptReferenceDescription } from '../../../shared/prompt-timing';
 import { analyzePromptReferences } from './analyze-prompt-references';
 
-type PromptItem = Pick<Interstitial, 'prompt' | 'time' | 'duration' | 'continuity' | 'dialogue' | 'imageReferences' | 'startImageIndex' | 'endImageIndex' | 'loraInstructions'>
+type PromptItem = Pick<Interstitial, 'prompt' | 'time' | 'duration' | 'continuity' | 'dialogue' | 'imageReferences' | 'keyframes' | 'startImageIndex' | 'endImageIndex' | 'loraInstructions'>
   & Partial<Pick<Interstitial, 'start_range' | 'end_range' | 'method' | 'resolution' | 'useInputReference' | 'useOutputReference' | 'analyzeReferences' | 'audioMaskCurve' | 'audioMaskTransitionMs' | 'maskTransitionMs'>>;
 function promptReferences(item: PromptItem, reference: GenerationReference | undefined, sourceDuration?: number): PromptReferenceTiming | undefined {
   if (item.start_range === undefined || item.end_range === undefined) return;
@@ -27,6 +29,11 @@ function promptReferences(item: PromptItem, reference: GenerationReference | und
 export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, reference: GenerationReference | undefined,
   engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, { target, player, editInstructions, onAnalyzing }: { target?: 'continuity'; player?: PromptFramePlayer; editInstructions?: string; onAnalyzing?: (active: boolean) => void } = {}) {
   const referenceTiming = target === 'continuity' ? undefined : promptReferences(item, reference, info?.duration);
+  const enabledKeyframes = target === 'continuity' ? [] : activeVideoKeyframes(item.keyframes);
+  if (enabledKeyframes.length) {
+    const timeline = promptTimeline(item.duration, referenceTiming ?? { prefixFrames: 0, suffixFrames: 0 });
+    validateVideoKeyframes(item.keyframes, Math.round(timeline.generatedDuration * TIMELINE_FPS), item.startImageIndex !== undefined, item.endImageIndex !== undefined || item.method === 'comfy-loop' && item.startImageIndex !== undefined);
+  }
   const currentFrame = await capturePromptFrame(player, signal);
   const referenceFrames: string[] = [];
   if (reference) {
@@ -47,6 +54,8 @@ export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, refe
   signal.throwIfAborted();
   const imageReferences = await referenceImagePreviews(item.imageReferences, signal);
   signal.throwIfAborted();
+  const keyframeImages = await referenceImagePreviews(enabledKeyframes.map(keyframe => keyframe.image!), signal);
+  const keyframes = enabledKeyframes.map((keyframe, index) => ({ frame: keyframe.frame, image: keyframeImages[index] }));
   let referenceDescriptions: PromptReferenceDescription[] | undefined;
   if (item.analyzeReferences && referenceTiming && (referenceTiming.prefixFrames || referenceTiming.suffixFrames)) {
     onAnalyzing?.(true);
@@ -57,6 +66,6 @@ export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, refe
   const referenceAudioMask = referenceDescriptions?.length && referenceTiming ? item.audioMaskCurve
     ?? defaultMaskCurve(referenceTiming.prefixFrames / TIMELINE_FPS, referenceTiming.suffixFrames / TIMELINE_FPS, item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs) : undefined;
   return request<PromptEnhancement>('/api/interstitials/enhance-prompt', { method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, editInstructions, duration: item.duration, kind, target, currentFrame, referenceFrames, referenceTiming, referenceDescriptions, referenceAudioMask, imageReferences,
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, editInstructions, duration: item.duration, kind, target, currentFrame, referenceFrames, referenceTiming, referenceDescriptions, referenceAudioMask, imageReferences, ...(keyframes.length ? { keyframes } : {}),
       imageGuides: { start: item.startImageIndex, end: item.endImageIndex }, continuity: item.continuity, dialogue: item.dialogue, loraInstructions: item.loraInstructions }) });
 }

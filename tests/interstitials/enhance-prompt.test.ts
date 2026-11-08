@@ -30,6 +30,13 @@ beforeEach(() => {
 const body = () => JSON.parse(vi.mocked(request).mock.calls[0][1]!.body as string);
 
 describe('prompt enhancement references', () => {
+  it('sends active timed images with body-relative frames and keeps them separate from Picture references', async () => {
+    const keyframes = [{ id: 'pose', frame: 48, enabled: true, image: { assetId: '11111111-1111-4111-8111-111111111111', name: 'Pose' } }, { id: 'ignored', frame: 99, enabled: false }];
+    await enhancePrompt({ ...item, keyframes }, 'response', reference, engine, info, new AbortController().signal);
+    expect(body().keyframes).toEqual([{ frame: 48, image: 'data:image/jpeg;base64,Yw==' }]);
+    expect(body().imageReferences).toEqual([]);
+    expect(body().referenceTiming).toEqual({ prefixFrames: 39, suffixFrames: 39 });
+  });
   it.each([undefined, 'Make the question brighter.'])('analyzes current reference footage only when opted in: %s', async editInstructions => {
     const descriptions = [{ side: 'start' as const, frames: 39, description: '0–1.625s: She lowers a bowl and closes her mouth.' }];
     vi.mocked(analyzePromptReferences).mockResolvedValue(descriptions);

@@ -12,6 +12,7 @@ import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../share
 import { maskCurveSchema } from '../../../shared/mask-curves';
 import { videoReferenceSettings } from '../../../shared/video-references';
 import { assetGenerationSchema, assetSettingsSchema } from '../../../shared/asset-generation';
+import { videoKeyframesSchema } from '../../../shared/video-keyframes';
 
 const MAX_BYTES = 8 * 1024 ** 3;
 const MAX_MANIFEST = 8 * 1024 ** 2;
@@ -29,6 +30,7 @@ const settingsSchema = z.object({
   ...loraSettings,
   turbo: z.boolean().optional(), seed: generationSeedSchema.optional(),
   imageReferences: imageReferencesSchema.optional(),
+  keyframes: videoKeyframesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),
   resolution: z.enum(generationResolutions).optional(),
@@ -170,6 +172,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
       startVideoAssets: settings.startVideoAssets?.map(remapVideo), endVideoAssets: settings.endVideoAssets?.map(remapVideo),
       startVideoAsset: settings.startVideoAsset ? { ...settings.startVideoAsset, assetId: remap.get(settings.startVideoAsset.assetId)! } : undefined,
       endVideoAsset: settings.endVideoAsset ? { ...settings.endVideoAsset, assetId: remap.get(settings.endVideoAsset.assetId)! } : undefined,
+      ...(settings.keyframes ? { keyframes: settings.keyframes.map(keyframe => ({ ...keyframe, image: keyframe.image ? { ...keyframe.image, assetId: remap.get(keyframe.image.assetId) ?? keyframe.image.assetId } : undefined })) } : {}),
       ...(settings.imageReferences?.length ? { imageReferences: settings.imageReferences.map(image => ({ ...image, assetId: remap.get(image.assetId)??image.assetId })) } : {}),
     });
     const remapClip = (clip: z.infer<typeof clipReferenceSchema>) => ({ ...clip,

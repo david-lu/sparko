@@ -12,6 +12,7 @@ export default function AssetGenerationInfo({ asset, showPrompt = true, showBrea
   const generation = asset?.generation;
   const inputs = generation?.provider === 'fal' ? generation.settings.references : generation ? [
     ...generation.settings?.imageReferences ?? [],
+    ...generation.settings?.keyframes?.flatMap(keyframe => keyframe.image ? [keyframe.image] : []) ?? [],
     ...videoAssets(generation.settings ?? {}, 'start'), ...videoAssets(generation.settings ?? {}, 'end'),
     ...(['before', 'after'] as const).flatMap(side => referenceClips(generation.result.reference, side).map((ref, index) => ({
       assetId: ref.assetId, name: referenceClips(generation.result.metadata?.references, side)[index]?.name ?? `${side === 'before' ? 'Start' : 'End'} video reference`,

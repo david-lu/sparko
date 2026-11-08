@@ -6,6 +6,7 @@ import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from './constants.js';
 import { generationMethods, generationResolutions, maskInjections } from './interstitials.js';
 import { imageReferencesSchema, imageReferenceIndexSchema } from './image-references.js';
 import { maskCurveSchema } from './mask-curves.js';
+import { videoKeyframesSchema } from './video-keyframes.js';
 
 export const CLIP_METADATA_TAG = 'sparko';
 export const MAX_CLIP_METADATA_BYTES = 256 * 1024;
@@ -18,6 +19,7 @@ export const clipSettingsSchema = z.object({
   ...loraSettings,
   turbo: z.boolean().optional(), seed: generationSeedSchema.optional(),
   imageReferences: imageReferencesSchema.optional(),
+  keyframes: videoKeyframesSchema.optional(),
   startImageIndex: imageReferenceIndexSchema.optional(), endImageIndex: imageReferenceIndexSchema.optional(),
   startReferenceType: z.enum(['none', 'video', 'image']).optional(), endReferenceType: z.enum(['none', 'video', 'image']).optional(),
   method: z.enum(generationMethods), resolution: z.enum(generationResolutions),
