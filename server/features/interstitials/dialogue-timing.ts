@@ -27,7 +27,7 @@ Estimate requiredDuration before packing the sequence into the available time. I
  * These time windows remain model guidance, not frame-level constraints on H3's generated output.
  */
 export async function timeDialogueBeats(openai: NonNullable<AIClients['openai']>, input: {
-  prompt: string; draft: string; repair?: boolean; dialogue?: string; duration: number; maxPromptLength: number; signal: AbortSignal;
+  prompt: string; draft: string; repair?: boolean; editInstructions?: string; dialogue?: string; duration: number; maxPromptLength: number; signal: AbortSignal;
 }): Promise<string> {
   const lines = dialogueTags(input.prompt), originalLines = scriptedDialogue(input.draft, input.repair);
   const separateLine = input.dialogue?.trim() ? `<d>[English] ${input.dialogue.trim()}</d>` : undefined;
@@ -36,7 +36,8 @@ export async function timeDialogueBeats(openai: NonNullable<AIClients['openai']>
   const originalOrder = originalLines.map(dialogueKey), outputOrder = originalOutput.map(dialogueKey);
   // Repairs may fix ordering, but must retain the exact lines and intentional repetitions.
   if (input.repair) { originalOrder.sort(); outputOrder.sort(); }
-  if (originalLines.length > 0 && (outputOrder.length !== originalOrder.length || outputOrder.some((line, index) => line !== originalOrder[index])
+  // An explicit edit may replace/remove speech; the timing pass must preserve the resulting edited script.
+  if (!input.editInstructions && originalLines.length > 0 && (outputOrder.length !== originalOrder.length || outputOrder.some((line, index) => line !== originalOrder[index])
     || addedLine && lines.filter(line => dialogueKey(line) === dialogueKey(addedLine)).length !== 1)) {
     throw new HttpError(502, input.repair ? 'Repair changed or lost the scripted dialogue. Your draft has been kept. Try again.' : 'Enhancement changed or reordered the scripted dialogue. Your draft has been kept. Try again.');
   }
@@ -47,9 +48,9 @@ export async function timeDialogueBeats(openai: NonNullable<AIClients['openai']>
   input.signal.throwIfAborted();
   const response = await openai.responses.create({
     model: AI_MODELS.promptEnhancement, store: false, reasoning: { effort: 'low' }, max_output_tokens: 4000,
-    instructions,
+    instructions: instructions + (input.editInstructions ? '\nThe user explicitly requested editInstructions. The enhancedPrompt already applies these edits, including any requested additions, replacements or removals of dialogue. Schedule its exact lines without restoring words or actions from the old draft that the edit replaced or removed.' : ''),
     input: [{ role: 'user', content: [{ type: 'input_text', text: JSON.stringify({
-      originalDraft: input.draft, repair: input.repair ?? false, separateDialogue: input.dialogue, enhancedPrompt: input.prompt, lines,
+      originalDraft: input.draft, repair: !!input.editInstructions || input.repair || false, editInstructions: input.editInstructions, separateDialogue: input.editInstructions ? undefined : input.dialogue, enhancedPrompt: input.prompt, lines,
       duration: input.duration, maxPromptLength: input.maxPromptLength,
     }) }] }],
     text: { format: { type: 'json_schema', name: 'timed_dialogue_beats', strict: true, schema: z.toJSONSchema(planSchema) } },

@@ -15,6 +15,15 @@ const input = (model = 'nano-banana-pro') => ({ settings: { ...newAssetGeneratio
 beforeEach(() => { vi.resetAllMocks(); respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt }) }); });
 
 describe('model-specific image prompt enhancement', () => {
+  it('applies a targeted text replacement using separate edit instructions', async () => {
+    const editInstructions = 'Change the title to "MOONRISE". Keep everything else.', edited = 'A poster reading "MOONRISE" with the original composition.';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: edited }) });
+    const value = input(), result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt({ ...value, editInstructions });
+    expect(result.prompt).toBe(`${edited} ${lightingColorContinuity}`);
+    const options = respond.mock.calls[0][0];
+    expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ draft: value.settings.prompt, editInstructions });
+    expect(options.instructions).toContain('This is a targeted edit, not a general enhancement.');
+  });
   it('sends the current frame to the LLM without making it a numbered generation reference', async () => {
     const currentFrame = 'data:image/jpeg;base64,Yw==', value = input();
     await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt({ ...value, currentFrame });
@@ -111,6 +120,9 @@ describe('model-specific image prompt enhancement', () => {
     const providers = createProviders({ OPENAI_API_KEY: 'test' }), app = express();
     app.use(protectRequests, express.json({ limit: '1mb' })); addImagePromptEnhancementRoutes(app, providers); app.use(errorHandler);
     const body = input();
+    for (const editInstructions of ['', '  ', 'x'.repeat(2001), 123, {}]) {
+      await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send({ ...body, editInstructions }).expect(400);
+    }
     await request(app).post('/api/image-prompts/enhance').send(body).expect(403);
     for (const model of ['unknown', 'kling-video']) await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send({ ...body, settings: { ...body.settings, model } }).expect(400);
     await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send({ ...body, images: ['data:image/jpeg;base64,YQ=='] }).expect(400);

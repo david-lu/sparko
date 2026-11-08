@@ -21,6 +21,20 @@ beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
 
 describe('interstitial prompt enhancement', () => {
+  it.each([
+    { editInstructions: 'Replace the question with "Ready?".', action: 'She asks <d>[English] Ready?</d>.' },
+    { editInstructions: 'Remove the spoken question and have her nod silently.', action: 'She nods silently.' },
+  ])('applies a targeted edit without requiring the previous dialogue: $editInstructions', async ({ editInstructions, action }) => {
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(action) }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, editInstructions, dialogue: 'What is 2 + 2?' });
+    expect(result.prompt).toContain(action);
+    expect(result.prompt).not.toContain('What is 2 + 2?');
+    expect(result.prompt).toContain('Lighting and color MUST NOT CHANGE.');
+    const options = respond.mock.calls[0][0];
+    expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ draft: input.prompt, editInstructions, requiredDialogue: [] });
+    expect(options.instructions).toContain('This is a targeted edit, not a general enhancement.');
+    expect(respond).toHaveBeenCalledOnce();
+  });
   it('enhances a simple brief without requiring an existing storyboard', async () => {
     const prompt = 'She smiles and says "Hello!"';
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('Static camera; one uninterrupted shot. She (S1) smiles and says warmly: <d>[English] Hello!</d>') }) });
@@ -449,6 +463,13 @@ describe('prompt enhancement API', () => {
   beforeEach(() => { configured.openai = true; enhancePrompt.mockResolvedValue({ prompt: `A restrained gesture.\n\n${continuity}`, model: AI_MODELS.promptEnhancement }); });
   const send = (body: object) => request(app).post('/api/interstitials/enhance-prompt').set('x-sparko-request', '1').send(body);
   const body = { prompt: input.prompt, kind: input.kind, duration: input.duration, referenceFrames: input.referenceFrames };
+  it('validates and forwards separate edit instructions', async () => {
+    await send({ ...body, editInstructions: '  Add a final question.  ' }).expect(200);
+    expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ prompt: body.prompt, editInstructions: 'Add a final question.' }));
+    enhancePrompt.mockClear();
+    for (const editInstructions of ['', '   ', 'x'.repeat(2001), 123, {}]) await send({ ...body, editInstructions }).expect(400);
+    expect(enhancePrompt).not.toHaveBeenCalled();
+  });
   it('validates the captured frame before forwarding it to the provider', async () => {
     const currentFrame = 'data:image/jpeg;base64,Yw==';
     await send({ ...body, currentFrame }).expect(200);

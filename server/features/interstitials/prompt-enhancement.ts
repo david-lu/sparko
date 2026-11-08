@@ -1,7 +1,7 @@
 import type { Express } from 'express';
 import { z } from 'zod';
 import { loraInstructionsSchema } from '../../../shared/loras.js';
-import { AI_MODELS, H3_PROMPT_MAX_LENGTH, INTERSTITIAL } from '../../../shared/constants.js';
+import { AI_MODELS, H3_PROMPT_MAX_LENGTH, INTERSTITIAL, PROMPT_EDIT_MAX_LENGTH } from '../../../shared/constants.js';
 import type { PromptClipKind, PromptEnhancement } from '../../../shared/contracts.js';
 import type { AIClients } from '../../shared/ai-clients.js';
 import { authenticate } from '../../hosting.js';
@@ -11,7 +11,7 @@ import { currentFrameContent, currentFrameInstructions, currentFrameSchema } fro
 import { lightingColorContinuity, lightingColorInstructions } from '../../shared/prompt-lighting.js';
 import { timeDialogueBeats } from './dialogue-timing.js';
 import { scriptedDialogue } from './scripted-dialogue.js';
-import { cleanH3PromptDraft, isH3Prompt, promptEditingInstructions } from '../../shared/prompt-editing.js';
+import { cleanH3PromptDraft, isH3Prompt, promptEditingInstructions, targetedPromptEditInstructions } from '../../shared/prompt-editing.js';
 
 const motionContinuity = 'Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes.';
 const previousMotionContinuity = 'Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting.';
@@ -60,6 +60,7 @@ const maxClipPrompt = H3_PROMPT_MAX_LENGTH, maxContinuityBrief = 4000;
 const inputSchema = z.object({
   // Accept older drafts so Enhance can shorten them without truncating dialogue.
   prompt: z.string().trim().min(1).max(8000),
+  editInstructions: z.string().trim().min(1).max(PROMPT_EDIT_MAX_LENGTH).optional(),
   duration: z.number().finite().min(INTERSTITIAL.minStartRange).max(INTERSTITIAL.maxDuration),
   kind: z.enum(['interstitial', 'call', 'idle', 'response']).default('interstitial'),
   target: z.literal('continuity').optional(),
@@ -143,6 +144,7 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
         instructions: (isContinuity ? continuityInstructions : promptInstructions[input.kind]) + `\n${promptEditingInstructions}\n${audioQualityInstructions}\n${lightingColorInstructions}` + '\nAttached H3 image references are labeled <Picture 1>, <Picture 2>, etc. Preserve these exact tags and the roles requested by the user in the rewritten prompt. They guide identity or style; they do not request cuts or replace connected video boundaries. Unlabeled video boundary frames are context only and have no <Picture N> tag.'
           + '\nThe supplied requiredDialogue captures explicit speech from the draft, including quoted additions in a correction. Include every listed utterance exactly once in the action with its intended speaker and action; repeated entries represent intentional repetitions. An explicitly requested missing line must replace conflicting old silence or mouth-closed directions during that line. Do not infer new speech from a prop or incomplete fragment. Apply final mouth-closed and silence directions only after the actual final requested line; retain requested pauses between lines.'
           + (repair ? '\nThis is an existing H3 prompt to repair. Current duration, clip kind and supplied reference roles take precedence over stale values in its prose. Recalculate old timing windows against the supplied duration; repair gaps, overlaps and out-of-range times. Restore each line to its intended speaker and action, including correcting a clearly mismatched named object or applying an explicit ordering correction. Keep the exact spoken words; fix the surrounding staging and, when necessary for the correction, the line order. Remove dialogue echoed in soundscape/music fields while preserving intentional repeated utterances in the action. Correct broken field/tag structure and contradictory shot instructions. Preserve coherent existing choices. Do not turn an incomplete fragment into invented dialogue. A second pass will schedule the corrected sequence; do not preserve known errors merely because they appeared in the old prompt.' : '')
+          + (input.editInstructions ? `\n${targetedPromptEditInstructions}` : '')
           + `\nThe rewritten prompt may use up to ${maxRewrite} characters. This is a ceiling, not a target: stay concise, but finish every sentence, dialogue tag and required field. Preserve all requested actions and spoken words; shorten descriptive prose instead of cutting off the sequence.`
           + (input.currentFrame ? `\n${currentFrameInstructions}` : '')
           + (input.loraInstructions ? '\nUse loraInstructions as additional guidance for the selected LoRA. Incorporate its trigger words, character descriptions and usage guidance into the enhanced prompt where relevant. Preserve exact trigger words. Keep the user’s requested action, dialogue and reference roles, and follow the required prompt format and clip constraints.' : '')
@@ -151,7 +153,8 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
             : !isContinuity ? [guides.start !== undefined ? `\n<Picture ${guides.start + 1}> anchors the first frame. Begin in its pose and composition.` : '', guides.end !== undefined ? `\n<Picture ${guides.end + 1}> anchors the last frame. End in its pose and composition.` : ''].join('') : ''),
         input: [{ role: 'user', content: [
           { type: 'input_text', text: JSON.stringify({ draft: sourceDraft, rewriteMode: repair ? 'repair' : 'enhance', kind: input.kind, duration: input.duration,
-            requiredDialogue: isContinuity || input.kind === 'idle' ? [] : scriptedDialogue(sourceDraft, repair),
+            editInstructions: input.editInstructions,
+            requiredDialogue: isContinuity || input.kind === 'idle' || input.editInstructions ? [] : scriptedDialogue(sourceDraft, repair),
             loraInstructions: input.loraInstructions,
             sharedContinuity: shared,
             separateDialogue: input.kind === 'idle' || isContinuity ? undefined : input.dialogue }) },
@@ -174,13 +177,13 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
       let prompt = (input.kind === 'idle' && !isContinuity ? stripSpeechDirections(draft) : draft).replace(/\r\n/g, '\n').trim();
       if (!prompt) throw new HttpError(502, 'OpenAI returned an empty enhanced prompt. Try again.');
       if (!isContinuity && input.kind !== 'idle') prompt = await timeDialogueBeats(openai, {
-        prompt, draft: sourceDraft, repair, dialogue: input.dialogue, duration: input.duration, maxPromptLength: maxRewrite, signal: input.signal,
+        prompt, draft: sourceDraft, repair, editInstructions: input.editInstructions, dialogue: input.dialogue, duration: input.duration, maxPromptLength: maxRewrite, signal: input.signal,
       });
       let enhancedPrompt: string;
       if (isContinuity) enhancedPrompt = `${prompt.replace(/\s+/g, ' ')} ${mandatoryContinuity}`;
       else {
         const soundscape = prompt.indexOf('\noverall_soundscape:');
-        const spoken = input.kind === 'idle' ? '' : input.dialogue?.trim();
+        const spoken = input.kind === 'idle' || input.editInstructions ? '' : input.dialogue?.trim();
         // Appending omitted speech after the action would change its timing and object association.
         const action = soundscape < 0 ? prompt : prompt.slice(0, soundscape);
         if (spoken && !action.includes(`<d>[English] ${spoken}</d>`)) {

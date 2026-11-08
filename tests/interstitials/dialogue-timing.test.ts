@@ -19,6 +19,20 @@ const returns = (value: unknown) => respond.mockResolvedValue({ status: 'complet
 beforeEach(() => { vi.resetAllMocks(); returns(validPlan()); });
 
 describe('action and dialogue timing', () => {
+  it('schedules intentionally edited dialogue without restoring the old words', async () => {
+    const sock = '<d>[English] Or this sock?</d>', prompt = h3(`She lifts the rock and asks ${rock}, then puts it down, lifts the sock and asks ${sock}.`);
+    const plan = validPlan();
+    plan.beats[2].action = 'She sets down the rock and lifts the sock.';
+    plan.beats[3].action = 'She holds the sock throughout the line.';
+    plan.beats[4].action = 'She sets down the sock and waits silently.';
+    returns(plan);
+    const result = await timeDialogueBeats(openai, { ...input, prompt, draft: input.prompt, editInstructions: 'Replace the vegetables question with Or this sock? and hold the sock.' });
+    expect(result.match(/<d>[\s\S]*?<\/d>/g)).toEqual([rock, sock]);
+    expect(result).toContain('From 3 to 5 seconds: She holds the sock throughout the line.');
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ repair: true, lines: [rock, sock] });
+    plan.beats[3].speech = null; returns(plan);
+    await expect(timeDialogueBeats(openai, { ...input, prompt, editInstructions: 'Replace the vegetables question with Or this sock?' })).rejects.toMatchObject({ status: 502 });
+  });
   it('compiles exact dialogue in order into separate speaking and silent handoff intervals', async () => {
     const result = await timeDialogueBeats(openai, input);
     expect(result).toContain(`From 1 to 2 seconds: She holds the rock throughout the line. The girl (S1) asks with a questioning rise: ${rock}`);

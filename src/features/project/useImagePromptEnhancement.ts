@@ -6,6 +6,7 @@ import { referenceImagePreviews } from '../interstitials/image-references';
 import { request } from '../../shared/api';
 import { showErrorToast } from '../../shared/toasts';
 import { capturePromptFrame } from '../player/promptFrame';
+import type { PromptEditResult } from '../interstitials/EnhancePromptActions';
 
 export function useImagePromptEnhancement(editor: StoryEditor, generation: AssetGeneration | undefined, connected: boolean) {
   const task = useRef<AbortController | null>(null), [enhancing, setEnhancing] = useState(false);
@@ -16,8 +17,8 @@ export function useImagePromptEnhancement(editor: StoryEditor, generation: Asset
     return () => { task.current?.abort(); task.current = null; };
   }, [projectId, generation?.id, fingerprint, loraInstructions]);
   const cancel = () => { task.current?.abort(); task.current = null; setEnhancing(false); };
-  const enhance = async () => {
-    if (!generation || generation.kind !== 'image' || !generation.settings.prompt.trim() || !connected || task.current) return;
+  const enhance = async (editInstructions?: string): Promise<PromptEditResult> => {
+    if (!generation || generation.kind !== 'image' || !generation.settings.prompt.trim() || !connected || task.current) return { applied: false };
     const operation = new AbortController(), settings = structuredClone(generation.settings);
     task.current = operation; setEnhancing(true);
     try {
@@ -25,15 +26,21 @@ export function useImagePromptEnhancement(editor: StoryEditor, generation: Asset
       const images = await referenceImagePreviews(settings.references.filter(r => r.kind === 'image'), operation.signal);
       operation.signal.throwIfAborted();
       const result = await request<{ prompt: string; model: string }>('/api/image-prompts/enhance', { method: 'POST', signal: operation.signal,
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings, images, currentFrame, loraInstructions }) });
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings, editInstructions, images, currentFrame, loraInstructions }) });
       const project = editor.projects.getSnapshot().project, current = project?.clipGenerations?.find(g => g.id === generation.id);
       if (!operation.signal.aborted && task.current === operation && project?.id === projectId && JSON.stringify(current?.settings) === fingerprint
         && current && generationLoraInstructions(current.settings, project?.loras, current.settings.model) === loraInstructions) {
         if (result.model !== settings.model || typeof result.prompt !== 'string' || !result.prompt.trim() || result.prompt.length > 8000) throw new Error('Prompt enhancement returned an invalid result.');
         editor.clipJobs.edit(generation.id, { settings: { ...settings, prompt: result.prompt } });
+        return { applied: true };
       }
-    } catch (e) { if (!operation.signal.aborted && task.current === operation) showErrorToast('Image prompt enhancement failed', e instanceof Error ? e.message : 'Try again.', generation.name); }
+    } catch (e) { if (!operation.signal.aborted && task.current === operation) {
+      const message = e instanceof Error ? e.message : 'Try again.';
+      if (!editInstructions) showErrorToast('Image prompt enhancement failed', message, generation.name);
+      return { applied: false, error: message };
+    } }
     finally { if (task.current === operation) { task.current = null; setEnhancing(false); } }
+    return { applied: false, error: 'The prompt or settings changed. Try the edit again.' };
   };
   return { enhancing, enhance, cancel };
 }

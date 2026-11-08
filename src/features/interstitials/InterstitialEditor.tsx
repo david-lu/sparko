@@ -17,7 +17,7 @@ import InterstitialTimeField from './InterstitialTimeField';
 import InterstitialPreview from './InterstitialPreview';
 import { referenceTiming } from '../call-response/generation';
 import { enhancePrompt } from './enhance-prompt';
-import EnhancePromptActions from './EnhancePromptActions';
+import EnhancePromptActions, { type PromptEditResult } from './EnhancePromptActions';
 import TaskStatus from '../../shared/TaskStatus';
 import { sequenceActive } from '../call-response/sequence';
 import GenerationFeedback from './GenerationFeedback';
@@ -55,23 +55,29 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     setEnhancing(false);
     return () => { enhancement.current?.abort(); enhancement.current = null; };
   }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey, selected.imageReferences, selected.startImageIndex, selected.endImageIndex, selected.lora, loraInstructions]);
-  const enhance = async () => {
-    if (enhancement.current || !status?.providers.openai || !selected.prompt.trim()) return;
+  const enhance = async (editInstructions?: string): Promise<PromptEditResult> => {
+    if (enhancement.current || !status?.providers.openai || !selected.prompt.trim()) return { applied: false };
     const operation = new AbortController(); enhancement.current = operation;
     setEnhancing(true);
     try {
-      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal, { player });
+      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal, { player, editInstructions });
       const current = controller.getSnapshot().items.find(item => item.id === selected.id);
       if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt && current.lora === selected.lora
         && generationLoraInstructions(current, projects?.getSnapshot().project?.loras, H3_MODEL_ID) === loraInstructions
         && JSON.stringify(current.imageReferences ?? []) === JSON.stringify(selected.imageReferences ?? [])) {
         controller.edit(selected.id, { prompt: result.prompt });
+        return { applied: true };
       }
     } catch (error) {
-      if (!operation.signal.aborted && enhancement.current === operation) showErrorToast('Video prompt enhancement failed', error instanceof Error ? error.message : 'Try again.', selected.label);
+      if (!operation.signal.aborted && enhancement.current === operation) {
+        const message = error instanceof Error ? error.message : 'Try again.';
+        if (!editInstructions) showErrorToast('Video prompt enhancement failed', message, selected.label);
+        return { applied: false, error: message };
+      }
     } finally {
       if (enhancement.current === operation) { enhancement.current = null; setEnhancing(false); }
     }
+    return { applied: false, error: 'The prompt or settings changed. Try the edit again.' };
   };
   const busy = isGenerating(selected);
   const method = normalizeGenerationMethod(selected.method);
@@ -165,9 +171,9 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         <div className="prompt-field-heading">
           <label htmlFor={promptId}>Prompt</label>
           {changed && <span className="interstitial-edited" title="Changes apply to the next generation">Edited</span>}
-          <EnhancePromptActions promptId={promptId} enhancing={enhancing} enabled={!!selected.prompt.trim() && !addingImages} connected={!!status?.providers.openai}
+          <EnhancePromptActions key={selected.id} promptId={promptId} enhancing={enhancing} enabled={!!selected.prompt.trim() && !addingImages} connected={!!status?.providers.openai}
             unavailableReason={addingImages ? 'Wait for reference images to finish loading.' : undefined}
-            onEnhance={() => void enhance()} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
+            onEnhance={() => void enhance()} onEdit={enhance} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
         </div>
         <textarea id={promptId} aria-label="Video prompt" aria-describedby={`${promptId}-length`} rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
         <span id={`${promptId}-length`} className="hint prompt-character-count">{normalizeH3Prompt(selected.prompt).length.toLocaleString('en-US')} / {H3_PROMPT_MAX_LENGTH.toLocaleString('en-US')} characters</span>

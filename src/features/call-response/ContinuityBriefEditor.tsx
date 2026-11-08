@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { INTERSTITIAL } from '../../../shared/constants';
 import type { InterstitialEditorProps } from '../interstitials/InterstitialEditor';
-import EnhancePromptActions from '../interstitials/EnhancePromptActions';
+import EnhancePromptActions, { type PromptEditResult } from '../interstitials/EnhancePromptActions';
 import { enhancePrompt } from '../interstitials/enhance-prompt';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import { showErrorToast } from '../../shared/toasts';
@@ -15,28 +15,34 @@ export default function ContinuityBriefEditor({ value, engine, info, status, pla
     setEnhancing(false);
     return () => { enhancement.current?.abort(); enhancement.current = null; };
   }, [id, brief, time, engine]);
-  const enhance = async () => {
-    if (enhancement.current || !status?.providers.openai || !brief.trim() || !value.onChange) return;
+  const enhance = async (editInstructions?: string): Promise<PromptEditResult> => {
+    if (enhancement.current || !status?.providers.openai || !brief.trim() || !value.onChange) return { applied: false };
     const operation = new AbortController(); enhancement.current = operation;
     setEnhancing(true);
     try {
-      const result = await enhancePrompt({ prompt: brief, time, duration: INTERSTITIAL.defaultDuration }, 'call', undefined, engine, info, operation.signal, { target: 'continuity', player });
+      const result = await enhancePrompt({ prompt: brief, time, duration: INTERSTITIAL.defaultDuration }, 'call', undefined, engine, info, operation.signal, { target: 'continuity', player, editInstructions });
       const current = latest.current;
       if (!operation.signal.aborted && enhancement.current === operation && current.flow.interstitial.id === id && (current.flow.interstitial.brief ?? '') === brief) {
         current.onChange?.({ ...current.flow, interstitial: { ...current.flow.interstitial, brief: result.prompt } });
+        return { applied: true };
       }
     } catch (error) {
-      if (!operation.signal.aborted && enhancement.current === operation) showErrorToast('Continuity brief enhancement failed', error instanceof Error ? error.message : 'Try again.');
+      if (!operation.signal.aborted && enhancement.current === operation) {
+        const message = error instanceof Error ? error.message : 'Try again.';
+        if (!editInstructions) showErrorToast('Continuity brief enhancement failed', message);
+        return { applied: false, error: message };
+      }
     } finally {
       if (enhancement.current === operation) { enhancement.current = null; setEnhancing(false); }
     }
+    return { applied: false, error: 'The brief changed. Try the edit again.' };
   };
   return <div className="continuity-brief-editor" data-project-edit>
     <div className="field">
       <div className="prompt-field-heading">
         <label htmlFor={promptId}>Continuity brief</label>
-        <EnhancePromptActions promptId={promptId} enhancing={enhancing} enabled={!!brief.trim() && !!value.onChange} connected={!!status?.providers.openai}
-          onEnhance={() => void enhance()} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
+        <EnhancePromptActions key={id} promptId={promptId} enhancing={enhancing} enabled={!!brief.trim() && !!value.onChange} connected={!!status?.providers.openai}
+          onEnhance={() => void enhance()} onEdit={enhance} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
       </div>
       <textarea id={promptId} aria-label="Continuity brief" rows={3} maxLength={1500} value={brief} placeholder="Character, setting, camera, voice and shared direction"
         onChange={event => value.onChange?.({ ...value.flow, interstitial: { ...value.flow.interstitial, brief: event.target.value } })} />
