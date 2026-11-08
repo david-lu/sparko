@@ -13,17 +13,35 @@ async function drag(page:Page,from:string,to:string|{x:number;y:number},cancel=f
   await page.mouse.move(box!.x+box!.width/2,box!.y+box!.height/2);await page.mouse.down();await page.mouse.move(target.x,target.y,{steps:8});
   if(cancel)await page.keyboard.press('Escape');await page.mouse.up();
 }
-for (const width of [1440, 390]) test(`adjacent short clips keep straight wires when zoomed out at ${width}px`, async ({page}) => {
+for (const width of [1440, 390]) test(`zoomed-out clips hide sockets and keep draggable wires at their edges at ${width}px`, async ({page}) => {
   await page.setViewportSize({width,height:1000});
-  await open(page);
+  const project=await open(page),[first,,last]=project.storyFlow.nodes;
   for (let step=0;step<8;step++) await page.getByRole('button',{name:'Zoom out story',exact:true}).click();
-  const links = await page.locator('.story-edge-line').evaluateAll(paths => paths.map(element => {
+  await expect(page.locator('.story-port:visible')).toHaveCount(0);
+  const links = await page.locator('.story-edge-line').evaluateAll((paths,edges) => paths.map(element => {
     const path=element as SVGPathElement,length=path.getTotalLength(),start=path.getPointAtLength(0),end=path.getPointAtLength(length);
-    return {length,direct:Math.hypot(end.x-start.x,end.y-start.y),backward:end.x<start.x,height:path.getBBox().height};
-  }));
-  expect(links.some(link=>link.backward)).toBe(true);
-  for (const link of links) { expect(link.length).toBeCloseTo(link.direct,2); expect(link.height).toBeLessThan(.01); }
+    const edge=edges.find((e:any)=>e.id===path.parentElement!.getAttribute('data-edge-id'));
+    const from=document.querySelector(`[data-node-id="${edge.from}"]`)!.getBoundingClientRect(),to=document.querySelector(`[data-node-id="${edge.to}"]`)!.getBoundingClientRect();
+    const matrix=path.getScreenCTM()!;
+    return {length,direct:Math.hypot(end.x-start.x,end.y-start.y),height:path.getBBox().height,
+      startOffset:Math.abs(start.matrixTransform(matrix).x-from.right),endOffset:Math.abs(end.matrixTransform(matrix).x-to.left)};
+  }),project.storyFlow.edges);
+  expect(links).toHaveLength(2);
+  for (const link of links) {
+    expect(link.length).toBeCloseTo(link.direct,2); expect(link.height).toBeLessThan(.01);
+    expect(link.startOffset).toBeLessThan(2); expect(link.endOffset).toBeLessThan(2);
+  }
   await page.screenshot({path:`test-results/direct-connections-${width}.png`});
+  const connection=project.storyFlow.edges.find((edge:any)=>edge.from===first.id);
+  const wire=`[data-edge-id="${connection.id}"] .story-edge-hit`,target=`[data-node-id="${last.id}"] .story-clip-title`;
+  await drag(page,wire,target,true);
+  expect((await saved(page)).storyFlow.edges.find((edge:any)=>edge.id===connection.id).to).toBe(connection.to);
+  await drag(page,wire,target);
+  await expect.poll(async()=>(await saved(page)).storyFlow.edges.find((edge:any)=>edge.id===connection.id).to).toBe(last.id);
+  await fitAll(page);
+  const circles=await page.locator('.story-port:visible').evaluateAll(elements=>elements.map(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height})));
+  expect(circles.length).toBeGreaterThan(0);
+  for(const circle of circles)expect(circle).toEqual({width:14,height:14});
 });
 test('sockets detach, connect backwards, reconnect, and cancel while retaining the connection fade',async({page})=>{
   const project=await open(page),[first,middle,last]=project.storyFlow.nodes;
@@ -39,6 +57,32 @@ test('sockets detach, connect backwards, reconnect, and cancel while retaining t
   expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===connection.id).videoCrossfade).toBe(.375);await expect(page.locator('.story-wire')).toHaveCount(0);
   expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===connection.id).audioCrossfade).toBe(.75);
   await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===connection.id).to).toBe(middle.id);
+});
+
+test('hidden conditional outputs can connect, reconnect, and cancel through the clip menu',async({page})=>{
+  const project=await open(page),[first,middle,last]=project.storyFlow.nodes;
+  const source=page.locator(`[data-node-id="${first.id}"]`);
+  await source.locator('.story-clip-title').click();
+  await page.getByRole('checkbox',{name:'Conditional',exact:true}).check();
+  await page.getByLabel('Condition 2 label',{exact:true}).fill('Vegetables');
+  const before=(await saved(page)).storyFlow,condition=before.nodes.find((node:any)=>node.id===first.id).conditions[1];
+  for(let step=0;step<8;step++)await page.getByRole('button',{name:'Zoom out story',exact:true}).click();
+  await expect(page.locator('.story-port:visible')).toHaveCount(0);
+  const start=async()=>{
+    await source.locator('.story-clip-title').click({button:'right'});
+    await page.getByRole('menuitem',{name:'Connect Vegetables to clip…',exact:true}).click();
+  };
+  const connection=async()=>(await saved(page)).storyFlow.edges.find((edge:any)=>edge.from===first.id&&edge.conditionId===condition.id);
+  await start();await page.locator(`[data-node-id="${last.id}"] .story-filmstrip`).press('Enter');
+  await expect.poll(async()=>(await connection())?.to).toBe(last.id);
+  const id=(await connection()).id;
+  await start();await page.keyboard.press('Escape');await page.locator(`[data-node-id="${middle.id}"] .story-clip-title`).click();
+  expect((await connection()).to).toBe(last.id);
+  await start();await page.locator(`[data-node-id="${middle.id}"] .story-clip-title`).click();
+  await expect.poll(async()=>(await connection())?.to).toBe(middle.id);
+  expect((await connection()).id).toBe(id);
+  for(const edge of before.edges)expect((await saved(page)).storyFlow.edges).toContainEqual(edge);
+  await expect(page.locator('.story-port:visible')).toHaveCount(0);
 });
 
 for (const width of [1440, 390]) test(`video and audio fades stay independent and survive saving at ${width}px`, async ({page}) => {

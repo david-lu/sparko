@@ -93,7 +93,7 @@ for (const width of [1440, 390]) test(`still image import, duration, playback an
   expect(errors).toEqual([]);
 });
 
-for (const width of [1440, 390]) test(`one-frame clips keep usable trim handles and fixed connection circles at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390]) test(`one-frame clips hide crowded circles while retaining trimming and connections at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
   await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles(await imageFile(page));
   await expect(page.locator('.story-clip')).toHaveCount(2);
@@ -103,17 +103,21 @@ for (const width of [1440, 390]) test(`one-frame clips keep usable trim handles 
   const [video, still] = (await readProject(page)).storyFlow.nodes;
   expect(still.source.outFrame - still.source.inFrame).toBe(1);
   const imageClip = page.locator(`[data-node-id="${still.id}"]`), videoClip = page.locator(`[data-node-id="${video.id}"]`);
-  const circleSizes = () => page.locator('.story-port').evaluateAll(elements => elements.map(el => {
+  const circleSizes = () => page.locator('.story-port:visible').evaluateAll(elements => elements.map(el => {
     const bounds = el.getBoundingClientRect(); return { width: bounds.width, height: bounds.height };
   }));
-  expect(await circleSizes()).toEqual(Array(4).fill({ width: 14, height: 14 }));
+  await expect(imageClip.locator('.story-port:visible')).toHaveCount(0);
+  expect(await circleSizes()).toEqual(Array(2).fill({ width: 14, height: 14 }));
   for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Zoom out story', exact: true }).click();
-  expect(await circleSizes()).toEqual(Array(4).fill({ width: 14, height: 14 }));
-  const input = await imageClip.locator('.story-port.input').boundingBox(), output = await imageClip.locator('.story-port.output').boundingBox();
-  expect(output!.x - input!.x - input!.width).toBeGreaterThanOrEqual(10);
-  await videoClip.locator('.story-port.output').dragTo(imageClip.locator('.story-port.input'));
+  await expect(imageClip.locator('.story-port:visible')).toHaveCount(0);
+  for(const circle of await circleSizes())expect(circle).toEqual({ width: 14, height: 14 });
+  await videoClip.locator('.story-clip-title').click({button:'right'});
+  await page.getByRole('menuitem',{name:'Connect to clip…',exact:true}).click();
+  await imageClip.locator('.story-clip-title').press('Enter');
   await expect.poll(async () => (await readProject(page)).storyFlow.edges.length).toBe(1);
-  await imageClip.locator('.story-port.output').dragTo(videoClip.locator('.story-port.input'));
+  await imageClip.locator('.story-clip-title').click({button:'right'});
+  await page.getByRole('menuitem',{name:'Connect to clip…',exact:true}).click();
+  await videoClip.locator('.story-clip-title').click();
   await expect.poll(async () => (await readProject(page)).storyFlow.edges.length).toBe(2);
   await imageClip.locator('.story-clip-title').press('Enter');
   const handle = page.getByRole('slider', { name: 'Trim end of Still.png', exact: true });
@@ -128,14 +132,14 @@ for (const width of [1440, 390]) test(`one-frame clips keep usable trim handles 
   await expect(page.getByLabel('Image duration', { exact: true })).toHaveValue(String(1 / 24));
   await videoClip.locator('.story-clip-title').press('Enter');
   await page.getByRole('slider', { name: `Trim end of ${video.name}`, exact: true }).press('Home');
-  expect(await circleSizes()).toEqual(Array(4).fill({ width: 14, height: 14 }));
+  expect(await circleSizes()).toEqual([]);
   await expect(page.getByRole('slider', { name: `Trim end of ${video.name}`, exact: true })).toBeVisible();
   await page.screenshot({ path: `test-results/one-frame-handles-${width}.png`, fullPage: true });
   await saveAndReopen(page);
   const restored = (await readProject(page)).storyFlow;
   expect(restored.edges).toHaveLength(2);
   expect(restored.nodes.map((node: any) => node.source.outFrame - node.source.inFrame)).toEqual([1, 1]);
-  expect(await circleSizes()).toEqual(Array(4).fill({ width: 14, height: 14 }));
+  expect(await circleSizes()).toEqual([]);
 });
 
 for (const width of [1440, 390]) test(`the left image handle extends, shortens, cancels and saves a held frame at ${width}px`, async ({ page }) => {

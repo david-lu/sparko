@@ -30,7 +30,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   const [clipDrag,setClipDrag]=useState<{id:string;overStart:boolean}|null>(null);
   const [clipJobs] = useState(() => new ClipGenerationController(projects));
   useEffect(() => clipJobs.watch(), [clipJobs]);
-  const [selected,setSelection]=useState<string[]>([]),[selectedGroupId,setSelectedGroupId]=useState<string|null>(null),[selectedEdge,setSelectedEdge]=useState<string|null>(null),[connecting,setConnecting]=useState<{from:string;edgeId?:string}|null>(null);
+  const [selected,setSelection]=useState<string[]>([]),[selectedGroupId,setSelectedGroupId]=useState<string|null>(null),[selectedEdge,setSelectedEdge]=useState<string|null>(null),[connecting,setConnecting]=useState<{from:string;edgeId?:string;conditionId?:string}|null>(null);
   const [removingClips,setRemovingClips]=useState(false);
   const [notice,setNotice]=useState(''),[focusRevision,setFocusRevision]=useState(0),[inspectorRevision,setInspectorRevision]=useState(0);
   const joinedClip=useRef<string|null>(null);
@@ -175,7 +175,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
       return condition?[{...e,conditionId:condition.id,label:condition.label,values:condition.values}]:[];
     })});
   };
-  const attach=(to:string)=>{if(graph&&connecting){change(connect(graph,connecting.from,to,connecting.edgeId));setConnecting(null);setNotice('Connection saved.');}};
+  const attach=(to:string)=>{if(graph&&connecting){change(connect(graph,connecting.from,to,connecting.edgeId,connecting.conditionId));setConnecting(null);setNotice('Connection saved.');}};
   const disconnect=()=>{if(graph&&selectedEdge){change({...graph,edges:graph.edges.filter(e=>e.id!==selectedEdge)});setSelectedEdge(null);setNotice('Connection removed. Clips are retained.');}};
   const remove=()=>{if(removingClips)return;player.pause();if(selectedGroup){ungroup(selectedGroup.id);return;}if(selectedEdge){disconnect();return;}if(graph&&selected.length){setRemovingClips(true);const projectId=project?.id;void (async()=>{try{
       for(const node of graph.nodes.filter(n=>selected.includes(n.id))){
