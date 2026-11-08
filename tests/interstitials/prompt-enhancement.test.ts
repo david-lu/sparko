@@ -21,6 +21,38 @@ beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
 
 describe('interstitial prompt enhancement', () => {
+  it('enhances a simple brief without requiring an existing storyboard', async () => {
+    const prompt = 'She smiles and says "Hello!"';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('Static camera; one uninterrupted shot. She (S1) smiles and says warmly: <d>[English] Hello!</d>') }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt });
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: prompt, rewriteMode: 'enhance' });
+    expect(result.prompt).toContain('<d>[English] Hello!</d>');
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it('repairs an existing prompt, applies its correction, and schedules the corrected sequence for the current duration', async () => {
+    const rock = '<d>[English] A rock?</d>', bowl = '<d>[English] Old vegetables?</d>';
+    const old = h3(`Over 99 seconds, she picks up a rock, then a bowl. The old script lists ${bowl} then ${rock}. Correction: ask about the rock while holding it first, then ask about the vegetables while holding the bowl.`)
+      .replace('Quiet room tone.', `An incorrect echo of the dialogue: ${rock} ${bowl}`);
+    const repaired = h3(`Static camera; one uninterrupted shot. She holds the rock while asking ${rock}. Only after finishing does she put it down, lift the bowl and ask ${bowl}.`);
+    const plan = { requiredDuration: 6, opening: 'Static camera; one uninterrupted shot. Keep reference lighting and colors.', beats: [
+      { start: 0, end: 1, action: 'She picks up the rock.', speech: null },
+      { start: 1, end: 3, action: 'She holds the rock throughout the line.', speech: { line: 0, delivery: 'She (S1) asks curiously' } },
+      { start: 3, end: 4, action: 'She sets down the rock and picks up the bowl.', speech: null },
+      { start: 4, end: 6, action: 'She holds the bowl throughout the line.', speech: { line: 1, delivery: 'She (S1) asks doubtfully' } },
+      { start: 6, end: 13, action: 'She lowers the bowl and waits with her mouth closed.', speech: null },
+    ] };
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: repaired }) })
+      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify(plan) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: '```text\n' + old + '\n```', duration: 13 });
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: old, rewriteMode: 'repair', duration: 13 });
+    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text)).toMatchObject({ repair: true, enhancedPrompt: repaired, duration: 13, lines: [rock, bowl] });
+    expect(result.prompt.match(/<d>[\s\S]*?<\/d>/g)).toEqual([rock, bowl]);
+    expect(result.prompt).toContain(`From 1 to 3 seconds: She holds the rock throughout the line. She (S1) asks curiously: ${rock}`);
+    expect(result.prompt).toContain('From 6 to 13 seconds:');
+    expect(result.prompt).not.toMatch(/99 seconds|incorrect echo|```/);
+    expect(result.prompt).toContain('Lighting and color MUST NOT CHANGE.');
+    expect(result.prompt.length).toBeLessThanOrEqual(7000);
+  });
   it('labels the current frame separately from boundary frames and numbered image references', async () => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) });
     const currentFrame = 'data:image/jpeg;base64,Yw==', image = 'data:image/jpeg;base64,Yg==';
@@ -90,7 +122,7 @@ describe('interstitial prompt enhancement', () => {
     expect(result.prompt.split('\n')).toHaveLength(3);
     const [options, requestOptions] = respond.mock.calls[0];
     expect(options).toMatchObject({ model: AI_MODELS.promptEnhancement, store: false, reasoning: { effort: 'low' } });
-    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft: input.prompt, kind: 'call', duration: input.duration });
+    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft: input.prompt, rewriteMode: 'enhance', kind: 'call', duration: input.duration });
     expect(options.input[0].content[1]).toEqual({ type: 'input_image', image_url: input.referenceFrames[0], detail: 'low' });
     expect(options.instructions).toContain('Nothing may snap to a new position');
     expect(options.instructions).toContain('The background must not jump, shift or suddenly change between frames');
@@ -211,7 +243,7 @@ describe('interstitial prompt enhancement', () => {
       ...input, kind: 'response', prompt: `${draft} Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. English speech only.`,
     });
     const options = respond.mock.calls[0][0];
-    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft, kind: 'response', duration: input.duration });
+    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft, rewriteMode: 'enhance', kind: 'response', duration: input.duration });
     expect(options.instructions).toContain('Response dialogue is mandatory');
     expect(options.instructions).toContain('Do not leave spoken words in quotation marks or as untagged prose');
     expect(options.instructions).toContain('<d>[English] We made it!</d>');

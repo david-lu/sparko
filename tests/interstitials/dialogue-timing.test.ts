@@ -66,6 +66,40 @@ describe('action and dialogue timing', () => {
       prompt: input.prompt.replace('\noverall_soundscape:', ` She says ${extra}\noverall_soundscape:`), dialogue: 'All done.' });
     expect(result.match(/<d>[\s\S]*?<\/d>/g)).toEqual([rock, bowl, extra]);
   });
+  it('schedules a repaired line order instead of rejecting or reinstating the incorrect old order', async () => {
+    const draft = h3(`She lifts the rock, then the bowl, but the old script lists ${bowl} then ${rock}. Correction: ask about the rock first, while holding it, then ask about the vegetables while holding the bowl.`);
+    const result = await timeDialogueBeats(openai, { ...input, draft, repair: true });
+    expect(result.match(/<d>[\s\S]*?<\/d>/g)).toEqual([rock, bowl]);
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ repair: true, originalDraft: draft, enhancedPrompt: input.prompt, lines: [rock, bowl] });
+    expect(respond.mock.calls[0][0].instructions).toContain('without reinstating its stale durations, contradictory staging or erroneous line order');
+  });
+  it.each([
+    h3(`She asks ${rock}`),
+    h3(`She asks ${rock.replace('A rock?', 'A stone?')} then ${bowl}`),
+    h3(`She asks ${rock} then ${bowl} then ${rock}`),
+    h3(`She asks ${rock} then ${rock}`),
+  ])('still rejects lost, rewritten, added or duplicated speech during repair', async prompt => {
+    await expect(timeDialogueBeats(openai, { ...input, draft: input.prompt, prompt, repair: true })).rejects.toMatchObject({ status: 502 });
+    expect(respond).not.toHaveBeenCalled();
+  });
+  it('repairs dialogue placement and ignores soundscape echoes without removing intentional spoken repetitions', async () => {
+    const draft = h3(`She asks ${rock} then ${bowl}`).replace('Quiet room tone.', `The dialogue repeats here by mistake: ${rock} ${bowl}`);
+    const result = await timeDialogueBeats(openai, { ...input, draft, repair: true });
+    expect(result.match(/<d>[\s\S]*?<\/d>/g)).toEqual([rock, bowl]);
+    respond.mockClear();
+    await expect(timeDialogueBeats(openai, { ...input, draft: h3(`She asks ${rock} twice: ${rock}, then ${bowl}`), repair: true })).rejects.toMatchObject({ status: 502 });
+    expect(respond).not.toHaveBeenCalled();
+  });
+  it('protects a single scripted line during repair while allowing tag-spacing fixes', async () => {
+    const draft = h3(`She asks ${rock.replace('[English] ', ' [english]')}`), prompt = h3(`She asks ${rock}`);
+    expect(await timeDialogueBeats(openai, { ...input, draft, prompt, repair: true })).toBe(prompt);
+    await expect(timeDialogueBeats(openai, { ...input, draft, prompt: h3('She stays silent.'), repair: true })).rejects.toMatchObject({ status: 502 });
+  });
+  it('does not mistake a field label spoken inside dialogue for the soundscape section', async () => {
+    const draft = h3('She says <d>[English] Read overall_soundscape: aloud.</d>');
+    await expect(timeDialogueBeats(openai, { ...input, draft, prompt: h3('She stays silent.'), repair: true })).rejects.toMatchObject({ status: 502 });
+    expect(respond).not.toHaveBeenCalled();
+  });
   it.each([h3(`She asks ${rock}`), h3(`She asks ${rock} [Shot 2] At 00:03.000, the camera cuts to the bowl: ${bowl}`),
     h3(`She asks ${rock} [Shot 10] At 00:03.000, the camera cuts to the bowl: ${bowl}`)])('preserves single-line or explicitly multi-shot enhancement without another request', async prompt => {
     expect(await timeDialogueBeats(openai, { ...input, prompt })).toBe(prompt);

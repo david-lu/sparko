@@ -10,6 +10,7 @@ import type { Providers } from '../../providers.js';
 import { currentFrameContent, currentFrameInstructions, currentFrameSchema } from '../../shared/prompt-frame.js';
 import { lightingColorContinuity, lightingColorInstructions } from '../../shared/prompt-lighting.js';
 import { timeDialogueBeats } from './dialogue-timing.js';
+import { cleanH3PromptDraft, isH3Prompt, promptEditingInstructions } from '../../shared/prompt-editing.js';
 
 const motionContinuity = 'Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes.';
 const previousMotionContinuity = 'Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting.';
@@ -122,6 +123,10 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
     if (!openai) throw new HttpError(503, 'OpenAI is not configured for prompt enhancement.');
     input.signal.throwIfAborted();
     const isContinuity = input.target === 'continuity';
+    const cleanedDraft = cleanH3PromptDraft(input.prompt);
+    const repair = !isContinuity && isH3Prompt(cleanedDraft);
+    const sourceDraft = isContinuity ? stripSharedContinuity(cleanedDraft)
+      : input.kind === 'idle' ? stripSpeechDirections(stripContinuity(cleanedDraft)) : stripContinuity(cleanedDraft);
     const shared = input.continuity && stripSharedContinuity(input.continuity);
     const sharedDirection = isContinuity ? '' : shared ?? '';
     const mandatoryContinuity = isContinuity ? `${motionContinuity} ${backgroundContinuity} ${particleContinuity} ${lightingColorContinuity}`
@@ -134,7 +139,8 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
     try {
       const response = await openai.responses.create({
         model: AI_MODELS.promptEnhancement, store: false, max_output_tokens: 4000, reasoning: { effort: 'low' },
-        instructions: (isContinuity ? continuityInstructions : promptInstructions[input.kind]) + `\n${audioQualityInstructions}\n${lightingColorInstructions}` + '\nAttached H3 image references are labeled <Picture 1>, <Picture 2>, etc. Preserve these exact tags and the roles requested by the user in the rewritten prompt. They guide identity or style; they do not request cuts or replace connected video boundaries. Unlabeled video boundary frames are context only and have no <Picture N> tag.'
+        instructions: (isContinuity ? continuityInstructions : promptInstructions[input.kind]) + `\n${promptEditingInstructions}\n${audioQualityInstructions}\n${lightingColorInstructions}` + '\nAttached H3 image references are labeled <Picture 1>, <Picture 2>, etc. Preserve these exact tags and the roles requested by the user in the rewritten prompt. They guide identity or style; they do not request cuts or replace connected video boundaries. Unlabeled video boundary frames are context only and have no <Picture N> tag.'
+          + (repair ? '\nThis is an existing H3 prompt to repair. Current duration, clip kind and supplied reference roles take precedence over stale values in its prose. Recalculate old timing windows against the supplied duration; repair gaps, overlaps and out-of-range times. Restore each line to its intended speaker and action, including correcting a clearly mismatched named object or applying an explicit ordering correction. Keep the exact spoken words; fix the surrounding staging and, when necessary for the correction, the line order. Remove dialogue echoed in soundscape/music fields while preserving intentional repeated utterances in the action. Correct broken field/tag structure and contradictory shot instructions. Preserve coherent existing choices. Do not turn an incomplete fragment into invented dialogue. A second pass will schedule the corrected sequence; do not preserve known errors merely because they appeared in the old prompt.' : '')
           + `\nThe rewritten prompt may use up to ${maxRewrite} characters. This is a ceiling, not a target: stay concise, but finish every sentence, dialogue tag and required field. Preserve all requested actions and spoken words; shorten descriptive prose instead of cutting off the sequence.`
           + (input.currentFrame ? `\n${currentFrameInstructions}` : '')
           + (input.loraInstructions ? '\nUse loraInstructions as additional guidance for the selected LoRA. Incorporate its trigger words, character descriptions and usage guidance into the enhanced prompt where relevant. Preserve exact trigger words. Keep the user’s requested action, dialogue and reference roles, and follow the required prompt format and clip constraints.' : '')
@@ -142,8 +148,7 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
             ? `\nThis is an image-only loop. <Picture ${guides.start! + 1}> is the shared first-frame and last-frame anchor. Explicitly begin and end at its same pose, composition, lighting and background. Any movement must return smoothly to that pose before the loop repeats. Other pictures supply only their requested subject or style guidance; never use another picture as a different ending.`
             : !isContinuity ? [guides.start !== undefined ? `\n<Picture ${guides.start + 1}> anchors the first frame. Begin in its pose and composition.` : '', guides.end !== undefined ? `\n<Picture ${guides.end + 1}> anchors the last frame. End in its pose and composition.` : ''].join('') : ''),
         input: [{ role: 'user', content: [
-          { type: 'input_text', text: JSON.stringify({ draft: isContinuity ? stripSharedContinuity(input.prompt)
-            : input.kind === 'idle' ? stripSpeechDirections(stripContinuity(input.prompt)) : stripContinuity(input.prompt), kind: input.kind, duration: input.duration,
+          { type: 'input_text', text: JSON.stringify({ draft: sourceDraft, rewriteMode: repair ? 'repair' : 'enhance', kind: input.kind, duration: input.duration,
             loraInstructions: input.loraInstructions,
             sharedContinuity: shared,
             separateDialogue: input.kind === 'idle' || isContinuity ? undefined : input.dialogue }) },
@@ -162,11 +167,11 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
       try { parsed = JSON.parse(response.output_text); } catch { throw new HttpError(502, 'OpenAI returned an unreadable enhanced prompt. Try again.'); }
       const result = z.object({ prompt: z.string().trim().min(1).max(maxRewrite) }).safeParse(parsed);
       if (!result.success) throw new HttpError(502, 'OpenAI returned an invalid enhanced prompt. Try again.');
-      const draft = isContinuity ? stripSharedContinuity(result.data.prompt) : stripContinuity(result.data.prompt);
+      const draft = isContinuity ? stripSharedContinuity(cleanH3PromptDraft(result.data.prompt)) : stripContinuity(cleanH3PromptDraft(result.data.prompt));
       let prompt = (input.kind === 'idle' && !isContinuity ? stripSpeechDirections(draft) : draft).replace(/\r\n/g, '\n').trim();
       if (!prompt) throw new HttpError(502, 'OpenAI returned an empty enhanced prompt. Try again.');
       if (!isContinuity && input.kind !== 'idle') prompt = await timeDialogueBeats(openai, {
-        prompt, draft: stripContinuity(input.prompt), dialogue: input.dialogue, duration: input.duration, maxPromptLength: maxRewrite, signal: input.signal,
+        prompt, draft: sourceDraft, repair, dialogue: input.dialogue, duration: input.duration, maxPromptLength: maxRewrite, signal: input.signal,
       });
       let enhancedPrompt: string;
       if (isContinuity) enhancedPrompt = `${prompt.replace(/\s+/g, ' ')} ${mandatoryContinuity}`;

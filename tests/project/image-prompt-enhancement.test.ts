@@ -63,6 +63,20 @@ describe('model-specific image prompt enhancement', () => {
     expect(repeated.prompt).toBe(first.prompt);
     expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).draft).toBe(prompt);
   });
+  it('repairs a copied image prompt using current settings and explicit corrections', async () => {
+    const draft = 'A wide 16:9 poster with two cups and the title "MIDNIGHT SUN". Correction: show one cup, using the selected square aspect ratio. Preserve the established colors.';
+    const repaired = 'Square poster with one cup and the exact title "MIDNIGHT SUN" in the established colors.';
+    const value = input();
+    value.settings.prompt = '```text\n' + draft + '\n```';
+    value.settings.aspectRatio = '1:1';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: '```text\n' + repaired + '\n```' }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(value);
+    const args = respond.mock.calls[0][0];
+    expect(JSON.parse(args.input[0].content[0].text)).toMatchObject({ draft, aspectRatio: '1:1' });
+    expect(args.instructions).toContain('Apply explicit corrections to earlier prose.');
+    expect(result.prompt).toBe(`${repaired} ${lightingColorContinuity}`);
+    expect(respond).toHaveBeenCalledOnce();
+  });
   it('reserves room for the lighting/color lock within the image prompt limit', async () => {
     const enhance = createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt;
     await enhance(input());
