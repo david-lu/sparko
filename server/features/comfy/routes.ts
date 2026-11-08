@@ -7,7 +7,8 @@ import { pipeline } from 'node:stream/promises';
 import { once } from 'node:events';
 import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
 import { z } from 'zod';
-import { COMFY, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants.js';
+import { COMFY, H3_PROMPT_MAX_LENGTH, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants.js';
+import { H3_PROMPT_LENGTH_ERROR, normalizeH3Prompt } from '../../../shared/h3-prompt.js';
 import { comfyBridgePlan, comfyDimensions, validateComfyResolution } from '../../../shared/comfy.js';
 import { generationResolutions, maskInjections, normalizeMaskInjection } from '../../../shared/interstitials.js';
 import { authenticate } from '../../hosting.js';
@@ -48,7 +49,8 @@ const schema = z.object({
   endImageIndex: z.coerce.number().int().min(0).max(IMAGE_REFERENCE.maxCount - 1).optional(),
   loopImageGuide: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
   interpolateMiddle: z.enum(['true', 'false']).optional(),
-  duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().min(1).max(8000).refine(value => !!value.trim(), 'Add a prompt before generating.') })
+  duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().transform(normalizeH3Prompt)
+    .pipe(z.string().min(1).max(H3_PROMPT_MAX_LENGTH, H3_PROMPT_LENGTH_ERROR).refine(value => !!value.trim(), 'Add a prompt before generating.')) })
   .transform(({ interpolateMiddle, maskTransitionMs, ...value }) => ({ ...value,
     audioMaskTransitionMs: value.audioMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
     videoMaskTransitionMs: value.videoMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,

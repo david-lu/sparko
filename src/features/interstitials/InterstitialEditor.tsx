@@ -2,7 +2,8 @@ import GenerationLora from '../project/GenerationLora';
 import { H3_MODEL_ID, generationLoraInstructions } from '../../../shared/loras';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Clapperboard, RotateCcw } from 'lucide-react';
-import { COMFY, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
+import { COMFY, H3_PROMPT_MAX_LENGTH, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
+import { normalizeH3Prompt, validateH3PromptLength } from '../../../shared/h3-prompt';
 import { comfyReferenceRange } from '../../../shared/comfy';
 import type { AppStatus } from '../../../shared/contracts';
 import { minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
@@ -98,7 +99,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     validateMaskTransitionMs(selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Audio mask transition');
     validateMaskTransitionMs(selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Video mask transition');
     for (const curve of [selected.videoMaskCurve, selected.audioMaskCurve]) if (curve) maskCurveSchema.parse(curve);
-    if (selected.prompt.length > 8000) throw new Error('Shorten the prompt to fit this model.');
+    validateH3PromptLength(selected.prompt);
     if ((hasSource || noVideo) && !dependency?.blocked) {
       const timing = dependency?.reference && referenceTiming(selected, dependency.reference);
       const input = timing ? { ...selected, time: timing.time } : selected;
@@ -168,7 +169,8 @@ export default function InterstitialEditor({ selected, controller, engine, info,
             unavailableReason={addingImages ? 'Wait for reference images to finish loading.' : undefined}
             onEnhance={() => void enhance()} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
         </div>
-        <textarea id={promptId} aria-label="Video prompt" rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
+        <textarea id={promptId} aria-label="Video prompt" aria-describedby={`${promptId}-length`} rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
+        <span id={`${promptId}-length`} className="hint prompt-character-count">{normalizeH3Prompt(selected.prompt).length.toLocaleString('en-US')} / {H3_PROMPT_MAX_LENGTH.toLocaleString('en-US')} characters</span>
         {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
       </div>
       <details className="inspector-group inspector-references-panel" open><summary>References<span>Optional</span></summary><div className="inspector-group-body">

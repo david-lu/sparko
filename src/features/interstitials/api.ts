@@ -9,11 +9,13 @@ import { request, sendForm } from '../../shared/api';
 import { referenceImageData } from './image-references';
 import { assets } from '../project/assets';
 import { maskCurveSchema } from '../../../shared/mask-curves';
+import { validateH3PromptLength } from '../../../shared/h3-prompt';
 
 export const hasNoVideoInput = (item: Interstitial) => item.useInputReference === false && item.useOutputReference === false;
 
 export async function generateInterstitial(item: Interstitial, engine: Pick<MediaEngine, 'exportMp4'> | null, info: MediaInfo | null, signal: AbortSignal,
   onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void): Promise<GenerationJob> {
+  validateH3PromptLength(item.prompt);
   const seed = chooseGenerationSeed(item.seed);
   const audioMaskTransitionMs = item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;
   const videoMaskTransitionMs = item.videoMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;

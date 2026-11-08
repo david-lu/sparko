@@ -29,6 +29,14 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it('accepts 7,000 prompt characters after line-ending normalization and rejects 7,001 without submitting', async () => {
+    const prompt = `${'A'.repeat(6997)}\nB\n`;
+    await submit('1.625', '1.625', prompt.replaceAll('\n', '\r\n')).expect(202);
+    expect(comfy.submit.mock.calls[0][1].prompt).toBe(prompt);
+    const response = await submit('1.625', '1.625', `${prompt}C`).expect(400);
+    expect(response.body.error).toContain('7,000 characters or fewer');
+    expect(comfy.submit).toHaveBeenCalledOnce();
+  });
   it.each(['0', '123456789', '9007199254740991'])('forwards fixed seed %s exactly', async seed => {
     await submit('1.625', '1.625', 'Seeded scene', { seed }).expect(202);
     expect(comfy.submit.mock.calls[0][1].seed).toBe(Number(seed));
@@ -179,9 +187,9 @@ describe('Comfy API boundaries', () => {
     await submit('1.625', '1.625', 'Exact', { maskInjection: 'unknown' }).expect(400);
     expect(comfy.submit).not.toHaveBeenCalled();
   });
-  it('passes the entered prompt through to Comfy without rewriting it', async () => {
+  it('normalizes transport line endings without rewriting the entered prompt', async () => {
     await submit('1.625', '1.625', 'First direction.\r\n\r\nSecond direction.').expect(202);
-    expect(comfy.submit.mock.calls[0][1].prompt).toBe('First direction.\r\n\r\nSecond direction.');
+    expect(comfy.submit.mock.calls[0][1].prompt).toBe('First direction.\n\nSecond direction.');
   });
   it('rejects off-grid windows, missing context, and unavailable providers before submission', async () => {
     await submit('2', '2').expect(400);

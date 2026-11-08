@@ -1,4 +1,5 @@
 import { COMFY, COMFY_MODELS, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants.js';
+import { normalizeH3Prompt, validateH3PromptLength } from '../../../shared/h3-prompt.js';
 import { comfyBridgePlan, validateComfyResolution, type ComfyMode } from '../../../shared/comfy.js';
 import { validateMaskTransitionMs, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { audioCurveSpans, videoCurvePoints, videoTransitionPoints } from './mask-transition.js';
@@ -15,6 +16,8 @@ export type BridgeInput = { seed?: number; clipOrigin?: ClipOrigin; lora?: strin
  * The original source footage is kept by Sparko's compositor, outside this render.
  */
 export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, _legacyMaskAssetId?: string, imageAssetIds: string[] = []): Workflow {
+  validateH3PromptLength(input.prompt);
+  input = { ...input, prompt: normalizeH3Prompt(input.prompt) };
   if (imageAssetIds.length > IMAGE_REFERENCE.maxCount) throw new Error('H3 supports up to 9 image references.');
   const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
   validateComfyResolution(plan,input.resolution);

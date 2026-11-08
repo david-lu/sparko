@@ -127,6 +127,40 @@ test('carries enhanced dialogue timing through regeneration into the downloaded 
   expect(metadata).toMatchObject({ id: current.metadata.id, prompt: timed, settings: { prompt: timed } });
 });
 
+for (const width of [1440, 390]) test(`preserves oversized drafts and enforces H3's limit without shifting controls at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const prompt = page.getByLabel('Video prompt'), draft = 'A'.repeat(7001);
+  const tail = '<d>[English] A rock?</d>', shortened = 'A'.repeat(7000 - tail.length) + tail;
+  await prompt.fill(draft);
+  await expect(prompt).toHaveValue(draft);
+  await expect(page.locator('.prompt-character-count')).toHaveText('7,001 / 7,000 characters');
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
+  await expect(page.locator('.task-status')).toContainText('7,000 characters or fewer');
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  await page.route('**/api/interstitials/enhance-prompt', async route => {
+    expect(route.request().postDataJSON().prompt).toBe(draft);
+    await pending; await route.fulfill({ json: { prompt: shortened, model: 'test' } });
+  });
+  const controls = () => page.locator('.interstitial-editor').evaluate(root => {
+    const top = root.getBoundingClientRect().top;
+    return ['textarea', '.prompt-character-count', '.interstitial-time-fields', 'button[type=submit]', '.task-status'].map(selector => {
+      const box = root.querySelector(selector)!.getBoundingClientRect(); return { top: box.top - top, height: box.height };
+    });
+  });
+  const before = await controls();
+  await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Enhancing…', exact: true })).toBeDisabled();
+  expect(await controls()).toEqual(before);
+  finish(); await expect(prompt).toHaveValue(shortened);
+  await expect(page.locator('.prompt-character-count')).toHaveText('7,000 / 7,000 characters');
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
+  expect(await controls()).toEqual(before);
+  await page.locator('.prompt-character-count').scrollIntoViewIfNeeded();
+  await expect(page.locator('.prompt-character-count')).toBeInViewport();
+  await page.screenshot({ path: `test-results/h3-prompt-limit-${width}.png` });
+});
+
 for (const width of [1440, 390]) test(`keeps the multi-line draft and layout stable when timing does not fit at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   const draft = 'She holds a rock and asks "A rock?", then sets it down, lifts a bowl and asks "Old vegetables?"';

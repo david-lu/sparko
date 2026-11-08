@@ -86,7 +86,7 @@ describe('interstitial prompt enhancement', () => {
     expect(result.prompt).toContain('Particle effects, if present, must remain continuous with no jumps');
     expect(result.prompt).toContain(motionContinuity);
     expect(result.prompt).toContain(lightingColorContinuity);
-    expect(result.prompt.length).toBeLessThanOrEqual(8000);
+    expect(result.prompt.length).toBeLessThanOrEqual(7000);
     expect(result.prompt.split('\n')).toHaveLength(3);
     const [options, requestOptions] = respond.mock.calls[0];
     expect(options).toMatchObject({ model: AI_MODELS.promptEnhancement, store: false, reasoning: { effort: 'low' } });
@@ -154,7 +154,7 @@ describe('interstitial prompt enhancement', () => {
     expect(result.prompt).toContain('From 10.5 to 12.25 seconds: She holds the sock');
     expect(result.prompt.match(/<d>[\s\S]*?<\/d>/g)).toEqual(rewritten.match(/<d>[\s\S]*?<\/d>/g));
     expect(result.prompt).toContain('After the final scripted line');
-    expect(result.prompt.length).toBeLessThanOrEqual(8000);
+    expect(result.prompt.length).toBeLessThanOrEqual(7000);
   });
   it.each(['interstitial', 'idle', 'continuity'] as const)('budgets the complete %s output including shared and mandatory directions', async mode => {
     const shared = 'Keep the same room and character. '.repeat(120).trim();
@@ -166,7 +166,8 @@ describe('interstitial prompt enhancement', () => {
     });
     const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input,
       kind: mode === 'idle' ? 'idle' : 'interstitial', target: mode === 'continuity' ? 'continuity' : undefined, continuity: shared });
-    expect(result.prompt.length).toBeLessThanOrEqual(mode === 'continuity' ? 4000 : 8000);
+    expect(result.prompt.length).toBeLessThanOrEqual(mode === 'continuity' ? 4000 : 7000);
+    if (mode !== 'continuity') expect(result.prompt).toHaveLength(7000);
     if (mode === 'continuity') expect(result.prompt).toContain(rewritten);
     else {
       expect(result.prompt).toContain(shared);
@@ -417,6 +418,12 @@ describe('prompt enhancement API', () => {
   });
   it('accepts speech merged into a prompt longer than the old separate-field limit', async () => {
     const prompt = `${'A scene. '.repeat(500)}\n\nSpoken dialogue, verbatim: What do you think?`;
+    await send({ ...body, prompt }).expect(200);
+    expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ prompt }));
+  });
+  it('allows an older 8,000-character draft to be enhanced instead of truncating it', async () => {
+    const tail = '<d>[English] Keep these final words.</d>';
+    const prompt = 'A'.repeat(8000 - tail.length) + tail;
     await send({ ...body, prompt }).expect(200);
     expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ prompt }));
   });

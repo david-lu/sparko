@@ -5,6 +5,12 @@ import { COMFY } from '../../shared/constants';
 import { videoTransitionPoints } from '../../server/features/comfy/mask-transition';
 
 describe('H3 two-sided temporal bridge', () => {
+  it('enforces the complete 7,000-character prompt before building a generation workflow', () => {
+    const input = { mode: 'custom' as const, before: 0, after: 0, duration: 6, prompt: 'A'.repeat(6998) + '\r\nB', width: 1280, height: 736, hasAudio: false };
+    const graph = bridgeWorkflow(undefined, input, 1);
+    expect(graph.conditioning.inputs.prompt).toBe('A'.repeat(6998) + '\nB');
+    expect(() => bridgeWorkflow(undefined, { ...input, prompt: input.prompt + 'C' }, 1)).toThrow('7,000 characters or fewer');
+  });
   it.each(['custom', 'loop'] as const)('generates a %s clip with no video or image references', mode => {
     const graph = bridgeWorkflow(undefined, { mode, before: 0, after: 0, duration: 6, prompt: 'A drifting cloud', width: 1280, height: 736, hasAudio: false }, 1);
     expect(graph.conditioning.class_type).toBe('MiniMaxH3ImageToVideo');

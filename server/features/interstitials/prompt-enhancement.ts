@@ -1,7 +1,7 @@
 import type { Express } from 'express';
 import { z } from 'zod';
 import { loraInstructionsSchema } from '../../../shared/loras.js';
-import { AI_MODELS, INTERSTITIAL } from '../../../shared/constants.js';
+import { AI_MODELS, H3_PROMPT_MAX_LENGTH, INTERSTITIAL } from '../../../shared/constants.js';
 import type { PromptClipKind, PromptEnhancement } from '../../../shared/contracts.js';
 import type { AIClients } from '../../shared/ai-clients.js';
 import { authenticate } from '../../hosting.js';
@@ -54,9 +54,10 @@ const stripSpeechDirections = (prompt: string) => prompt.replace(/\bEnglish spee
   .replace(/(?:^|\n)\s*Spoken dialogue, verbatim:[^\n]*/gi, '').trim();
 const stripSharedContinuity = (prompt: string) => stripSpeechDirections(prompt.replaceAll(motionContinuity, '').replaceAll(previousMotionContinuity, '')
   .replaceAll(backgroundContinuity, '').replaceAll(particleContinuity, '').replaceAll(previousGradualColorLighting, '').replaceAll(lightingColorContinuity, ''));
-const maxClipPrompt = 8000, maxContinuityBrief = 4000;
+const maxClipPrompt = H3_PROMPT_MAX_LENGTH, maxContinuityBrief = 4000;
 const inputSchema = z.object({
-  prompt: z.string().trim().min(1).max(maxClipPrompt),
+  // Accept older drafts so Enhance can shorten them without truncating dialogue.
+  prompt: z.string().trim().min(1).max(8000),
   duration: z.number().finite().min(INTERSTITIAL.minStartRange).max(INTERSTITIAL.maxDuration),
   kind: z.enum(['interstitial', 'call', 'idle', 'response']).default('interstitial'),
   target: z.literal('continuity').optional(),
