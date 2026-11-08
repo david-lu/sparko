@@ -10,6 +10,7 @@ import type { Providers } from '../../providers.js';
 import { currentFrameContent, currentFrameInstructions, currentFrameSchema } from '../../shared/prompt-frame.js';
 import { lightingColorContinuity, lightingColorInstructions } from '../../shared/prompt-lighting.js';
 import { timeDialogueBeats } from './dialogue-timing.js';
+import { scriptedDialogue } from './scripted-dialogue.js';
 import { cleanH3PromptDraft, isH3Prompt, promptEditingInstructions } from '../../shared/prompt-editing.js';
 
 const motionContinuity = 'Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes.';
@@ -140,6 +141,7 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
       const response = await openai.responses.create({
         model: AI_MODELS.promptEnhancement, store: false, max_output_tokens: 4000, reasoning: { effort: 'low' },
         instructions: (isContinuity ? continuityInstructions : promptInstructions[input.kind]) + `\n${promptEditingInstructions}\n${audioQualityInstructions}\n${lightingColorInstructions}` + '\nAttached H3 image references are labeled <Picture 1>, <Picture 2>, etc. Preserve these exact tags and the roles requested by the user in the rewritten prompt. They guide identity or style; they do not request cuts or replace connected video boundaries. Unlabeled video boundary frames are context only and have no <Picture N> tag.'
+          + '\nThe supplied requiredDialogue captures explicit speech from the draft, including quoted additions in a correction. Include every listed utterance exactly once in the action with its intended speaker and action; repeated entries represent intentional repetitions. An explicitly requested missing line must replace conflicting old silence or mouth-closed directions during that line. Do not infer new speech from a prop or incomplete fragment. Apply final mouth-closed and silence directions only after the actual final requested line; retain requested pauses between lines.'
           + (repair ? '\nThis is an existing H3 prompt to repair. Current duration, clip kind and supplied reference roles take precedence over stale values in its prose. Recalculate old timing windows against the supplied duration; repair gaps, overlaps and out-of-range times. Restore each line to its intended speaker and action, including correcting a clearly mismatched named object or applying an explicit ordering correction. Keep the exact spoken words; fix the surrounding staging and, when necessary for the correction, the line order. Remove dialogue echoed in soundscape/music fields while preserving intentional repeated utterances in the action. Correct broken field/tag structure and contradictory shot instructions. Preserve coherent existing choices. Do not turn an incomplete fragment into invented dialogue. A second pass will schedule the corrected sequence; do not preserve known errors merely because they appeared in the old prompt.' : '')
           + `\nThe rewritten prompt may use up to ${maxRewrite} characters. This is a ceiling, not a target: stay concise, but finish every sentence, dialogue tag and required field. Preserve all requested actions and spoken words; shorten descriptive prose instead of cutting off the sequence.`
           + (input.currentFrame ? `\n${currentFrameInstructions}` : '')
@@ -149,6 +151,7 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
             : !isContinuity ? [guides.start !== undefined ? `\n<Picture ${guides.start + 1}> anchors the first frame. Begin in its pose and composition.` : '', guides.end !== undefined ? `\n<Picture ${guides.end + 1}> anchors the last frame. End in its pose and composition.` : ''].join('') : ''),
         input: [{ role: 'user', content: [
           { type: 'input_text', text: JSON.stringify({ draft: sourceDraft, rewriteMode: repair ? 'repair' : 'enhance', kind: input.kind, duration: input.duration,
+            requiredDialogue: isContinuity || input.kind === 'idle' ? [] : scriptedDialogue(sourceDraft, repair),
             loraInstructions: input.loraInstructions,
             sharedContinuity: shared,
             separateDialogue: input.kind === 'idle' || isContinuity ? undefined : input.dialogue }) },

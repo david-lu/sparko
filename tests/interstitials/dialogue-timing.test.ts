@@ -66,6 +66,26 @@ describe('action and dialogue timing', () => {
       prompt: input.prompt.replace('\noverall_soundscape:', ` She says ${extra}\noverall_soundscape:`), dialogue: 'All done.' });
     expect(result.match(/<d>[\s\S]*?<\/d>/g)).toEqual([rock, bowl, extra]);
   });
+  it('restores an explicitly quoted missing line in an existing prompt and gives it a speaking beat', async () => {
+    const sock = '<d>[English] or this sock</d>';
+    const draft = `${input.prompt}\nCorrection: she asks "or this sock" while holding the sock after the vegetables, instead of staying silent.`;
+    const prompt = h3(`She asks ${rock}, then ${bowl}, then holds the sock and asks ${sock}`);
+    const plan = validPlan();
+    plan.beats[4] = { start: 5, end: 6, action: 'She holds the sock throughout the line.', speech: { line: 2, delivery: 'She (S1) asks doubtfully' } };
+    returns(plan);
+    const result = await timeDialogueBeats(openai, { ...input, draft, prompt, repair: true });
+    expect(result.match(/<d>[\s\S]*?<\/d>/g)).toEqual([rock, bowl, sock]);
+    expect(result).toContain(`From 5 to 6 seconds: She holds the sock throughout the line. She (S1) asks doubtfully: ${sock}`);
+    respond.mockClear();
+    await expect(timeDialogueBeats(openai, { ...input, draft, repair: true })).rejects.toMatchObject({ status: 502 });
+    expect(respond).not.toHaveBeenCalled();
+  });
+  it('rejects missing quoted speech even when the draft is simple or has only one line', async () => {
+    for(const draft of ['She says "or this sock".', `She says <d>[English] or this sock</d>.`, input.draft]) {
+      await expect(timeDialogueBeats(openai, { ...input, draft, prompt: h3('She holds the sock silently.') })).rejects.toMatchObject({ status: 502 });
+    }
+    expect(respond).not.toHaveBeenCalled();
+  });
   it('schedules a repaired line order instead of rejecting or reinstating the incorrect old order', async () => {
     const draft = h3(`She lifts the rock, then the bowl, but the old script lists ${bowl} then ${rock}. Correction: ask about the rock first, while holding it, then ask about the vegetables while holding the bowl.`);
     const result = await timeDialogueBeats(openai, { ...input, draft, repair: true });
@@ -102,7 +122,7 @@ describe('action and dialogue timing', () => {
   });
   it.each([h3(`She asks ${rock}`), h3(`She asks ${rock} [Shot 2] At 00:03.000, the camera cuts to the bowl: ${bowl}`),
     h3(`She asks ${rock} [Shot 10] At 00:03.000, the camera cuts to the bowl: ${bowl}`)])('preserves single-line or explicitly multi-shot enhancement without another request', async prompt => {
-    expect(await timeDialogueBeats(openai, { ...input, prompt })).toBe(prompt);
+    expect(await timeDialogueBeats(openai, { ...input, draft: prompt, prompt })).toBe(prompt);
     expect(respond).not.toHaveBeenCalled();
   });
   it.each([{ status: 'incomplete', output_text: '{}' }, { status: 'completed', output_text: '{' },

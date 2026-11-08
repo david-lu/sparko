@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AI_MODELS } from '../../../shared/constants.js';
 import type { AIClients } from '../../shared/ai-clients.js';
 import { HttpError } from '../../shared/http.js';
+import { dialogueTags, dialogueKey, scriptedDialogue } from './scripted-dialogue.js';
 
 const directions = z.string().trim().min(1).max(1500);
 const planSchema = z.strictObject({
@@ -13,16 +14,6 @@ const planSchema = z.strictObject({
     speech: z.strictObject({ line: z.number().int().nonnegative(), delivery: directions }).nullable(),
   })).max(32),
 });
-const dialogueTags = (prompt: string) => [...prompt.matchAll(/<d>\s*\[[^\]]+\][\s\S]*?<\/d>/gi)].map(match => match[0]);
-const dialogueKey = (tag: string) => tag.replace(/^<d>\s*\[([^\]]+)\]\s*/i, (_, language: string) => `[${language.trim().toLowerCase()}]`).replace(/\s*<\/d>$/i, '');
-function scriptedDialogue(prompt: string, repair = false): string[] {
-  if (!repair) return dialogueTags(prompt);
-  const boundary = prompt.replace(/<d>\s*\[[^\]]+\][\s\S]*?<\/d>/gi, tag => ' '.repeat(tag.length)).search(/\boverall_soundscape\s*:/i);
-  if (boundary < 0) return dialogueTags(prompt);
-  const action = dialogueTags(prompt.slice(0, boundary)), keys = new Set(action.map(dialogueKey));
-  // Soundscape/music can echo the script by mistake. Keep new misplaced lines so they can be moved into the action.
-  return [...action, ...dialogueTags(prompt.slice(boundary)).filter(tag => !keys.has(dialogueKey(tag)))];
-}
 const invalidTiming = () => new HttpError(502, 'The enhanced action/dialogue timing was incomplete or out of order. Your draft has been kept. Try again.');
 const seconds = (value: number) => Number(value.toFixed(3)).toString();
 
@@ -45,7 +36,7 @@ export async function timeDialogueBeats(openai: NonNullable<AIClients['openai']>
   const originalOrder = originalLines.map(dialogueKey), outputOrder = originalOutput.map(dialogueKey);
   // Repairs may fix ordering, but must retain the exact lines and intentional repetitions.
   if (input.repair) { originalOrder.sort(); outputOrder.sort(); }
-  if ((originalLines.length > 1 || input.repair && originalLines.length > 0) && (outputOrder.length !== originalOrder.length || outputOrder.some((line, index) => line !== originalOrder[index])
+  if (originalLines.length > 0 && (outputOrder.length !== originalOrder.length || outputOrder.some((line, index) => line !== originalOrder[index])
     || addedLine && lines.filter(line => dialogueKey(line) === dialogueKey(addedLine)).length !== 1)) {
     throw new HttpError(502, input.repair ? 'Repair changed or lost the scripted dialogue. Your draft has been kept. Try again.' : 'Enhancement changed or reordered the scripted dialogue. Your draft has been kept. Try again.');
   }
