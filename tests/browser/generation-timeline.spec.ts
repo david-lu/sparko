@@ -1,4 +1,4 @@
-import { test, expect, openVideo, addBridge, readProject } from './fixtures';
+import { test, expect, openVideo, addBridge, readProject, saveAndReopen } from './fixtures';
 
 for (const width of [1440, 390]) test(`one generation timeline aligns references, image guides and masks at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
@@ -79,4 +79,76 @@ for (const width of [1440, 390]) test(`one generation timeline aligns references
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Select image keyframe 1', exact: true })).toBeVisible();
   expect(errors).toEqual([]); expect(submissions).toBe(0);
+});
+
+for (const width of [1440, 390]) test(`image keyframes have visible delete and context actions with undo at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await openVideo(page); await addBridge(page);
+  await page.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
+  await page.getByLabel('Upload Keyframe image', { exact: true }).setInputFiles('src/app/tutorial/images/save.png');
+  await expect(page.getByRole('group', { name: 'Keyframe image', exact: true })).toHaveAttribute('aria-busy', 'false');
+  const assetId = (await readProject(page)).interstitials[0].keyframes[0].image.assetId;
+  await page.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
+  await page.getByRole('button', { name: 'Expand generation timeline', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
+  const first = editor.getByRole('button', { name: 'Select image keyframe 1', exact: true });
+  const second = editor.getByRole('button', { name: 'Select image keyframe 2', exact: true });
+  // Guides may be adjacent or overlap; the selector must make both reachable.
+  await editor.getByLabel('Selected image keyframe', { exact: true }).selectOption({ index: 0 });
+  await first.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Image keyframe actions', exact: true });
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight && element.contains(document.elementFromPoint(box.left + 12, box.bottom - 10));
+  })).toBe(true);
+  await menu.getByRole('menuitem', { name: 'Disable keyframe', exact: true }).click();
+  await expect(first).toHaveAttribute('data-enabled', 'false');
+  await editor.getByLabel('Selected image keyframe', { exact: true }).selectOption({ index: 1 });
+  const remove = editor.getByRole('button', { name: 'Delete image keyframe', exact: true });
+  await expect(remove).toHaveText('Delete keyframe'); await remove.click();
+  await expect(second).toHaveCount(0); await expect(first).toBeFocused();
+  await expect(editor.getByRole('group', { name: 'Selected image actions' })).toContainText('Keyframe deleted');
+  await first.press('Shift+F10'); await expect(menu).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0); await expect(first).toBeFocused();
+  await expect(editor).toBeVisible();
+  if (width === 390) {
+    await first.press('Shift+F10'); await expect(menu).toBeVisible();
+    await editor.locator('.generation-timeline-editor').evaluate(element => { element.scrollTop += 30; });
+    await expect(menu).toHaveCount(0);
+  }
+  await first.press('Shift+F10'); await menu.getByRole('menuitem', { name: 'Delete keyframe', exact: true }).click();
+  await expect(first).toHaveCount(0); await expect(remove).toBeDisabled();
+  await expect(editor.getByRole('button', { name: 'Add image keyframe', exact: true })).toBeFocused();
+  await editor.getByRole('button', { name: 'Close generation timeline', exact: true }).click();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Select image keyframe 1', exact: true })).toHaveAttribute('data-enabled', 'false');
+  const restored = await readProject(page);
+  expect(restored.interstitials[0].keyframes[0].image.assetId).toBe(assetId);
+  expect(restored.library.some((asset: { assetId: string }) => asset.assetId === assetId)).toBe(true);
+  await page.getByRole('button', { name: 'Delete image keyframe', exact: true }).click();
+  await saveAndReopen(page); await page.getByRole('button', { name: 'Select New scene', exact: true }).press('Enter');
+  await expect(page.locator('.generation-image-marker:not(.endpoint)')).toHaveCount(0);
+  expect((await readProject(page)).interstitials).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+for (const loop of [false, true]) test(`remove an endpoint image from the timeline${loop ? ' with linked loop endpoints' : ''}`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openVideo(page); await addBridge(page);
+  if (loop) await page.getByRole('checkbox', { name: 'Loop', exact: true }).check();
+  const label = loop ? 'Loop' : 'Start';
+  await page.getByRole('group', { name: `${label} reference`, exact: true }).getByRole('button', { name: 'Image', exact: true }).click();
+  await page.getByLabel(`Upload ${label} reference image`, { exact: true }).setInputFiles('src/app/tutorial/images/save.png');
+  await expect(page.getByRole('group', { name: `${label} reference image`, exact: true })).toHaveAttribute('aria-busy', 'false');
+  if (!loop) await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Image', exact: true }).click();
+  const start = page.getByRole('button', { name: 'Start image guide: save.png', exact: true });
+  const end = page.getByRole('button', { name: 'End image guide: save.png', exact: true });
+  await expect(start).toBeVisible(); await end.click();
+  await page.getByRole('button', { name: `Remove ${loop ? 'loop' : 'end'} image`, exact: true }).click();
+  await expect(end).toHaveCount(0); await expect(start).toHaveCount(loop ? 0 : 1);
+  expect((await readProject(page)).interstitials[0].imageReferences).toHaveLength(1);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(start).toBeVisible(); await expect(end).toBeVisible();
 });

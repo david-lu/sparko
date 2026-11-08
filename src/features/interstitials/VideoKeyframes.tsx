@@ -1,4 +1,3 @@
-import { Trash2 } from 'lucide-react';
 import { COMFY, TIMELINE_FPS } from '../../../shared/constants';
 import { type VideoKeyframe } from '../../../shared/video-keyframes';
 import type { ProjectController } from '../project/ProjectController';
@@ -19,10 +18,10 @@ export default function VideoKeyframes({ projects, value = [], selectedId, onSel
   return <div className="video-keyframes">
     {selected && <div className="video-keyframe-card" role="group" aria-label={`Image keyframe ${value.indexOf(selected) + 1}`}>
       <div className="video-keyframe-heading">
-        <select aria-label="Selected image keyframe" value={selected.id} onChange={event => onSelect(event.target.value)}>
+        <label htmlFor={`keyframe-choice-${selected.id}`}>Editing</label>
+        <select id={`keyframe-choice-${selected.id}`} aria-label="Selected image keyframe" value={selected.id} onChange={event => onSelect(event.target.value)}>
           {value.map((keyframe, i) => <option key={keyframe.id} value={keyframe.id}>{i + 1}. {keyframe.image?.name ?? 'Choose an image'}{keyframe.enabled ? '' : ' (disabled)'}</option>)}
         </select>
-        <button type="button" className="icon-button small" aria-label="Delete image keyframe" onClick={() => onChange(current => current.filter(keyframe => keyframe.id !== selected.id))}><Trash2 size={14}/></button>
       </div>
       <AssetInput key={selected.id} projects={projects} value={selected.image ? [{ ...selected.image, kind: 'image' }] : []} kinds={['image']} multiple={false}
         label="Keyframe image" imageFormats={['image/png', 'image/jpeg', 'image/webp']} onPreviewPlay={onPreviewPlay}

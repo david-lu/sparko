@@ -3,7 +3,7 @@ import { DiamondPlus, RotateCcw, Undo2, Redo2, X } from 'lucide-react';
 import { defaultMaskCurve, maskStrength, type MaskCurve, type MaskPoint, type MaskSide } from '../../../shared/mask-curves';
 import type { InterstitialSettings } from '../../../shared/interstitials';
 import type { maskVideoBoundaries } from './mask-video-boundaries';
-import { useExclusiveMenu } from '../../shared/DropdownMenu';
+import { useExclusiveMenu, useMenuScrollDismiss } from '../../shared/DropdownMenu';
 import './mask-curves.css';
 
 export type MaskChannel = 'video' | 'audio';
@@ -113,6 +113,7 @@ export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoM
   const removable=(selected:Selection|null)=>!!selected&&selected.index>0&&selected.index<curve[selected.side].length-1;
   const remove=(selected=selection)=>{if(!selected||!removable(selected))return;change({...draft,[active]:{...curve,[selected.side]:curve[selected.side].filter((_,i)=>i!==selected.index)}});setSelection(null);};
   const startDrag=(event:ReactPointerEvent<SVGElement>,selected:Selection,handle?:'in'|'out')=>{
+    if(event.button===2){event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});return;}
     if(event.button!==0)return;event.preventDefault();event.stopPropagation();event.currentTarget.focus();
     setSelection(selected);setCursor(seconds(selected.side,curve[selected.side][selected.index]));
     drag.current={selection:selected,channel:active,handle,initial:draft,moved:false};graph.current!.setPointerCapture(event.pointerId);
@@ -159,7 +160,10 @@ export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoM
         <div className="mask-editor-graph" ref={container}>
           <svg ref={graph} viewBox={`0 0 ${width} ${height}`} role="group" aria-label="Mask value graph" tabIndex={0}
             onContextMenu={event=>openContext(event)} onKeyDown={event=>openContext(event)}
-            onPointerDown={event=>{if(event.button===0)setCursor(Math.round(coordinates(event).time*24)/24);}}
+            onPointerDown={event=>{
+              if(event.button===2){event.preventDefault();event.currentTarget.focus({preventScroll:true});}
+              if(event.button===0)setCursor(Math.round(coordinates(event).time*24)/24);
+            }}
             onDoubleClick={event=>{const p=coordinates(event);add(p.time,p.strength);}}
             onPointerMove={event=>{const current=drag.current;if(!current)return;const p=coordinates(event);current.moved=true;setDraft(movedPoint(current.channel,current.selection,p.time,p.strength,current.handle));setCursor(p.time);}}
             onPointerUp={()=>endDrag()} onPointerCancel={()=>endDrag(true)}>
@@ -244,16 +248,14 @@ function KeyframeMenu({x,y,onClose,restoreFocus,canAdd,canDelete,onAdd,onDelete}
 }) {
   const element=useRef<HTMLDivElement>(null);
   useExclusiveMenu(element,true,onClose,restoreFocus);
+  useMenuScrollDismiss(element,onClose);
   useLayoutEffect(()=>{
-    const menu=element.current!,box=menu.getBoundingClientRect();
+    const menu=element.current!;menu.showPopover();const box=menu.getBoundingClientRect();
     menu.style.left=`${Math.max(8,Math.min(x,window.innerWidth-box.width-8))}px`;
     menu.style.top=`${Math.max(8,Math.min(y,window.innerHeight-box.height-8))}px`;
     (menu.querySelector<HTMLButtonElement>('button:not(:disabled)')??menu).focus({preventScroll:true});
-    const scroll=(event:Event)=>{if(event.target instanceof Node&&!menu.contains(event.target))onClose();};
-    window.addEventListener('resize',onClose);window.addEventListener('scroll',scroll,true);
-    return()=>{window.removeEventListener('resize',onClose);window.removeEventListener('scroll',scroll,true);};
   },[x,y]);
-  return <div ref={element} className="mask-keyframe-menu" role="menu" aria-label="Mask keyframe actions" tabIndex={-1} style={{left:x,top:y}}
+  return <div ref={element} popover="manual" className="mask-keyframe-menu" role="menu" aria-label="Mask keyframe actions" tabIndex={-1} style={{left:x,top:y}}
     onContextMenu={event=>{event.preventDefault();event.stopPropagation();}}
     onKeyDown={event=>{
       event.stopPropagation();if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;event.preventDefault();
