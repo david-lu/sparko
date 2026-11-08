@@ -6,15 +6,16 @@ import ModalBackdrop from '../../shared/ModalBackdrop';
 
 export type PromptEditResult = { applied: boolean; error?: string };
 
-export default function EnhancePromptActions({ promptId, enhancing, enabled, connected, onEnhance, onEdit, onCancel, description, unavailableReason }: {
+export default function EnhancePromptActions({ promptId, enhancing, analyzing = false, enabled, connected, onEnhance, onEdit, onCancel, description, unavailableReason }: {
   promptId: string; enhancing: boolean; enabled: boolean; connected: boolean; onEnhance: () => void; onEdit: (instructions: string) => Promise<PromptEditResult>; onCancel: () => void; description?: string; unavailableReason?: string;
+  analyzing?: boolean;
 }) {
   const id = useId(), trigger = useRef<HTMLButtonElement>(null), attempt = useRef(0);
   const [editing, setEditing] = useState(false), [instructions, setInstructions] = useState(''), [error, setError] = useState('');
   useEffect(() => () => { attempt.current++; }, []);
   const enhancingHere = enhancing && !editing;
   const close = () => { attempt.current++; if (enhancing && editing) onCancel(); setEditing(false); };
-  const reason = enhancing ? 'Updating this prompt…' : !connected ? 'OpenAI is not connected. Configure OPENAI_API_KEY on the server to edit prompts.' : !enabled ? unavailableReason ?? 'Enter a draft prompt first.' : undefined;
+  const reason = enhancing ? analyzing ? 'Analyzing reference videos with Gemini…' : 'Updating this prompt…' : !connected ? 'OpenAI is not connected. Configure OPENAI_API_KEY on the server to edit prompts.' : !enabled ? unavailableReason ?? 'Enter a draft prompt first.' : undefined;
   const apply = async () => {
     if (enhancing || !enabled || !connected || !instructions.trim()) return;
     const current = ++attempt.current; setError('');
@@ -29,7 +30,7 @@ export default function EnhancePromptActions({ promptId, enhancing, enabled, con
     <button type="button" className="text-button enhance-prompt" disabled={enhancing || !connected || !enabled} aria-busy={enhancingHere} aria-controls={promptId}
       aria-description={reason} title={reason ?? description ?? 'Enhance with OpenAI using reference frames to preserve the shot, composition and continuous positions'} onClick={onEnhance}>
       {enhancingHere ? <span className="spinner" /> : <Sparkles size={12} />}
-      <span className="button-labels"><span aria-hidden={enhancingHere}>Enhance prompt</span><span aria-hidden={!enhancingHere}>Enhancing…</span></span>
+      <span className="button-labels"><span aria-hidden={enhancingHere}>Enhance prompt</span><span aria-hidden={!enhancingHere || analyzing}>Enhancing…</span><span aria-hidden={!enhancingHere || !analyzing}>Analyzing…</span></span>
     </button>
     <button ref={trigger} type="button" className="text-button enhance-prompt" disabled={enhancing || !connected || !enabled} aria-controls={promptId} aria-haspopup="dialog"
       title={reason ?? 'Describe a specific change to this prompt'} onClick={() => { setInstructions(''); setError(''); setEditing(true); }}><Pencil size={12}/>Edit with AI</button>
@@ -44,10 +45,10 @@ export default function EnhancePromptActions({ promptId, enhancing, enabled, con
           placeholder={'For example: add “Or this sock?” while she holds the sock. Keep the other lines.'}
           onChange={event => setInstructions(event.target.value)} onKeyDown={event => { if (event.key==='Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}/>
         </div>
-        <p className="prompt-edit-feedback" role="status">{error}</p>
+        <p className="prompt-edit-feedback" role="status">{error || (enhancing && analyzing ? 'Analyzing reference videos with Gemini…' : '')}</p>
         <div className="prompt-edit-footer"><button type="button" className="button" onClick={close}>Cancel</button>
           <button type="submit" className="button primary" disabled={enhancing || !connected || !enabled || !instructions.trim()} aria-busy={enhancing}>
-            <span className="button-labels"><span aria-hidden={enhancing}>Apply edit</span><span aria-hidden={!enhancing}>Editing…</span></span>
+            <span className="button-labels"><span aria-hidden={enhancing}>Apply edit</span><span aria-hidden={!enhancing || analyzing}>Editing…</span><span aria-hidden={!enhancing || !analyzing}>Analyzing…</span></span>
           </button>
         </div>
       </form>

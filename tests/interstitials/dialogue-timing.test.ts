@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { timeDialogueBeats } from '../../server/features/interstitials/dialogue-timing';
 import type { AIClients } from '../../server/shared/ai-clients';
+import { promptTimeline } from '../../shared/prompt-timing';
 
 const respond = vi.fn();
 const openai = { responses: { create: respond } } as unknown as NonNullable<AIClients['openai']>;
@@ -19,6 +20,34 @@ const returns = (value: unknown) => respond.mockResolvedValue({ status: 'complet
 beforeEach(() => { vi.resetAllMocks(); returns(validPlan()); });
 
 describe('action and dialogue timing', () => {
+  it('offsets relative beats exactly once and stops before the ending reference', async () => {
+    const timeline = promptTimeline(6, { prefixFrames: 39, suffixFrames: 39 }), plan = validPlan();
+    plan.beats[4].end = Number(timeline.generatedDuration.toFixed(3)); returns(plan);
+    const result = await timeDialogueBeats(openai, { ...input, timeline, duration: timeline.generatedDuration });
+    expect(result).toContain('From 1.625 to 2.625 seconds:');
+    expect(result).toContain(`From 2.625 to 3.625 seconds: She holds the rock throughout the line. The girl (S1) asks with a questioning rise: ${rock}`);
+    expect(result).toContain('From 6.625 to 7.792 seconds:');
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ timeline, duration: 148 / 24 });
+    expect(respond.mock.calls[0][0].instructions).toContain('adds timeline.generatedStart exactly once');
+    plan.beats[0].start = timeline.generatedStart; returns(plan);
+    await expect(timeDialogueBeats(openai, { ...input, timeline, duration: timeline.generatedDuration })).rejects.toMatchObject({ status: 502 });
+  });
+  it.each([true, false])('bounds a single speaking line or silent action when footage consumes time: speech=%s', async speech => {
+    const timeline = promptTimeline(6, { prefixFrames: 39, suffixFrames: 0 }), plan = validPlan();
+    const prompt = h3(speech ? `She holds the rock and asks ${rock}` : 'She holds the rock silently.');
+    plan.beats[3].speech = null;
+    if (!speech) plan.beats[1].speech = null;
+    plan.beats[4].end = timeline.generatedDuration; returns(plan);
+    const result = await timeDialogueBeats(openai, { ...input, prompt, draft: prompt, timeline, duration: timeline.generatedDuration });
+    expect(result).toContain('From 1.625 to 2.625 seconds:');
+    expect(result).toContain('From 6.625 to 8 seconds:');
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it('does not use reference footage as extra time to squeeze in speech', async () => {
+    const timeline = promptTimeline(6, { prefixFrames: 39, suffixFrames: 39 });
+    returns({ ...validPlan(), requiredDuration: 8, beats: [] });
+    await expect(timeDialogueBeats(openai, { ...input, timeline, duration: timeline.generatedDuration })).rejects.toMatchObject({ status: 422 });
+  });
   it('schedules intentionally edited dialogue without restoring the old words', async () => {
     const sock = '<d>[English] Or this sock?</d>', prompt = h3(`She lifts the rock and asks ${rock}, then puts it down, lifts the sock and asks ${sock}.`);
     const plan = validPlan();

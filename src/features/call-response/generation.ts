@@ -1,4 +1,5 @@
-import { referenceClips, referenceWindow } from '../../../shared/reference-clips';
+import { referenceClips, referenceWindow, referenceTiming } from '../../../shared/reference-clips';
+export { referenceTiming } from '../../../shared/reference-clips';
 import { BufferTarget, Mp4OutputFormat, Output } from 'mediabunny';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { comfyDimensions } from '../../../shared/comfy';
@@ -9,16 +10,8 @@ import { renderComposition } from '../../media/CompositionRenderer';
 import type { TimelineSegment } from '../../media/TimelineComposition';
 import { assets } from '../project/assets';
 
-export function referenceTiming(item: Interstitial, input: GenerationReference) {
-  const length = (side: 'before' | 'after') => referenceClips(input, side).reduce((sum, clip) => sum + clip.outFrame - clip.inFrame, 0);
-  const before = Math.min(length('before'), Math.ceil(item.start_range * TIMELINE_FPS));
-  const after = input.mode === 'loop' && !input.before && !input.after || input.mode === 'extend' || input.mode === 'custom' && !input.after ? 0
-    : Math.min(input.after && input.mode !== 'loop' ? length('after') : Infinity, Math.ceil((input.mode === 'loop' ? item.start_range : item.end_range) * TIMELINE_FPS));
-  return { before, after, time: before / TIMELINE_FPS, duration: (before + after) / TIMELINE_FPS };
-}
-
 /** Crop both reference windows to the project's H3 canvas before concatenating them. */
-export async function generationSource(item: Interstitial, input: GenerationReference, signal: AbortSignal, canvas?: Pick<MediaInfo, 'width' | 'height'> | null) {
+export async function generationSource<T extends Pick<Interstitial, 'time' | 'start_range' | 'end_range' | 'resolution'>>(item: T, input: GenerationReference, signal: AbortSignal, canvas?: Pick<MediaInfo, 'width' | 'height'> | null) {
   const timing = referenceTiming(item, input);
   const first = referenceClips(input, 'before')[0] ?? referenceClips(input, 'after')[0];
   if (!first) throw new Error('No reference footage to prepare.');

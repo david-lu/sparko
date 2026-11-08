@@ -34,7 +34,7 @@ const settingsSchema = z.object({
   resolution: z.enum(generationResolutions).optional(),
   useInputReference: z.boolean().optional(), useOutputReference: z.boolean().optional(),
   method: z.enum([...generationMethods, 'fal']).optional().transform(value => value === 'fal' || value === undefined ? 'comfy' as const : value),
-  continuity: text.optional(), dialogue: text.optional(), loopAudio: z.boolean().optional(),
+  continuity: text.optional(), dialogue: text.optional(), analyzeReferences: z.boolean().optional(), loopAudio: z.boolean().optional(),
   interpolateMiddle: z.boolean().optional(),
   maskInjection: z.enum(maskInjections).optional(),
   audioMaskTransitionMs: number.int().max(MASK_TRANSITION.maxMs).optional(),

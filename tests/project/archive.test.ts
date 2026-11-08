@@ -31,6 +31,14 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('preserves reference analysis preferences without marking a render as changed', async () => {
+    const snapshot = structuredClone(project), item = snapshot.interstitials[0];
+    item.analyzeReferences = false; item.generationSettings = interstitialSettings(item); item.analyzeReferences = true;
+    const restored = (await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress)).project.interstitials[0];
+    expect(restored.analyzeReferences).toBe(true);
+    expect(restored.generationSettings?.analyzeReferences).toBe(false);
+    expect(hasUnsubmittedChanges(restored)).toBe(false);
+  });
   it('retains intentionally missing references without packaging their deleted media', async () => {
     const snapshot = structuredClone(project);
     snapshot.deletedAssetIds = [sourceId, sceneId];

@@ -6,6 +6,8 @@ import { createProviders } from '../../server/providers';
 import { addPromptEnhancementRoutes, continuity, type EnhancePromptInput } from '../../server/features/interstitials/prompt-enhancement';
 import { lightingColorContinuity } from '../../server/shared/prompt-lighting';
 import { errorHandler, protectRequests } from '../../server/shared/http';
+import { promptTimeline } from '../../shared/prompt-timing';
+import { defaultMaskCurve } from '../../shared/mask-curves';
 
 const respond = vi.hoisted(() => vi.fn());
 vi.mock('openai', async importOriginal => ({
@@ -21,6 +23,43 @@ beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
 
 describe('interstitial prompt enhancement', () => {
+  it.each([undefined, 'Keep the same question, but sound more excited.'])('uses the actual generated window for enhancement and editing: %s', async editInstructions => {
+    const referenceTiming = { prefixFrames: 39, suffixFrames: 39 }, timeline = promptTimeline(6, referenceTiming);
+    const plan = { requiredDuration: 3, opening: 'Static camera; one uninterrupted shot.', beats: [
+      { start: 0, end: 3, action: 'She stands in place.', speech: { line: 0, delivery: 'S1 asks clearly' } },
+      { start: 3, end: Number(timeline.generatedDuration.toFixed(3)), action: 'She waits with her mouth closed.', speech: null },
+    ] };
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) })
+      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify(plan) });
+    const referenceAudioMask = defaultMaskCurve(1.625, 1.625, 250);
+    const referenceDescriptions = [{ side: 'start' as const, frames: 39, description: '0–1.583s: She says "Already spoken" and lowers the bowl over music. 1.583–1.625s: still image, silent.' },
+      { side: 'end' as const, frames: 39, description: '0–1.625s: Hands at waist, silent.' }];
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, referenceTiming, referenceDescriptions, referenceAudioMask, editInstructions });
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ duration: 148 / 24, timeline });
+    expect(result.prompt).toContain('opening reference footage and audio occupy 0 to 1.625 seconds');
+    expect(result.prompt).toContain('ending reference footage and audio occupy 7.792 to 9.417 seconds');
+    expect(result.prompt).toContain('From 1.625 to 4.625 seconds: She stands in place. S1 asks clearly: <d>[English] What is 2 + 2?</d>');
+    expect(result.prompt).toContain('From 4.625 to 7.792 seconds:');
+    expect(result.prompt.length).toBeLessThanOrEqual(7000);
+    for (const call of respond.mock.calls) expect(JSON.parse(call[0].input[0].content[0].text).referenceContext).toMatchObject([
+      { side: 'start', start: 0, end: 1.625, duration: 1.625, description: referenceDescriptions[0].description, audioRegenerationCurve: referenceAudioMask.start },
+      { side: 'end', start: timeline.generatedEnd, end: timeline.totalDuration, duration: 1.625 },
+    ]);
+    expect(result.prompt).not.toContain('Already spoken');
+    expect(respond.mock.calls[0][0].instructions).toContain('continue that existing music smoothly across masked gaps');
+    expect(respond.mock.calls[0][0].instructions).toContain('Explicit user music/silence edits take precedence');
+  });
+  it('times a silent video-reference loop without restoring speech inherited from an old draft', async () => {
+    const referenceTiming = { prefixFrames: 39, suffixFrames: 39 }, timeline = promptTimeline(3, referenceTiming);
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3('She silently nods and returns to her starting pose.') }) })
+      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ requiredDuration: 3, opening: 'Static camera; one uninterrupted shot.', beats: [
+        { start: 0, end: Number(timeline.generatedDuration.toFixed(3)), action: 'She nods silently and returns to the starting pose.', speech: null },
+      ] }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', duration: 3, referenceTiming });
+    expect(result.prompt).toContain('From 1.625 to 4.958 seconds:');
+    expect(result.prompt).not.toContain('<d>');
+    expect(result.prompt).toContain('perfect seamless loop');
+  });
   it.each([
     { editInstructions: 'Replace the question with "Ready?".', action: 'She asks <d>[English] Ready?</d>.' },
     { editInstructions: 'Remove the spoken question and have her nod silently.', action: 'She nods silently.' },
@@ -463,6 +502,28 @@ describe('prompt enhancement API', () => {
   beforeEach(() => { configured.openai = true; enhancePrompt.mockResolvedValue({ prompt: `A restrained gesture.\n\n${continuity}`, model: AI_MODELS.promptEnhancement }); });
   const send = (body: object) => request(app).post('/api/interstitials/enhance-prompt').set('x-sparko-request', '1').send(body);
   const body = { prompt: input.prompt, kind: input.kind, duration: input.duration, referenceFrames: input.referenceFrames };
+  it('accepts analysis only for the matching current reference windows', async () => {
+    const referenceTiming = { prefixFrames: 39, suffixFrames: 0 }, description = { side: 'start', frames: 39, description: '0–1.625s: a wave.' };
+    await send({ ...body, referenceTiming, referenceDescriptions: [description] }).expect(200);
+    expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ referenceDescriptions: [description] }));
+    enhancePrompt.mockClear();
+    for (const referenceDescriptions of [[{ ...description, frames: 56 }], [{ ...description, side: 'end' }], [description, description], [{ ...description, description: 'x'.repeat(16001) }]]) {
+      await send({ ...body, referenceTiming, referenceDescriptions }).expect(400);
+    }
+    await send({ ...body, referenceDescriptions: [description] }).expect(400);
+    await send({ ...body, referenceTiming, referenceDescriptions: [description], target: 'continuity' }).expect(400);
+    expect(enhancePrompt).not.toHaveBeenCalled();
+  });
+  it('validates encoded reference timing and the full render length before calling AI', async () => {
+    await send({ ...body, referenceTiming: { prefixFrames: 39, suffixFrames: 56 } }).expect(200);
+    expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ referenceTiming: { prefixFrames: 39, suffixFrames: 56 } }));
+    enhancePrompt.mockClear();
+    for (const referenceTiming of [{ prefixFrames: 48, suffixFrames: 0 }, { prefixFrames: -1, suffixFrames: 39 }, { prefixFrames: 39 }, { prefixFrames: '39', suffixFrames: 0 }]) {
+      await send({ ...body, referenceTiming }).expect(400);
+    }
+    await send({ ...body, duration: 13, referenceTiming: { prefixFrames: 39, suffixFrames: 39 } }).expect(400);
+    expect(enhancePrompt).not.toHaveBeenCalled();
+  });
   it('validates and forwards separate edit instructions', async () => {
     await send({ ...body, editInstructions: '  Add a final question.  ' }).expect(200);
     expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ prompt: body.prompt, editInstructions: 'Add a final question.' }));

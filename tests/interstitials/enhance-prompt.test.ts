@@ -7,11 +7,13 @@ import type { MediaEngine } from '../../src/media/MediaEngine';
 import type { Interstitial, GenerationReference } from '../../shared/interstitials';
 import { imagePreview } from '../../src/media/imagePreview';
 import type { PlayerState } from '../../src/features/player/VideoPlayerController';
+import { analyzePromptReferences } from '../../src/features/interstitials/analyze-prompt-references';
 
 vi.mock('../../src/media/media', () => ({ sampleFrame: vi.fn() }));
 vi.mock('../../src/shared/api', () => ({ request: vi.fn() }));
 vi.mock('../../src/features/project/assets', () => ({ assets: { open: vi.fn() } }));
 vi.mock('../../src/media/imagePreview', () => ({ imagePreview: vi.fn() }));
+vi.mock('../../src/features/interstitials/analyze-prompt-references', () => ({ analyzePromptReferences: vi.fn() }));
 const item: Interstitial = { id: 'clip', label: 'Untitled', time: 5, prompt: 'A small gesture', duration: 6,
   start_range: 2, end_range: 2, enable_prompt_expansion: false, phase: 'draft' };
 const reference: GenerationReference = { before: { sceneId: 'wait', assetId: 'idle-media', inFrame: 24, outFrame: 120 },
@@ -28,6 +30,55 @@ beforeEach(() => {
 const body = () => JSON.parse(vi.mocked(request).mock.calls[0][1]!.body as string);
 
 describe('prompt enhancement references', () => {
+  it.each([undefined, 'Make the question brighter.'])('analyzes current reference footage only when opted in: %s', async editInstructions => {
+    const descriptions = [{ side: 'start' as const, frames: 39, description: '0–1.625s: She lowers a bowl and closes her mouth.' }];
+    vi.mocked(analyzePromptReferences).mockResolvedValue(descriptions);
+    const onAnalyzing = vi.fn();
+    await enhancePrompt({ ...item, analyzeReferences: true }, 'response', reference, engine, info, new AbortController().signal, { editInstructions, onAnalyzing });
+    expect(body().referenceDescriptions).toEqual(descriptions);
+    expect(onAnalyzing.mock.calls).toEqual([[true], [false]]);
+    expect(analyzePromptReferences).toHaveBeenCalledOnce();
+  });
+  it('skips reference analysis when off, for pictures only, and for shared briefs', async () => {
+    for (const selected of [item, { ...item, analyzeReferences: true, useInputReference: false, useOutputReference: false }]) {
+      await enhancePrompt(selected, 'response', reference, engine, info, new AbortController().signal);
+    }
+    await enhancePrompt({ ...item, analyzeReferences: true }, 'response', reference, engine, info, new AbortController().signal, { target: 'continuity' });
+    expect(analyzePromptReferences).not.toHaveBeenCalled();
+  });
+  it('does not enhance with missing analysis when the opted-in step fails', async () => {
+    vi.mocked(analyzePromptReferences).mockRejectedValueOnce(new Error('Analysis failed'));
+    const onAnalyzing = vi.fn();
+    await expect(enhancePrompt({ ...item, analyzeReferences: true }, 'response', reference, engine, info, new AbortController().signal, { onAnalyzing })).rejects.toThrow('Analysis failed');
+    expect(request).not.toHaveBeenCalled();
+    expect(onAnalyzing.mock.calls).toEqual([[true], [false]]);
+  });
+  it.each([undefined, 'Keep the same words but make the delivery excited.'])('sends exact reference timing for enhancement and editing: %s', async editInstructions => {
+    await enhancePrompt(item, 'response', reference, engine, info, new AbortController().signal, { editInstructions });
+    expect(body()).toMatchObject({ duration: 6, referenceTiming: { prefixFrames: 39, suffixFrames: 39 } });
+  });
+  it.each([
+    { useInputReference: true, useOutputReference: false, expected: { prefixFrames: 39, suffixFrames: 0 } },
+    { useInputReference: false, useOutputReference: true, expected: { prefixFrames: 0, suffixFrames: 39 } },
+    { useInputReference: false, useOutputReference: false, expected: { prefixFrames: 0, suffixFrames: 0 } },
+  ])('uses only enabled footage: $useInputReference / $useOutputReference', async ({ expected, ...settings }) => {
+    await enhancePrompt({ ...item, ...settings }, 'response', reference, engine, info, new AbortController().signal);
+    expect(body().referenceTiming).toEqual(expected);
+  });
+  it('includes the duration of a reference sequence, including held images, and repeats a loop boundary', async () => {
+    const still = { sceneId: 'still', assetId: 'image', kind: 'image' as const, inFrame: 0, outFrame: 24 };
+    const video = { ...reference.before!, inFrame: 0, outFrame: 72 };
+    await enhancePrompt({ ...item, start_range: 4, end_range: 4, method: 'comfy-loop' }, 'idle', { before: video, beforeClips: [still, video], mode: 'loop' }, engine, info, new AbortController().signal);
+    expect(body().referenceTiming).toEqual({ prefixFrames: 90, suffixFrames: 90 });
+  });
+  it('assigns no duration to a reference picture and omits clip timing from a shared continuity brief', async () => {
+    const selected = { ...item, useInputReference: false, useOutputReference: false, startImageIndex: 0 };
+    await enhancePrompt(selected, 'interstitial', undefined, null, null, new AbortController().signal);
+    expect(body().referenceTiming).toEqual({ prefixFrames: 0, suffixFrames: 0 });
+    vi.mocked(request).mockClear();
+    await enhancePrompt(item, 'call', reference, engine, info, new AbortController().signal, { target: 'continuity' });
+    expect(body()).not.toHaveProperty('referenceTiming');
+  });
   it('captures the current player before reading boundaries and keeps it separate from references', async () => {
     const frame = new Blob(['current frame'], { type: 'image/png' });
     const player = { getSnapshot: () => ({ duration: 20 } as PlayerState), captureFrame: vi.fn(async () => frame) };

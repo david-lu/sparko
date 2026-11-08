@@ -52,6 +52,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         lora: loraAddressSchema.nullable().safeParse(item.lora).data, loraInstructions: loraInstructionsSchema.safeParse(item.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(item.loraStrength).data,
         seed: generationSeedSchema.safeParse(item.seed).data,
         turbo: typeof item.turbo === 'boolean' ? item.turbo : undefined,
+        analyzeReferences: typeof item.analyzeReferences === 'boolean' ? item.analyzeReferences : undefined,
         continuity: typeof item.continuity === 'string' ? item.continuity : undefined, dialogue: typeof item.dialogue === 'string' ? item.dialogue : undefined, loopAudio: typeof item.loopAudio === 'boolean' ? item.loopAudio : undefined,
         useStartVideoAsset: typeof item.useStartVideoAsset === 'boolean' ? item.useStartVideoAsset : undefined,
         useEndVideoAsset: typeof item.useEndVideoAsset === 'boolean' ? item.useEndVideoAsset : undefined,

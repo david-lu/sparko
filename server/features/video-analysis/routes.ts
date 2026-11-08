@@ -12,7 +12,9 @@ import type { UploadReceiver } from '../../shared/uploads.js';
 const sliceSchema = z.object({
   start: z.coerce.number().finite().nonnegative(), end: z.coerce.number().finite().positive(),
   instructions: z.string().max(2000).default(''),
-}).refine(v => v.end > v.start && v.end - v.start <= 120, 'Select a range between 0 and 120 seconds.');
+  purpose: z.literal('reference-timing').optional(),
+}).refine(v => v.end > v.start && v.end - v.start <= 120, 'Select a range between 0 and 120 seconds.')
+  .refine(v => v.purpose !== 'reference-timing' || v.start === 0 && v.end <= 4, 'Reference analysis must use a trimmed segment of up to four seconds, starting at zero.');
 const framesSchema = z.array(z.object({
   time: z.number().finite().nonnegative(),
   dataUrl: z.string().max(1_500_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/),

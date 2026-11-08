@@ -1,4 +1,13 @@
-import type { ClipReference, GenerationReference } from './interstitials';
+import type { ClipReference, GenerationReference, Interstitial } from './interstitials';
+import { TIMELINE_FPS } from './constants';
+
+export function referenceTiming(item: Pick<Interstitial, 'start_range' | 'end_range'>, input: GenerationReference) {
+  const length = (side: 'before' | 'after') => referenceClips(input, side).reduce((sum, clip) => sum + clip.outFrame - clip.inFrame, 0);
+  const before = Math.min(length('before'), Math.ceil(item.start_range * TIMELINE_FPS));
+  const after = input.mode === 'loop' && !input.before && !input.after || input.mode === 'extend' || input.mode === 'custom' && !input.after ? 0
+    : Math.min(input.after && input.mode !== 'loop' ? length('after') : Infinity, Math.ceil((input.mode === 'loop' ? item.start_range : item.end_range) * TIMELINE_FPS));
+  return { before, after, time: before / TIMELINE_FPS, duration: (before + after) / TIMELINE_FPS };
+}
 
 /** References are ordered in playback order; the legacy fields identify the cut. */
 export function referenceClips<T extends ClipReference>(input: { before?: T; after?: T; beforeClips?: T[]; afterClips?: T[] } | undefined, side: 'before' | 'after'): T[] {

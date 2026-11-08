@@ -41,26 +41,28 @@ export type InterstitialEditorProps = {
   player?: PromptFramePlayer;
 };
 export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, generationSettings, projects, player }: InterstitialEditorProps) {
-  const promptId = useId(), resolutionId = useId();
+  const promptId = useId(), resolutionId = useId(), analysisId = useId();
   const dependency = controller.dependency(selected.id);
   useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId)]);
   const kind = controller.clipKind(selected.id);
   const loraInstructions = generationLoraInstructions(selected, projects?.getSnapshot().project?.loras, H3_MODEL_ID);
   const [enhancing, setEnhancing] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
   useEffect(() => { setAddingImages(false); }, [selected.id, controller]);
   const enhancement = useRef<AbortController | null>(null);
   const referenceKey = JSON.stringify(dependency?.reference);
   useEffect(() => {
-    setEnhancing(false);
+    setEnhancing(false); setAnalyzing(false);
     return () => { enhancement.current?.abort(); enhancement.current = null; };
-  }, [controller, engine, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, kind, referenceKey, selected.imageReferences, selected.startImageIndex, selected.endImageIndex, selected.lora, loraInstructions]);
+  }, [controller, engine, info?.duration, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, selected.start_range, selected.end_range, selected.method, selected.resolution, selected.useInputReference, selected.useOutputReference, selected.analyzeReferences, selected.audioMaskCurve, selected.audioMaskTransitionMs, selected.maskTransitionMs, kind, referenceKey, selected.imageReferences, selected.startImageIndex, selected.endImageIndex, selected.lora, loraInstructions]);
   const enhance = async (editInstructions?: string): Promise<PromptEditResult> => {
     if (enhancement.current || !status?.providers.openai || !selected.prompt.trim()) return { applied: false };
     const operation = new AbortController(); enhancement.current = operation;
     setEnhancing(true);
     try {
-      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal, { player, editInstructions });
+      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal, { player, editInstructions,
+        onAnalyzing: value => { if (enhancement.current === operation) setAnalyzing(value); } });
       const current = controller.getSnapshot().items.find(item => item.id === selected.id);
       if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt && current.lora === selected.lora
         && generationLoraInstructions(current, projects?.getSnapshot().project?.loras, H3_MODEL_ID) === loraInstructions
@@ -75,7 +77,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         return { applied: false, error: message };
       }
     } finally {
-      if (enhancement.current === operation) { enhancement.current = null; setEnhancing(false); }
+      if (enhancement.current === operation) { enhancement.current = null; setEnhancing(false); setAnalyzing(false); }
     }
     return { applied: false, error: 'The prompt or settings changed. Try the edit again.' };
   };
@@ -105,15 +107,20 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     validateMaskTransitionMs(selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Audio mask transition');
     validateMaskTransitionMs(selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Video mask transition');
     for (const curve of [selected.videoMaskCurve, selected.audioMaskCurve]) if (curve) maskCurveSchema.parse(curve);
-    validateH3PromptLength(selected.prompt);
     if ((hasSource || noVideo) && !dependency?.blocked) {
       const timing = dependency?.reference && referenceTiming(selected, dependency.reference);
       const input = timing ? { ...selected, time: timing.time } : selected;
       const duration = timing?.duration || info?.duration || selected.duration;
       comfyPlan = comfyReferenceRange(input, duration).plan;
     }
+    validateH3PromptLength(selected.prompt);
   } catch (error) { validationError = (error as Error).message; }
   const canGenerate = (hasSource || noVideo) && !!status?.providers.comfy && !validationError && !dependency?.blocked && !!selected.prompt.trim();
+  const hasReferenceFootage = !!comfyPlan && !!(comfyPlan.prefixFrames || comfyPlan.suffixFrames);
+  const analysisUnavailable = !hasReferenceFootage ? 'Choose valid start or end video footage to analyze.'
+    : !status?.providers.gemini ? 'Connect Gemini to analyze reference videos.' : undefined;
+  const enhancementUnavailable = addingImages ? 'Wait for reference images to finish loading.'
+    : selected.analyzeReferences && hasReferenceFootage && !status?.providers.gemini ? analysisUnavailable : undefined;
   const referenceDescription = dependency?.reference?.mode === 'loop'
     ? dependency.reference.before ? `Uses the ending of ${dependency.label} as the shared start and end pose.` : selected.startImageIndex !== undefined ? `Picture ${selected.startImageIndex + 1} guides both the first and last frames of this loop.` : 'Generates a loop from the prompt without endpoint references.'
     : dependency ? dependency.reference?.before && dependency.reference?.after
@@ -171,9 +178,9 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         <div className="prompt-field-heading">
           <label htmlFor={promptId}>Prompt</label>
           {changed && <span className="interstitial-edited" title="Changes apply to the next generation">Edited</span>}
-          <EnhancePromptActions key={selected.id} promptId={promptId} enhancing={enhancing} enabled={!!selected.prompt.trim() && !addingImages} connected={!!status?.providers.openai}
-            unavailableReason={addingImages ? 'Wait for reference images to finish loading.' : undefined}
-            onEnhance={() => void enhance()} onEdit={enhance} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); }} />
+          <EnhancePromptActions key={selected.id} promptId={promptId} enhancing={enhancing} analyzing={analyzing} enabled={!!selected.prompt.trim() && !enhancementUnavailable} connected={!!status?.providers.openai}
+            unavailableReason={enhancementUnavailable}
+            onEnhance={() => void enhance()} onEdit={enhance} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); setAnalyzing(false); }} />
         </div>
         <textarea id={promptId} aria-label="Video prompt" aria-describedby={`${promptId}-length`} rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
         <span id={`${promptId}-length`} className="hint prompt-character-count">{normalizeH3Prompt(selected.prompt).length.toLocaleString('en-US')} / {H3_PROMPT_MAX_LENGTH.toLocaleString('en-US')} characters</span>
@@ -181,6 +188,14 @@ export default function InterstitialEditor({ selected, controller, engine, info,
       </div>
       <details className="inspector-group inspector-references-panel" open><summary>References<span>Optional</span></summary><div className="inspector-group-body">
         {generationSettings}
+        <div className="field">
+          <label className="interstitial-option" htmlFor={analysisId}>
+            <input id={analysisId} type="checkbox" checked={selected.analyzeReferences === true} disabled={!!analysisUnavailable && !selected.analyzeReferences}
+              aria-describedby={`${analysisId}-help`} onChange={event => controller.edit(selected.id, { analyzeReferences: event.target.checked })}/>
+            Analyze reference videos with AI
+          </label>
+          <p id={`${analysisId}-help`} className="hint">{analysisUnavailable ?? 'When you Enhance or Edit, Gemini analyzes the exact start/end reference footage and audio. Its timestamped descriptions help plan the new action and dialogue.'}</p>
+        </div>
         <ImageReferences key={`images:${selected.id}`} projects={projects} value={selected.imageReferences} onBusyChange={setAddingImages} onChange={imageReferences => {
           const saved = controller.getSnapshot().items.find(item => item.id === selected.id) ?? selected;
           const remap = (index: number | undefined) => {

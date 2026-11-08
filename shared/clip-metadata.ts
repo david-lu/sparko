@@ -24,6 +24,7 @@ export const clipSettingsSchema = z.object({
   start_range: seconds.max(4), end_range: seconds.max(4), duration: seconds.min(1).max(INTERSTITIAL.maxDuration),
   prompt: z.string().max(8000), enable_prompt_expansion: z.boolean(),
   useInputReference: z.boolean().optional(), useOutputReference: z.boolean().optional(),
+  analyzeReferences: z.boolean().optional(),
   continuity: z.string().max(50_000).optional(), dialogue: z.string().max(50_000).optional(), loopAudio: z.boolean().optional(),
   maskInjection: z.enum(maskInjections), audioMaskTransitionMs: seconds.int().max(MASK_TRANSITION.maxMs),
   videoMaskTransitionMs: seconds.int().max(MASK_TRANSITION.maxMs),
