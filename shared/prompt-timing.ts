@@ -34,7 +34,7 @@ export function promptTimeline(duration: number, references: PromptReferenceTimi
 export const promptSeconds = (seconds: number) => Number(seconds.toFixed(3)).toString();
 export function promptTimelineDirection(timeline: PromptTimeline): string {
   const { generatedStart: start, generatedEnd: end, generatedDuration: duration, totalDuration: total } = timeline;
-  return `Use the supplied timeline as the authoritative render timing. In the returned prompt, express any timestamps on the full-video clock. New actions and scripted dialogue belong only in the generated section, from ${promptSeconds(start)} to ${promptSeconds(end)} seconds.`
+  return `Use the supplied timeline as the authoritative render timing. The final generation prompt uses full-video timestamps; an edited original draft keeps its input clock as specified by context.timing.outputTimeBasis. New actions and scripted dialogue belong only in the generated section, from ${promptSeconds(start)} to ${promptSeconds(end)} seconds on the full-video clock.`
     + (start ? ` The opening reference footage and audio occupy 0 to ${promptSeconds(start)} seconds; do not start the new scripted actions or dialogue there.` : '')
     + (end < total ? ` The ending reference footage and audio occupy ${promptSeconds(end)} to ${promptSeconds(total)} seconds; finish all new dialogue before it starts.` : '')
     + ` The generated-section clock runs from 0 to ${promptSeconds(duration)} seconds. Convert generated-section time to full-video time by adding ${promptSeconds(start)} seconds exactly once. The end reference reserves ${promptSeconds(total - end)} seconds after generation; it does not shift the generated-section origin.`

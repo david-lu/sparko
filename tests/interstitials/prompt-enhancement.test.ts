@@ -23,6 +23,7 @@ describe('AI-owned prompt enhancement', () => {
     { prefixFrames: 39, suffixFrames: 0, start: '1.625', end: '8', total: '8', body: '6.375', suffix: '0' },
     { prefixFrames: 0, suffixFrames: 39, start: '0', end: '6.375', total: '8', body: '6.375', suffix: '1.625' },
     { prefixFrames: 0, suffixFrames: 0, start: '0', end: '6.583', total: '6.583', body: '6.583', suffix: '0' },
+    { prefixFrames: 56, suffixFrames: 90, start: '2.333', end: '8.5', total: '12.25', body: '6.167', suffix: '3.75' },
   ])('supplies both reference boundaries to Enhance and Edit: $prefixFrames / $suffixFrames', async ({ prefixFrames, suffixFrames, start, end, total, body, suffix }) => {
     for (const editInstructions of [undefined, 'Fix the timing and keep every spoken word.']) {
       respond.mockClear(); output('She speaks naturally within the generated section.');
@@ -39,7 +40,13 @@ describe('AI-owned prompt enhancement', () => {
       expect(instructions).toContain('never a conflict report, clarification question');
       expect(instructions).toContain('Keep the guide times and visible states fixed');
       expect(instructions).not.toContain('report the timing conflict instead');
-      expect(JSON.parse(args.input[0].content[0].text).context.timeline).toEqual(promptTimeline(6, { prefixFrames, suffixFrames }));
+      const context = JSON.parse(args.input[0].content[0].text).context;
+      expect(context.timeline).toEqual(promptTimeline(6, { prefixFrames, suffixFrames }));
+      expect(context.timing).toEqual({
+        offsetSeconds: prefixFrames / 24,
+        defaultTimeBasis: { draft: 'generated-section', dialogue: 'generated-section', enhancedPrompt: 'full-video', editInstructions: 'draft' },
+        outputTimeBasis: { prompt: editInstructions ? 'draft' : 'full-video' },
+      });
     }
   });
   it('gives one rewrite the clocks, early guides and padded final hold from the reported conflict', async () => {
@@ -53,10 +60,11 @@ describe('AI-owned prompt enhancement', () => {
     expect(instructions).toContain('from 1.625 to 15.083 seconds');
     expect(instructions).toContain('clock runs from 0 to 13.458 seconds');
     expect(instructions).toContain('including padding after the last timed guide');
-    expect(instructions).toContain('allow speech to continue across a necessary camera cut');
+    expect(instructions).toMatch(/allow speech to continue across a necessary camera cut/i);
     expect(instructions).toContain('Images and a short time budget are not evidence that a line was already spoken');
     expect(instructions).toContain('do not ask which clock was intended');
     expect(JSON.parse(args.input[0].content[0].text).draft).toBe(draft);
+    expect(JSON.parse(args.input[0].content[0].text).context.timing.offsetSeconds).toBe(1.625);
     for (const time of ['0.458 seconds from the generated section\'s start; 2.083 seconds on the full-video clock',
       '1.375 seconds from the generated section\'s start; 3 seconds on the full-video clock',
       '13.167 seconds from the generated section\'s start; 14.792 seconds on the full-video clock']) {
@@ -71,6 +79,38 @@ describe('AI-owned prompt enhancement', () => {
     await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, target: 'continuity' });
     expect(respond.mock.calls[0][0].instructions).not.toContain('generated-section clock');
     expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('timeline');
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('timing');
+  });
+  it('gives paired edits an explicit offset while keeping original and enhanced clocks separate', async () => {
+    const draft = 'At 7.95 seconds she holds the rock and asks "A rock?". At 9.85 seconds she holds the bowl. At 11.95 seconds she holds the sock.';
+    const enhancedPrompt = 'All times use the full-video clock. At 9.575 seconds she holds the rock and asks "A rock?". At 11.475 seconds she holds the bowl. At 13.575 seconds she holds the sock.';
+    const edited = { prompt: draft.replace('7.95', '8.00'), enhancedPrompt: enhancedPrompt.replace('9.575', '9.625') };
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify(edited) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 13, prompt: draft, enhancedPrompt,
+      editInstructions: 'Move the rock cue to 8.00 seconds; keep the other cue times.', referenceTiming: { prefixFrames: 39, suffixFrames: 0 } });
+    expect(result).toMatchObject(edited); expect(respond).toHaveBeenCalledOnce();
+    const args = respond.mock.calls[0][0], data = JSON.parse(args.input[0].content[0].text);
+    expect(data).toMatchObject({ draft, enhancedPrompt, context: { timing: {
+      offsetSeconds: 1.625,
+      defaultTimeBasis: { draft: 'generated-section', enhancedPrompt: 'full-video', editInstructions: 'draft' },
+      outputTimeBasis: { prompt: 'draft', enhancedPrompt: 'full-video' },
+    } } });
+    expect(args.instructions).toContain('fullVideoTime = generatedTime + context.timing.offsetSeconds');
+    expect(args.instructions).toContain('point cues and BOTH endpoints of time ranges');
+    expect(args.instructions).toContain('do not drop numeric cues');
+    expect(args.instructions).toContain('Do not shift elapsed durations, pause lengths, or numbers inside spoken dialogue');
+  });
+  it('passes an already full-video draft through with an explicit rule against double-offsetting', async () => {
+    const draft = 'All times below use the full-video clock. At 9.575 seconds she holds a rock for 0.5 seconds and asks "A rock?".';
+    output(draft);
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 13, prompt: draft,
+      referenceTiming: { prefixFrames: 39, suffixFrames: 0 } });
+    const args = respond.mock.calls[0][0], data = JSON.parse(args.input[0].content[0].text);
+    expect(data.draft).toBe(draft);
+    expect(data.context.timing).toMatchObject({ offsetSeconds: 1.625, outputTimeBasis: { prompt: 'full-video' } });
+    expect(args.instructions).toContain('An explicit clock declaration in the text overrides that field\'s default');
+    expect(args.instructions).toContain('Already full-video timestamps and the supplied full-video guide times stay unchanged');
+    expect(respond).toHaveBeenCalledOnce();
   });
   it.each([undefined, 'continuity'] as const)('keeps music continuous across shots for target %s, with explicit user overrides', async target => {
     output('Keep the music continuous through the cut.');
@@ -266,6 +306,20 @@ describe('prompt enhancement API', () => {
   });
 });
 
+
+it('derives the rewrite offset from encoded references rather than a client-supplied offset', async () => {
+  output('All times use the full-video clock. She waves at 3.625 seconds.');
+  const app = express();
+  app.use(protectRequests, express.json()); addPromptEnhancementRoutes(app, createProviders({ OPENAI_API_KEY: 'test' })); app.use(errorHandler);
+  await request(app).post('/api/interstitials/enhance-prompt').set('x-sparko-request', '1')
+    .send({ prompt: 'She waves at 2 seconds.', duration: 6, referenceTiming: { prefixFrames: 39, suffixFrames: 39 },
+      timing: { offsetSeconds: 99 }, offsetSeconds: 99 }).expect(200);
+  const context = JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context;
+  expect(context.timing.offsetSeconds).toBe(1.625);
+  expect(context.timeline.generatedStart).toBe(1.625);
+  expect(context.timeline.generatedEnd).toBeCloseTo(7.7916666667);
+  expect(respond).toHaveBeenCalledOnce();
+});
 
 it('passes both versions through the video edit route without requiring shot, sound or timing sections', async () => {
   const edited = { prompt: 'She waves in warm evening light.', enhancedPrompt: '[Shot 1] Static camera; she waves. [Shot 2] Cut to the garden in warm evening light.' };
