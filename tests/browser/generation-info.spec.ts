@@ -17,6 +17,9 @@ for (const width of [1440, 390]) test(`generation details belong to the compact 
   await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles({ name: 'Generated.mp4', mimeType: 'video/mp4', buffer: Buffer.from(await blob.arrayBuffer()) });
   const output = page.locator('.inspector-output');
   await expect(output).toHaveCount(1); await expect(output).not.toHaveAttribute('open');
+  await expect(page.locator('.clip-inspector > .inspector-media').last()).toContainText('Media assets');
+  await expect(page.locator('.inspector-media > .inspector-output')).toHaveCount(1);
+  expect(await page.locator('.inspector-media').evaluate(el => el.parentElement?.lastElementChild === el)).toBe(true);
   expect((await output.boundingBox())!.height).toBeLessThanOrEqual(30);
   await expect(page.getByText('Render info', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Generation info', includeHidden: true })).toHaveCount(1);

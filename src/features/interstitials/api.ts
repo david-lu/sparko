@@ -1,3 +1,6 @@
+import { prepareTimelineInput } from './prepare-timeline-input';
+import { validateTimelineVideos } from '../../../shared/video-references';
+import { enabledImageReferences } from '../../../shared/image-references';
 import { activeVideoKeyframes, validateVideoKeyframes } from '../../../shared/video-keyframes';
 import { chooseGenerationSeed } from '../../../shared/generation-seed';
 import { INTERSTITIAL, MASK_TRANSITION } from '../../../shared/constants';
@@ -16,6 +19,7 @@ export const hasNoVideoInput = (item: Interstitial) => item.useInputReference ==
 
 export async function generateInterstitial(item: Interstitial, engine: Pick<MediaEngine, 'exportMp4'> | null, info: MediaInfo | null, signal: AbortSignal,
   onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void): Promise<GenerationJob> {
+  item = enabledImageReferences(item);
   validateH3PromptLength(item.prompt);
   const seed = chooseGenerationSeed(item.seed);
   const audioMaskTransitionMs = item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;
@@ -33,9 +37,11 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
     if (index !== undefined && !item.imageReferences?.[index]) throw new Error('Choose an image for each image reference before generating.');
   }
   const range = comfyReferenceRange(item, info?.duration ?? item.duration);
+  const timelineVideos = validateTimelineVideos(item.timelineVideos, range.plan.middleFrames);
+  const fullInput = !!timelineVideos.length || !!item.keyframes?.some(k => k.enabled && k.method === 'frame');
   const keyframes = activeVideoKeyframes(item.keyframes);
   validateVideoKeyframes(item.keyframes, range.plan.middleFrames, startImageIndex !== undefined, endImageIndex !== undefined || item.method === 'comfy-loop' && startImageIndex !== undefined);
-  if (keyframes.length || startImageIndex !== undefined || endImageIndex !== undefined) query.set('imageGuides', 'true');
+  if (keyframes.some(keyframe => keyframe.method !== 'frame') || startImageIndex !== undefined || endImageIndex !== undefined) query.set('imageGuides', 'true');
   if (item.method === 'comfy-loop' && startImageIndex !== undefined) query.set('imageLoop', 'true');
   const readiness = await request<{ ready: boolean; message?: string }>(`/api/comfy/status${query.size ? `?${query}` : ''}`, { signal });
   if (!readiness.ready) throw new Error(readiness.message || 'Comfy Cloud is not ready.');
@@ -55,17 +61,19 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   signal.throwIfAborted();
   const dimensions = comfyDimensions(canvas.width, canvas.height, item.resolution);
   // Crop directly to H3's exact canvas so its loader does not apply a second framing transform.
-  const clip = range.plan.prefixFrames || range.plan.suffixFrames ? await engine!.exportMp4(range, { frame: { ...dimensions, fit: 'cover' }, frameRate: INTERSTITIAL.referenceFps,
+  let clip = range.plan.prefixFrames || range.plan.suffixFrames ? await engine!.exportMp4(range, { frame: { ...dimensions, fit: 'cover' }, frameRate: INTERSTITIAL.referenceFps,
     quality: 'high', signal, onProgress: value => onProgress('preparing', value) }) : undefined;
+  if (fullInput) clip = await prepareTimelineInput(clip, item, range.plan, dimensions, signal, value => onProgress('preparing', value));
   if (clip && clip.size > INTERSTITIAL.maxReferenceBytes) throw new Error('The reference clip exceeds 50 MB. Shorten the reference ranges.');
   signal.throwIfAborted();
   const body = new FormData();
   body.set('seed', String(seed));
+  if (fullInput) { body.set('fullInput', 'true'); body.set('timelineInputs', JSON.stringify(timelineVideos.map(v => ({ frame: v.frame, frames: v.video!.outFrame - v.video!.inFrame })))); }
   if (item.requestOrigin) body.set('clipOrigin', JSON.stringify(item.requestOrigin));
   if (images.length) body.set('imageReferences', JSON.stringify(images));
   if (keyframes.length) {
     body.set('keyframeImages', JSON.stringify(keyframeImages));
-    body.set('keyframes', JSON.stringify(keyframes.map((keyframe, imageIndex) => ({ frame: keyframe.frame, imageIndex }))));
+    body.set('keyframes', JSON.stringify(keyframes.map((keyframe, imageIndex) => ({ frame: keyframe.frame, imageIndex, ...(keyframe.method ? { method: keyframe.method } : {}) }))));
   }
   if (startImageIndex !== undefined) body.set('startImageIndex', String(startImageIndex));
   if (endImageIndex !== undefined) body.set('endImageIndex', String(endImageIndex));

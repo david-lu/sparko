@@ -33,16 +33,21 @@ export function storyDependency(graph: StoryGraph, items: Interstitial[], assetI
       imageEndpoints.add(index);
       const image = item.imageReferences?.[index];
       if (!image) add(side, 'image', `Add an image for the ${loop ? 'loop' : side} reference, or choose a different reference type.`);
-      else if (assetError(image.assetId)) add(side, 'media', `${image.name}: ${assetError(image.assetId)}`);
+      else if (image.enabled !== false && assetError(image.assetId)) add(side, 'media', `${image.name}: ${assetError(image.assetId)}`);
     }
   }
   for (const [index, image] of (item.imageReferences ?? []).entries()) {
-    if (!imageEndpoints.has(index) && assetError(image.assetId)) issues.push({ key: `image:${index}`, title: `Picture ${index + 1}`, message: `${image.name}: ${assetError(image.assetId)}` });
+    if (image.enabled !== false && !imageEndpoints.has(index) && assetError(image.assetId)) issues.push({ key: `image:${index}`, title: `Picture ${index + 1}`, message: `${image.name}: ${assetError(image.assetId)}` });
   }
   for (const [index, keyframe] of (item.keyframes ?? []).entries()) {
     if (!keyframe.enabled) continue;
     const error = keyframe.image ? assetError(keyframe.image.assetId) : 'Choose an image for this keyframe.';
     if (error) issues.push({ key: `keyframe:${keyframe.id}`, title: `Image keyframe ${index + 1}`, message: `${keyframe.image?.name ?? 'Keyframe ' + (index + 1)}: ${error}` });
+  }
+  for (const video of item.timelineVideos ?? []) {
+    if (!video.enabled) continue;
+    const error = video.video ? assetError(video.video.assetId) : 'Choose a video for this timeline clip.';
+    if (error) issues.push({ key: `timeline-video:${video.id}`, title: video.video?.name ?? 'Timeline video', message: error });
   }
   for (const side of ['input', 'output'] as const) {
     if (loop && side === 'output') continue;

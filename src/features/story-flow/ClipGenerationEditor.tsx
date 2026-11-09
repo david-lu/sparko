@@ -13,12 +13,9 @@ import AssetInput from '../project/AssetInput';
 import EnhancePromptActions from '../interstitials/EnhancePromptActions';
 import { useImagePromptEnhancement } from '../project/useImagePromptEnhancement';
 import '../project/asset-inspector.css';
-import GeneratedAssetOutput from '../project/GeneratedAssetOutput';
 
 export default function ClipGenerationEditor({ editor, generation, status }: { editor: StoryEditor; generation: AssetGeneration; status: AppStatus | null }) {
   const project = editor.projects.getSnapshot().project, settings = generation.settings, model = assetModel(settings.model), kind = generation.kind;
-  const assetId = project?.storyFlow?.nodes.find(node => node.generationId === generation.id)?.source?.assetId;
-  const asset = project?.library?.find(asset => asset.assetId === assetId);
   const promptId = useId(), enhancement = useImagePromptEnhancement(editor, generation, !!status?.providers.openai), busy = generationBusy(generation);
   useAssetAvailability(settings.references.map(ref => ref.assetId));
   const missingReferences = settings.references.flatMap(ref => assets.error(ref.assetId) ? [{ key: ref.assetId, title: `${ref.name} reference`, message: assets.error(ref.assetId)! }] : []);
@@ -32,7 +29,6 @@ export default function ClipGenerationEditor({ editor, generation, status }: { e
       const node = project?.storyFlow?.nodes.find(node => node.generationId === generation.id);
       if (node) editor.makeGenerative(node.id);
     }}>Use H3</button>
-    <GeneratedAssetOutput asset={asset} kind="video" onPlay={() => editor.player.pause()}/>
   </div>;
   return <div className="clip-generation-editor">
     {model && <form onSubmit={e => { e.preventDefault(); if (!enhancement.enhancing && !missingReferences.length) void editor.clipJobs.generate(generation.id); }}>
@@ -55,7 +51,6 @@ export default function ClipGenerationEditor({ editor, generation, status }: { e
           <div className="asset-generation-feedback"><ContentIssues issues={issues} label="Generation errors"/><span role="status" title={message}>{message}</span></div>
         </div>
       </details>
-      <GeneratedAssetOutput asset={asset} kind={kind} onPlay={() => editor.player.pause()}/>
       <details className="inspector-group"><summary>Versions<span>{generation.versions.length}</span></summary><div className="asset-versions">{generation.versions.map((v, i) => <button type="button" key={v.assetId} aria-pressed={project?.storyFlow?.nodes.find(n=>n.generationId===generation.id)?.source?.assetId === v.assetId} draggable onDragStart={e => startLibraryDrag(e, { assetId: v.assetId })} onClick={() => editor.clipJobs.selectVersion(generation.id, v.assetId)}>v{i + 1} · {assetModel(v.settings.model)?.name}</button>)}</div></details>
     </form>}
   </div>;

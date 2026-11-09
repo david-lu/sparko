@@ -1,3 +1,4 @@
+import { timelineInputRangesSchema, validateInputRanges } from '../../../shared/generation-inputs.js';
 import { videoKeyframeInputsSchema, validateVideoKeyframeInputs } from '../../../shared/video-keyframes.js';
 import { generationSeedSchema } from '../../../shared/generation-seed.js';
 import express, { type Express } from 'express';
@@ -31,6 +32,8 @@ const maskCurve = z.preprocess(value => {
   try { return JSON.parse(value); } catch { return value; }
 }, maskCurveSchema.optional());
 const schema = z.object({
+  fullInput: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
+  timelineInputs: z.preprocess(value => { if (typeof value !== 'string' || value.length > 10000) return value; try { return JSON.parse(value); } catch { return value; } }, timelineInputRangesSchema.optional()),
   keyframes: z.preprocess(value => {
     if (typeof value !== 'string' || value.length > 10000) return value;
     try { return JSON.parse(value); } catch { return value; }
@@ -91,11 +94,13 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     let plan;
     try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); validateComfyResolution(plan,settings.resolution);
       const imageLoop = settings.mode === 'loop' && !plan.prefixFrames && !plan.suffixFrames && (settings.startImageIndex !== undefined || settings.endImageIndex !== undefined || settings.loopImageGuide !== false && images.length > 0);
+      validateInputRanges(settings.timelineInputs ?? [], plan.middleFrames);
+      if ((settings.timelineInputs?.length || settings.keyframes?.some(k => k.method === 'frame')) && !settings.fullInput) throw new Error('Prepare the complete timeline input before generating.');
       validateVideoKeyframeInputs(settings.keyframes ?? [], plan.middleFrames, keyframeImages.length, imageLoop || settings.startImageIndex !== undefined, imageLoop || settings.endImageIndex !== undefined);
     }
     catch (error) { throw new HttpError(400, (error as Error).message); }
     if (Math.round(settings.before * TIMELINE_FPS) !== plan.prefixFrames || Math.round(settings.after * TIMELINE_FPS) !== plan.suffixFrames) throw new HttpError(400, 'Prepare the Comfy reference on the H3 frame grid.');
-    if (!plan.prefixFrames && !plan.suffixFrames) {
+    if (!plan.prefixFrames && !plan.suffixFrames && !settings.fullInput) {
       if (!settings.width || !settings.height) throw new HttpError(400, 'Set the video dimensions for generation without references.');
       const job = await provider().submit(undefined, { ...settings, ...comfyDimensions(settings.width, settings.height, settings.resolution), hasAudio: false }, ...imageArgs);
       if (res.destroyed) { await provider().cancel(job.requestId).catch(() => undefined); return; }
@@ -110,9 +115,10 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
       if (!video) throw new HttpError(400, 'The reference must contain video.');
       const duration = await media.computeDuration();
       const stats = await video.computePacketStats(100);
-      if (Math.abs(duration - settings.before - settings.after) > 0.1 || Math.abs(stats.averagePacketRate - TIMELINE_FPS) > 0.01) throw new HttpError(400, 'The reference must contain exactly the two context windows at 24 fps.');
+      if (Math.abs(duration - (settings.fullInput ? plan.totalFrames / TIMELINE_FPS : settings.before + settings.after)) > 0.1 || Math.abs(stats.averagePacketRate - TIMELINE_FPS) > 0.01) throw new HttpError(400, 'The reference must contain exactly the two context windows at 24 fps.');
       dimensions = comfyDimensions(video.displayWidth, video.displayHeight, settings.resolution);
       hasAudio = !!await media.getPrimaryAudioTrack();
+      if (settings.fullInput && Math.abs(await video.computeDuration() - plan.totalFrames / TIMELINE_FPS) > 1 / TIMELINE_FPS + .001) throw new HttpError(400, 'The input video must cover the complete generation timeline.');
     } catch (error) {
       if (error instanceof HttpError) throw error;
       throw new HttpError(400, 'Unable to read the Comfy reference MP4.');

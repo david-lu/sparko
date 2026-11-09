@@ -10,7 +10,7 @@ import type { ProjectController } from '../project/ProjectController';
 import LibraryAssetPicker from '../project/LibraryAssetPicker';
 import AssetPreviewButton from '../project/AssetPreviewButton';
 
-function Thumbnail({ reference, index, onRemove, disabled }: { reference: ImageReference; index: number; onRemove: () => void; disabled: boolean }) {
+function Thumbnail({ reference, index, onRemove, onToggle, disabled }: { reference: ImageReference; index: number; onRemove: () => void; onToggle: () => void; disabled: boolean }) {
   const [url, setUrl] = useState<string>(), [decodeError, setDecodeError] = useState('');
   useAssetAvailability([reference.assetId]);
   const error = assets.error(reference.assetId) || decodeError;
@@ -20,9 +20,10 @@ function Thumbnail({ reference, index, onRemove, disabled }: { reference: ImageR
     void assets.open(reference.assetId).then(value => { if (active) setUrl(value.url); }).catch(() => undefined);
     return () => { active = false; };
   }, [reference.assetId]);
-  return <li draggable={!disabled} onDragStart={e => { e.stopPropagation(); startLibraryDrag(e, { assetId: reference.assetId }); }}>
+  return <li data-enabled={reference.enabled !== false} draggable={!disabled} onDragStart={e => { e.stopPropagation(); startLibraryDrag(e, { assetId: reference.assetId }); }}>
     <div className="image-reference-thumb">{url && !error && <img src={url} alt={reference.name} draggable={false} onError={() => setDecodeError('This reference image could not be decoded. Replace it with a working PNG, JPEG or WebP image.')} />}</div>
     <span title={reference.name}><strong>{`<Picture ${index + 1}>`}</strong><small>{reference.name}</small></span>
+    <input type="checkbox" aria-label={`Enable Picture ${index + 1}`} checked={reference.enabled !== false} disabled={disabled} onChange={onToggle}/>
     <ContentIssues label={`Picture ${index + 1} errors`} issues={error ? [{ key: reference.assetId, title: reference.name, message: error }] : []}/>
     <AssetPreviewButton assetId={reference.assetId} kind="image" name={reference.name} disabled={disabled}/>
     <button type="button" className="icon-button" aria-label={`Remove Picture ${index + 1}`} disabled={disabled} onClick={onRemove}><X size={14} /></button>
@@ -72,8 +73,8 @@ export default function ImageReferences({ value = [], onChange, onBusyChange, pr
     </div>
     {projects && <button ref={choose} type="button" className="text-button" aria-label="Choose image references from Library" disabled={busy || value.length >= IMAGE_REFERENCE.maxCount} onClick={() => { setError(''); setPicking(true); }}>Choose from Library</button>}
     <input ref={input} type="file" hidden multiple accept="image/png,image/jpeg,image/webp" aria-label="Choose image references" onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void add(files); }} />
-    <p className="hint">Drag images from Library, then drag a picture to Start or End. Use {'<Picture 1>'}, {'<Picture 2>'}, etc. for subjects or style. PNG, JPEG or WebP, up to 20 MB each.</p>
-    <ul className="image-reference-list">{value.map((reference, index) => <Thumbnail key={`${reference.assetId}:${index}`} reference={reference} index={index} disabled={busy} onRemove={() => { setError(''); onChange(value.filter((_, i) => i !== index)); }} />)}</ul>
+
+    <ul className="image-reference-list">{value.map((reference, index) => <Thumbnail key={`${reference.assetId}:${index}`} reference={reference} index={index} disabled={busy} onToggle={() => onChange(value.map((image, i) => i === index ? { ...image, enabled: image.enabled === false } : image))} onRemove={() => { setError(''); onChange(value.filter((_, i) => i !== index)); }} />)}</ul>
     <div className="image-reference-feedback" role="status" title={error}>{error}</div>
     {picking && projects && <LibraryAssetPicker library={projects.getSnapshot().project?.library ?? []} kinds={['image']} label="image references" selectedIds={value.map(ref => ref.assetId)} maxCount={IMAGE_REFERENCE.maxCount}
       busy={busy} error={error} onClose={() => setPicking(false)} restoreFocus={() => {

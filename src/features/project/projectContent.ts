@@ -18,6 +18,7 @@ export function projectContent(project: Project, target: 'file' | 'browser' = 'f
         ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
         imageReferences: item.imageReferences?.length ? item.imageReferences : undefined,
         keyframes: item.keyframes?.length ? item.keyframes : undefined,
+        timelineVideos: item.timelineVideos?.length ? item.timelineVideos : undefined,
         generationSettings: item.generationSettings && interstitialSettings(item.generationSettings),
         progress: undefined, progressDetails: undefined, queuePosition: undefined,
         // Reopening a stored render checks playback without changing the document.

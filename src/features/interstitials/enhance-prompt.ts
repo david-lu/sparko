@@ -1,3 +1,4 @@
+import { enabledImageReferences } from '../../../shared/image-references';
 import { activeVideoKeyframes, validateVideoKeyframes } from '../../../shared/video-keyframes';
 import { promptTimeline } from '../../../shared/prompt-timing';
 import { MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
@@ -28,6 +29,8 @@ function promptReferences(item: PromptItem, reference: GenerationReference | und
 
 export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, reference: GenerationReference | undefined,
   engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, { target, player, editInstructions, onAnalyzing }: { target?: 'continuity'; player?: PromptFramePlayer; editInstructions?: string; onAnalyzing?: (active: boolean) => void } = {}) {
+  const savedPictures = (item.imageReferences ?? []).map((image, index) => ({ image, index })).filter(value => value.image.enabled !== false);
+  item = enabledImageReferences(item);
   const referenceTiming = target === 'continuity' ? undefined : promptReferences(item, reference, info?.duration);
   const enabledKeyframes = target === 'continuity' ? [] : activeVideoKeyframes(item.keyframes);
   if (enabledKeyframes.length) {
@@ -65,7 +68,8 @@ export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, refe
   signal.throwIfAborted();
   const referenceAudioMask = referenceDescriptions?.length && referenceTiming ? item.audioMaskCurve
     ?? defaultMaskCurve(referenceTiming.prefixFrames / TIMELINE_FPS, referenceTiming.suffixFrames / TIMELINE_FPS, item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs) : undefined;
-  return request<PromptEnhancement>('/api/interstitials/enhance-prompt', { method: 'POST', signal,
+  const result = await request<PromptEnhancement>('/api/interstitials/enhance-prompt', { method: 'POST', signal,
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, editInstructions, duration: item.duration, kind, target, currentFrame, referenceFrames, referenceTiming, referenceDescriptions, referenceAudioMask, imageReferences, ...(keyframes.length ? { keyframes } : {}),
       imageGuides: { start: item.startImageIndex, end: item.endImageIndex }, continuity: item.continuity, dialogue: item.dialogue, loraInstructions: item.loraInstructions }) });
+  return { ...result, prompt: result.prompt.replace(/<Picture\s+(\d+)>/g, (tag, number) => savedPictures[Number(number) - 1] ? `<Picture ${savedPictures[Number(number) - 1].index + 1}>` : tag) };
 }

@@ -10,7 +10,7 @@ import { clipMetadata } from '../fixtures/clip-metadata';
 
 let mediaDuration = 3.25;
 vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: class {
-  getPrimaryVideoTrack() { return Promise.resolve({ displayWidth: 1280, displayHeight: 720, computePacketStats: async () => ({ averagePacketRate: 24 }) }); }
+  getPrimaryVideoTrack() { return Promise.resolve({ displayWidth: 1280, displayHeight: 720, computeDuration: async () => mediaDuration, computePacketStats: async () => ({ averagePacketRate: 24 }) }); }
   getPrimaryAudioTrack() { return Promise.resolve({}); }
   computeDuration() { return Promise.resolve(mediaDuration); }
   dispose() {}
@@ -29,6 +29,17 @@ const submit = (before = '1.625', after = '1.625', prompt = 'Bridge this scene',
   .field('before', before).field('after', after).field('duration', '6').field('prompt', prompt).field(fields).attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'reference.mp4', contentType: 'video/mp4' });
 
 describe('Comfy API boundaries', () => {
+  it('accepts a complete input timeline and checks ranges and duration before submission', async () => {
+    mediaDuration = 226 / 24;
+    const fields = { fullInput: 'true', timelineInputs: JSON.stringify([{ frame: 24, frames: 48 }]), keyframes: JSON.stringify([{ frame: 80, imageIndex: 0, method: 'frame' }]), keyframeImages: JSON.stringify(['data:image/jpeg;base64,/9j/2Q==']) };
+    await submit('1.625', '1.625', 'Combined inputs', fields).expect(202);
+    expect(comfy.submit.mock.calls[0][1]).toMatchObject({ fullInput: true, timelineInputs: [{ frame: 24, frames: 48 }], keyframes: [{ frame: 80, method: 'frame' }] });
+    await submit('1.625', '1.625', 'Combined inputs', { ...fields, fullInput: 'false' }).expect(400);
+    await submit('1.625', '1.625', 'Combined inputs', { ...fields, timelineInputs: JSON.stringify([{ frame: 140, frames: 48 }]) }).expect(400);
+    mediaDuration = 3.25;
+    await submit('1.625', '1.625', 'Combined inputs', fields).expect(400);
+    expect(comfy.submit).toHaveBeenCalledOnce();
+  });
   it('accepts timed images separately and rejects malformed or unresolvable guides before submission', async () => {
     const keyframeImages = JSON.stringify(['data:image/jpeg;base64,/9j/2Q==']);
     await submit('1.625', '1.625', 'Timed pose', { keyframes: JSON.stringify([{ frame: 24, imageIndex: 0 }]), keyframeImages }).expect(202);

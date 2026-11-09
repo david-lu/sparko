@@ -4,6 +4,7 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await openVideo(page); await addBridge(page);
+  await page.getByRole('button', { name: 'Expand generation timeline', exact: true }).click();
   let savedVideo: unknown;
   for (const channel of ['video', 'audio']) {
     const title = channel === 'video' ? 'Video' : 'Audio';

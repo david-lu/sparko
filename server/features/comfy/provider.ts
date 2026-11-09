@@ -119,16 +119,22 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       if (images.length > IMAGE_REFERENCE.maxCount || images.some(image => image.type !== 'image/jpeg' || !image.size || image.size > IMAGE_REFERENCE.maxBytes)) throw new HttpError(400, 'Use up to 9 prepared JPEG image references, each smaller than 1 MB.');
       if (keyframeImages.length > MAX_VIDEO_KEYFRAMES || keyframeImages.some(image => image.type !== 'image/jpeg' || !image.size || image.size > IMAGE_REFERENCE.maxBytes)) throw new HttpError(400, 'Use up to 9 prepared JPEG keyframes, each smaller than 1 MB.');
       const imageLoop = input.mode === 'loop' && !input.before && !input.after && input.loopImageGuide !== false && images.length > 0;
-      const imageGuides = !!input.keyframes?.length || imageLoop || input.startImageIndex !== undefined || input.endImageIndex !== undefined;
+      const imageGuides = !!input.keyframes?.some(keyframe => keyframe.method !== 'frame') || imageLoop || input.startImageIndex !== undefined || input.endImageIndex !== undefined;
       // Validate image guides before uploading assets or submitting a paid job.
       bridgeWorkflow('validation-video', input, 0, undefined, images.map((_, index) => `validation-image-${index}`), keyframeImages.map((_, index) => `validation-keyframe-${index}`));
+      if (input.fullInput) {
+        const nodes = await client.call<Record<string, unknown>>('/api/object_info');
+        const validation = bridgeWorkflow('validation-video', input, 0, undefined, images.map((_, i) => `image-${i}`), keyframeImages.map((_, i) => `keyframe-${i}`));
+        const missing = [...new Set(Object.values(validation).map(node => node.class_type))].filter(name => !nodes[name]);
+        if (missing.length) throw new HttpError(503, `Comfy is missing required timeline nodes: ${missing.join(', ')}.`);
+      }
       const readiness = await check('standard', input.resolution, images.length > 0, imageGuides, !!input.lora, !!input.turbo);
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
       const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
       validateComfyResolution(plan,input.resolution);
       // Comfy reads multipart uploads sequentially: metadata must arrive before the file.
       let referenceAssetId: string | undefined;
-      if (plan.prefixFrames || plan.suffixFrames) {
+      if (plan.prefixFrames || plan.suffixFrames || input.fullInput) {
         if (!file) throw new HttpError(400, 'Upload the connected reference footage.');
         const body = new FormData(); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`); body.set('file', file, 'reference.mp4');
         referenceAssetId = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body })).id;

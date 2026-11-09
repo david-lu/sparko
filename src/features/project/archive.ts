@@ -169,6 +169,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const remapAssetSettings = (settings: import('../../../shared/asset-generation').AssetSettings) => ({ ...settings, references: settings.references.map(ref => ({ ...ref, assetId: remap.get(ref.assetId)??ref.assetId })) });
     const remapVideo = (ref: import('../../../shared/video-references').VideoAssetReference) => ({ ...ref, assetId: remap.get(ref.assetId)??ref.assetId });
     const remapSettings = (settings: Parameters<typeof interstitialSettings>[0]) => ({ ...interstitialSettings(settings),
+      timelineVideos: settings.timelineVideos?.map(clip => ({ ...clip, video: clip.video ? remapVideo(clip.video) : undefined })),
       startVideoAssets: settings.startVideoAssets?.map(remapVideo), endVideoAssets: settings.endVideoAssets?.map(remapVideo),
       startVideoAsset: settings.startVideoAsset ? { ...settings.startVideoAsset, assetId: remap.get(settings.startVideoAsset.assetId)! } : undefined,
       endVideoAsset: settings.endVideoAsset ? { ...settings.endVideoAsset, assetId: remap.get(settings.endVideoAsset.assetId)! } : undefined,

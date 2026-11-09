@@ -9,11 +9,13 @@ export const videoKeyframesSchema = z.array(z.object({
   frame: z.number().int().min(0).max(COMFY.maxFrames - 1),
   image: imageReferencesSchema.element.optional(),
   enabled: z.boolean(),
+  method: z.enum(['guide', 'frame']).optional(),
 })).max(MAX_VIDEO_KEYFRAMES).refine(values => new Set(values.map(value => value.id)).size === values.length, 'Keyframe IDs must be unique.');
 export type VideoKeyframe = z.infer<typeof videoKeyframesSchema>[number];
 export const videoKeyframeInputsSchema = z.array(z.object({
   frame: z.number().int().min(0).max(COMFY.maxFrames - 1),
   imageIndex: z.number().int().min(0).max(MAX_VIDEO_KEYFRAMES - 1),
+  method: z.enum(['guide', 'frame']).optional(),
 })).max(MAX_VIDEO_KEYFRAMES);
 export type VideoKeyframeInput = z.infer<typeof videoKeyframeInputsSchema>[number];
 
