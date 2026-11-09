@@ -90,7 +90,11 @@ for (const width of [1440, 390]) test(`scrubbing keeps the chosen mode and input
   await region.locator('.generation-reference-segment').first().click();
   await expect(generated).toHaveAttribute('aria-pressed', 'true');
   await expect(screen.locator('video')).toBeVisible();
+  await ruler.press('Home');for(let i=0;i<7;i++)await ruler.press('Shift+ArrowRight');
+  await region.getByLabel('Generation timeline zoom', { exact: true }).selectOption('4');
   await input.click(); await expect(ruler).toHaveAttribute('aria-valuemax', '225');
+  expect(await region.evaluate(el => { const view = el.querySelector('.generation-timeline-scroll')!.getBoundingClientRect(), cursor = el.querySelector('.generation-cursor-line')!.getBoundingClientRect(); return cursor.x >= view.x && cursor.x <= view.right; })).toBe(true);
+  await region.getByLabel('Generation timeline zoom', { exact: true }).selectOption('1');
   const from = (await region.locator('.generation-reference-segment').first().boundingBox())!, to = (await body.boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + 12); await page.mouse.down();
   await page.mouse.move(to.x + to.width / 2, to.y + 12, { steps: 8 });
@@ -98,6 +102,19 @@ for (const width of [1440, 390]) test(`scrubbing keeps the chosen mode and input
   await page.mouse.up();
   expect((await readProject(page)).interstitials).toEqual(before.interstitials);
   await page.screenshot({ path: `test-results/generation-input-gap-${width}.png` });
+});
+
+test('a saved result longer than the edited input has a seekable empty footage lane', async ({ page }) => {
+  await open(page, true);const region = editor(page);
+  await region.getByRole('checkbox', { name: 'Reference start video', exact: true }).uncheck();
+  await region.getByRole('checkbox', { name: 'Reference end video', exact: true }).uncheck();
+  await region.getByLabel('Duration', { exact: true }).fill('1');
+  await region.getByRole('button', { name: 'Generated', exact: true }).click();
+  await expect(playhead(page)).toHaveAttribute('max', '95');
+  const lane = region.getByRole('group', { name: 'Reference and generated footage', exact: true }), box = (await lane.boundingBox())!;
+  await lane.click({ position: { x: box.width * .75, y: 20 } });
+  await expect(playhead(page)).toHaveValue('72');
+  await expect(region.getByRole('button', { name: 'Generated', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('selection shows the right media and timing edits follow the selected input', async ({ page }) => {

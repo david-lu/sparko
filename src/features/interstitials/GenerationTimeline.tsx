@@ -129,7 +129,7 @@ export default function GenerationTimeline(props: Props) {
     if (!scroll || !line) return;
     const view = scroll.getBoundingClientRect(), point = line.getBoundingClientRect().left;
     if (point < view.left + 24 || point > view.right - 24) scroll.scrollLeft += point - (view.left + view.width / 2);
-  }, [cursor, expanded, scrub.active]);
+  }, [cursor, totalFrames, expanded, scrub.active]);
   useLayoutEffect(() => {
     if (!isMask || !expanded) return;
     const panel = container.current?.querySelector<HTMLElement>('.generation-mask-editor');
@@ -276,7 +276,7 @@ export default function GenerationTimeline(props: Props) {
           {Array.from({ length: 5 * zoom + 1 }, (_, i) => <span key={i} style={{ left: `${i / (5 * zoom) * 100}%` }}>{timelineSeconds(Math.round(totalFrames * i / (5 * zoom)))}s</span>)}
           <i className="generation-playhead-handle" style={{ left: percent(cursor) }} aria-hidden="true"/>
         </div>
-        <div className="generation-footage-lane" role="group" aria-label="Reference and generated footage">
+        <div className="generation-footage-lane" role="group" aria-label="Reference and generated footage" tabIndex={-1} {...scrub.handlers(undefined, true)}>
           <button type="button" className="generation-body-segment" hidden={prefixFrames >= totalFrames} disabled={isMask} aria-label="Preview generated section" style={{ left: percent(prefixFrames), width: percent(Math.max(0, Math.min(middleFrames, totalFrames - prefixFrames))) }}
             {...scrub.handlers()}
             onClick={event => { if (event.detail === 0) seekTo(prefixFrames); }}
