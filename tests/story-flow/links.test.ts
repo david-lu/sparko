@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { linkGeometry } from '../../src/features/story-flow/links';
 
-describe('direct connection routing', () => {
+describe('curved connection routing', () => {
   it('keeps overlapping sockets on the same row instead of taking a large detour', () => {
     const link = linkGeometry({ x: 110, y: 80 }, { x: 100, y: 80 });
-    expect(link.path).toBe('M110,80 L100,80');
+    expect(link.path).toBe('M110,80 C105,80 105,80 100,80');
     expect(link.middle).toEqual({ x: 105, y: 80 });
   });
   it('finds the correct segment for a new point on a backward routed connection', () => {
