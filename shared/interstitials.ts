@@ -1,3 +1,4 @@
+import type { PromptVersions } from './prompt-versions.js';
 import { LORA_STRENGTH } from './loras.js';
 import { INTERSTITIAL, MASK_TRANSITION } from './constants.js';
 import type { GenerationProgress, InsertionRange } from './contracts.js';
@@ -43,7 +44,7 @@ export type CallResponseInterstitial = {
   brief?: string;
   linkResponseDurations?: boolean;
 };
-export type InterstitialSettings = {
+export type InterstitialSettings = PromptVersions & {
   /** Copied from the project when created; null explicitly disables LoRA. */
   lora?: string | null;
   /** Custom prompt-enhancement guidance; absent values use the matching project LoRA's instructions. */
@@ -68,7 +69,7 @@ export type InterstitialSettings = {
   resolution?: GenerationResolution;
   /** Story references come from the connected input/output; disabled sides contribute no footage. */
   useInputReference?: boolean; useOutputReference?: boolean;
-  start_range: number; end_range: number; duration: number; prompt: string;
+  start_range: number; end_range: number; duration: number;
   enable_prompt_expansion: boolean;
   continuity?: string;
   dialogue?: string;
@@ -118,8 +119,8 @@ export type Interstitial = InterstitialSettings & {
 export const isGenerating = (item: Interstitial) => ['preparing', 'uploading', 'queued', 'rendering', 'loading'].includes(item.phase);
 export const playableResult = (item: Interstitial) => item.phase === 'ready' ? item.result : item.previousResult;
 // Keep Turbo's off value explicit so undo can clear a previously enabled setting.
-export const interstitialSettings = ({ lora, loraInstructions, loraStrength, turbo, seed, useStartVideoAsset, useEndVideoAsset, startVideoAsset, endVideoAsset, startVideoAssets, endVideoAssets, start_range, end_range, duration, prompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, analyzeReferences, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, keyframes, timelineVideos, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
-  ({ ...(lora !== undefined ? { lora } : {}), ...(loraInstructions !== undefined ? { loraInstructions } : {}), ...(loraStrength !== undefined ? { loraStrength } : {}), turbo: turbo === true, ...(seed !== undefined ? { seed } : {}), start_range, end_range, duration, prompt, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
+export const interstitialSettings = ({ lora, loraInstructions, loraStrength, turbo, seed, useStartVideoAsset, useEndVideoAsset, startVideoAsset, endVideoAsset, startVideoAssets, endVideoAssets, start_range, end_range, duration, prompt, enhancedPrompt, enhancedPromptStale, useEnhancedPrompt, enable_prompt_expansion, method = 'comfy', resolution, continuity, dialogue, analyzeReferences, loopAudio, maskInjection, audioMaskTransitionMs, videoMaskTransitionMs, audioMaskCurve, videoMaskCurve, maskTransitionMs, interpolateMiddle, useInputReference, useOutputReference, imageReferences, keyframes, timelineVideos, startImageIndex, endImageIndex, startReferenceType, endReferenceType }: InterstitialSettings): InterstitialSettings =>
+  ({ ...(lora !== undefined ? { lora } : {}), ...(loraInstructions !== undefined ? { loraInstructions } : {}), ...(loraStrength !== undefined ? { loraStrength } : {}), turbo: turbo === true, ...(seed !== undefined ? { seed } : {}), start_range, end_range, duration, prompt, enhancedPrompt: enhancedPrompt ?? '', enhancedPromptStale: enhancedPromptStale === true, useEnhancedPrompt: useEnhancedPrompt === true, enable_prompt_expansion, method, resolution: normalizeGenerationResolution(resolution), maskInjection: clipMaskInjection({ method, maskInjection, interpolateMiddle, useInputReference, useOutputReference }),
     ...(useStartVideoAsset !== undefined ? { useStartVideoAsset } : {}), ...(useEndVideoAsset !== undefined ? { useEndVideoAsset } : {}),
     ...(startVideoAsset ? { startVideoAsset: { ...startVideoAsset } } : {}), ...(endVideoAsset ? { endVideoAsset: { ...endVideoAsset } } : {}),
     ...(startVideoAssets ? { startVideoAssets: startVideoAssets.map(ref => ({ ...ref })) } : {}),

@@ -1,3 +1,4 @@
+import { enhancedPromptSettings, generationPrompt, promptSelectionError } from './prompt-versions.js';
 import { z } from 'zod';
 import { loraSettings, projectLoraAddress, projectLoraStrength, type ProjectLora } from './loras.js';
 
@@ -20,6 +21,7 @@ export const mediaKindSchema = z.enum(['image', 'video', 'audio']);
 export const assetReferenceSchema = z.object({ assetId: z.uuid(), name: z.string().min(1).max(1000), kind: mediaKindSchema });
 export const assetSettingsSchema = z.object({
   ...loraSettings,
+  ...enhancedPromptSettings,
   model: z.string().max(100).refine(id => !!assetModel(id), 'Choose a supported model.'),
   prompt: z.string().max(8000), references: z.array(assetReferenceSchema).max(16),
   aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']), resolution: z.enum(['1K', '2K', '4K']),
@@ -50,7 +52,9 @@ export function validateAssetSettings(settings: AssetSettings): string | undefin
   if (!model) return 'Choose a supported model.';
   if (model.kind === 'video') return 'Video generation uses Comfy H3. Use H3 for this clip.';
   if (settings.lora) return `${model.name} does not support LoRAs in the current generation integration. Choose None to generate.`;
-  if (!settings.prompt.trim()) return 'Enter a prompt.';
+  const promptError = promptSelectionError(settings);
+  if (promptError) return promptError;
+  if (!generationPrompt(settings).trim()) return 'Enter a prompt.';
   if (settings.references.some(ref => !model.inputs.includes(ref.kind))) return `${model.name} accepts ${model.inputs.join(', ') || 'no'} references. Remove incompatible inputs or choose another model.`;
   if (settings.references.filter(ref => ref.kind === 'image').length > model.maxImages) return `${model.name} accepts up to ${model.maxImages} images.`;
   if (['video', 'audio'].some(kind => settings.references.filter(ref => ref.kind === kind).length > 1)) return 'Use at most one video and one audio reference.';

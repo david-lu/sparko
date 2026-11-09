@@ -33,10 +33,11 @@ test('enhances with visual references, stays editable, and supports undo, redo a
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Cancel prompt enhancement' })).toBeVisible();
   finish();
-  const prompt = page.getByLabel('Video prompt');
+  const prompt = page.getByLabel('Enhanced prompt', { exact: true });
+  await expect(page.getByLabel('Video prompt')).toHaveValue(original);
   await expect(prompt).toHaveValue(enhanced);
   await expect(prompt).toBeEditable();
-  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(prompt).toHaveValue(original);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(prompt).toHaveValue('');
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(prompt).toHaveValue(enhanced);
   expect(generations).toBe(0);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -112,7 +113,8 @@ test('carries enhanced dialogue timing through regeneration into the downloaded 
     await route.fulfill({ json: { prompt: timed, model: 'test' } });
   });
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
-  await expect(prompt).toHaveValue(timed);
+  await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue(timed);
+  await expect(prompt).toHaveValue(draft);
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
   await expect.poll(async () => (await saved()).result?.metadata?.id).not.toBe(previous.metadata.id);
   await expect.poll(async () => (await saved()).phase, { timeout: 60_000 }).toBe('ready');
@@ -124,7 +126,7 @@ test('carries enhanced dialogue timing through regeneration into the downloaded 
   await page.getByRole('link', { name: 'Download full video' }).click();
   const download = await pending;
   const metadata = await readClipMetadata(new Blob([await readFile((await download.path())!)]), new AbortController().signal);
-  expect(metadata).toMatchObject({ id: current.metadata.id, prompt: timed, settings: { prompt: timed } });
+  expect(metadata).toMatchObject({ id: current.metadata.id, prompt: timed, settings: { prompt: draft, enhancedPrompt: timed, useEnhancedPrompt: true } });
 });
 
 for (const width of [1440, 390]) test(`preserves oversized drafts and enforces H3's limit without shifting controls at ${width}px`, async ({ page }) => {
@@ -152,8 +154,9 @@ for (const width of [1440, 390]) test(`preserves oversized drafts and enforces H
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Enhancing…', exact: true })).toBeDisabled();
   expect(await controls()).toEqual(before);
-  finish(); await expect(prompt).toHaveValue(shortened);
-  await expect(page.locator('.prompt-character-count')).toHaveText('7,000 / 7,000 characters');
+  finish(); await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue(shortened);
+  await expect(prompt).toHaveValue(draft);
+  await expect(page.locator('.prompt-character-count')).toHaveText('7,001 / 7,000 characters');
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
   expect(await controls()).toEqual(before);
   await page.locator('.prompt-character-count').scrollIntoViewIfNeeded();

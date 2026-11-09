@@ -1,3 +1,4 @@
+import { generationPrompt, promptSettingsPatch, promptSelectionError } from '../../../shared/prompt-versions';
 import { chooseGenerationSeed, generationSeedSchema } from '../../../shared/generation-seed';
 import { loraAddressSchema, loraInstructionsSchema, loraStrengthSchema, LORA_STRENGTH } from '../../../shared/loras';
 import { storyGenerationItem } from '../story-flow/referenceInputs';
@@ -43,7 +44,7 @@ export class InterstitialController {
   setDefaultLora(address: string | null, strength = LORA_STRENGTH.default) { this.defaultLora = address; this.defaultLoraStrength = loraStrengthSchema.parse(strength); }
   private withGenerationDefaults(item: Interstitial): Interstitial {
     // Imported renders and copied submitted clips retain their original settings.
-    item = { ...item, turbo: item.turbo ?? (item.result || item.previousResult || item.generationSettings || item.requestId ? false : this.defaultTurbo) };
+    item = { ...item, enhancedPrompt: item.enhancedPrompt ?? '', enhancedPromptStale: item.enhancedPromptStale === true, useEnhancedPrompt: item.useEnhancedPrompt === true, turbo: item.turbo ?? (item.result || item.previousResult || item.generationSettings || item.requestId ? false : this.defaultTurbo) };
     if (item.lora !== undefined) return item;
     if (item.result || item.generationSettings) return { ...item, lora: null };
     return { ...item, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined };
@@ -80,7 +81,7 @@ export class InterstitialController {
       const legacyJob = (item.requestMethod as string | undefined) === 'fal'
         || (!item.requestMethod && (item.generationSettings?.method as string | undefined) === 'fal');
       const { interpolateMiddle: _legacyInterpolation, maskTransitionMs: _legacyTransition, ...current } = item;
-      const restored = { ...current, turbo: item.turbo === true, method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
+      const restored = { ...current, enhancedPrompt: item.enhancedPrompt ?? '', enhancedPromptStale: item.enhancedPromptStale === true, useEnhancedPrompt: item.useEnhancedPrompt === true, turbo: item.turbo === true, method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
         maskInjection: clipMaskInjection(item),
         audioMaskTransitionMs: normalizeMaskTransitionMs(item.audioMaskTransitionMs ?? item.maskTransitionMs),
         videoMaskTransitionMs: normalizeMaskTransitionMs(item.videoMaskTransitionMs ?? item.maskTransitionMs),
@@ -150,7 +151,7 @@ export class InterstitialController {
     if (existing) { this.select(existing.id); return existing; }
     const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor, turbo: this.defaultTurbo, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
-      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, maskInjection: 'standard', audioMaskTransitionMs: MASK_TRANSITION.defaultMs, videoMaskTransitionMs: MASK_TRANSITION.defaultMs, resolution: 'native', method: 'comfy', prompt: '', phase: 'draft' };
+      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, maskInjection: 'standard', audioMaskTransitionMs: MASK_TRANSITION.defaultMs, videoMaskTransitionMs: MASK_TRANSITION.defaultMs, resolution: 'native', method: 'comfy', prompt: '', enhancedPrompt: '', enhancedPromptStale: false, useEnhancedPrompt: false, phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
     return item;
   }
@@ -173,10 +174,11 @@ export class InterstitialController {
     if (values.seed !== undefined) generationSeedSchema.parse(values.seed);
     if (values.loraStrength !== undefined) values = { ...values, loraStrength: loraStrengthSchema.parse(values.loraStrength) };
     if (values.loraInstructions !== undefined) values = { ...values, loraInstructions: loraInstructionsSchema.parse(values.loraInstructions) };
+    values = promptSettingsPatch(item, values);
     if (values.duration !== undefined && this.hasLinkedDuration(id)) {
       const linked = this.flowFor(id) ? responseInterstitialIds(this.flowFor(id)!) : this.linkedDurationIds;
       this.update({ items: this.state.items.map(current => current.id === id ? { ...current, ...values }
-        : linked.includes(current.id) ? { ...current, duration: values.duration! } : current) }, true);
+        : linked.includes(current.id) ? { ...current, ...promptSettingsPatch(current, { duration: values.duration! }) } : current) }, true);
     } else this.patch(id, values);
   }
   canRecover(id: string) {
@@ -207,7 +209,8 @@ export class InterstitialController {
         const item = this.state.items.find(item => item.id === id);
         if (!item) throw new Error('A clip was removed. Start a new sequence.');
         this.update({ sequence: { ids, completedIds: [...completedIds], activeId: id, phase: 'running' } });
-        if (!item.prompt.trim()) throw new Error(`Add a prompt for ${item.label} to continue.`);
+        if (promptSelectionError(item)) throw new Error(`${item.label}: ${promptSelectionError(item)}`);
+        if (!generationPrompt(item).trim()) throw new Error(`Add a prompt for ${item.label} to continue.`);
         if (providers && !providers.comfy) throw new Error(`${item.label}: Comfy Cloud is not connected.`);
         const blocked = this.dependency(id)?.blocked;
         if (blocked) throw new Error(blocked);
@@ -269,7 +272,7 @@ export class InterstitialController {
       this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, requestSeed, result: undefined });
       const source = dependency?.reference && (dependency.reference.before || dependency.reference.after) ? await generationSource(item, dependency.reference, operation.signal, info) : { item, engine, info };
       operation.signal.throwIfAborted();
-      const submittedPrompt = source.item.prompt;
+      const submittedPrompt = generationPrompt(source.item);
       const job = await generateInterstitial({ ...source.item, seed: requestSeed, requestOrigin }, source.engine, source.info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });

@@ -1,3 +1,4 @@
+import { enhancedPromptSettings } from '../../../shared/prompt-versions';
 import { generationSeedSchema } from '../../../shared/generation-seed';
 import { videoKeyframesSchema } from '../../../shared/video-keyframes';
 import { loraAddressSchema, loraInstructionsSchema, loraStrengthSchema } from '../../../shared/loras';
@@ -22,7 +23,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
   if (method !== undefined && method !== 'fal' && !generationMethods.includes(method as InterstitialSettings['method'] & string)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
-  return interstitialSettings({ ...settings, timelineVideos: videoReferenceSettings.timelineVideos.safeParse(settings.timelineVideos).data, keyframes: videoKeyframesSchema.safeParse(settings.keyframes).data, startVideoAssets: videoReferenceSettings.startVideoAssets.safeParse(settings.startVideoAssets).data, endVideoAssets: videoReferenceSettings.endVideoAssets.safeParse(settings.endVideoAssets).data, seed: generationSeedSchema.safeParse(settings.seed).data, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
+  return interstitialSettings({ ...settings, ...readPromptVersions(settings), timelineVideos: videoReferenceSettings.timelineVideos.safeParse(settings.timelineVideos).data, keyframes: videoKeyframesSchema.safeParse(settings.keyframes).data, startVideoAssets: videoReferenceSettings.startVideoAssets.safeParse(settings.startVideoAssets).data, endVideoAssets: videoReferenceSettings.endVideoAssets.safeParse(settings.endVideoAssets).data, seed: generationSeedSchema.safeParse(settings.seed).data, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
 }
 
 function readResult(value: unknown): InterstitialResult | undefined {
@@ -86,6 +87,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         requestOrigin: clipOriginSchema.safeParse(item.requestOrigin).data,
         requestInsertion: item.requestInsertion && [item.requestInsertion.start, item.requestInsertion.duration, item.requestInsertion.totalDuration].every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
           && item.requestInsertion.start >= 0 && item.requestInsertion.duration > 0 && item.requestInsertion.start + item.requestInsertion.duration <= item.requestInsertion.totalDuration + 0.1 ? item.requestInsertion : undefined,
+        ...readPromptVersions(item),
         prompt: typeof item.prompt === 'string' ? item.prompt : '', phase: phase === 'ready' && !result ? 'error' : phase,
         requestId: typeof item.requestId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(item.requestId) ? item.requestId : undefined,
         result, previousResult: readResult(item.previousResult), error: typeof item.error === 'string' ? item.error : undefined }];
@@ -100,4 +102,10 @@ export function saveInterstitials(sourceId: string, items: Interstitial[]) {
     return true;
   }
   catch { return false; }
+}
+
+function readPromptVersions(value: Record<string, unknown>) {
+  return { enhancedPrompt: enhancedPromptSettings.enhancedPrompt.safeParse(value.enhancedPrompt).data,
+    enhancedPromptStale: enhancedPromptSettings.enhancedPromptStale.safeParse(value.enhancedPromptStale).data,
+    useEnhancedPrompt: enhancedPromptSettings.useEnhancedPrompt.safeParse(value.useEnhancedPrompt).data };
 }

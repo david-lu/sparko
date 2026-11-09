@@ -16,7 +16,7 @@ import { referenceTiming } from '../../../shared/reference-clips';
 import type { PromptReferenceTiming, PromptReferenceDescription } from '../../../shared/prompt-timing';
 import { analyzePromptReferences } from './analyze-prompt-references';
 
-type PromptItem = Pick<Interstitial, 'prompt' | 'time' | 'duration' | 'continuity' | 'dialogue' | 'imageReferences' | 'keyframes' | 'startImageIndex' | 'endImageIndex' | 'loraInstructions'>
+type PromptItem = Pick<Interstitial, 'prompt' | 'enhancedPrompt' | 'time' | 'duration' | 'continuity' | 'dialogue' | 'imageReferences' | 'keyframes' | 'startImageIndex' | 'endImageIndex' | 'loraInstructions'>
   & Partial<Pick<Interstitial, 'start_range' | 'end_range' | 'method' | 'resolution' | 'useInputReference' | 'useOutputReference' | 'analyzeReferences' | 'audioMaskCurve' | 'audioMaskTransitionMs' | 'maskTransitionMs'>>;
 function promptReferences(item: PromptItem, reference: GenerationReference | undefined, sourceDuration?: number): PromptReferenceTiming | undefined {
   if (item.start_range === undefined || item.end_range === undefined) return;
@@ -30,6 +30,7 @@ function promptReferences(item: PromptItem, reference: GenerationReference | und
 export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, reference: GenerationReference | undefined,
   engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, { target, player, captureFrame, editInstructions, onAnalyzing }: { target?: 'continuity'; player?: PromptFramePlayer; captureFrame?: PromptFrameCapture; editInstructions?: string; onAnalyzing?: (active: boolean) => void } = {}) {
   const savedPictures = (item.imageReferences ?? []).map((image, index) => ({ image, index })).filter(value => value.image.enabled !== false);
+  const enhancedPrompt = editInstructions && item.enhancedPrompt?.trim() ? enabledImageReferences({ ...item, prompt: item.enhancedPrompt }).prompt : undefined;
   item = enabledImageReferences(item);
   const referenceTiming = target === 'continuity' ? undefined : promptReferences(item, reference, info?.duration);
   const enabledKeyframes = target === 'continuity' ? [] : activeVideoKeyframes(item.keyframes);
@@ -69,7 +70,8 @@ export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, refe
   const referenceAudioMask = referenceDescriptions?.length && referenceTiming ? item.audioMaskCurve
     ?? defaultMaskCurve(referenceTiming.prefixFrames / TIMELINE_FPS, referenceTiming.suffixFrames / TIMELINE_FPS, item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs) : undefined;
   const result = await request<PromptEnhancement>('/api/interstitials/enhance-prompt', { method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, editInstructions, duration: item.duration, kind, target, currentFrame, referenceFrames, referenceTiming, referenceDescriptions, referenceAudioMask, imageReferences, ...(keyframes.length ? { keyframes } : {}),
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, enhancedPrompt, editInstructions, duration: item.duration, kind, target, currentFrame, referenceFrames, referenceTiming, referenceDescriptions, referenceAudioMask, imageReferences, ...(keyframes.length ? { keyframes } : {}),
       imageGuides: { start: item.startImageIndex, end: item.endImageIndex }, continuity: item.continuity, dialogue: item.dialogue, loraInstructions: item.loraInstructions }) });
-  return { ...result, prompt: result.prompt.replace(/<Picture\s+(\d+)>/g, (tag, number) => savedPictures[Number(number) - 1] ? `<Picture ${savedPictures[Number(number) - 1].index + 1}>` : tag) };
+  const restorePictures = (prompt: string) => prompt.replace(/<Picture\s+(\d+)>/g, (tag, number) => savedPictures[Number(number) - 1] ? `<Picture ${savedPictures[Number(number) - 1].index + 1}>` : tag);
+  return { ...result, prompt: restorePictures(result.prompt), ...(result.enhancedPrompt !== undefined ? { enhancedPrompt: restorePictures(result.enhancedPrompt) } : {}) };
 }

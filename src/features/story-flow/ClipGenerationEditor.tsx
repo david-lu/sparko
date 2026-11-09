@@ -1,3 +1,5 @@
+import { promptSettingsPatch } from '../../../shared/prompt-versions';
+import EnhancedPromptField from '../interstitials/EnhancedPromptField';
 import GenerationLora from '../project/GenerationLora';
 import { useId } from 'react';
 import { Sparkles } from 'lucide-react';
@@ -21,7 +23,7 @@ export default function ClipGenerationEditor({ editor, generation, status }: { e
   const missingReferences = settings.references.flatMap(ref => assets.error(ref.assetId) ? [{ key: ref.assetId, title: `${ref.name} reference`, message: assets.error(ref.assetId)! }] : []);
   const validation = validateAssetSettings(settings);
   const issues = [...missingReferences, ...(generation.error ? [{ key: 'generation', title: 'Generation failed', message: generation.error }] : []), ...(validation && settings.prompt.trim() ? [{ key: 'settings', title: 'Generation settings', message: validation }] : [])];
-  const update = (patch: Partial<AssetSettings>) => editor.clipJobs.edit(generation.id, { settings: { ...generation.settings, ...patch } });
+  const update = (patch: Partial<AssetSettings>) => editor.clipJobs.edit(generation.id, { settings: { ...generation.settings, ...promptSettingsPatch(generation.settings, patch) } });
   const message = generation.error || missingReferences[0]?.message || (busy ? generation.phase === 'queued' ? 'Queued' : generation.phase === 'loading' ? 'Saving output…' : 'Generating…' : !status?.providers.fal ? 'Connect fal with FAL_KEY in .env.' : generation.phase === 'cancelled' ? 'Cancelled' : validation || 'Ready to generate');
   if (kind === 'video') return <div className="clip-generation-editor">
     <p className="hint">Video generation uses Comfy H3. Previous outputs remain in the Library.</p>
@@ -35,11 +37,12 @@ export default function ClipGenerationEditor({ editor, generation, status }: { e
       <details className="inspector-group" open><summary>Generation settings<span>fal</span></summary>
         <label className="inspector-property"><span>Model</span><select aria-label="Generation model" value={model.id} onChange={e => { const next = assetModel(e.target.value)!; update({ model: next.id, resolution: (next.resolutions.includes(settings.resolution) ? settings.resolution : next.resolutions[0] || '1K') as AssetSettings['resolution'], count: 1 }); }}>{ASSET_MODELS.filter(m => m.kind === generation.kind).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
         <GenerationLora key={`${generation.id}:${model.id}`} model={model.id} value={settings.lora} instructions={settings.loraInstructions} strength={settings.loraStrength} loras={project?.loras} onChange={(lora, loraInstructions, loraStrength) => update({ lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => update({ loraStrength })}/>
-        <div className="field inspector-prompt"><div className="prompt-field-heading"><label htmlFor={promptId}>Prompt</label>
+        <div className="field inspector-prompt"><div className="prompt-field-heading"><label htmlFor={promptId}>{kind === 'image' ? 'Original prompt' : 'Prompt'}</label>
           {kind === 'image' && <EnhancePromptActions key={generation.id} promptId={promptId} enhancing={enhancement.enhancing} enabled={!busy && !!settings.prompt.trim() && !missingReferences.length} connected={!!status?.providers.openai}
             unavailableReason={busy ? 'Wait for generation to finish before enhancing this prompt.' : missingReferences.length ? 'Restore or remove the missing reference images before enhancing.' : undefined}
-            description={`Enhance with OpenAI following ${IMAGE_PROMPT_GUIDES[model.id]?.title}`} onEnhance={() => void enhancement.enhance()} onEdit={enhancement.enhance} onCancel={enhancement.cancel}/>}
+            editsBoth={!!settings.enhancedPrompt?.trim()} description={`Enhance with OpenAI following ${IMAGE_PROMPT_GUIDES[model.id]?.title}`} onEnhance={() => void enhancement.enhance()} onEdit={enhancement.enhance} onCancel={enhancement.cancel}/>}
         </div><textarea id={promptId} aria-label="Generation prompt" rows={4} value={settings.prompt} maxLength={8000} placeholder={settings.references.length ? 'Describe the result or the changes to make…' : `Describe the ${kind} to create…`} onChange={e => update({ prompt: e.target.value })}/>
+          {kind === 'image' && <EnhancedPromptField value={settings} onChange={update}/>}
           {kind === 'image' && <a className="asset-prompt-guide" href={IMAGE_PROMPT_GUIDES[model.id]?.url} target="_blank" rel="noreferrer">{model.name} prompt guide ↗</a>}
         </div>
         {(model.inputs.length > 0 || settings.references.length > 0) && <details className="inspector-group" open><summary>Reference assets<span>Optional</span></summary><AssetInput key={`${generation.id}:${model.id}`} projects={editor.projects} value={settings.references} kinds={model.inputs} onChange={references => update({ references })} onPreviewPlay={() => editor.player.pause()}/><p className="hint asset-capabilities">Accepts {model.inputs.join(', ')}{model.kind === 'video' ? ' · First image sets the start frame.' : ''}</p></details>}

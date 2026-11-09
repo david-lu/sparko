@@ -27,7 +27,7 @@ test('video creation and new versions use H3 and expose prompt enhancement', asy
   const converted = await readProject(page), node = converted.storyFlow.nodes.find((n: any) => n.id === source.id);
   expect(node.source).toEqual(source.source); expect(node.interstitialId).toBeTruthy(); expect(node.generationId).toBeUndefined();
   expect(converted.clipGenerations ?? []).toHaveLength(0);
-  await enhance.click(); await expect(page.getByLabel('Video prompt', { exact: true })).toHaveValue('A continuous H3 shot of ocean waves.');
+  await enhance.click(); await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue('A continuous H3 shot of ocean waves.');
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect.poll(async () => (await readProject(page)).interstitials.find((i: any) => i.id === node.interstitialId).phase).toBe('ready');
   expect(submissions).toBe(1); expect(falSubmissions).toBe(0);

@@ -1,3 +1,5 @@
+import { generationPrompt, promptSelectionError, promptEnhancementPatch } from '../../../shared/prompt-versions';
+import EnhancedPromptField from './EnhancedPromptField';
 import { enabledImageReferences } from '../../../shared/image-references';
 import { validateTimelineVideos } from '../../../shared/video-references';
 import GenerationTimelineEditor from './GenerationTimelineEditor';
@@ -57,7 +59,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   useEffect(() => {
     setEnhancing(false); setAnalyzing(false);
     return () => { enhancement.current?.abort(); enhancement.current = null; };
-  }, [controller, engine, info?.duration, selected.id, selected.prompt, selected.continuity, selected.dialogue, selected.duration, selected.time, selected.start_range, selected.end_range, selected.method, selected.resolution, selected.useInputReference, selected.useOutputReference, selected.analyzeReferences, selected.audioMaskCurve, selected.audioMaskTransitionMs, selected.maskTransitionMs, kind, referenceKey, selected.imageReferences, selected.keyframes, selected.startImageIndex, selected.endImageIndex, selected.lora, loraInstructions]);
+  }, [controller, engine, info?.duration, selected.id, selected.prompt, selected.enhancedPrompt, selected.enhancedPromptStale, selected.useEnhancedPrompt, selected.continuity, selected.dialogue, selected.duration, selected.time, selected.start_range, selected.end_range, selected.method, selected.resolution, selected.useInputReference, selected.useOutputReference, selected.analyzeReferences, selected.audioMaskCurve, selected.audioMaskTransitionMs, selected.maskTransitionMs, kind, referenceKey, selected.imageReferences, selected.keyframes, selected.startImageIndex, selected.endImageIndex, selected.lora, loraInstructions]);
   const enhance = async (editInstructions?: string): Promise<PromptEditResult> => {
     if (enhancement.current || !status?.providers.openai || !selected.prompt.trim()) return { applied: false };
     const operation = new AbortController(); enhancement.current = operation;
@@ -66,11 +68,11 @@ export default function InterstitialEditor({ selected, controller, engine, info,
       const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal, { player, captureFrame: workspace?.getFrameCapture(), editInstructions,
         onAnalyzing: value => { if (enhancement.current === operation) setAnalyzing(value); } });
       const current = controller.getSnapshot().items.find(item => item.id === selected.id);
-      if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt && current.lora === selected.lora
+      if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt && current.enhancedPrompt === selected.enhancedPrompt && current.lora === selected.lora
         && generationLoraInstructions(current, projects?.getSnapshot().project?.loras, H3_MODEL_ID) === loraInstructions
         && JSON.stringify(current.keyframes ?? []) === JSON.stringify(selected.keyframes ?? [])
         && JSON.stringify(current.imageReferences ?? []) === JSON.stringify(selected.imageReferences ?? [])) {
-        controller.edit(selected.id, { prompt: result.prompt });
+        controller.edit(selected.id, promptEnhancementPatch(selected, result, !!editInstructions));
         return { applied: true };
       }
     } catch (error) {
@@ -97,11 +99,14 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const recovering = retryLoading || retryChecking;
   const canRecover = !!selected.result?.assetId || !!status?.providers.comfy;
   const action = retryLoading ? 'Retry loading' : retryChecking ? 'Check result' : selected.phase === 'error' || selected.phase === 'cancelled' ? 'Retry' : currentResult ? 'Regenerate' : 'Generate';
+  const activePrompt = generationPrompt(selected);
   let validationError = '';
   const noVideo = hasNoVideoInput(selected);
   const hasSource = !!engine && !!info || !!(dependency?.reference?.before || dependency?.reference?.after);
   let comfyPlan: ReturnType<typeof comfyReferenceRange>['plan'] | undefined;
   try {
+    const selectionError = promptSelectionError(selected);
+    if (selectionError) throw new Error(selectionError);
     validateInterstitialDuration(selected.duration, compact ? 'comfy-loop' : method);
     validateMaskTransitionMs(selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Audio mask transition');
     validateMaskTransitionMs(selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs, 'Video mask transition');
@@ -112,16 +117,16 @@ export default function InterstitialEditor({ selected, controller, engine, info,
       const duration = timing?.duration || info?.duration || selected.duration;
       comfyPlan = comfyReferenceRange(input, duration).plan;
       validateTimelineVideos(selected.timelineVideos, comfyPlan.middleFrames);
-      const activeSettings = enabledImageReferences(selected);
+      const activeSettings = enabledImageReferences({ ...selected, prompt: activePrompt });
       validateVideoKeyframes(selected.keyframes, comfyPlan.middleFrames, selected.useInputReference === false && activeSettings.startImageIndex !== undefined, selected.useOutputReference === false && activeSettings.endImageIndex !== undefined || method === 'comfy-loop' && activeSettings.startImageIndex !== undefined);
       for (const keyframe of activeVideoKeyframes(selected.keyframes)) {
         const error = keyframe.image && assets.error(keyframe.image.assetId);
         if (error) throw new Error(`${keyframe.image!.name}: ${error}`);
       }
     }
-    validateH3PromptLength(selected.prompt);
+    validateH3PromptLength(activePrompt);
   } catch (error) { validationError = (error as Error).message; }
-  const canGenerate = (hasSource || noVideo) && !!status?.providers.comfy && !validationError && !dependency?.blocked && !!selected.prompt.trim();
+  const canGenerate = (hasSource || noVideo) && !!status?.providers.comfy && !validationError && !dependency?.blocked && !!activePrompt.trim();
   const hasReferenceFootage = !!comfyPlan && !!(comfyPlan.prefixFrames || comfyPlan.suffixFrames);
   const analysisUnavailable = !hasReferenceFootage ? 'Choose valid start or end video footage to analyze.'
     : !status?.providers.gemini ? 'Connect Gemini to analyze reference videos.' : undefined;
@@ -136,7 +141,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const message = selected.error || validationError || dependency?.blocked || (status && !status.providers.comfy ? 'Comfy Cloud is not connected.' : '')
     || (busy ? phaseLabel(selected) : enhancing ? 'Enhancing prompt…' : '')
     || (dependency?.stale ? 'References changed · regenerate to match' : '')
-    || (sequenced ? 'Waiting in sequence' : selected.phase === 'cancelled' ? 'Cancelled' : !selected.prompt.trim() ? 'Add a prompt to generate' : changed ? 'Settings edited · ready to regenerate' : currentResult ? 'Video ready' : 'Ready to generate');
+    || (sequenced ? 'Waiting in sequence' : selected.phase === 'cancelled' ? 'Cancelled' : !activePrompt.trim() ? 'Add a prompt to generate' : changed ? 'Settings edited · ready to regenerate' : currentResult ? 'Video ready' : 'Ready to generate');
   const messages = [...new Set([message, referenceDescription, dependency?.stale && 'The saved video uses different references. Regenerate to match the current connections.',
     dependency?.blocked, ...(dependency?.issues ?? []).map(issue => issue.message), selected.error, validationError,
     busy && changed && 'This render uses the submitted settings. Your edits apply to the next generation.'].filter((value): value is string => !!value))];
@@ -148,16 +153,17 @@ export default function InterstitialEditor({ selected, controller, engine, info,
       <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} instructions={selected.loraInstructions} strength={selected.loraStrength} loras={projects?.getSnapshot().project?.loras} onChange={(lora, loraInstructions, loraStrength) => controller.edit(selected.id, { lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => controller.edit(selected.id, { loraStrength })} turbo={selected.turbo} onTurboChange={turbo => controller.edit(selected.id, { turbo })}/>
       <div className="field inspector-prompt">
         <div className="prompt-field-heading">
-          <label htmlFor={promptId}>Prompt</label>
+          <label htmlFor={promptId}>Original prompt</label>
           <span className="interstitial-edited" style={{ visibility: changed ? 'visible' : 'hidden' }} aria-hidden={!changed} title="Changes apply to the next generation">Edited</span>
           <label className="prompt-reference-analysis" title={analysisUnavailable ?? "Analyze reference clips when enhancing or editing"}><input id={analysisId} type="checkbox" aria-label="Analyze reference videos with AI" checked={selected.analyzeReferences === true} disabled={!!analysisUnavailable && !selected.analyzeReferences} onChange={event => controller.edit(selected.id, { analyzeReferences: event.target.checked })}/>Analyze references</label>
           <EnhancePromptActions key={selected.id} promptId={promptId} enhancing={enhancing} analyzing={analyzing} enabled={!!selected.prompt.trim() && !enhancementUnavailable} connected={!!status?.providers.openai}
             unavailableReason={enhancementUnavailable}
-            onEnhance={() => void enhance()} onEdit={enhance} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); setAnalyzing(false); }} />
+            editsBoth={!!selected.enhancedPrompt?.trim()} onEnhance={() => void enhance()} onEdit={enhance} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); setAnalyzing(false); }} />
         </div>
-        <textarea id={promptId} aria-label="Video prompt" aria-describedby={`${promptId}-length`} rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
+        <textarea id={promptId} aria-label="Video prompt" aria-describedby={`${promptId}-length`} rows={compact ? 3 : 4} maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
         <span id={`${promptId}-length`} className="hint prompt-character-count">{normalizeH3Prompt(selected.prompt).length.toLocaleString('en-US')} / {H3_PROMPT_MAX_LENGTH.toLocaleString('en-US')} characters</span>
-        {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
+        <EnhancedPromptField value={selected} onChange={patch => controller.edit(selected.id, patch)} rows={compact ? 3 : 4} maxLength={H3_PROMPT_MAX_LENGTH}/>
+        {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends the version selected above.</p>}
       </div>
       {timeline}
       <div className="field interstitial-resolution">

@@ -315,3 +315,13 @@ describe('portable project archives', () => {
     await expect(unpackProject(new Blob(), abort.signal, progress)).rejects.toThrow();
   });
 });
+
+
+it('round-trips original, downstream, stale status and prompt selection in archives and submitted settings', async () => {
+  const snapshot = structuredClone(project), item = snapshot.interstitials[0];
+  Object.assign(item, { enhancedPrompt: 'A detailed new scene', enhancedPromptStale: true, useEnhancedPrompt: false });
+  item.generationSettings = interstitialSettings({ ...item, enhancedPromptStale: false, useEnhancedPrompt: true });
+  const restored = (await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress)).project.interstitials[0];
+  expect(restored).toMatchObject({ prompt: item.prompt, enhancedPrompt: item.enhancedPrompt, enhancedPromptStale: true, useEnhancedPrompt: false });
+  expect(restored.generationSettings).toMatchObject({ prompt: item.prompt, enhancedPrompt: item.enhancedPrompt, enhancedPromptStale: false, useEnhancedPrompt: true });
+});

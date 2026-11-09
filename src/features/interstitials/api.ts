@@ -1,3 +1,4 @@
+import { generationPrompt, promptSelectionError } from '../../../shared/prompt-versions';
 import { prepareTimelineInput } from './prepare-timeline-input';
 import { validateTimelineVideos } from '../../../shared/video-references';
 import { enabledImageReferences } from '../../../shared/image-references';
@@ -19,7 +20,9 @@ export const hasNoVideoInput = (item: Interstitial) => item.useInputReference ==
 
 export async function generateInterstitial(item: Interstitial, engine: Pick<MediaEngine, 'exportMp4'> | null, info: MediaInfo | null, signal: AbortSignal,
   onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void): Promise<GenerationJob> {
-  item = enabledImageReferences(item);
+  const selectionError = promptSelectionError(item);
+  if (selectionError) throw new Error(selectionError);
+  item = enabledImageReferences({ ...item, prompt: generationPrompt(item) });
   validateH3PromptLength(item.prompt);
   const seed = chooseGenerationSeed(item.seed);
   const audioMaskTransitionMs = item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;

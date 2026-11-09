@@ -19,10 +19,24 @@ describe('model-specific image prompt enhancement', () => {
     const editInstructions = 'Change the title to "MOONRISE". Keep everything else.', edited = 'A poster reading "MOONRISE" with the original composition.';
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: edited }) });
     const value = input(), result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt({ ...value, editInstructions });
-    expect(result.prompt).toBe(`${edited} ${lightingColorContinuity}`);
+    expect(result.prompt).toBe(edited);
     const options = respond.mock.calls[0][0];
     expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ draft: value.settings.prompt, editInstructions });
     expect(options.instructions).toContain('This is a targeted edit, not a general enhancement.');
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it('allows lighting edits without restoring the enhancement lighting lock', async () => {
+    const value = input(), draft = `${value.settings.prompt} ${lightingColorContinuity}`;
+    const edited = 'A poster with the words "MIDNIGHT SUN" under warm sunset light.';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: edited }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt({ ...value, settings: { ...value.settings, prompt: draft },
+      editInstructions: 'Change the lighting to a warm sunset and remove conflicting lighting restrictions.', currentFrame: 'data:image/jpeg;base64,Yw==' });
+    expect(result.prompt).toBe(edited);
+    expect(result.model).toBe(value.settings.model);
+    const options = respond.mock.calls[0][0];
+    expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ draft, context: { kind: 'image' } });
+    expect(options.input[0].content).toContainEqual(expect.objectContaining({ type: 'input_image', image_url: 'data:image/jpeg;base64,Yw==' }));
+    expect(respond).toHaveBeenCalledOnce();
   });
   it('sends the current frame to the LLM without making it a numbered generation reference', async () => {
     const currentFrame = 'data:image/jpeg;base64,Yw==', value = input();
@@ -143,4 +157,16 @@ describe('model-specific image prompt enhancement', () => {
     expect(respond).toHaveBeenCalledTimes(1);
     expect(respond.mock.calls[0][0].instructions).toContain('never invent their contents');
   });
+});
+
+
+it('edits the original and enhanced image prompts together without a separate enhancement pass', async () => {
+  const value = input(), enhancedPrompt = 'A detailed poster reading "MIDNIGHT SUN", centered in amber lettering.';
+  const edited = { prompt: 'A poster reading "MOONRISE".', enhancedPrompt: 'A detailed poster reading "MOONRISE", centered in amber lettering.' };
+  respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify(edited) });
+  const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt({ ...value,
+    settings: { ...value.settings, enhancedPrompt }, editInstructions: 'Change the title to MOONRISE.' });
+  expect(result).toMatchObject({ ...edited, model: value.settings.model });
+  expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: value.settings.prompt, enhancedPrompt });
+  expect(respond).toHaveBeenCalledOnce();
 });

@@ -1,3 +1,4 @@
+import { enhancedPromptSettings } from '../../../shared/prompt-versions';
 import { generationSeedSchema } from '../../../shared/generation-seed';
 import { loraSettings, projectLorasSchema } from '../../../shared/loras';
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
@@ -28,6 +29,7 @@ const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uui
 const settingsSchema = z.object({
   ...videoReferenceSettings,
   ...loraSettings,
+  ...enhancedPromptSettings,
   turbo: z.boolean().optional(), seed: generationSeedSchema.optional(),
   imageReferences: imageReferencesSchema.optional(),
   keyframes: videoKeyframesSchema.optional(),

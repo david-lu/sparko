@@ -1,3 +1,4 @@
+import { promptEnhancementPatch } from '../../../shared/prompt-versions';
 import { useEffect, useRef, useState } from 'react';
 import { generationLoraInstructions } from '../../../shared/loras';
 import type { AssetGeneration } from '../../../shared/asset-generation';
@@ -27,13 +28,13 @@ export function useImagePromptEnhancement(editor: StoryEditor, generation: Asset
       const currentFrame = await capturePromptFrame(editor.player, operation.signal, workspace?.getFrameCapture());
       const images = await referenceImagePreviews(settings.references.filter(r => r.kind === 'image'), operation.signal);
       operation.signal.throwIfAborted();
-      const result = await request<{ prompt: string; model: string }>('/api/image-prompts/enhance', { method: 'POST', signal: operation.signal,
+      const result = await request<{ prompt: string; enhancedPrompt?: string; model: string }>('/api/image-prompts/enhance', { method: 'POST', signal: operation.signal,
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings, editInstructions, images, currentFrame, loraInstructions }) });
       const project = editor.projects.getSnapshot().project, current = project?.clipGenerations?.find(g => g.id === generation.id);
       if (!operation.signal.aborted && task.current === operation && project?.id === projectId && JSON.stringify(current?.settings) === fingerprint
         && current && generationLoraInstructions(current.settings, project?.loras, current.settings.model) === loraInstructions) {
         if (result.model !== settings.model || typeof result.prompt !== 'string' || !result.prompt.trim() || result.prompt.length > 8000) throw new Error('Prompt enhancement returned an invalid result.');
-        editor.clipJobs.edit(generation.id, { settings: { ...settings, prompt: result.prompt } });
+        editor.clipJobs.edit(generation.id, { settings: { ...settings, ...promptEnhancementPatch(settings, result, !!editInstructions) } });
         return { applied: true };
       }
     } catch (e) { if (!operation.signal.aborted && task.current === operation) {

@@ -149,7 +149,7 @@ test('enhancement uses the selected LoRA instructions and ignores late results a
   const enhance = async () => {
     const count = bodies.length + 1;
     await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
-    await expect(prompt).toHaveValue(`Enhanced ${count}`);
+    await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue(`Enhanced ${count}`);
     await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeEnabled();
   };
   await enhance(); expect(bodies.at(-1)).toMatchObject({ prompt: 'She waves.', loraInstructions: 'Name Sema in the prompt.' });

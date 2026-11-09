@@ -140,3 +140,18 @@ describe('prompt enhancement references', () => {
     expect(request).not.toHaveBeenCalled();
   });
 });
+
+
+it('edits and restores Picture numbering in both prompts, while Enhance reads only the original', async () => {
+  const selected = { ...item, prompt: 'Wave like <Picture 2>.', enhancedPrompt: '[Shot 1] Wave like <Picture 2>, holding the pose.', imageReferences: [
+    { assetId: '11111111-1111-4111-8111-111111111111', name: 'Off', enabled: false },
+    { assetId: '22222222-2222-4222-8222-222222222222', name: 'Pose' },
+  ] };
+  vi.mocked(request).mockResolvedValue({ prompt: 'Smile like <Picture 1>.', enhancedPrompt: '[Shot 1] Smile like <Picture 1>, holding the pose.', model: 'test' });
+  const result = await enhancePrompt(selected, 'interstitial', undefined, null, null, new AbortController().signal, { editInstructions: 'Smile instead.' });
+  expect(body()).toMatchObject({ prompt: 'Wave like <Picture 1>.', enhancedPrompt: '[Shot 1] Wave like <Picture 1>, holding the pose.' });
+  expect(result).toMatchObject({ prompt: 'Smile like <Picture 2>.', enhancedPrompt: '[Shot 1] Smile like <Picture 2>, holding the pose.' });
+  vi.mocked(request).mockClear();
+  await enhancePrompt(selected, 'interstitial', undefined, null, null, new AbortController().signal);
+  expect(body()).not.toHaveProperty('enhancedPrompt');
+});

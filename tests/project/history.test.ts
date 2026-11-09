@@ -104,3 +104,19 @@ describe('project edit history', () => {
     history.commit('undo'); expect(history.target('redo')!.subtitle?.assetId).toBe('captions');
   });
 });
+
+
+it('undoes both prompt versions together and clears enhancement when undoing its creation', () => {
+  const history = new ProjectHistory(), start = project();
+  start.interstitials[0].prompt = 'Original';
+  const enhanced = structuredClone(start);
+  Object.assign(enhanced.interstitials[0], { enhancedPrompt: 'Detailed original', enhancedPromptStale: false, useEnhancedPrompt: true });
+  history.record(start, enhanced, 0);
+  expect(history.target('undo')?.interstitials[0]).toMatchObject({ prompt: 'Original', enhancedPrompt: '', useEnhancedPrompt: false });
+  const edited = structuredClone(enhanced);
+  Object.assign(edited.interstitials[0], { prompt: 'Edited', enhancedPrompt: 'Detailed edit' });
+  history.record(enhanced, edited, 100);
+  expect(history.target('undo')?.interstitials[0]).toMatchObject({ prompt: 'Original', enhancedPrompt: 'Detailed original', useEnhancedPrompt: true });
+  history.commit('undo');
+  expect(history.target('redo')?.interstitials[0]).toMatchObject({ prompt: 'Edited', enhancedPrompt: 'Detailed edit', useEnhancedPrompt: true });
+});

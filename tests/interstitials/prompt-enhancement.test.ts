@@ -70,7 +70,7 @@ describe('interstitial prompt enhancement', () => {
     expect(correction.rewriteCorrection.validationError).toContain('scripted dialogue');
     expect(correction.draft).toBe(input.prompt);
   });
-  it.each([undefined, 'Keep the same question, but sound more excited.'])('uses the actual generated window for enhancement and editing: %s', async editInstructions => {
+  it('uses the actual generated window for enhancement', async () => {
     const referenceTiming = { prefixFrames: 39, suffixFrames: 39 }, timeline = promptTimeline(6, referenceTiming);
     const plan = { requiredDuration: 3, opening: 'Static camera; one uninterrupted shot.', beats: [
       { start: 0, end: 3, action: 'She stands in place.', speech: { line: 0, delivery: 'S1 asks clearly' } },
@@ -81,7 +81,7 @@ describe('interstitial prompt enhancement', () => {
     const referenceAudioMask = defaultMaskCurve(1.625, 1.625, 250);
     const referenceDescriptions = [{ side: 'start' as const, frames: 39, description: '0–1.583s: She says "Already spoken" and lowers the bowl over music. 1.583–1.625s: still image, silent.' },
       { side: 'end' as const, frames: 39, description: '0–1.625s: Hands at waist, silent.' }];
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, referenceTiming, referenceDescriptions, referenceAudioMask, editInstructions });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, referenceTiming, referenceDescriptions, referenceAudioMask });
     expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ duration: 148 / 24, timeline });
     expect(result.prompt).toContain('opening reference footage and audio occupy 0 to 1.625 seconds');
     expect(result.prompt).toContain('ending reference footage and audio occupy 7.792 to 9.417 seconds');
@@ -111,14 +111,48 @@ describe('interstitial prompt enhancement', () => {
     { editInstructions: 'Replace the question with "Ready?".', action: 'She asks <d>[English] Ready?</d>.' },
     { editInstructions: 'Remove the spoken question and have her nod silently.', action: 'She nods silently.' },
   ])('applies a targeted edit without requiring the previous dialogue: $editInstructions', async ({ editInstructions, action }) => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(action) }) });
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: action }) });
     const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, editInstructions, dialogue: 'What is 2 + 2?' });
-    expect(result.prompt).toContain(action);
+    expect(result.prompt).toBe(action);
     expect(result.prompt).not.toContain('What is 2 + 2?');
-    expect(result.prompt).toContain('Lighting and color MUST NOT CHANGE.');
     const options = respond.mock.calls[0][0];
-    expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ draft: input.prompt, editInstructions, requiredDialogue: [] });
+    expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ draft: input.prompt, editInstructions });
     expect(options.instructions).toContain('This is a targeted edit, not a general enhancement.');
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it('edits a two-shot visual description without sound fields or a separate timing plan', async () => {
+    const prompt = 'integrated_multimodal_description: [Shot 1] Static camera until the requested cut. The boy types while saying <d>[English] with a mega remote control</d> '
+      + '[Shot 2] At 00:01.650, the camera cuts to the laboratory table, matching <Picture 1>. The girl asks <d>[English] What should we add?</d> '
+      + 'Around 7.95 seconds she lifts a prop and asks <d>[English] This one?</d> She settles by 13 seconds. Use smooth motion with no cuts or position jumps.';
+    const editInstructions = 'Keep the requested cut at 1.650 seconds. Remove the contradictory no-cuts restriction; preserve the dialogue and timing.';
+    const edited = prompt.replace('with no cuts or position jumps', 'with no position jumps within each shot');
+    const referenceTiming = { prefixFrames: 39, suffixFrames: 39 }, keyframes = [{ frame: 48, image: 'data:image/jpeg;base64,Yg==' }];
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: edited }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt, duration: 13, editInstructions, referenceTiming, keyframes,
+      imageReferences: ['data:image/jpeg;base64,YQ=='], continuity: 'Keep the same characters.', currentFrame: 'data:image/jpeg;base64,Yw==' });
+    expect(result.prompt).toBe(edited);
+    expect(result.prompt).not.toContain('overall_soundscape:');
+    expect(respond).toHaveBeenCalledOnce();
+    const [options, request] = respond.mock.calls[0], content = options.input[0].content;
+    expect(options.text.format.name).toBe('edited_prompt');
+    expect(JSON.parse(content[0].text)).toMatchObject({ draft: prompt, editInstructions, context: { duration: 13, referenceTiming, continuity: 'Keep the same characters.' } });
+    expect(content).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'input_image', image_url: keyframes[0].image }),
+      expect.objectContaining({ type: 'input_text', text: expect.stringContaining('3.625 seconds on the full-video clock') }),
+      expect.objectContaining({ type: 'input_text', text: 'H3 image reference <Picture 1>' }),
+      expect.objectContaining({ type: 'input_image', image_url: 'data:image/jpeg;base64,Yw==' }),
+    ]));
+    expect(request.signal).toBe(input.signal);
+  });
+  it.each(['interstitial', 'idle', 'continuity'] as const)('edits %s text without stripping or appending enhancement defaults', async kind => {
+    const prompt = `Use a fixed camera and cool lighting. ${lightingColorContinuity}`;
+    const edited = 'The camera follows the character into warmer evening light.';
+    const editInstructions = 'Follow the character with the camera and use warmer evening light. Remove conflicting camera and lighting restrictions.';
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: edited }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt, editInstructions,
+      kind: kind === 'continuity' ? 'call' : kind, target: kind === 'continuity' ? 'continuity' : undefined });
+    expect(result.prompt).toBe(edited);
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).draft).toBe(prompt);
     expect(respond).toHaveBeenCalledOnce();
   });
   it('enhances a simple brief without requiring an existing storyboard', async () => {
@@ -663,4 +697,18 @@ describe('prompt enhancement API', () => {
     configured.openai = true; vi.stubEnv('APP_PASSWORD', 'workspace-secret'); await send(body).expect(401);
     expect(enhancePrompt).not.toHaveBeenCalled();
   });
+});
+
+
+it('passes both versions through the video edit route without requiring shot, sound or timing sections', async () => {
+  const edited = { prompt: 'She waves in warm evening light.', enhancedPrompt: '[Shot 1] Static camera; she waves. [Shot 2] Cut to the garden in warm evening light.' };
+  respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify(edited) });
+  const app = express();
+  app.use(protectRequests, express.json()); addPromptEnhancementRoutes(app, createProviders({ OPENAI_API_KEY: 'test' })); app.use(errorHandler);
+  const enhancedPrompt = '[Shot 1] Static camera; she waves. [Shot 2] Cut to the garden in daylight.';
+  const result = await request(app).post('/api/interstitials/enhance-prompt').set('x-sparko-request', '1')
+    .send({ ...input, prompt: 'She waves in daylight.', enhancedPrompt, editInstructions: 'Change daylight to warm evening light.' }).expect(200);
+  expect(result.body).toEqual({ ...edited, model: AI_MODELS.promptEnhancement });
+  expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: 'She waves in daylight.', enhancedPrompt });
+  expect(respond).toHaveBeenCalledOnce();
 });

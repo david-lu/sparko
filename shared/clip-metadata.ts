@@ -1,3 +1,4 @@
+import { enhancedPromptSettings } from './prompt-versions.js';
 import { generationSeedSchema } from './generation-seed.js';
 import { loraSettings } from './loras.js';
 import { z } from 'zod';
@@ -17,6 +18,7 @@ const range = z.object({ inFrame: frame, outFrame: frame }).refine(v => v.outFra
 export const clipSettingsSchema = z.object({
   ...videoReferenceSettings,
   ...loraSettings,
+  ...enhancedPromptSettings,
   turbo: z.boolean().optional(), seed: generationSeedSchema.optional(),
   imageReferences: imageReferencesSchema.optional(),
   keyframes: videoKeyframesSchema.optional(),

@@ -173,7 +173,7 @@ for (const kind of ['video', 'image'] as const) for (const width of [1440, 390])
   await expect(prompt).toHaveValue('Keep the current scene and add a bird.');
   expect(requests).toBe(0);
   await enhance.click();
-  await expect(prompt).toHaveValue('A bird in the current scene.');
+  await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue('A bird in the current scene.');
   expect(requests).toBe(1); expect(await positions()).toEqual(before);
   expect(body.currentFrame).toMatch(/^data:image\/jpeg;base64,/);
   expect(body.currentFrame.length).toBeLessThanOrEqual(32_000);
