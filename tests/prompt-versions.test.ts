@@ -15,7 +15,7 @@ describe('separate prompt versions', () => {
     expect({ ...original, ...promptEnhancementPatch(original, { prompt: pair.enhancedPrompt }, false) }).toEqual({ ...pair, enhancedPromptStale: false });
     expect(promptEnhancementPatch(pair, { prompt: 'A garden.', enhancedPrompt: 'A sunny garden.' }, true)).toEqual({ prompt: 'A garden.', enhancedPrompt: 'A sunny garden.', enhancedPromptStale: false });
   });
-  it.each([undefined, '', ' ', 'x'.repeat(8001)])('keeps both old versions when the downstream edit is invalid: %s', enhancedPrompt => {
+  it.each([undefined, '', ' '])('keeps both old versions when the downstream edit is invalid: %s', enhancedPrompt => {
     expect(() => promptEnhancementPatch(pair, { prompt: 'A garden.', enhancedPrompt }, true)).toThrow('both complete prompts');
   });
   it('invalidates a downstream prompt after manual edits, but accepts an explicit paired edit', () => {

@@ -24,6 +24,7 @@ import { storyDependency } from '../story-flow/dependencies';
 import { captureClipOrigin } from './clipMetadata';
 import { readClipMetadata, writeClipMetadata } from '../../media/clipMetadata';
 import { defaultTurboEnabled } from '../../shared/preferences';
+import { PromptEnhancementTasks } from './PromptEnhancementTasks';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null; sequence: GenerationSequence | null };
 const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -34,6 +35,7 @@ const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
 
 /** Owns persisted drafts and independently cancellable generation jobs, outside React. */
 export class InterstitialController {
+  readonly promptEnhancements = new PromptEnhancementTasks();
   private story?: {graph:StoryGraph;assetId:string;duration:number};
   generationItem(item: Interstitial) { return this.story ? storyGenerationItem(item, this.story.graph.nodes.find(node => node.interstitialId === item.id)) : item; }
   setStoryGraph(graph:StoryGraph|undefined,assetId='',duration=0) { this.story=graph?{graph,assetId,duration}:undefined;if(graph)this.linkedDurationIds=[]; }
@@ -461,6 +463,7 @@ export class InterstitialController {
     this.update({ items: edits.map(edit => ({ ...this.retained.get(edit.id)!, ...edit, seed: edit.seed })), selectedId, error: null }, true);
   }
   dispose() {
+    this.promptEnhancements.dispose();
     this.sequenceOperation?.abort(); this.sequenceOperation = undefined;
     this.tasks.forEach(task => task.abort()); this.tasks.clear(); this.cancelling.clear();
   }

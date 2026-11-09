@@ -4,7 +4,8 @@ import { Pencil, Sparkles, X } from 'lucide-react';
 import { PROMPT_EDIT_MAX_LENGTH } from '../../../shared/constants';
 import ModalBackdrop from '../../shared/ModalBackdrop';
 
-export type PromptEditResult = { applied: boolean; error?: string };
+import type { PromptEditResult } from './PromptEnhancementTasks';
+export type { PromptEditResult } from './PromptEnhancementTasks';
 
 export default function EnhancePromptActions({ promptId, enhancing, analyzing = false, enabled, connected, onEnhance, onEdit, onCancel, description, unavailableReason, editsBoth = false }: {
   promptId: string; enhancing: boolean; enabled: boolean; connected: boolean; onEnhance: () => void; onEdit: (instructions: string) => Promise<PromptEditResult>; onCancel: () => void; description?: string; unavailableReason?: string;

@@ -18,10 +18,9 @@ describe('general prompt editing', () => {
     { status: 'incomplete', output_text: '{"prompt":"truncated' },
     { status: 'completed', output_text: 'not JSON' },
     { status: 'completed', output_text: '{"prompt":" "}' },
-    { status: 'completed', output_text: JSON.stringify({ prompt: 'x'.repeat(7001) }) },
   ])('keeps invalid or incomplete provider output out of the draft: %j', async response => {
     respond.mockResolvedValue(response);
-    await expect(editPromptText(openai, input)).rejects.toMatchObject({ status: 502, message: expect.stringContaining('Your draft has been kept') });
+    await expect(editPromptText(openai, input)).rejects.toMatchObject({ status: 502, message: expect.stringContaining('Your prompts have been kept') });
   });
   it('discards a result returned after cancellation', async () => {
     const operation = new AbortController();
@@ -31,7 +30,7 @@ describe('general prompt editing', () => {
   });
   it('sanitizes connection failures without retrying them', async () => {
     respond.mockRejectedValue(new Error('private provider data'));
-    await expect(editPromptText(openai, input)).rejects.toMatchObject({ status: 502, message: 'Unable to edit the prompt. Check the OpenAI connection and try again.' });
+    await expect(editPromptText(openai, input)).rejects.toMatchObject({ status: 502, message: 'Unable to reach OpenAI. Check the connection and try again.' });
     expect(respond).toHaveBeenCalledOnce();
   });
 });
@@ -49,7 +48,7 @@ describe('synchronized prompt editing', () => {
     expect(options.text.format.schema.required).toEqual(['prompt', 'enhancedPrompt']);
     expect(options.instructions).toContain('Apply the requested edit to BOTH');
   });
-  it.each([undefined, '', ' ', 'x'.repeat(7001)])('rejects the entire edit if the downstream result is invalid: %s', async enhancedPrompt => {
+  it.each([undefined, '', ' '])('rejects the entire edit if the downstream result is invalid: %s', async enhancedPrompt => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'Valid original edit', enhancedPrompt }) });
     await expect(editPromptText(openai, pair)).rejects.toMatchObject({ status: 502 });
   });

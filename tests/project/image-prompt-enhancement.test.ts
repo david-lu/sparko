@@ -42,7 +42,7 @@ describe('model-specific image prompt enhancement', () => {
     const currentFrame = 'data:image/jpeg;base64,Yw==', value = input();
     await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt({ ...value, currentFrame });
     const args = respond.mock.calls[0][0], content = args.input[0].content;
-    expect(JSON.parse(content[0].text)).toMatchObject({ mode: 'text-to-image', references: [] });
+    expect(JSON.parse(content[0].text)).toMatchObject({ context: { references: [] } });
     expect(content.slice(1)).toEqual([
       { type: 'input_text', text: 'Current player frame (scene context only):' },
       { type: 'input_image', image_url: currentFrame, detail: 'low' },
@@ -53,20 +53,19 @@ describe('model-specific image prompt enhancement', () => {
     const enhance = createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt;
     await enhance({ ...input(), loraInstructions: 'Include the exact trigger Sema.' });
     const args = respond.mock.calls[0][0];
-    expect(JSON.parse(args.input[0].content[0].text)).toMatchObject({ draft: prompt, loraInstructions: 'Include the exact trigger Sema.' });
-    expect(args.instructions).toContain('Preserve exact trigger words');
+    expect(JSON.parse(args.input[0].content[0].text)).toMatchObject({ draft: prompt, context: { loraInstructions: 'Include the exact trigger Sema.' } });
+    expect(args.instructions).toContain('LoRA trigger words');
     respond.mockClear();
     await expect(enhance({ ...input(), loraInstructions: 'x'.repeat(4001) })).rejects.toThrow();
     expect(respond).not.toHaveBeenCalled();
   });
   it.each(ASSET_MODELS.filter(m => m.kind === 'image'))('uses the official guide for $name', async model => {
     const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(input(model.id));
-    expect(result).toEqual({ prompt: `${prompt} ${lightingColorContinuity}`, model: model.id, guideUrl: IMAGE_PROMPT_GUIDES[model.id].url });
+    expect(result).toEqual({ prompt, model: model.id, guideUrl: IMAGE_PROMPT_GUIDES[model.id].url });
     const args = respond.mock.calls[0][0];
     expect(args.instructions).toContain(IMAGE_PROMPT_GUIDES[model.id].rules);
     expect(args.instructions).toContain(model.name); expect(args.store).toBe(false);
-    expect(args.instructions).toContain(lightingColorContinuity);
-    expect(args.instructions).toContain('Use the current player frame as the lighting and color baseline');
+    expect(args.instructions).toContain('Preserve established lighting and colors unless the user requests a change');
     expect(args.instructions).not.toContain('integrated_multimodal_description');
     expect(args.input[0].content[0].text).toContain('MIDNIGHT SUN');
   });
@@ -78,7 +77,7 @@ describe('model-specific image prompt enhancement', () => {
     expect(args.input[0].content.slice(3)).toEqual(value.images.flatMap((image_url, i) => [{ type: 'input_text', text: `Image ${i + 1}` }, { type: 'input_image', image_url, detail: 'low' }]));
     expect(options.signal).toBe(value.signal);
   });
-  it('keeps the lighting/color lock exactly once when enhancing again', async () => {
+  it('returns the AI text unchanged when enhancing again', async () => {
     const enhance = createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt;
     const first = await enhance(input());
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: first.prompt }) });
@@ -95,20 +94,20 @@ describe('model-specific image prompt enhancement', () => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: '```text\n' + repaired + '\n```' }) });
     const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(value);
     const args = respond.mock.calls[0][0];
-    expect(JSON.parse(args.input[0].content[0].text)).toMatchObject({ draft, aspectRatio: '1:1' });
-    expect(args.instructions).toContain('Apply explicit corrections to earlier prose.');
-    expect(result.prompt).toBe(`${repaired} ${lightingColorContinuity}`);
+    expect(JSON.parse(args.input[0].content[0].text)).toMatchObject({ draft: value.settings.prompt, context: { aspectRatio: '1:1' } });
+    expect(args.instructions).toContain('Explicit corrections take precedence');
+    expect(result.prompt).toBe('```text\n' + repaired + '\n```');
     expect(respond).toHaveBeenCalledOnce();
   });
-  it('reserves room for the lighting/color lock within the image prompt limit', async () => {
+  it('gives the AI a character budget without appending text or enforcing a second content limit', async () => {
     const enhance = createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt;
     await enhance(input());
     const limit = respond.mock.calls[0][0].text.format.schema.properties.prompt.maxLength;
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'x'.repeat(limit) }) });
     const result = await enhance(input());
-    expect(result.prompt).toHaveLength(8000); expect(result.prompt).toMatch(/Lighting and color MUST NOT CHANGE\./);
+    expect(result.prompt).toBe('x'.repeat(8000));
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'x'.repeat(limit + 1) }) });
-    await expect(enhance(input())).rejects.toMatchObject({ status: 502 });
+    expect((await enhance(input())).prompt).toBe('x'.repeat(limit + 1));
   });
   it.each([{ status: 'incomplete', output_text: '{}' }, { status: 'completed', output_text: 'not JSON' }, { status: 'completed', output_text: '{"prompt":""}' }])('rejects unusable provider output', async response => {
     respond.mockResolvedValue(response);
@@ -116,7 +115,7 @@ describe('model-specific image prompt enhancement', () => {
   });
   it('sanitizes provider errors', async () => {
     respond.mockRejectedValue(new Error('provider secret'));
-    await expect(createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(input())).rejects.toMatchObject({ status: 502, message: 'Unable to enhance the image prompt. Check the OpenAI connection and try again.' });
+    await expect(createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(input())).rejects.toMatchObject({ status: 502, message: 'Unable to reach OpenAI. Check the connection and try again.' });
   });
   it.each([
     { upstreamStatus: 401, status: 502, error: 'The provider rejected the API key or model access. Check your .env configuration.' },
@@ -145,7 +144,7 @@ describe('model-specific image prompt enhancement', () => {
     }
     await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send({ ...body, settings: { ...body.settings, prompt: ' ' } }).expect(400);
     expect(respond).not.toHaveBeenCalled();
-    await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send(body).expect(200, { prompt: `${prompt} ${lightingColorContinuity}`, model: body.settings.model, guideUrl: IMAGE_PROMPT_GUIDES[body.settings.model].url });
+    await request(app).post('/api/image-prompts/enhance').set('x-sparko-request', '1').send(body).expect(200, { prompt, model: body.settings.model, guideUrl: IMAGE_PROMPT_GUIDES[body.settings.model].url });
   });
   it('enhances a draft even when its generation settings need correction', async () => {
     const value = input();
@@ -153,7 +152,7 @@ describe('model-specific image prompt enhancement', () => {
     value.settings.count = 2; value.settings.resolution = '2K';
     value.settings.references = [{ assetId: crypto.randomUUID(), name: 'Audio context', kind: 'audio' }];
     const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(value);
-    expect(result.prompt).toBe(`${prompt} ${lightingColorContinuity}`);
+    expect(result.prompt).toBe(prompt);
     expect(respond).toHaveBeenCalledTimes(1);
     expect(respond.mock.calls[0][0].instructions).toContain('never invent their contents');
   });

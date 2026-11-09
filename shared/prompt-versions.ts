@@ -28,9 +28,9 @@ export function promptSettingsPatch<T extends PromptVersions>(current: T, patch:
   return patch;
 }
 
-/** Validate the complete response before changing either field. */
+/** Require both response fields before applying a paired edit; do not judge their content. */
 export function promptEnhancementPatch(current: PromptVersions, result: { prompt: string; enhancedPrompt?: string }, editing: boolean): Partial<PromptVersions> {
-  const valid = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && value.length <= 8000;
+  const valid = (value: unknown): value is string => typeof value === 'string' && !!value.trim();
   if (!valid(result.prompt) || (editing && current.enhancedPrompt?.trim() && !valid(result.enhancedPrompt))) {
     throw new Error('The edit did not return both complete prompts. Your prompts have been kept. Try again.');
   }
