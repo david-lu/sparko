@@ -1,4 +1,5 @@
 import { useRef, useState, type PointerEvent, type RefObject } from 'react';
+import { previewFrameAtPoint } from './generation-preview';
 
 /** One coordinate system for the ruler, footage and empty tracks, including at zoom. */
 export function useTimelineScrub({ track, frames, frame, onSeek }: {
@@ -8,7 +9,7 @@ export function useTimelineScrub({ track, frames, frame, onSeek }: {
   const [active, setActive] = useState(false);
   const seek = (event: PointerEvent<HTMLElement>) => {
     const box = track.current?.getBoundingClientRect();
-    if (box?.width) onSeek(Math.max(0, Math.min(frames - 1, Math.round((event.clientX - box.left) / box.width * frames))));
+    if (box) onSeek(previewFrameAtPoint(event.clientX, box.left, box.width, frames, frame));
   };
   const finish = (cancel = false) => {
     const current = gesture.current; gesture.current = undefined; setActive(false);

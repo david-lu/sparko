@@ -7,7 +7,7 @@ async function openAudioVideo(page: Page) {
     const { ensureAac } = await import('/src/media/media.ts' as string); await ensureAac();
     const canvas = new OffscreenCanvas(160, 90); canvas.getContext('2d')!.fillRect(0, 0, 160, 90);
     const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat() });
-    const video = new CanvasSource(canvas, { codec: 'avc', bitrate: 100_000 }), audio = new AudioBufferSource({ codec: 'aac', bitrate: 128_000 });
+    const video = new CanvasSource(canvas, { codec: 'avc', fullCodecString: 'avc1.42001e', bitrate: 100_000 }), audio = new AudioBufferSource({ codec: 'aac', bitrate: 128_000 });
     output.addVideoTrack(video, { frameRate: 24 }); output.addAudioTrack(audio); await output.start();
     const buffer = new AudioBuffer({ numberOfChannels: 1, sampleRate: 48000, length: 4 * 48000 });
     const samples = buffer.getChannelData(0);

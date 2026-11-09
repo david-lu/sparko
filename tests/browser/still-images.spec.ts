@@ -253,7 +253,13 @@ for (const width of [1440, 390]) test(`image keyframe positions and methods stay
   const frames = (await readProject(page)).interstitials[0].keyframes;
   expect(frames).toMatchObject([{ frame: 1, image: { name: 'First.png' } }, { frame: 48, method: 'frame', image: { name: 'Second.png' } }]);
   await closeGenerationTimeline(page); await saveAndReopen(page);
-  expect((await readProject(page)).interstitials[0].keyframes).toEqual(frames);
+  const restored = (await readProject(page)).interstitials[0].keyframes;
+  expect(restored).toMatchObject(frames.map(({ image, ...frame }: any) => ({ ...frame, image: { name: image.name } })));
+  expect(await page.evaluate(async () => {
+    const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
+    const frames = (await readActiveProject()).interstitials[0].keyframes;
+    return Promise.all(frames.map(async (frame: any) => (await readAsset(frame.image.assetId))?.blob.size > 0));
+  })).toEqual([true, true]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
 

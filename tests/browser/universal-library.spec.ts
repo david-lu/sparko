@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { openGenerationTimeline, test, expect, openVideo, dragIntoView, addDraft, readProject, saveAndReopen, type Page } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, showImageReferences, test, expect, openVideo, dragIntoView, addDraft, readProject, saveAndReopen, type Page } from './fixtures';
 
 async function create(page: Page, kind: 'Image' | 'Audio') {
   await page.getByRole('button',{name:`Add ${kind.toLowerCase()}`,exact:true}).press('Enter');
@@ -33,6 +33,7 @@ test('deleting referenced media shows missing inputs, supports undo and survives
   await expect(page.getByRole('menu', { name: 'Library actions', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await addDraft(page, 'Character scene');
+  await showImageReferences(page);
   await dragIntoView(page, asset, page.getByRole('group', { name: 'Image references', exact: true }));
   await expect(page.getByRole('button', { name: 'Remove Picture 1', exact: true })).toBeVisible();
   await asset.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Delete asset…', exact: true }).click();
@@ -41,7 +42,7 @@ test('deleting referenced media shows missing inputs, supports undo and survives
   await expect(dialog.getByRole('button', { name: 'Delete asset', exact: true })).toBeEnabled();
   await dialog.getByRole('button', { name: 'Delete asset', exact: true }).click();
   await expect(asset).toHaveCount(0); await expect(page.locator('.story-clip')).toHaveCount(2);
-  await page.locator('.story-clip.type-simple .story-clip-title').click();
+  await closeGenerationTimeline(page);await page.locator('.story-clip.type-simple .story-clip-title').click();await showImageReferences(page);
   await page.getByRole('button', { name: 'Picture 1 errors', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Picture 1 errors', exact: true })).toContainText('Character.png');
   await expect(page.getByRole('dialog', { name: 'Picture 1 errors', exact: true })).toContainText('deleted');
@@ -49,9 +50,10 @@ test('deleting referenced media shows missing inputs, supports undo and survives
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(asset).toBeVisible();
   await expect(page.getByRole('button', { name: 'Picture 1 errors', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(asset).toHaveCount(0);
-  await saveAndReopen(page);
+  await closeGenerationTimeline(page);await saveAndReopen(page);
   await expect(asset).toHaveCount(0);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
+  await showImageReferences(page);
   await expect(page.getByRole('button', { name: 'Picture 1 errors', exact: true })).toBeVisible();
 });
 

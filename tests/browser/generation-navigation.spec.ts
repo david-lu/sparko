@@ -64,15 +64,55 @@ for (const width of [1440, 390]) test(`footage and zoomed ruler scrub precisely 
   await page.screenshot({ path: `test-results/generation-navigation-${width}.png` });
 });
 
+for (const width of [1440, 390]) test(`scrubbing keeps the chosen mode and input gaps stay black with a saved result at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 }); await open(page, true);
+  const region = editor(page), input = region.getByRole('button', { name: 'Input', exact: true }), generated = region.getByRole('button', { name: 'Generated', exact: true });
+  const screen = region.locator('.generation-player-screen'), ruler = region.getByRole('slider', { name: 'Timeline ruler', exact: true });
+  const waveform = region.getByRole('slider', { name: 'Audio waveform playhead', exact: true });
+  const body = region.getByRole('button', { name: 'Preview generated section', exact: true });
+  const before = await readProject(page);
+  await region.locator('.generation-reference-segment').first().click();
+  await expect(screen.locator('video')).toBeVisible();
+  await body.click();
+  await expect(input).toHaveAttribute('aria-pressed', 'true');
+  await expect(screen).toHaveAttribute('data-empty', 'true');
+  await expect(screen.locator('video,img')).toHaveCount(0); await expect(screen).toHaveText('');
+  await expect(screen).toHaveCSS('background-color', 'rgb(0, 0, 0)');
+  await body.press('Enter'); await expect(playhead(page)).toHaveValue('39');
+  await expect(screen).toHaveAttribute('data-empty', 'true');
+  await region.getByRole('button', { name: 'Play timeline', exact: true }).click();
+  await expect.poll(async () => Number(await playhead(page).inputValue())).toBeGreaterThan(44);
+  await expect(input).toHaveAttribute('aria-pressed', 'true'); await expect(screen.locator('video,img')).toHaveCount(0);
+  await region.getByRole('button', { name: 'Pause timeline', exact: true }).click();
+  await generated.click();
+  await expect(ruler).toHaveAttribute('aria-valuemax', '95'); await expect(waveform).toHaveAttribute('aria-valuemax', '95');
+  await ruler.press('End'); await expect(playhead(page)).toHaveValue('95');
+  await region.locator('.generation-reference-segment').first().click();
+  await expect(generated).toHaveAttribute('aria-pressed', 'true');
+  await expect(screen.locator('video')).toBeVisible();
+  await input.click(); await expect(ruler).toHaveAttribute('aria-valuemax', '225');
+  const from = (await region.locator('.generation-reference-segment').first().boundingBox())!, to = (await body.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + 12); await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + 12, { steps: 8 });
+  await expect(screen).toHaveAttribute('data-empty', 'true'); await expect(input).toHaveAttribute('aria-pressed', 'true');
+  await page.mouse.up();
+  expect((await readProject(page)).interstitials).toEqual(before.interstitials);
+  await page.screenshot({ path: `test-results/generation-input-gap-${width}.png` });
+});
+
 test('selection shows the right media and timing edits follow the selected input', async ({ page }) => {
   await open(page, true); const region = editor(page);
   const body = region.getByRole('button', { name: 'Preview generated section', exact: true }), box = (await body.boundingBox())!;
   await body.click({ position: { x: box.width * .25, y: 20 } });
-  await expect(region.getByRole('button', { name: 'Generated', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(region.getByRole('button', { name: 'Input', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(region.locator('.generation-player-screen')).toHaveAttribute('data-empty', 'true');
   expect(Math.abs(Number(await playhead(page).inputValue()) - 76)).toBeLessThanOrEqual(1);
-  await body.click({ position: { x: box.width * .9, y: 20 } });
+  await region.getByRole('button', { name: 'Generated', exact: true }).click();
+  await region.getByRole('slider', { name: 'Timeline ruler', exact: true }).press('End');
   await expect(playhead(page)).toHaveValue('95'); // Saved video is shorter than the edited input timeline.
   await region.locator('.generation-reference-segment').first().click();
+  await expect(region.getByRole('button', { name: 'Generated', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await region.getByRole('button', { name: 'Input', exact: true }).click();
   await expect(region.getByRole('button', { name: 'Input', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
   await region.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
@@ -97,7 +137,7 @@ test('selection shows the right media and timing edits follow the selected input
   await region.getByLabel('Video timeline time', { exact: true }).fill('4');
   await expect(playhead(page)).toHaveValue('96');
   await region.getByRole('button', { name: 'Generated', exact: true }).click();
-  await region.getByRole('button', { name: 'Select timeline video 1', exact: true }).click();
+  await region.getByLabel('Selected generation input', { exact: true }).selectOption({ label: 'Video 1 · interstitial-reference.mp4' });
   await expect(region.getByRole('button', { name: 'Input', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(playhead(page)).toHaveValue('96');
   await region.getByRole('button', { name: 'Close generation timeline', exact: true }).click();

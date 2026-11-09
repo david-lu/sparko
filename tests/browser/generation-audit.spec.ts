@@ -111,3 +111,33 @@ test('nearby image keyframes can each be selected without zooming', async ({ pag
   await menu.getByRole('menuitem').last().click();
   await expect(timeline(page).getByLabel('Keyframe frame', { exact: true })).toHaveValue('88');
 });
+
+for (const cancel of ['pointercancel', 'lostpointercapture']) test(`image drag previews its tentative frame and ${cancel} restores the playhead`, async ({ page }) => {
+  await open(page); const region = timeline(page);
+  await region.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
+  await region.getByLabel('Upload Keyframe image', { exact: true }).setInputFiles('src/app/tutorial/images/save.png');
+  await expect(region.getByRole('group', { name: 'Keyframe image', exact: true })).toHaveAttribute('aria-busy', 'false');
+  const marker = region.getByRole('button', { name: 'Select image keyframe 1', exact: true });
+  const before = (await readProject(page)).interstitials[0].keyframes;
+  const frame = await slider(page).inputValue(); await marker.hover(); const box = (await marker.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+  await page.mouse.move(box.x + 90, box.y + box.height / 2, { steps: 6 });
+  await expect(slider(page)).not.toHaveValue(frame);
+  await expect(region.locator('.generation-player-screen img')).toBeVisible();
+  expect((await readProject(page)).interstitials[0].keyframes).toEqual(before);
+  await marker.dispatchEvent(cancel); await page.mouse.up();
+  await expect(slider(page)).toHaveValue(frame);
+  expect((await readProject(page)).interstitials[0].keyframes).toEqual(before);
+});
+
+test('editing input duration pauses the transport and clamps every input seek control', async ({ page }) => {
+  await open(page); const region = timeline(page);
+  await slider(page).press('End'); await slider(page).press('ArrowLeft');
+  await region.getByRole('button', { name: 'Play timeline', exact: true }).click();
+  await region.getByLabel('Duration', { exact: true }).fill('2');
+  await expect(region.getByRole('button', { name: 'Play timeline', exact: true })).toBeVisible();
+  const max = await slider(page).getAttribute('max');
+  await expect(region.getByRole('slider', { name: 'Timeline ruler', exact: true })).toHaveAttribute('aria-valuemax', max!);
+  await expect(region.getByRole('slider', { name: 'Audio waveform playhead', exact: true })).toHaveAttribute('aria-valuemax', max!);
+  expect(Number(await slider(page).inputValue())).toBeLessThanOrEqual(Number(max));
+});
