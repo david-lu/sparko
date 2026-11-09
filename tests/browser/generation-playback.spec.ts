@@ -35,6 +35,7 @@ for (const width of [1440, 390]) test(`generation transport stays independent an
   await expect(story).toHaveAttribute('aria-valuenow', before!);
   await editor.getByRole('button', { name: 'Pause timeline', exact: true }).click();
   await closeGenerationTimeline(page);
+  await expect(page.getByRole('button', { name: 'Edit generation timeline', exact: true })).toBeFocused();
   await expect(story).toHaveAttribute('aria-valuenow', before!);
   await fitAll(page);
   const source = page.locator('.story-clip.type-source .story-filmstrip').first();
@@ -48,6 +49,30 @@ for (const width of [1440, 390]) test(`generation transport stays independent an
   await page.getByRole('button', { name: 'Pause', exact: true }).press('Enter');
   expect((await readProject(page)).storyFlow).toEqual(project.storyFlow);
   expect((await readProject(page)).interstitials).toEqual(project.interstitials);
+});
+
+for (const width of [1440, 390]) test(`closing generation never steals the next story keyboard action at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 }); await openVideo(page); await addBridge(page);
+  await openGenerationTimeline(page);
+  const keptFocus = await page.evaluate(async () => {
+    // Delay one paint to reproduce a user focusing the story before a queued
+    // generation-editor focus restoration runs on a busy browser.
+    const request = window.requestAnimationFrame, pending: FrameRequestCallback[] = [];
+    window.requestAnimationFrame = callback => { pending.push(callback); return -pending.length; };
+    try {
+      document.querySelector<HTMLButtonElement>('.generation-return')!.click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const connection = document.querySelector<SVGElement>('.story-edge-hit')!;
+      connection.focus();
+      window.requestAnimationFrame = request;
+      for (const callback of pending) callback(performance.now());
+      return document.activeElement === connection;
+    } finally { window.requestAnimationFrame = request; }
+  });
+  expect(keptFocus).toBe(true);
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('Video crossfade duration', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Generation timeline', exact: true })).toHaveCount(0);
 });
 
 test('an interrupted media play request at zero does not cancel generation playback', async ({ page }) => {

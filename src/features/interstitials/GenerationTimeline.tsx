@@ -116,7 +116,13 @@ export default function GenerationTimeline(props: Props) {
     choose(channel);
   };
   const finishMask = () => { container.current?.focus({ preventScroll: true }); choose(previousSelection.current); requestAnimationFrame(() => restoreMask.current && maskButtons.current[restoreMask.current]?.focus({ preventScroll: true })); };
-  const close = () => { if (isMask) { finishMask(); return; } setInline(false); workspace?.close(); setMenu(undefined); setCluster(undefined); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.generation-timeline-summary')?.focus({ preventScroll: true })); };
+  const close = () => {
+    if (isMask) { finishMask(); return; }
+    // The overview remains mounted while editing. Restore focus now; a queued
+    // callback can steal the user's next story action after this view unmounts.
+    (expandButton.current ?? document.querySelector<HTMLButtonElement>('.generation-timeline-summary'))?.focus({ preventScroll: true });
+    setInline(false); workspace?.close(); setMenu(undefined); setCluster(undefined);
+  };
   const selectVideo = (id: string) => { choose('videos'); setVideoId(id); const video = videos.find(v => v.id === id); if (video) seekTo(prefixFrames + video.frame, 'input'); };
   const removeVideo = (id: string) => {
     const index = videos.findIndex(v => v.id === id), remaining = videos.filter(v => v.id !== id), next = remaining[Math.min(index, remaining.length - 1)];
