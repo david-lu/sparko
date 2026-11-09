@@ -18,6 +18,60 @@ const output = (prompt: string) => respond.mockResolvedValue({ status: 'complete
 
 // Regression: readable AI output must not be rejected by a second, code-based editor.
 describe('AI-owned prompt enhancement', () => {
+  it.each([
+    { prefixFrames: 39, suffixFrames: 39, start: '1.625', end: '7.792', total: '9.417', body: '6.167', suffix: '1.625' },
+    { prefixFrames: 39, suffixFrames: 0, start: '1.625', end: '8', total: '8', body: '6.375', suffix: '0' },
+    { prefixFrames: 0, suffixFrames: 39, start: '0', end: '6.375', total: '8', body: '6.375', suffix: '1.625' },
+    { prefixFrames: 0, suffixFrames: 0, start: '0', end: '6.583', total: '6.583', body: '6.583', suffix: '0' },
+  ])('supplies both reference boundaries to Enhance and Edit: $prefixFrames / $suffixFrames', async ({ prefixFrames, suffixFrames, start, end, total, body, suffix }) => {
+    for (const editInstructions of [undefined, 'Fix the timing and keep every spoken word.']) {
+      respond.mockClear(); output('She speaks naturally within the generated section.');
+      await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, editInstructions,
+        referenceTiming: { prefixFrames, suffixFrames }, keyframes: [{ frame: 11, image: 'data:image/jpeg;base64,YQ==' }] });
+      expect(respond).toHaveBeenCalledOnce();
+      const args = respond.mock.calls[0][0], instructions = args.instructions;
+      expect(instructions).toContain(`from ${start} to ${end} seconds`);
+      expect(instructions).toContain(`clock runs from 0 to ${body} seconds`);
+      expect(instructions).toContain(`adding ${start} seconds exactly once`);
+      expect(instructions).toContain(`end reference reserves ${suffix} seconds`);
+      if (suffixFrames) expect(instructions).toContain(`occupy ${end} to ${total} seconds`);
+      expect(instructions).toContain('already excludes BOTH reference windows');
+      expect(instructions).toContain('never a conflict report, clarification question');
+      expect(instructions).toContain('Keep the guide times and visible states fixed');
+      expect(instructions).not.toContain('report the timing conflict instead');
+      expect(JSON.parse(args.input[0].content[0].text).context.timeline).toEqual(promptTimeline(6, { prefixFrames, suffixFrames }));
+    }
+  });
+  it('gives one rewrite the clocks, early guides and padded final hold from the reported conflict', async () => {
+    const draft = 'S2 says "with a mega remote control" naturally while typing and finishes before the cut at 1.650 seconds. S1 holds a sock at generated time 13.167 and keeps it held to the end. Resolve the conflicting opening framing.';
+    output('Corrected prompt with natural speech across the required cuts and the final sock held through the section end.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 13, prompt: draft,
+      referenceTiming: { prefixFrames: 39, suffixFrames: 0 },
+      keyframes: [11, 33, 316].map(frame => ({ frame, image: 'data:image/jpeg;base64,YQ==' })) });
+    expect(respond).toHaveBeenCalledOnce();
+    const args = respond.mock.calls[0][0], instructions = args.instructions;
+    expect(instructions).toContain('from 1.625 to 15.083 seconds');
+    expect(instructions).toContain('clock runs from 0 to 13.458 seconds');
+    expect(instructions).toContain('including padding after the last timed guide');
+    expect(instructions).toContain('allow speech to continue across a necessary camera cut');
+    expect(instructions).toContain('Images and a short time budget are not evidence that a line was already spoken');
+    expect(instructions).toContain('do not ask which clock was intended');
+    expect(JSON.parse(args.input[0].content[0].text).draft).toBe(draft);
+    for (const time of ['0.458 seconds from the generated section\'s start; 2.083 seconds on the full-video clock',
+      '1.375 seconds from the generated section\'s start; 3 seconds on the full-video clock',
+      '13.167 seconds from the generated section\'s start; 14.792 seconds on the full-video clock']) {
+      expect(args.input[0].content).toContainEqual(expect.objectContaining({ type: 'input_text', text: expect.stringContaining(time) }));
+    }
+  });
+  it('includes encoded timing without footage and leaves shared briefs free of clip timing', async () => {
+    output('A corrected prompt.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, referenceFrames: [] });
+    expect(respond.mock.calls[0][0].instructions).toContain('from 0 to 6.583 seconds');
+    respond.mockClear();
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, target: 'continuity' });
+    expect(respond.mock.calls[0][0].instructions).not.toContain('generated-section clock');
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('timeline');
+  });
   it.each([undefined, 'continuity'] as const)('keeps music continuous across shots for target %s, with explicit user overrides', async target => {
     output('Keep the music continuous through the cut.');
     await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, target });

@@ -10,7 +10,7 @@ import { authenticate } from '../../hosting.js';
 import { HttpError, requireProvider } from '../../shared/http.js';
 import type { Providers } from '../../providers.js';
 import { currentFrameContent, currentFrameInstructions, currentFrameSchema } from '../../shared/prompt-frame.js';
-import { promptReferenceTimingSchema, promptReferenceDescriptionSchema, promptReferenceContext, promptTimeline } from '../../../shared/prompt-timing.js';
+import { promptReferenceTimingSchema, promptReferenceDescriptionSchema, promptReferenceContext, promptTimeline, promptTimelineDirection } from '../../../shared/prompt-timing.js';
 import { promptEditingInstructions } from '../../shared/prompt-editing.js';
 import { editPromptText, rewritePromptText } from '../../shared/prompt-editor.js';
 import { keyframeInstructions, promptKeyframeContent } from './prompt-keyframes.js';
@@ -58,6 +58,9 @@ export type PromptEnhancementProvider = (input: EnhancePromptInput) => Promise<P
 
 // Model guidance only: no parser or validator enforces these content conventions.
 const musicContinuityInstructions = 'Continue established or requested music seamlessly between shots and across clip boundaries by default. Keep the same track, rhythm and level through camera cuts; do not restart, fade out, stop or replace it at a shot change unless the user explicitly requests a music change or silence. If no music is established or requested, do not invent a soundtrack.';
+const timingRepairInstructions = `Resolve timing in one rewrite using the current render timeline and timed image guides as fixed constraints. Older draft timestamps, cut boundaries and framing instructions may be mistaken; correct that prose to fit the actual generated interval and guide compositions. Preserve the intended actions, exact spoken words, speaker identities and natural delivery. Reallocate speech and actions within the generated section; allow speech to continue across a necessary camera cut where compatible with the intended performance, instead of rushing it to fit an obsolete cut. Do not move guide frames, change the configured duration or borrow time from either reference window.
+Distinguish clocks before scheduling: explicitly generated-relative draft times need the start-reference offset; explicitly full-video times do not. For unlabelled or contradictory draft times, choose the interpretation consistent with the supplied reference observations, guide states and action order, then correct any remaining incompatible cuts. State the resulting timing directly; do not ask which clock was intended.
+Use reference descriptions to identify speech and actions already present in the opening or ending footage, so they are not repeated. Only treat requested speech as already delivered when reference audio observations or the user's explicit text establish that fact. Images and a short time budget are not evidence that a line was already spoken. Without that evidence, retain the line and repair its placement in the generated section. Keep each spoken reference to a held prop paired with the appropriate pose. Preserve requested final holds through the actual section end.`;
 const h3Instructions = `Write a usable MiniMax H3 video prompt. Use integrated_multimodal_description for the scene, camera, actions and dialogue; overall_soundscape for ambience and physical sounds; and non_diegetic_music for requested music (N/A when none). Use [Shot 1] for the opening and subsequent shot labels only for requested shot changes. Preserve event-based cuts without inventing timestamps. Scope stable framing and background directions within each shot so they do not contradict requested cuts.
 Put spoken words in <d>[English] ...</d> (or the requested language), with speaker identity and delivery outside the tags. Keep each line paired with its action; when naming a held object, keep it held until that line finishes unless another overlap was requested. Preserve natural vocal delivery, consistent voice identity and intelligibility above ambience and music. Do not invent speech or extra vocalizations. For an Idle loop, use a quiet, seamless return to the starting pose unless the user requests otherwise.
 Use the supplied reference roles, keyframes, duration and timeline to stage the scene. Reference footage is context, not extra time for new dialogue; do not repeat its speech. Keep lighting, colors, identities and movement consistent unless the user requests a change. ${musicContinuityInstructions} Include relevant shared continuity and LoRA instructions naturally, without repeating boilerplate.
@@ -69,8 +72,9 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
     if (!openai) throw new HttpError(503, 'OpenAI is not configured for prompt enhancement.');
     input.signal.throwIfAborted();
     const isContinuity = input.target === 'continuity';
-    const timeline = !isContinuity && (input.referenceTiming || input.keyframes?.length)
+    const timeline = !isContinuity
       ? promptTimeline(input.duration, input.referenceTiming ?? { prefixFrames: 0, suffixFrames: 0 }) : undefined;
+    const timingInstructions = timeline ? `${promptTimelineDirection(timeline)}\n${timingRepairInstructions}${input.keyframes?.length ? keyframeInstructions : ''}` : undefined;
     const imageGuides = input.imageGuides ?? (input.kind === 'idle' && !input.referenceFrames.length && input.imageReferences?.length ? { start: 0, end: 0 } : {});
     const context = { kind: input.kind, target: input.target, duration: timeline?.generatedDuration ?? input.duration, timeline,
       referenceTiming: input.referenceTiming, referenceContext: promptReferenceContext(input.referenceDescriptions, timeline, input.referenceAudioMask),
@@ -87,9 +91,9 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
     ];
     const maxLength = isContinuity ? maxContinuityBrief : H3_PROMPT_MAX_LENGTH;
     if (input.editInstructions) return editPromptText(openai, { draft: input.prompt, enhancedPrompt: isContinuity ? undefined : input.enhancedPrompt,
-      editInstructions: input.editInstructions, maxLength, signal: input.signal, context, content });
+      editInstructions: input.editInstructions, maxLength, signal: input.signal, context, content, contextInstructions: timingInstructions });
     return rewritePromptText(openai, { instructions: `${promptEditingInstructions}\n${isContinuity ? continuityInstructions : h3Instructions}`
-        + (input.currentFrame ? `\n${currentFrameInstructions}` : '') + (input.keyframes?.length ? keyframeInstructions : ''),
+        + (input.currentFrame ? `\n${currentFrameInstructions}` : '') + (timingInstructions ? `\n${timingInstructions}` : ''),
       data: { draft: input.prompt, context }, content, maxLength, signal: input.signal });
   };
 }

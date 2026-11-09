@@ -42,12 +42,13 @@ export async function rewritePromptText(openai: NonNullable<AIClients['openai']>
 
 export function editPromptText(openai: NonNullable<AIClients['openai']>, input: {
   draft: string; enhancedPrompt?: string; editInstructions: string; maxLength: number; signal: AbortSignal;
-  context?: Record<string, unknown>; content?: PromptContent[];
+  context?: Record<string, unknown>; content?: PromptContent[]; contextInstructions?: string;
 }) {
   const paired = !!input.enhancedPrompt?.trim();
   return rewritePromptText(openai, { maxLength: input.maxLength, signal: input.signal, content: input.content, paired,
     instructions: targetedPromptEditInstructions + (paired
-      ? '\nThe draft is the original prompt; enhancedPrompt is its downstream version. Apply the requested edit to BOTH, keeping them consistent. Return the complete edited original in prompt and the complete edited downstream version in enhancedPrompt. Preserve each version’s level of detail and unrelated content; do not copy one over the other. Reconcile outdated details in the enhanced version with the original and requested edit.' : ''),
+      ? '\nThe draft is the original prompt; enhancedPrompt is its downstream version. Apply the requested edit to BOTH, keeping them consistent. Return the complete edited original in prompt and the complete edited downstream version in enhancedPrompt. Preserve each version’s level of detail and unrelated content; do not copy one over the other. Reconcile outdated details in the enhanced version with the original and requested edit.' : '')
+      + (input.contextInstructions ? `\n${input.contextInstructions}` : ''),
     data: { draft: input.draft, ...(paired ? { enhancedPrompt: input.enhancedPrompt } : {}), editInstructions: input.editInstructions, context: input.context },
   });
 }

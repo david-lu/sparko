@@ -33,10 +33,13 @@ export function promptTimeline(duration: number, references: PromptReferenceTimi
 
 export const promptSeconds = (seconds: number) => Number(seconds.toFixed(3)).toString();
 export function promptTimelineDirection(timeline: PromptTimeline): string {
-  const { generatedStart: start, generatedEnd: end, totalDuration: total } = timeline;
-  return `All timestamps are measured from the start of the full video. New actions and scripted dialogue belong only in the generated section, from ${promptSeconds(start)} to ${promptSeconds(end)} seconds.`
+  const { generatedStart: start, generatedEnd: end, generatedDuration: duration, totalDuration: total } = timeline;
+  return `Use the supplied timeline as the authoritative render timing. In the returned prompt, express any timestamps on the full-video clock. New actions and scripted dialogue belong only in the generated section, from ${promptSeconds(start)} to ${promptSeconds(end)} seconds.`
     + (start ? ` The opening reference footage and audio occupy 0 to ${promptSeconds(start)} seconds; do not start the new scripted actions or dialogue there.` : '')
     + (end < total ? ` The ending reference footage and audio occupy ${promptSeconds(end)} to ${promptSeconds(total)} seconds; finish all new dialogue before it starts.` : '')
+    + ` The generated-section clock runs from 0 to ${promptSeconds(duration)} seconds. Convert generated-section time to full-video time by adding ${promptSeconds(start)} seconds exactly once. The end reference reserves ${promptSeconds(total - end)} seconds after generation; it does not shift the generated-section origin.`
+    + ' The generated duration already excludes BOTH reference windows and includes encoder padding. Do not subtract reference durations again or extend new action into either window. Reference images alone consume no video time.'
+    + ' Keep a requested final held pose through the actual generated-section end, including padding after the last timed guide; the last guide is not the section end.'
     + (start || end < total ? ' Keep unmasked reference content intact; allow motion and sound to blend across regeneration masks.' : '')
     + (start || end < total ? ' Do not repeat reference dialogue in the generated section. Performance and silence directions below apply only to the generated section.' : '');
 }

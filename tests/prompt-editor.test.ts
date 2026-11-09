@@ -13,6 +13,7 @@ describe('general prompt editing', () => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt }) });
     expect((await editPromptText(openai, input)).prompt).toBe(prompt);
     expect(respond).toHaveBeenCalledOnce();
+    expect(respond.mock.calls[0][0].instructions).toContain('never a conflict report, clarification question');
   });
   it.each([
     { status: 'incomplete', output_text: '{"prompt":"truncated' },
