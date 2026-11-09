@@ -17,6 +17,8 @@ test('mobile keeps tracks above properties and both masks visible without scroll
   const bounds = await timeline(page).evaluate(el => ({ tracks: el.querySelector('.generation-timeline-scroll')!.getBoundingClientRect().toJSON(), properties: el.querySelector('.generation-selection-panel')!.getBoundingClientRect().toJSON() }));
   expect(bounds.tracks.bottom).toBeLessThanOrEqual(844);
   expect(bounds.tracks.bottom).toBeLessThanOrEqual(bounds.properties.top);
+  await expect(timeline(page).getByRole('button', { name: 'Edit video mask', exact: true })).toBeInViewport();
+  await expect(timeline(page).getByRole('button', { name: 'Edit audio mask', exact: true })).toBeInViewport();
 });
 
 for (const width of [1440, 390]) test(`mask edits have explicit Apply/Cancel and Escape cancels only the mask at ${width}px`, async ({ page }) => {

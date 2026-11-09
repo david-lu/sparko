@@ -7,14 +7,18 @@ import { timelineSeconds } from './generation-timeline';
 import './video-keyframes.css';
 
 /** Properties for the selected image guide; all positioning lives in GenerationTimeline. */
-export default function VideoKeyframes({ projects, value = [], selectedId, onSelect, middleFrames, prefixFrames, onChange, onPreviewPlay }: {
+export default function VideoKeyframes({ projects, value = [], selectedId, onSelect, middleFrames, prefixFrames, onChange, onPreviewPlay, onSeek }: {
   projects: ProjectController; value?: VideoKeyframe[]; selectedId?: string; onSelect: (id: string) => void; middleFrames: number; prefixFrames: number;
   onChange: (update: (current: VideoKeyframe[]) => VideoKeyframe[]) => void; onPreviewPlay: () => void;
+  onSeek: (frame: number) => void;
 }) {
   const selected = value.find(keyframe => keyframe.id === selectedId) ?? value[0];
   const edit = (id: string, patch: Partial<VideoKeyframe>) => onChange(current => current.map(keyframe => keyframe.id === id ? { ...keyframe, ...patch } : keyframe));
   const setFrame = (id: string, frame: number) => {
-    if (Number.isFinite(frame)) edit(id, { frame: Math.max(0, Math.min(COMFY.maxFrames - 1, Math.round(frame))) });
+    if (Number.isFinite(frame)) {
+      const next = Math.max(0, Math.min(COMFY.maxFrames - 1, Math.round(frame)));
+      edit(id, { frame: next }); onSeek(prefixFrames + next);
+    }
   };
   return <div className="video-keyframes">
     {selected && <div className="video-keyframe-card" role="group" aria-label={`Image keyframe ${value.indexOf(selected) + 1}`}>
