@@ -23,14 +23,20 @@ beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
 
 describe('interstitial prompt enhancement', () => {
-  it('shows timed image anchors with both clocks in enhancement and the timing pass', async () => {
+  it.each(['none', 'timing', 'rewrite', 'both'])('retains timed image anchors through enhancement and timing corrections: %s', async correction => {
     const referenceTiming = { prefixFrames: 39, suffixFrames: 0 }, timeline = promptTimeline(6, referenceTiming);
-    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) })
-      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ requiredDuration: 3, opening: 'Static camera.', beats: [
+    const fixRewrite = correction === 'rewrite' || correction === 'both', fixTiming = correction === 'timing' || correction === 'both';
+    if (fixRewrite) respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked).replace('overall_soundscape: Quiet room tone.\n', '') }) });
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) });
+    if (fixTiming) respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ requiredDuration: 3, opening: 'Static camera.', beats: [] }) });
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ requiredDuration: 3, opening: 'Static camera.', beats: [
         { start: 0, end: Number(timeline.generatedDuration.toFixed(3)), action: 'She holds the rock at two seconds.', speech: { line: 0, delivery: 'S1 asks clearly' } },
       ] }) });
-    await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, referenceTiming, keyframes: [{ frame: 48, image: 'data:image/jpeg;base64,Yg==' }] });
-    expect(respond).toHaveBeenCalledTimes(2);
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, referenceTiming, keyframes: [{ frame: 48, image: 'data:image/jpeg;base64,Yg==' }] });
+    expect(result.prompt).toContain('From 1.625 to 8 seconds:');
+    expect(result.prompt).toContain('<d>[English] What is 2 + 2?</d>');
+    expect(respond).toHaveBeenCalledTimes(2 + Number(fixRewrite) + Number(fixTiming));
+    if (fixRewrite) expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).rewriteCorrection.validationError).toContain('overall_soundscape');
     for (const [call] of respond.mock.calls) {
       expect(call.instructions).toContain('Timed image guides specify');
       expect(call.input[0].content).toEqual(expect.arrayContaining([
@@ -39,6 +45,30 @@ describe('interstitial prompt enhancement', () => {
         expect.objectContaining({ type: 'input_image', image_url: 'data:image/jpeg;base64,Yg==' }),
       ]));
     }
+  });
+  it.each(['newlines', 'markdown', 'missing opening marker'])('accepts harmless %s formatting before planning timing', async variant => {
+    const prompt = variant === 'newlines' ? h3(asked).replaceAll(': ', ':\n\n')
+      : variant === 'markdown' ? h3(asked).replace(/^(\w+):/gm, '**$1:**') : h3(asked).replace('[Shot 1] ', '');
+    const referenceTiming = { prefixFrames: 39, suffixFrames: 0 }, timeline = promptTimeline(6, referenceTiming);
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt }) })
+      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ requiredDuration: 3, opening: 'Static camera.', beats: [
+        { start: 0, end: Number(timeline.generatedDuration.toFixed(3)), action: 'She waves.', speech: { line: 0, delivery: 'S1 asks clearly' } },
+      ] }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, referenceTiming });
+    expect(result.prompt).toContain('From 1.625 to 8 seconds:');
+    expect(result.prompt).toContain('<d>[English] What is 2 + 2?</d>');
+    expect(result.prompt).toContain('\noverall_soundscape: Quiet room tone.');
+    expect(respond).toHaveBeenCalledTimes(2);
+  });
+  it('corrects omitted dialogue before accepting the rewrite', async () => {
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3('She waits silently.') }) })
+      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt(input);
+    expect(result.prompt).toContain('<d>[English] What is 2 + 2?</d>');
+    expect(respond).toHaveBeenCalledTimes(2);
+    const correction = JSON.parse(respond.mock.calls[1][0].input[0].content[0].text);
+    expect(correction.rewriteCorrection.validationError).toContain('scripted dialogue');
+    expect(correction.draft).toBe(input.prompt);
   });
   it.each([undefined, 'Keep the same question, but sound more excited.'])('uses the actual generated window for enhancement and editing: %s', async editInstructions => {
     const referenceTiming = { prefixFrames: 39, suffixFrames: 39 }, timeline = promptTimeline(6, referenceTiming);
@@ -163,9 +193,9 @@ describe('interstitial prompt enhancement', () => {
     expect(result.prompt).toContain(`From 11 to 12.5 seconds: She holds the striped sock in her right hand. S1 asks doubtfully: ${lines[4]}`);
     expect(result.prompt.length).toBeLessThanOrEqual(7000);
     respond.mockClear();
-    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: old }) });
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: old }) });
     await expect(enhance({ ...input, prompt, duration: 13 })).rejects.toMatchObject({ status: 502 });
-    expect(respond).toHaveBeenCalledOnce();
+    expect(respond).toHaveBeenCalledTimes(2);
   });
   it.each(['interstitial', 'call', 'idle', 'response'] as const)('supplies LoRA guidance alongside the draft for %s', async kind => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(`Sema waves. ${asked}`) }) });
@@ -313,8 +343,8 @@ describe('interstitial prompt enhancement', () => {
       .replace('Quiet room tone.', placement === 'soundscape' ? `<d>[English] ${line}</d>` : 'Quiet room tone.');
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: rewritten }) });
     await expect(createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: 'She lifts the rock, puts it down and lifts the bowl.', dialogue: line }))
-      .rejects.toMatchObject({ status: 502, message: 'The enhanced prompt omitted the supplied dialogue from the action. Try again.' });
-    expect(respond).toHaveBeenCalledOnce();
+      .rejects.toMatchObject({ status: 502, message: expect.stringContaining('omitted the supplied dialogue from the action') });
+    expect(respond).toHaveBeenCalledTimes(2);
   });
   it('instructs the enhancer to tag the exact Call line, including unusual grammar', async () => {
     const prompt = 'The girl asks, "Do you know what the G in GPU stand for?" She pauses for an answer.';
@@ -351,10 +381,12 @@ describe('interstitial prompt enhancement', () => {
     expect(options.instructions).toContain('Do not postpone the match until the reference section or cut');
     expect(result.prompt).toContain(`<d>[English] ${line}</d>`);
   });
-  it('accepts unstructured output when no separately supplied dialogue needs validation', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'A concise visual direction with no H3 sections.' }) });
+  it('corrects unstructured output before returning a usable H3 prompt', async () => {
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: 'A quiet scene with no H3 sections.' }) })
+      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3('A quiet scene.') }) });
     const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: 'A quiet scene.' });
-    expect(result.prompt).toContain('A concise visual direction with no H3 sections.');
+    expect(result.prompt).toBe(h3(`A quiet scene. ${continuity}`));
+    expect(respond).toHaveBeenCalledTimes(2);
   });
   it('keeps quoted text on a sign out of H3 spoken dialogue', async () => {
     respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('The girl points to a sign reading "GPU".') }) });
@@ -499,6 +531,22 @@ describe('interstitial prompt enhancement', () => {
   ])('rejects incomplete or invalid provider output without returning a replacement prompt', async response => {
     respond.mockResolvedValue(response);
     await expect(createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt(input)).rejects.toMatchObject({ status: 502 });
+    expect(respond).toHaveBeenCalledTimes(2);
+  });
+  it('recovers from an incomplete rewrite before returning any prompt', async () => {
+    respond.mockResolvedValueOnce({ status: 'incomplete', output_text: '{"prompt":"unfinished' })
+      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt(input);
+    expect(result.prompt).toContain('<d>[English] What is 2 + 2?</d>');
+    expect(respond).toHaveBeenCalledTimes(2);
+  });
+  it('discards a correction returned after cancellation and makes no timing request', async () => {
+    const operation = new AbortController();
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: 'Missing sections.' }) });
+    respond.mockImplementation(async () => { operation.abort(); return { status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) }; });
+    await expect(createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, signal: operation.signal, referenceTiming: { prefixFrames: 39, suffixFrames: 0 } }))
+      .rejects.toMatchObject({ status: 504 });
+    expect(respond).toHaveBeenCalledTimes(2);
   });
   it('does not expose connection error details or retry automatically', async () => {
     respond.mockRejectedValue(new Error('private-key https://private.example/request'));

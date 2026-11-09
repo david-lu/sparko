@@ -74,7 +74,7 @@ describe('action and dialogue timing', () => {
     expect(respond.mock.calls[0][0].instructions).toContain('keep the hands empty and the later props on the table');
   });
   it.each(['reordered', 'missing', 'duplicate', 'overlap', 'gap', 'backwards', 'past end', 'unfinished', 'injected speech', 'extra shot'] as const)(
-    'rejects a plan with %s instead of returning a misleading replacement', async issue => {
+    'corrects %s once and keeps rejecting it if the correction fails', async issue => {
       const plan = validPlan();
       if (issue === 'reordered') { plan.beats[1].speech!.line = 1; plan.beats[3].speech!.line = 0; }
       if (issue === 'missing') plan.beats[3].speech = null;
@@ -86,13 +86,60 @@ describe('action and dialogue timing', () => {
       if (issue === 'unfinished') plan.beats.pop();
       if (issue === 'injected speech') plan.beats[0].action += ' <d>[English] Hello!</d>';
       if (issue === 'extra shot') plan.opening += ' [Shot 2] Cut to the bowl.';
+      respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify(plan) });
+      const result = await timeDialogueBeats(openai, input);
+      expect(result.match(/<d>[\s\S]*?<\/d>/g)).toEqual([rock, bowl]);
+      expect(result).toContain('From 5 to 6 seconds:');
+      expect(respond).toHaveBeenCalledTimes(2);
+      const correction = JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).timingCorrection;
+      expect(JSON.parse(correction.previousResponse)).toEqual(plan);
+      expect(correction.validationError).toBeTruthy();
+      respond.mockClear();
       returns(plan);
-      await expect(timeDialogueBeats(openai, input)).rejects.toMatchObject({ status: 502 });
-      expect(respond).toHaveBeenCalledOnce();
+      await expect(timeDialogueBeats(openai, input)).rejects.toMatchObject({ status: 502,
+        message: `Enhancement could not correct its timing plan. ${correction.validationError} Your draft has been kept. Try enhancing again.` });
+      expect(respond).toHaveBeenCalledTimes(2);
     });
+  it('corrects full-video timestamps while retaining reference context and timed image anchors', async () => {
+    const timeline = promptTimeline(6, { prefixFrames: 39, suffixFrames: 39 }), plan = validPlan();
+    plan.beats[4].end = Number(timeline.generatedDuration.toFixed(3));
+    const shifted = { ...plan, beats: plan.beats.map(beat => ({ ...beat, start: beat.start + timeline.generatedStart, end: beat.end + timeline.generatedStart })) };
+    const keyframes = [{ frame: 48, image: 'data:image/jpeg;base64,Yg==' }];
+    const referenceContext = [{ side: 'start' as const, description: 'She lowers her hand.', duration: 1.625, start: 0, end: 1.625,
+      audioRegenerationCurve: [{ position: 0, strength: 0 }, { position: 1, strength: 1 }], timestampBasis: 'Local timestamps.' }];
+    returns(plan);
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify(shifted) });
+    const result = await timeDialogueBeats(openai, { ...input, timeline, duration: timeline.generatedDuration, keyframes, referenceContext });
+    expect(result).toContain('From 1.625 to 2.625 seconds:');
+    expect(result).toContain('From 6.625 to 7.792 seconds:');
+    expect(respond).toHaveBeenCalledTimes(2);
+    for (const [options, request] of respond.mock.calls) {
+      expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ timeline, referenceContext, lines: [rock, bowl], duration: timeline.generatedDuration });
+      expect(options.input[0].content).toContainEqual(expect.objectContaining({ type: 'input_image', image_url: keyframes[0].image }));
+      expect(request.signal).toBe(input.signal);
+    }
+    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).timingCorrection.validationError)
+      .toContain('Beat 1 starts at 1.625s; it must start at 0s');
+  });
+  it.each([
+    { status: 'incomplete', output_text: '{"beats":[' },
+    { status: 'completed', output_text: 'unreadable' },
+    { status: 'completed', output_text: '{}' },
+  ])('recovers from an unfinished or malformed timing response: %j', async response => {
+    respond.mockResolvedValueOnce(response);
+    expect(await timeDialogueBeats(openai, input)).toContain(`: ${bowl}`);
+    expect(respond).toHaveBeenCalledTimes(2);
+  });
   it('keeps the draft when the whole sequence will not fit instead of silently rushing or dropping lines', async () => {
     returns({ ...validPlan(), requiredDuration: 8.3, beats: [] });
     await expect(timeDialogueBeats(openai, input)).rejects.toMatchObject({ status: 422, message: expect.stringContaining('about 9 seconds') });
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it('reports a duration conflict found during correction without further attempts', async () => {
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ ...validPlan(), beats: [] }) });
+    returns({ ...validPlan(), requiredDuration: 8.3, beats: [] });
+    await expect(timeDialogueBeats(openai, input)).rejects.toMatchObject({ status: 422, message: expect.stringContaining('about 9 seconds') });
+    expect(respond).toHaveBeenCalledTimes(2);
   });
   it('rejects omitted or reordered dialogue from the first enhancement before planning', async () => {
     for (const prompt of [h3(`She asks ${rock}`), h3(`She asks ${bowl} then ${rock}`)]) {
@@ -185,5 +232,19 @@ describe('action and dialogue timing', () => {
     const operation = new AbortController();
     respond.mockImplementation(async () => { operation.abort(); return { status: 'completed', output_text: JSON.stringify(validPlan()) }; });
     await expect(timeDialogueBeats(openai, { ...input, signal: operation.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it('discards a correction returned after cancellation', async () => {
+    const operation = new AbortController();
+    respond.mockResolvedValueOnce({ status: 'completed', output_text: '{}' });
+    respond.mockImplementation(async () => { operation.abort(); return { status: 'completed', output_text: JSON.stringify(validPlan()) }; });
+    await expect(timeDialogueBeats(openai, { ...input, signal: operation.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(respond).toHaveBeenCalledTimes(2);
+  });
+  it('does not retry provider failures as timing corrections', async () => {
+    const error = Object.assign(new Error('Rate limited'), { status: 429 });
+    respond.mockRejectedValueOnce(error);
+    await expect(timeDialogueBeats(openai, input)).rejects.toBe(error);
+    expect(respond).toHaveBeenCalledOnce();
   });
 });

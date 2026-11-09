@@ -42,7 +42,7 @@ export default function EnhancePromptActions({ promptId, enhancing, analyzing = 
         <div className="field">
         <label htmlFor={`${id}-instructions`}>What should change?</label>
         <textarea id={`${id}-instructions`} autoFocus rows={4} required maxLength={PROMPT_EDIT_MAX_LENGTH} value={instructions} readOnly={enhancing}
-          placeholder={'For example: add “Or this sock?” while she holds the sock. Keep the other lines.'}
+          placeholder="For example: use warmer lighting and keep the same composition."
           onChange={event => setInstructions(event.target.value)} onKeyDown={event => { if (event.key==='Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}/>
         </div>
         <p className="prompt-edit-feedback" role="status">{error || (enhancing && analyzing ? 'Analyzing reference videos with Gemini…' : '')}</p>
