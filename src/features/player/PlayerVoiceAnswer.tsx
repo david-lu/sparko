@@ -8,21 +8,25 @@ import { isMicrophoneEnabled, MicrophoneController } from '../voice-input/Microp
 import { sendVoiceChoice } from '../voice-input/api';
 
 const buttonStyle = answerColorStyle({ color: { hue: 0, saturation: 0, value: 100 } }, 0) as CSSProperties;
+/** Whether the microphone is open, and whether it currently hears speech. */
+export type ListeningState = 'listening' | 'hearing' | null;
 
 /**
  * Listens for one spoken answer and asks the server which condition it matches.
  * `onAnswer` receives the matched answer ID (null for the default) and returns false when nothing could be chosen.
  * `chosen` marks the scene as answered, which stops listening. `onUnavailable` reports that this device cannot record.
+ * `onListening` reports while the microphone is open, so the player can show that it is listening.
  */
-export default function PlayerVoiceAnswer({ context, chosen, onAnswer, onUnavailable }: {
+export default function PlayerVoiceAnswer({ context, chosen, onAnswer, onUnavailable, onListening }: {
   context: VoiceChoiceContext; chosen: boolean; onAnswer: (answerId: string | null) => boolean; onUnavailable: () => void;
+  onListening: (state: ListeningState) => void;
 }) {
   const [microphone] = useState(() => new MicrophoneController(VOICE_CHOICE.maxSeconds));
   const mic = useSyncExternalStore(microphone.subscribe, microphone.getSnapshot);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
-  const latest = useRef({ context, onAnswer, onUnavailable });
-  latest.current = { context, onAnswer, onUnavailable };
+  const latest = useRef({ context, onAnswer, onUnavailable, onListening });
+  latest.current = { context, onAnswer, onUnavailable, onListening };
 
   useEffect(() => {
     let live = true;
@@ -65,6 +69,9 @@ export default function PlayerVoiceAnswer({ context, chosen, onAnswer, onUnavail
   const label = { answered: 'Got it!', thinking: 'Thinking…', hearing: 'Hearing you…', listening: 'Listening…', starting: 'Starting mic…', idle: message ? 'Try again' : 'Tap to talk' }[state];
   const status = chosen ? '' : message || mic.error || (state === 'listening' ? 'Say your answer' : state === 'hearing' ? 'Pause when you’re done' : '');
   const inactive = busy || chosen || state === 'starting';
+  const listening: ListeningState = state === 'listening' || state === 'hearing' ? state : null;
+  useEffect(() => { latest.current.onListening(listening); }, [listening]);
+  useEffect(() => () => latest.current.onListening(null), []);
   return <>
     <button className="choice-button voice-answer-button" style={buttonStyle} data-state={state}
       aria-label={`Answer out loud: ${label}`} aria-busy={busy} aria-disabled={inactive}
