@@ -1,5 +1,5 @@
 import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
-import { test, expect, openVideo, addBridge, saveAndReopen } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, setVideoReference, test, expect, openVideo, addBridge, saveAndReopen } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/status', async route => {
@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({ json: { ...status, providers: { ...status.providers, openai: true, gemini: true, comfy: true } } });
   });
   await openVideo(page); await addBridge(page);
-  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
+  await setVideoReference(page, 'end', true);
   await page.getByLabel('Video prompt').fill('She waves and asks "Ready?"');
 });
 
@@ -42,7 +42,7 @@ for (const width of [1440, 390]) test(`analyzes the actual start/end windows for
   });
   const layout = () => page.locator('.interstitial-editor').evaluate(root => {
     const top = root.getBoundingClientRect().top;
-    return ['textarea', '.prompt-character-count', '.inspector-references-panel', '.interstitial-time-fields', 'button[type=submit]'].map(selector => {
+    return ['textarea', '.prompt-character-count', '.generation-timeline-summary', 'button[type=submit]'].map(selector => {
       const box = root.querySelector(selector)!.getBoundingClientRect(); return { top: box.top - top, height: box.height };
     });
   });
@@ -93,9 +93,9 @@ test('keeps the draft on analysis failure, cancellation and reference changes; s
   await expect(enhance).toBeEnabled(); await expect(prompt).toHaveValue(original);
   gate = new Promise<void>(resolve => { finish = resolve; });
   await enhance.click(); await expect.poll(() => analyses).toBe(3);
-  await page.getByRole('spinbutton', { name: 'start_range', exact: true }).fill('1.75');
+  await openGenerationTimeline(page); await page.getByRole('spinbutton', { name: 'start_range', exact: true }).fill('1.75'); await closeGenerationTimeline(page);
   await expect(enhance).toBeEnabled(); finish();
   await expect(prompt).toHaveValue(original); expect(enhancements).toBe(0);
-  for (const side of ['Start', 'End']) await page.getByRole('group', { name: `${side} reference`, exact: true }).getByRole('button', { name: 'None', exact: true }).click();
+  for (const side of ['start', 'end'] as const) await setVideoReference(page, side, false);
   await enhance.click(); await expect(prompt).toHaveValue('A wave.'); expect(analyses).toBe(3);
 });

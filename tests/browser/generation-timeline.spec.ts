@@ -12,7 +12,8 @@ for (const width of [1440, 390]) test(`timeline keyframes drag, delete, and undo
   const assetId = (await readProject(page)).interstitials[0].keyframes[0].image.assetId;
   await editor.getByLabel('Keyframe frame', { exact: true }).fill('63');
   const marker = editor.getByRole('button', { name: 'Select image keyframe 1', exact: true });
-  await marker.scrollIntoViewIfNeeded();
+  await expect(marker).toHaveAttribute('title', /2\.625s/);
+  await marker.hover();
   const lane = (await editor.locator('.generation-guides-lane').boundingBox())!, box = (await marker.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + lane.width * 24 / 226, box.y + box.height / 2, { steps: 5 }); await page.mouse.up();

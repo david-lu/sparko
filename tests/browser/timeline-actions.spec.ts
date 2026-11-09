@@ -1,4 +1,4 @@
-import { fitAll, test, expect, type Page } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, setVideoReference, fitAll, test, expect, type Page } from './fixtures';
 
 const open=async(page:Page)=>{await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);await expect(page.locator('.story-playhead')).toBeVisible();};
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
@@ -9,7 +9,7 @@ for(const width of [1440,390]) {
     await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
     const canvas=page.locator('.story-scroll');await canvas.click({button:'right',position:{x:12,y:12}});await page.getByRole('menuitem',{name:'Add video',exact:true}).click();
     await page.getByLabel('Video prompt',{exact:true}).fill('Keep this existing draft');
-    await page.getByRole('group',{name:'Start reference',exact:true}).getByRole('button',{name:'Video',exact:true}).click();await fitAll(page);
+    await setVideoReference(page, 'start', true);await fitAll(page);
     const initial=await saved(page),connection=initial.storyFlow.edges[0],node=initial.storyFlow.nodes.at(-1);
     const toolbar=await page.locator('.story-toolbar').boundingBox(),status=await page.locator('.story-status').boundingBox(),bounds=await canvas.boundingBox();
     const title=page.locator(`[data-node-id="${node.id}"] .story-clip-title`),transition=page.locator('.story-crossfade');
@@ -21,20 +21,22 @@ for(const width of [1440,390]) {
     await expect(page.locator('.story-edge')).toHaveCount(2);await expect(page.locator('.story-edge.drop-target')).toHaveCount(0);
     const after=await saved(page);expect(after.storyFlow.nodes).toHaveLength(3);expect(after.interstitials).toEqual(initial.interstitials);
     expect(after.storyFlow.edges.map((e:any)=>[e.from,e.to])).toEqual([[connection.from,node.id],[node.id,connection.to]]);
-    await expect(page.getByRole('group',{name:'Start reference',exact:true})).toContainText(initial.storyFlow.nodes[0].name);
-    await expect(page.getByRole('group',{name:'End reference',exact:true}).getByRole('button',{name:'None',exact:true})).toHaveAttribute('aria-pressed','true');
+    await openGenerationTimeline(page);
+    await expect(page.getByRole('button',{name:`Start reference: ${initial.storyFlow.nodes[0].name}`,exact:true})).toBeVisible();
+    await expect(page.getByRole('checkbox',{name:'Reference end video',exact:true})).not.toBeChecked();
+    await closeGenerationTimeline(page);
     expect(await page.locator('.story-toolbar').boundingBox()).toEqual(toolbar);expect(await canvas.boundingBox()).toEqual(bounds);
     await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(initial.storyFlow);
     await page.getByRole('button',{name:'Redo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(after.storyFlow);
     await fitAll(page);
-    await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0.75');
-    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0');
-    await title.click();await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-    await page.getByRole('spinbutton',{name:'end_range',exact:true}).fill('1.625');
-    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.208');
+    await page.locator('.story-edge-hit').first().press('Enter');await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0.75');
+    await page.locator('.story-edge-hit').last().press('Enter');await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0');
+    await title.click();await setVideoReference(page, 'end', true);
+    await openGenerationTimeline(page); await page.getByRole('spinbutton',{name:'end_range',exact:true}).fill('1.625'); await closeGenerationTimeline(page);
+    await page.locator('.story-edge-hit').last().press('Enter');await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.208');
     await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.5');
-    await title.click();await page.getByRole('spinbutton',{name:'end_range',exact:true}).fill('2');
-    await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0.5');
+    await title.click();await openGenerationTimeline(page); await page.getByRole('spinbutton',{name:'end_range',exact:true}).fill('2'); await closeGenerationTimeline(page);
+    await page.locator('.story-edge-hit').last().press('Enter');await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0.5');
     await expect(page.locator('.connection-fade-control').filter({has:page.getByLabel('Video crossfade duration',{exact:true})})).not.toContainText('Automatic:');
     await expect(page.getByLabel('Audio crossfade duration',{exact:true})).toHaveValue('1.5');
   });

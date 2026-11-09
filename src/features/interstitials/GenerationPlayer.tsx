@@ -17,7 +17,7 @@ export default function GenerationPlayer({ frame, frames, input, generatedUrl, g
   const resultFrames = savedLength && savedLength.url === generatedUrl ? savedLength.frames : generatedFrames ?? frames;
   const length = mode === 'generated' ? resultFrames : frames;
   const currentFrame = Math.max(0, Math.min(length - 1, frame));
-  const video = useRef<HTMLVideoElement>(null), playhead = useRef(frame), emitted = useRef(frame), advance = useRef(onFrame);
+  const video = useRef<HTMLVideoElement>(null), playhead = useRef(frame), advance = useRef(onFrame);
   playhead.current = currentFrame; advance.current = onFrame;
   useAssetAvailability([input?.assetId]);
   const url = mode === 'generated' ? generatedUrl : input && assets.url(input.assetId);
@@ -29,7 +29,7 @@ export default function GenerationPlayer({ frame, frames, input, generatedUrl, g
     if (!active) return;
     if (playing) { pause(); return; }
     onPlay(); const next = currentFrame >= length - 1 ? 0 : currentFrame;
-    playhead.current = emitted.current = next; onFrame(next); setPlaying(true);
+    playhead.current = next; onFrame(next); setPlaying(true);
   };
   useImperativeHandle(ref, () => ({ pause, toggle }));
   useEffect(() => { if (!active) pause(); }, [active]);
@@ -44,16 +44,21 @@ export default function GenerationPlayer({ frame, frames, input, generatedUrl, g
     const media = video.current;
     if (!media || media.readyState < 1) return;
     const time = Math.min(sourceTime, Math.max(0, media.duration - 1 / TIMELINE_FPS));
-    if (!playing || Math.abs(media.currentTime - time) > .12) media.currentTime = time;
-    if (playing && !(mode === 'input' && input?.held)) void media.play().catch(() => setPlaying(false)); else media.pause();
+    if (Math.abs(media.currentTime - time) > (playing ? .12 : 1 / TIMELINE_FPS / 2)) media.currentTime = time;
+    if (playing && !(mode === 'input' && input?.held)) {
+      if (media.paused) void media.play().catch(reason => {
+        // Seeking to frame zero or switching input files can interrupt an older
+        // play request. That cancellation must not stop the timeline transport.
+        if (reason?.name !== 'AbortError' && video.current === media) { setError('Unable to play audio/video'); setPlaying(false); }
+      });
+    } else media.pause();
   }, [sourceTime, playing, loaded, input?.held, mode]);
-  useEffect(() => { if (playing && frame !== emitted.current) setPlaying(false); }, [frame]);
   useEffect(() => {
     if (!playing) { video.current?.pause(); return; }
     const start = performance.now(), first = playhead.current; let request = 0;
     const tick = (now: number) => {
       const next = first + Math.floor((now - start) / 1000 * TIMELINE_FPS);
-      emitted.current = Math.min(length - 1, next); advance.current(emitted.current);
+      advance.current(Math.min(length - 1, next));
       if (next >= length - 1) setPlaying(false); else request = requestAnimationFrame(tick);
     };
     request = requestAnimationFrame(tick); return () => cancelAnimationFrame(request);

@@ -1,4 +1,4 @@
-import { expect, test, addBridge, addDraft, type Page } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, setVideoReference, expect, test, addBridge, addDraft, type Page } from './fixtures';
 import { readFile } from 'node:fs/promises';
 
 const activeProject = (page: Page) => page.evaluate(async () => {
@@ -27,13 +27,13 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect.poll(async () => (await activeProject(page)).interstitials.filter((item: any) => item.phase === 'ready').length, { timeout: 60_000 }).toBe(1);
   await addDraft(page);
-  await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
+  await setVideoReference(page, 'start', true);
+  await setVideoReference(page, 'end', true);
   await page.getByLabel('Video prompt').fill('Unfinished draft');
   await page.getByRole('textbox', { name: 'Clip name', exact: true }).fill('Unfinished draft');
   await page.getByRole('textbox', { name: 'Clip name', exact: true }).press('Enter');
-  await page.getByLabel('start_range').fill('3');
-  await page.getByLabel('end_range').fill('1.5');
+  await openGenerationTimeline(page); await page.getByLabel('start_range').fill('3'); await closeGenerationTimeline(page);
+  await openGenerationTimeline(page); await page.getByLabel('end_range').fill('1.5'); await closeGenerationTimeline(page);
   await page.getByLabel('Choose subtitle file').setInputFiles({ name: 'dialogue.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nEmbedded dialogue\n') });
   await expect.poll(async () => (await activeProject(page)).subtitle?.assetId).toBeTruthy();
   // Existing project analysis must survive even while the Describe panel is unavailable.
@@ -66,8 +66,8 @@ test('exports a complete project and restores assets, drafts, subtitles and anal
   await expect.poll(async () => (await activeProject(restored))?.interstitials.filter((item: any) => item.phase === 'ready').length, { timeout: 60_000 }).toBe(1);
   await restored.locator('.story-clip-title').filter({ hasText: 'Unfinished draft' }).click();
   await expect(restored.getByLabel('Video prompt')).toHaveValue('Unfinished draft');
-  await expect(restored.getByLabel('start_range')).toHaveValue('3');
-  await expect(restored.getByLabel('end_range')).toHaveValue('1.5');
+  await openGenerationTimeline(restored); await expect(restored.getByLabel('start_range')).toHaveValue('3'); await closeGenerationTimeline(restored);
+  await openGenerationTimeline(restored); await expect(restored.getByLabel('end_range')).toHaveValue('1.5'); await closeGenerationTimeline(restored);
   const project = await activeProject(restored);
   expect(project.id).not.toBe((await activeProject(page)).id);
   const stored = await restored.evaluate(async (project: any) => {
@@ -129,7 +129,7 @@ test('chooses a video, then opens and deletes an explicitly saved project', asyn
       (await navigator.storage.getDirectory()).getFileHandle(suggestedName, { create: true }) });
   });
   await addDraft(page);
-  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
+  await setVideoReference(page, 'end', true);
   await page.getByLabel('Video prompt').fill('Saved draft');
   await page.getByText('File', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Save project' }).click();

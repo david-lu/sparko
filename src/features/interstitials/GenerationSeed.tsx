@@ -24,6 +24,6 @@ export default function GenerationSeed({ value, lastSeed, baseOnly, onChange }: 
         const parsed = generationSeedSchema.safeParse(event.target.valueAsNumber);
         if (event.target.validity.valid && parsed.success) onChange(parsed.data);
       }} />
-    <p id={`${id}-help`} className="hint">Random chooses a new seed each generation. Fixed reuses your number.{baseOnly ? ' Applies to the H3 base render; the 2K pass has no seed control.' : ''}</p>
+    <p id={`${id}-help`} className="hint">Random changes the seed; Fixed reuses it. The optional 2K pass has no seed control.</p>
   </div>;
 }

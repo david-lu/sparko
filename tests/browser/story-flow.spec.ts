@@ -11,8 +11,8 @@ test('source clips split, insert, scrub, connect and retain independent fades th
   await page.getByRole('button',{name:'Add video',exact:true}).dragTo(page.getByRole('button',{name:/Edit crossfade from/}));await expect(page.locator('.story-clip')).toHaveCount(3);
   await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveCount(0);await expect(page.locator('.story-fade,.story-fade-handle')).toHaveCount(0);
   await fitAll(page);
-  await page.locator('.story-crossfade').first().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.5');await expect(page.locator('.connection-inspector')).toContainText('Automatic: 75%');await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.25');
-  await page.locator('.story-crossfade').last().click();await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.5');await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.75');
+  await page.locator('.story-edge-hit').first().press('Enter');await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.5');await expect(page.locator('.connection-inspector')).toContainText('Automatic: 75%');await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.25');
+  await page.locator('.story-edge-hit').last().press('Enter');await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.5');await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.75');
   let project=await saved(page);expect(project.storyFlow.edges.map((e:any)=>e.videoCrossfade)).toEqual([.25,.75]);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
   await page.getByRole('button',{name:'Duplicate selected clips',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(4);
@@ -48,7 +48,7 @@ test('narrow layout and loading keep graph and inspector controls in place',asyn
 
 test('connected generation uses clip references, keeps controls stable, and reopens with media and fades',{tag:['@generation','@slow']},async({page,browser})=>{
   await page.route('**/api/status',async route=>{const response=await route.fetch();await route.fulfill({json:{...await response.json(),providers:{openai:false,gemini:false,comfy:true}}});});
-  await page.route('**/api/comfy/status',route=>route.fulfill({json:{ready:true}}));
+  await page.route('**/api/comfy/status*',route=>route.fulfill({json:{ready:true}}));
   let complete=false,submitted=0;
   await page.route('**/api/comfy/interstitials',async route=>{submitted++;const form=await new Response(Uint8Array.from(route.request().postDataBuffer()!),{headers:{'Content-Type':route.request().headers()['content-type']}}).formData();expect(form.get('mode')).toBe('custom');expect(Number(form.get('before'))).toBeGreaterThanOrEqual(1.625);await route.fulfill({status:202,json:{requestId:'story-test-job',status:'IN_QUEUE',insertion:{start:1,duration:2,totalDuration:4}}});});
   await page.route('**/api/comfy/jobs/story-test-job/events',route=>route.fulfill({contentType:'text/event-stream',body:'event: progress\ndata: {"type":"progress","progress":0.5,"progressDetails":{"stage":"Generating","step":1,"steps":2}}\n\n'}));
@@ -62,7 +62,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await page.locator('.story-edge-hit').first().press('Enter');await expect(page.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('1.5');
   await page.locator('.story-edge-hit').last().press('Enter');await page.getByLabel('Video crossfade duration',{exact:true}).fill('0.5');
   await page.locator('.story-clip.type-simple .story-clip-title').click();
-  const controls=()=>page.evaluate(()=>{const root=document.querySelector('.interstitial-editor')!.getBoundingClientRect();return ['textarea','.interstitial-time-fields','button[type=submit]','.task-status'].map(s=>{const r=document.querySelector('.interstitial-editor '+s)!.getBoundingClientRect();return {y:r.top-root.top,height:r.height};});});
+  const controls=()=>page.evaluate(()=>{const root=document.querySelector('.interstitial-editor')!.getBoundingClientRect();return ['textarea','.generation-timeline-summary','button[type=submit]','.task-status'].map(s=>{const r=document.querySelector('.interstitial-editor '+s)!.getBoundingClientRect();return {y:r.top-root.top,height:r.height};});});
   const libraryControls=()=>page.locator('.asset-library').evaluate(el=>{const root=el.getBoundingClientRect();return ['.library-toolbar','.library-filter'].map(selector=>{const rect=el.querySelector(selector)!.getBoundingClientRect();return {y:rect.top-root.top,height:rect.height};});});
   const libraryBefore=await libraryControls();
   const placeholder=page.locator('.story-clip.type-simple .story-unavailable-thumbnail');await expect(placeholder).toHaveAttribute('aria-label','Video unavailable: not generated yet');
@@ -82,7 +82,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   expect(portable.media).toEqual({start:1,duration:2,totalDuration:4});
   await page.locator('.inspector-output>summary').click();await page.locator('.generated-output-details > summary').click();await expect(page.getByRole('region',{name:'Video breakdown'})).toContainText('Generated section');
   await page.locator('.inspector-output .interstitial-prompt-details>summary').click();await expect(page.locator('.inspector-output .interstitial-prompt-details pre')).toHaveText('Continue the scene');
-  await page.getByLabel('Video prompt',{exact:true}).fill('A different next render');await expect(page.locator('.inspector-output .interstitial-prompt-details pre')).toHaveText('Continue the scene');await expect(page.locator('.inspector-references-panel .interstitial-prompt-details')).toHaveCount(0);
+  await page.getByLabel('Video prompt',{exact:true}).fill('A different next render');await expect(page.locator('.inspector-output .interstitial-prompt-details pre')).toHaveText('Continue the scene');await expect(page.locator('.generation-timeline-summary .interstitial-prompt-details')).toHaveCount(0);
   expect(await libraryControls()).toEqual(libraryBefore);
   const generated=page.locator('.story-clip.type-simple');await expect(generated).toHaveAttribute('data-duration','2');
   await expect(placeholder).toHaveCount(0);await expect(generated.locator('.video-filmstrip img').first()).toBeVisible();expect((await generated.boundingBox())!.height).toBe(draftHeight);

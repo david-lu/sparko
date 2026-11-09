@@ -25,6 +25,7 @@ export class FlowPlayback {
   setSubtitles(track: TextTrack | null, cues: VTTCue[], enabled = true) { this.playback.setSubtitles(track, cues, enabled); }
   play() { this.playback.play(); }
   pause() { this.playback.pause(); }
+  restoreSession(session: PlaybackSession) { this.playback.restoreSession(session); }
   seekScene(id: SceneId, frame = 0, playing = false, preserveRoute = false) { this.playback.seekScene(id, frame, playing, preserveRoute); }
   seek(time: number) { this.playback.seek(time); }
   answer(answer: string) { this.playback.answer(answer); }

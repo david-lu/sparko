@@ -190,6 +190,12 @@ export class CanvasFlowPlayback {
     this.decks.elapsed(); this.render();
   }
   pause() { this.session = { ...this.session, playing: false }; this.decks.pause(); this.render(); }
+  restoreSession(session: PlaybackSession) {
+    const scene = getScene(this.flow, session.sceneId);
+    this.session = { ...session, frame: Math.max(0, Math.min(sceneFrames(scene) - 1, session.frame)), playing: false,
+      traversedEdgeIds: session.traversedEdgeIds?.filter(id => this.flow.edges.some(edge => edge.id === id)) };
+    this.remainder = 0; this.buffering = true; this.decks.pause(); this.render();
+  }
   seekScene(id: SceneId, frame = 0, playing = false, preserveRoute = false) {
     const scene = getScene(this.flow, id);
     const route = preserveRoute ? { traversedEdgeIds: this.session.traversedEdgeIds,

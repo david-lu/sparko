@@ -1,4 +1,4 @@
-import { test, expect, openVideo, addDraft, readProject, saveAndReopen, fitAll, type Page } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, test, expect, openVideo, addDraft, readProject, saveAndReopen, fitAll, type Page } from './fixtures';
 
 async function openBranches(page: Page) {
   await openVideo(page);
@@ -117,7 +117,7 @@ for (const width of [1440, 390]) test(`compact clip layout stays stable through 
   await page.route('https://example.test/appearance.mp4', route => route.fulfill({ contentType: 'video/mp4', path: 'tests/fixtures/interstitial-reference.mp4' }));
   await page.goto('/'); await page.getByRole('button', { name: /^New project/ }).click(); await addDraft(page);
   await page.getByLabel('Video prompt', { exact: true }).fill('Clouds drift across a sunset sky.');
-  await page.getByLabel('Duration', { exact: true }).fill('4');
+  await openGenerationTimeline(page); await page.getByLabel('Duration', { exact: true }).fill('4'); await closeGenerationTimeline(page);
   await page.getByRole('button', { name: 'Purple clip color', exact: true }).click();
   while (Number(await page.locator('.story-scroll').getAttribute('data-zoom')) > .3) await page.getByRole('button', { name: 'Zoom out story' }).click();
   const dimensions = () => page.locator('.story-canvas').evaluate(root => {

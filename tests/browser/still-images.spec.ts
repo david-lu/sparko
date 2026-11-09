@@ -1,4 +1,4 @@
-import { test, expect, readProject, saveAndReopen, addDraft, openVideo, fitAll, type Page } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, test, expect, readProject, saveAndReopen, addDraft, openVideo, fitAll, type Page } from './fixtures';
 
 async function imageFile(page: Page, name = 'Still.png', color = '#00ff00') {
   const bytes = await page.evaluate(async color => {
@@ -235,40 +235,26 @@ test('encodes ordered mixed references with exact windows and silent image secti
   expect(result.colors.map(color => color.map(value => value > 200))).toEqual([[true, false, false], [false, true, false], [false, false, true], [true, false, false]]);
 });
 
-for (const width of [1440, 390]) test(`chooses and reorders multiple image references independently for Start and End at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390]) test(`image keyframe positions and methods stay independent and persist at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
   await page.goto('/'); await page.getByRole('button', { name: /^New project/ }).click(); await addDraft(page);
-  const start = page.getByRole('group', { name: 'Start reference', exact: true });
-  await start.getByRole('button', { name: 'Video', exact: true }).click();
-  await start.getByRole('checkbox', { name: 'Use arbitrary start video' }).check();
-  const first = await imageFile(page, 'First.png'), second = await imageFile(page, 'Second.png', '#0000ff');
-  await page.getByLabel('Upload Start video', { exact: true }).setInputFiles([first, second]);
-  await expect(start.locator('.reference-sequence-clip')).toHaveCount(2);
-  const imageDuration = page.getByLabel('Start First.png duration', { exact: true });
-  await imageDuration.fill('0.001');
-  await expect.poll(async () => (await readProject(page)).interstitials[0].startVideoAssets[0].outFrame).toBe(1);
-  await expect(imageDuration).toHaveValue(String(1 / 24));
-  expect(await imageDuration.evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(true);
-  await imageDuration.press('ArrowUp'); await expect(imageDuration).toHaveValue(String(2 / 24));
-  await imageDuration.press('ArrowDown'); await imageDuration.press('ArrowDown');
-  await expect(imageDuration).toHaveValue(String(1 / 24));
-  await imageDuration.fill('0'); await expect(imageDuration).toHaveValue(String(1 / 24));
-  await imageDuration.fill('2');
-  await page.getByLabel('Move Second.png earlier', { exact: true }).click();
-  await expect.poll(async () => (await readProject(page)).interstitials[0].startVideoAssets?.map((r: any) => r.name)).toEqual(['Second.png', 'First.png']);
-  expect((await readProject(page)).interstitials[0].startVideoAssets[1].outFrame).toBe(48);
-  const end = page.getByRole('group', { name: 'End reference', exact: true });
-  await end.getByRole('button', { name: 'Video', exact: true }).click(); await end.getByRole('checkbox', { name: 'Use arbitrary end video' }).check();
-  const ids = (await readProject(page)).interstitials[0].startVideoAssets.map((r: any) => r.assetId);
-  const dataTransfer = await page.evaluateHandle(ids => {
-    const data = new DataTransfer(); data.effectAllowed = 'copyMove';
-    data.setData('application/x-sparko-library-items', JSON.stringify(ids.map((id: string) => ({ type: 'asset', id })))); return data;
-  }, ids);
-  await end.getByRole('group', { name: 'End video', exact: true }).dispatchEvent('drop', { dataTransfer });
-  await expect(end.locator('.reference-sequence-clip')).toHaveCount(2);
-  expect((await readProject(page)).interstitials[0].startVideoAssets).toHaveLength(2);
+  const editor = await openGenerationTimeline(page);
+  for (const [name, frame] of [['First.png', '0'], ['Second.png', '48']]) {
+    await editor.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
+    await editor.getByLabel('Upload Keyframe image', { exact: true }).setInputFiles(await imageFile(page, name));
+    await expect(editor.getByRole('group', { name: 'Keyframe image', exact: true })).toHaveAttribute('aria-busy', 'false');
+    await editor.getByLabel('Keyframe frame', { exact: true }).fill(frame);
+  }
+  await editor.getByLabel('Keyframe method', { exact: true }).selectOption('frame');
+  await editor.getByLabel('Selected generation input', { exact: true }).selectOption({ index: 1 });
+  await expect(editor.getByLabel('Keyframe frame', { exact: true })).toHaveValue('0');
+  await expect(editor.getByLabel('Keyframe method', { exact: true })).toHaveValue('guide');
+  await editor.getByLabel('Keyframe frame', { exact: true }).press('ArrowUp'); await expect(editor.getByLabel('Keyframe frame', { exact: true })).toHaveValue('1');
+  const frames = (await readProject(page)).interstitials[0].keyframes;
+  expect(frames).toMatchObject([{ frame: 1, image: { name: 'First.png' } }, { frame: 48, method: 'frame', image: { name: 'Second.png' } }]);
+  await closeGenerationTimeline(page); await saveAndReopen(page);
+  expect((await readProject(page)).interstitials[0].keyframes).toEqual(frames);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-  await page.screenshot({ path: `test-results/reference-sequence-${width}.png`, fullPage: true });
 });
 
 test('opens an image directly as a silent timeline source', async ({ page }) => {

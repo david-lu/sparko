@@ -1,4 +1,4 @@
-import { test, expect, openVideo, addDraft, readProject, type Page } from './fixtures';
+import { openGenerationTimeline, showImageReferences, test, expect, openVideo, addDraft, readProject, type Page } from './fixtures';
 
 async function importImages(page: Page, count = 1) {
   const png = await page.evaluate(() => {
@@ -62,33 +62,30 @@ for (const width of [1440, 390]) test(`Library image picker supports search, key
   expect(errors).toEqual([]);
 });
 
-test('Library picker selects mixed video and image sequences and replaces a single image boundary', async ({ page }) => {
+test('Library picker selects a timeline video and replaces an image keyframe independently', async ({ page }) => {
   await openVideo(page); await importImages(page, 2); await addDraft(page);
-  await page.getByRole('group', { name: 'Start reference type', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Use arbitrary start video', exact: true }).check();
-  const video = page.getByRole('group', { name: 'Start video', exact: true });
-  await video.getByRole('button', { name: 'Choose Start video from Library', exact: true }).click();
-  let dialog = page.getByRole('dialog', { name: 'Choose Start video from Library', exact: true });
-  await dialog.getByRole('button', { name: 'Reference 1.png', exact: true }).click();
+  const editor = await openGenerationTimeline(page);
+  await editor.getByRole('button', { name: 'Add video', exact: true }).click();
+  await editor.getByRole('button', { name: 'Choose Timeline video from Library', exact: true }).click();
+  let dialog = page.getByRole('dialog', { name: 'Choose Timeline video from Library', exact: true });
+  await expect(dialog.getByRole('button', { name: 'Reference 1.png', exact: true })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'interstitial-reference.mp4', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Use selected', exact: true }).click(); await expect(dialog).toHaveCount(0);
-  await expect(video.locator('.asset-reference-chip')).toHaveCount(2);
-  await expect(page.getByLabel('Start Reference 1.png duration', { exact: true })).toHaveValue('1');
-  await page.getByRole('group', { name: 'End reference type', exact: true }).getByRole('button', { name: 'Image', exact: true }).click();
-  const end = page.getByRole('group', { name: 'End reference image', exact: true });
+  await dialog.getByRole('button', { name: 'Use asset', exact: true }).click(); await expect(dialog).toHaveCount(0);
+  const video = (await readProject(page)).interstitials[0].timelineVideos[0];
+  await editor.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
+  const image = editor.getByRole('group', { name: 'Keyframe image', exact: true });
   for (const name of ['Reference 1.png', 'Reference 2.png']) {
-    await end.getByRole('button', { name: 'Choose End reference image from Library', exact: true }).click();
-    dialog = page.getByRole('dialog', { name: 'Choose End reference image from Library', exact: true });
-    await dialog.getByRole('button', { name: 'Reference 1.png', exact: true }).click();
-    if (name !== 'Reference 1.png') await dialog.getByRole('button', { name, exact: true }).click();
+    await image.getByRole('button', { name: 'Choose Keyframe image from Library', exact: true }).click();
+    dialog = page.getByRole('dialog', { name: 'Choose Keyframe image from Library', exact: true });
+    await dialog.getByRole('button', { name, exact: true }).click();
     await dialog.getByRole('button', { name: 'Use asset', exact: true }).click();
-    await expect(dialog).toHaveCount(0); await expect(end.locator('.asset-reference-chip')).toHaveCount(1); await expect(end).toContainText(name);
+    await expect(dialog).toHaveCount(0); await expect(image.locator('.asset-reference-chip')).toHaveCount(1); await expect(image).toContainText(name);
   }
-  await expect(video.locator('.asset-reference-chip')).toHaveCount(2);
+  expect((await readProject(page)).interstitials[0].timelineVideos[0]).toEqual(video);
 });
 
 test('numbered H3 image references can be chosen from Library with their nine-image limit', async ({ page }) => {
-  await openVideo(page); await importImages(page, 10); await addDraft(page);
+  await openVideo(page); await importImages(page, 10); await addDraft(page); await showImageReferences(page);
   const choose = page.getByRole('button', { name: 'Choose image references from Library', exact: true });
   await choose.click(); const dialog = page.getByRole('dialog', { name: 'Choose image references from Library', exact: true });
   for (let i = 1; i <= 9; i++) await dialog.getByRole('button', { name: `Reference ${i}.png`, exact: true }).click();

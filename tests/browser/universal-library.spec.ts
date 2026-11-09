@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { test, expect, openVideo, dragIntoView, addDraft, readProject, saveAndReopen, type Page } from './fixtures';
+import { openGenerationTimeline, test, expect, openVideo, dragIntoView, addDraft, readProject, saveAndReopen, type Page } from './fixtures';
 
 async function create(page: Page, kind: 'Image' | 'Audio') {
   await page.getByRole('button',{name:`Add ${kind.toLowerCase()}`,exact:true}).press('Enter');
@@ -150,19 +150,18 @@ test('folders import media without creating timeline clips and Start/End video t
   await expect(page.locator('.story-clip')).toHaveCount(1);
   const project = await readProject(page); expect(project.library.find((a: any) => a.name === 'Arbitrary.mp4').folderId).toBe(project.libraryFolders[0].id);
   await addDraft(page);
-  await page.getByRole('group', { name: 'Start reference type', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByRole('group', { name: 'End reference type', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByLabel('Use arbitrary start video', { exact: true }).check();
-  await expect(page.getByLabel('Use arbitrary end video', { exact: true })).not.toBeChecked();
-  await dragIntoView(page, page.getByRole('button', { name: 'Library asset Arbitrary.mp4', exact: true }), page.getByRole('group', { name: 'Start video', exact: true }));
-  await expect(page.getByRole('group', { name: 'Start video', exact: true })).toContainText('Arbitrary.mp4');
-  await page.getByLabel('Use arbitrary end video', { exact: true }).check();
-  await dragIntoView(page, page.getByRole('button', { name: 'Library asset interstitial-reference.mp4', exact: true }), page.getByRole('group', { name: 'End video', exact: true }));
-  await expect(page.getByRole('group', { name: 'End video', exact: true })).toContainText('interstitial-reference.mp4');
-  await page.getByLabel('Use arbitrary start video', { exact: true }).uncheck();
-  await expect(page.getByLabel('Use arbitrary end video', { exact: true })).toBeChecked();
+  const editor = await openGenerationTimeline(page);
+  await editor.getByRole('checkbox', { name: 'Reference start video', exact: true }).check();
+  await editor.getByRole('checkbox', { name: 'Reference end video', exact: true }).check();
+  await editor.getByRole('button', { name: 'Add video', exact: true }).click();
+  await dragIntoView(page, page.getByRole('button', { name: 'Library asset Arbitrary.mp4', exact: true }), editor.getByRole('group', { name: 'Timeline video', exact: true }));
+  await expect(editor.getByRole('group', { name: 'Timeline video', exact: true })).toContainText('Arbitrary.mp4');
+  const video = (await readProject(page)).interstitials[0].timelineVideos[0];
+  await editor.getByRole('checkbox', { name: 'Reference start video', exact: true }).uncheck();
+  await expect(editor.getByRole('checkbox', { name: 'Reference end video', exact: true })).toBeChecked();
   const item = (await readProject(page)).interstitials[0];
-  expect(item.startVideoAsset.name).toBe('Arbitrary.mp4'); expect(item.endVideoAsset.name).toBe('interstitial-reference.mp4'); expect(item.useStartVideoAsset).toBe(false); expect(item.useEndVideoAsset).toBe(true);
+  expect(item.timelineVideos[0]).toEqual(video); expect(item.useInputReference).toBe(false); expect(item.useOutputReference).toBe(true);
+
 });
 
 test('audio generation saves a playable output and exposes the supported audio models', async ({ page }) => {

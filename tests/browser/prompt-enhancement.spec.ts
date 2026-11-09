@@ -1,4 +1,4 @@
-import { expect, test, openVideo, addBridge, saveAndReopen, readProject } from './fixtures';
+import { setVideoReference, expect, test, openVideo, addBridge, saveAndReopen, readProject } from './fixtures';
 import { readFile } from 'node:fs/promises';
 import { readClipMetadata } from '../../src/media/clipMetadata';
 
@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
   });
   await openVideo(page);
   await addBridge(page);
-  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
+  await setVideoReference(page, 'end', true);
   await page.getByLabel('Video prompt').fill(original);
 });
 
@@ -78,7 +78,7 @@ test('preserves the draft on errors and ignores a late result after the user edi
 });
 
 test('carries enhanced dialogue timing through regeneration into the downloaded video', async ({ page }) => {
-  for (const side of ['Start', 'End']) await page.getByRole('group', { name: `${side} reference`, exact: true }).getByRole('button', { name: 'None', exact: true }).click();
+  for (const side of ['start', 'end'] as const) await setVideoReference(page, side, false);
   const draft = 'integrated_multimodal_description: [Shot 1] She holds a rock and asks <d>[English] A rock?</d>, then holds a bowl and asks <d>[English] Old vegetables?</d>\noverall_soundscape: Quiet room.\nnon_diegetic_music: N/A';
   const timed = 'integrated_multimodal_description: [Shot 1] Static camera. From 0 to 3 seconds: She holds the rock while asking <d>[English] A rock?</d> From 3 to 6 seconds: She puts down the rock and holds the bowl while asking <d>[English] Old vegetables?</d>\noverall_soundscape: Quiet room.\nnon_diegetic_music: N/A';
   const prompt = page.getByLabel('Video prompt');
@@ -144,7 +144,7 @@ for (const width of [1440, 390]) test(`preserves oversized drafts and enforces H
   });
   const controls = () => page.locator('.interstitial-editor').evaluate(root => {
     const top = root.getBoundingClientRect().top;
-    return ['textarea', '.prompt-character-count', '.interstitial-time-fields', 'button[type=submit]', '.task-status'].map(selector => {
+    return ['textarea', '.prompt-character-count', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
       const box = root.querySelector(selector)!.getBoundingClientRect(); return { top: box.top - top, height: box.height };
     });
   });

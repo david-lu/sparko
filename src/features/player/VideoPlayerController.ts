@@ -28,6 +28,7 @@ export class VideoPlayerController {
   private wantsPlayback = false;
   private sourceLoad: AbortController | null = null;
   private flowPlayback: FlowPlayback | null = null;
+  private flowConfiguration?: { flow: CallResponseFlow; info?: MediaInfo; matchFraming: boolean; crossfade: boolean; crossfadeFrames: number };
   private subtitles: { track: TextTrack | null; cues: VTTCue[]; enabled: boolean } = { track: null, cues: [], enabled: true };
 
   getSnapshot = (): PlayerState => this.state;
@@ -54,12 +55,19 @@ export class VideoPlayerController {
     this.element = element;
     if (!element) { this.flowPlayback?.dispose(); this.flowPlayback = null; this.sourceLoad?.abort(); this.timeline?.dispose(); this.timeline = null; this.pendingSeek = null; this.wantsPlayback = false; return; }
     this.applySettings();
-    if (this.composition) this.startTimeline(this.state.time);
+    if (this.flowConfiguration) {
+      // Activity and docking detach the view, not the story playback session.
+      const { flow, info, matchFraming, crossfade, crossfadeFrames } = this.flowConfiguration;
+      const session = this.state.flow;
+      this.setFlow(flow, info, matchFraming, crossfade, crossfadeFrames);
+      if (session && flow.scenes.some(scene => scene.id === session.sceneId)) this.flowPlayback?.restoreSession(session);
+    } else if (this.composition) this.startTimeline(this.state.time);
     else if (this.source) this.startSource(this.state.time);
     else { element.removeAttribute('src'); element.load(); }
   };
 
   load(source: MediaSource) {
+    this.flowConfiguration = undefined;
     this.flowPlayback?.dispose(); this.flowPlayback = null;
     this.sourceLoad?.abort(); this.timeline?.dispose(); this.timeline = null; this.composition = null; this.pendingSeek = null; this.wantsPlayback = false;
     this.source = source; this.previewEnd = null;
@@ -75,6 +83,7 @@ export class VideoPlayerController {
     this.element.playbackRate = this.state.speed; this.element.loop = this.state.loop;
   }
   setComposition(composition: TimelineComposition) {
+    this.flowConfiguration = undefined;
     this.flowPlayback?.dispose(); this.flowPlayback = null;
     if (this.state.flow) this.update({ flow: null });
     if (this.composition === composition) return;
@@ -96,6 +105,7 @@ export class VideoPlayerController {
     this.startTimeline(time);
   }
   setFlow(flow: CallResponseFlow, info?: MediaInfo, matchFraming = false, crossfade = true, crossfadeFrames = INTERSTITIAL_CROSSFADE_FRAMES) {
+    this.flowConfiguration = { flow, info, matchFraming, crossfade, crossfadeFrames };
     if (!this.element || !this.source) return;
     if(!flow.scenes.length){
       this.flowPlayback?.dispose();this.flowPlayback=null;this.sourceLoad?.abort();this.timeline?.dispose();this.timeline=null;
@@ -204,6 +214,7 @@ export class VideoPlayerController {
   previewSource(start: number, end: number) { this.preview(this.composition?.timelineTime(start) ?? start, this.composition?.timelineTime(end) ?? end); }
   clearError() { this.update({ error: null }); }
   close() {
+    this.flowConfiguration = undefined;
     this.attach(null);
     this.timeline = null;
     this.sourceLoad = null;
@@ -213,6 +224,7 @@ export class VideoPlayerController {
     this.update({ time: 0, duration: 0, playing: false, buffering: false, error: null, buffered: [], flow: null });
   }
   dispose() {
+    this.flowConfiguration = undefined;
     this.flowPlayback?.dispose(); this.flowPlayback = null;
     this.timeline?.dispose(); this.timeline = null;
     this.sourceLoad?.abort(); this.sourceLoad = null;

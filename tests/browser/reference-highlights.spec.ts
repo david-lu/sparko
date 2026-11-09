@@ -1,4 +1,4 @@
-import { test, expect, openVideo, fitAll, saveAndReopen } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, test, expect, openVideo, fitAll, saveAndReopen } from './fixtures';
 
 for (const width of [1440, 390]) test(`selection highlights draft and saved reference ranges without shifting the timeline at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
@@ -47,7 +47,7 @@ for (const width of [1440, 390]) test(`selection highlights draft and saved refe
   expect(await positions()).toEqual(before);
   await expect(clip('Earlier video').getByRole('img', { name: 'Start reference for Draft generation: 1.000–2.000 seconds', exact: true })).toBeVisible();
   await page.locator('.story-canvas').screenshot({ path: `test-results/reference-draft-${width}.png` });
-  await page.getByLabel('start_range', { exact: true }).fill('1');
+  await openGenerationTimeline(page); await page.getByLabel('start_range', { exact: true }).fill('1'); await closeGenerationTimeline(page);
   await expect(clip('Earlier video').locator('.story-reference-highlight')).toHaveCount(0);
   await expect(clip('Previous still').locator('.story-reference-highlight')).toHaveAttribute('data-media-start', '1');
   await clip(readyId).locator('.story-clip-title').click();
@@ -56,7 +56,7 @@ for (const width of [1440, 390]) test(`selection highlights draft and saved refe
   ];
   await expect.poll(ranges).toEqual(savedRanges);
   await expect(clip(readyId).locator('.story-reference-section')).toHaveCount(2);
-  await page.getByLabel('start_range', { exact: true }).fill('4');
+  await openGenerationTimeline(page); await page.getByLabel('start_range', { exact: true }).fill('4'); await closeGenerationTimeline(page);
   await expect.poll(ranges).toEqual(savedRanges);
   await page.locator('.story-canvas').screenshot({ path: `test-results/reference-saved-${width}.png` });
   // The overlays must let pointer scrubbing through and disappear when the source is selected.

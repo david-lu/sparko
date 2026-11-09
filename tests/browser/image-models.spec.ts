@@ -1,4 +1,4 @@
-import { test, expect, openVideo, readProject, dragIntoView, addDraft, type Page } from './fixtures';
+import { openGenerationTimeline, test, expect, openVideo, readProject, dragIntoView, addDraft, type Page } from './fixtures';
 
 async function setup(page: Page) {
   await page.route('**/api/status', async route => { const response = await route.fetch(), status = await response.json(); await route.fulfill({ json: { ...status, providers: { ...status.providers, fal: true, openai: true } } }); });
@@ -100,17 +100,20 @@ test('all image models submit one image and save one generation version', async 
   }
 });
 
-test('dragging directly to image boundaries adds, replaces and clears independent references', async ({ page }) => {
+test('dragging to image keyframes adds, replaces and clears independent references', async ({ page }) => {
   await setup(page); await importImage(page, 'First.png'); await importImage(page, 'Second.png'); await addDraft(page);
-  for (const side of ['Start', 'End']) await page.getByRole('group', { name: `${side} reference type`, exact: true }).getByRole('button', { name: 'Image', exact: true }).click();
-  const start = page.getByRole('group', { name: 'Start reference image', exact: true }), end = page.getByRole('group', { name: 'End reference image', exact: true });
-  await dragIntoView(page, page.getByRole('button', { name: 'Library asset First.png', exact: true }), start); await expect(start).toContainText('First.png');
-  await dragIntoView(page, page.getByRole('button', { name: 'Library asset Second.png', exact: true }), end); await expect(end).toContainText('Second.png');
-  await dragIntoView(page, page.getByRole('button', { name: 'Library asset Second.png', exact: true }), start); await expect(start).toContainText('Second.png');
-  expect((await readProject(page)).interstitials[0].imageReferences).toHaveLength(2);
-  await dragIntoView(page, page.getByRole('button', { name: 'Library asset interstitial-reference.mp4', exact: true }), start);
-  await expect(start.locator('.asset-input-feedback')).toContainText('Drop image assets'); await expect(start).toContainText('Second.png');
-  await start.getByRole('button', { name: 'Remove reference Second.png', exact: true }).click(); await expect(end).toContainText('Second.png');
-  const item = (await readProject(page)).interstitials[0]; expect(item.startReferenceType).toBe('none'); expect(item.endImageIndex).toBe(1);
-  await expect(page.locator('.inspector-references select')).toHaveCount(0);
+  const editor = await openGenerationTimeline(page);
+  const input = editor.getByRole('group', { name: 'Keyframe image', exact: true });
+  await editor.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
+  await dragIntoView(page, page.getByRole('button', { name: 'Library asset First.png', exact: true }), input); await expect(input).toContainText('First.png');
+  await editor.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
+  await dragIntoView(page, page.getByRole('button', { name: 'Library asset Second.png', exact: true }), input); await expect(input).toContainText('Second.png');
+  await editor.getByLabel('Selected generation input', { exact: true }).selectOption({ index: 1 });
+  await dragIntoView(page, page.getByRole('button', { name: 'Library asset Second.png', exact: true }), input); await expect(input).toContainText('Second.png');
+  expect((await readProject(page)).interstitials[0].keyframes).toHaveLength(2);
+  await dragIntoView(page, page.getByRole('button', { name: 'Library asset interstitial-reference.mp4', exact: true }), input);
+  await expect(input.locator('.asset-input-feedback')).toContainText('Drop image assets'); await expect(input).toContainText('Second.png');
+  await input.getByRole('button', { name: 'Remove reference Second.png', exact: true }).click();
+  const item = (await readProject(page)).interstitials[0]; expect(item.keyframes[0].image).toBeUndefined(); expect(item.keyframes[1].image.name).toBe('Second.png');
+  await editor.getByLabel('Selected generation input', { exact: true }).selectOption({ index: 2 }); await expect(input).toContainText('Second.png');
 });

@@ -1,4 +1,4 @@
-import { test, expect, readProject, saveAndReopen, dragIntoView, addDraft, type Page } from './fixtures';
+import { showImageReferences, test, expect, readProject, saveAndReopen, dragIntoView, addDraft, type Page } from './fixtures';
 import { writeClipMetadata } from '../../src/media/clipMetadata';
 import { clipMetadata } from '../fixtures/clip-metadata';
 
@@ -74,7 +74,7 @@ for (const kind of ['video', 'image'] as const) for (const width of [1440, 390])
   });
   const enhance = page.getByRole('button', { name: 'Enhance prompt', exact: true });
   await enhance.scrollIntoViewIfNeeded();
-  const positions = () => page.locator('.clip-inspector').evaluate(root => ['textarea', '.inspector-references-panel, .asset-input', 'button[type=submit]'].map(selector => {
+  const positions = () => page.locator('.clip-inspector').evaluate(root => ['textarea', '.generation-timeline-summary, .asset-input', 'button[type=submit]'].map(selector => {
     const r = root.querySelector(selector)!.getBoundingClientRect(); return { y: r.top - root.getBoundingClientRect().top, height: r.height };
   }));
   const before = await positions();
@@ -145,7 +145,7 @@ for (const width of [1440, 390]) test(`capture uses the trimmed playhead frame a
     await expect.poll(async () => (await readProject(page)).library.filter((asset: any) => asset.kind === 'image').length).toBe(0);
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
     await saveAndReopen(page); expect(await capturedImage(page)).toEqual(image);
-    await addDraft(page);
+    await addDraft(page); await showImageReferences(page);
     await dragIntoView(page, page.getByRole('button', { name: `Library asset ${image.name}`, exact: true }), page.getByRole('group', { name: 'Image references', exact: true }));
     await expect(page.getByRole('button', { name: 'Remove Picture 1', exact: true })).toBeVisible();
   }

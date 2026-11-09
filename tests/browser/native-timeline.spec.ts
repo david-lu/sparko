@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import path from 'node:path';
+import type { CallResponseFlow } from '../../src/features/call-response/model';
 
 async function setup(page: Page, moving = false, sourceFps = 25) {
   await page.route('**/__native-timeline', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><style>video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}</style><div id="stage" style="position:relative;width:320px;height:180px"><video muted playsinline></video></div>' }));
@@ -144,6 +145,45 @@ test('renders and crossfades decoded frames on one WebGPU canvas without native 
   expect(mirror).toEqual({ stream: true, width: 320, height: 180, muted: true });
   await page.evaluate(() => (window as any).nativeTest.controller.dispose());
   await expect(page.locator('canvas.playback-canvas')).toHaveCount(0);
+});
+
+test('detaching the player view preserves its story route and restores the latest flow', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(async () => {
+    const { VideoPlayerController } = await import('/src/features/player/VideoPlayerController.ts' as string);
+    const { createTestFlow } = await import('/src/features/call-response/model.ts' as string);
+    const s = (window as any).nativeTest, flow: CallResponseFlow = createTestFlow();
+    flow.scenes = flow.scenes.map(scene => ({ ...scene, clip: { ...scene.clip, assetId: s.source.asset.id, inFrame: 0, outFrame: 24 } }));
+    flow.edges = flow.edges.map(edge => ({ ...edge, transitionFrames: 0 }));
+    const controller = s.controller = new VideoPlayerController();
+    controller.load(s.source.source);
+    // A flow supplied before the view attaches must also be remembered.
+    controller.setFlow(flow, s.info);
+    controller.attach(document.querySelector('video'));
+    controller.branchFlow('wait', 'correct');
+    s.flow = flow;
+  });
+  const snapshot = () => page.evaluate(() => (window as any).nativeTest.controller.getSnapshot());
+  await expect.poll(async () => (await snapshot()).flow?.sceneId).toBe('correct');
+  await page.evaluate(() => (window as any).nativeTest.controller.pause());
+  const before = await snapshot();
+  expect(before.flow.outcome).toBe('correct'); expect(before.flow.traversedEdgeIds.length).toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const s = (window as any).nativeTest;
+    s.controller.attach(null);
+    s.flow = { ...s.flow, scenes: s.flow.scenes.map((scene: any) => ({ ...scene, label: 'Updated while detached' })) };
+    s.controller.setFlow(s.flow, s.info);
+    s.controller.attach(document.querySelector('video'));
+  });
+  await expect.poll(async () => { const s = await snapshot(); return s.error ?? s.buffering; }).toBe(false);
+  expect((await snapshot()).flow).toEqual(before.flow);
+  await expect(page.locator('.playback-canvas')).toHaveCount(1);
+  await page.evaluate(() => (window as any).nativeTest.controller.seekFlowScene('intro', 12));
+  await expect.poll(async () => (await snapshot()).flow?.frame).toBe(12);
+  await page.evaluate(() => (window as any).nativeTest.controller.play());
+  await expect.poll(async () => (await snapshot()).flow?.sceneId).toBe('call');
+  await page.evaluate(() => (window as any).nativeTest.controller.dispose());
+  await expect(page.locator('.playback-canvas')).toHaveCount(0);
 });
 
 test('uses the same decoded-frame pipeline without WebGPU and closes its media resources', async ({ page }) => {

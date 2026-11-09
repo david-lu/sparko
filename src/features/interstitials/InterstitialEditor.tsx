@@ -1,23 +1,22 @@
 import { enabledImageReferences } from '../../../shared/image-references';
 import { validateTimelineVideos } from '../../../shared/video-references';
-import GenerationTimeline from './GenerationTimeline';
+import GenerationTimelineEditor from './GenerationTimelineEditor';
 import { activeVideoKeyframes, validateVideoKeyframes } from '../../../shared/video-keyframes';
 import GenerationLora from '../project/GenerationLora';
 import { H3_MODEL_ID, generationLoraInstructions } from '../../../shared/loras';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Clapperboard, RotateCcw } from 'lucide-react';
-import { COMFY, H3_PROMPT_MAX_LENGTH, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
+import { H3_PROMPT_MAX_LENGTH, MASK_TRANSITION } from '../../../shared/constants';
 import { normalizeH3Prompt, validateH3PromptLength } from '../../../shared/h3-prompt';
 import { comfyReferenceRange } from '../../../shared/comfy';
 import type { AppStatus } from '../../../shared/contracts';
-import { minimumDuration, hasUnsubmittedChanges, isGenerating, normalizeGenerationMethod, playableResult, validateInterstitialDuration, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
+import { hasUnsubmittedChanges, isGenerating, minimumDuration, normalizeGenerationMethod, playableResult, validateInterstitialDuration, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import type { InterstitialController } from './InterstitialController';
 import { assets } from '../project/assets';
 import { useAssetAvailability } from '../project/useAssetAvailability';
 import { phaseLabel, renderingProgress } from './status';
-import InterstitialTimeField from './InterstitialTimeField';
 import InterstitialOutput from './InterstitialOutput';
 import { referenceTiming } from '../call-response/generation';
 import { enhancePrompt } from './enhance-prompt';
@@ -25,7 +24,6 @@ import EnhancePromptActions, { type PromptEditResult } from './EnhancePromptActi
 import TaskStatus from '../../shared/TaskStatus';
 import { sequenceActive } from '../call-response/sequence';
 import GenerationFeedback from './GenerationFeedback';
-import ImageReferences from './ImageReferences';
 import GenerationSeed from './GenerationSeed';
 import { hasNoVideoInput } from './api';
 import { maskCurveSchema } from '../../../shared/mask-curves';
@@ -39,11 +37,10 @@ export type InterstitialEditorProps = {
   resultDetails?: ReactNode;
   compact?: boolean;
   showOutput?: boolean;
-  timelineOnly?: boolean;
   projects?: ProjectController;
   player?: PromptFramePlayer;
 };
-export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, showOutput = true, timelineOnly = false, projects, player }: InterstitialEditorProps) {
+export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, showOutput = true, projects, player }: InterstitialEditorProps) {
   const promptId = useId(), resolutionId = useId(), analysisId = useId();
   const dependency = controller.dependency(selected.id);
   useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId), ...(selected.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...(selected.keyframes ?? []).flatMap(k => k.image ? [k.image.assetId] : [])]);
@@ -98,7 +95,6 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const recovering = retryLoading || retryChecking;
   const canRecover = !!selected.result?.assetId || !!status?.providers.comfy;
   const action = retryLoading ? 'Retry loading' : retryChecking ? 'Check result' : selected.phase === 'error' || selected.phase === 'cancelled' ? 'Retry' : currentResult ? 'Regenerate' : 'Generate';
-  const fullVideoUrl = currentResult?.fullAssetId ? assets.url(currentResult.fullAssetId) : currentResult?.assetId ? assets.url(currentResult.assetId) : undefined;
   let validationError = '';
   const noVideo = hasNoVideoInput(selected);
   const hasSource = !!engine && !!info || !!(dependency?.reference?.before || dependency?.reference?.after);
@@ -143,34 +139,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     dependency?.blocked, ...(dependency?.issues ?? []).map(issue => issue.message), selected.error, validationError,
     busy && changed && 'This render uses the submitted settings. Your edits apply to the next generation.'].filter((value): value is string => !!value))];
   const progress = selected.phase === 'rendering' ? renderingProgress(selected) : selected.progress;
-  const durationField = <InterstitialTimeField name="Duration" label={method === 'comfy-loop' ? 'Loop duration' : 'Duration'} value={selected.duration} min={minimumDuration(compact ? 'comfy-loop' : method)} max={INTERSTITIAL.maxDuration} step={0.25} onChange={value => controller.edit(selected.id, { duration: value })} />;
-  const imageControls = <ImageReferences key={`images:${selected.id}`} projects={projects} value={selected.imageReferences} onBusyChange={setAddingImages} onChange={imageReferences => {
-          const saved = controller.getSnapshot().items.find(item => item.id === selected.id) ?? selected;
-          const remap = (index: number | undefined) => {
-            if (index === undefined) return undefined;
-            const previous = saved.imageReferences?.[index];
-            if (!previous) return index;
-            const next = imageReferences.findIndex(image => image.assetId === previous.assetId);
-            return next < 0 ? undefined : next;
-          };
-          const startImageIndex = remap(saved.startImageIndex), endImageIndex = remap(saved.endImageIndex);
-          controller.edit(selected.id, { imageReferences, startImageIndex, endImageIndex,
-            ...(saved.startImageIndex !== undefined && startImageIndex === undefined ? { startReferenceType: 'none' } : {}),
-            ...(saved.endImageIndex !== undefined && endImageIndex === undefined ? { endReferenceType: 'none' } : {}) });
-        }} />;
-
-  const timeline = <GenerationTimeline key={selected.id} itemId={selected.id} workspace={timelineOnly} generatedUrl={fullVideoUrl} generatedFrames={currentResult ? Math.round((currentResult.fullRange?.totalDuration ?? currentResult.totalDuration) * TIMELINE_FPS) : undefined} item={selected} projects={projects} reference={dependency?.reference}
-        prefixFrames={comfyPlan?.prefixFrames ?? (selected.useInputReference === false ? 0 : Math.round(selected.start_range * TIMELINE_FPS))}
-        middleFrames={comfyPlan?.middleFrames ?? Math.round(selected.duration * TIMELINE_FPS)}
-        suffixFrames={comfyPlan?.suffixFrames ?? (method === 'comfy-extend' || selected.useOutputReference === false ? 0 : Math.round(selected.end_range * TIMELINE_FPS))}
-        videoMs={selected.videoMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs}
-        audioMs={selected.audioMaskTransitionMs ?? selected.maskTransitionMs ?? MASK_TRANSITION.defaultMs}
-        imageControls={imageControls} durationControl={<div className="interstitial-time-fields">{durationField}</div>}
-        onPreviewPlay={onPreviewPlay} onChange={patch => controller.edit(selected.id, patch)} onKeyframesChange={update => {
-          const current = controller.getSnapshot().items.find(item => item.id === selected.id);
-          if (current) controller.edit(selected.id, { keyframes: update(current.keyframes ?? []) });
-        }}/>;
-  if (timelineOnly) return timeline;
+  const timeline = <GenerationTimelineEditor selected={selected} controller={controller} info={info} projects={projects} minDuration={minimumDuration(compact ? 'comfy-loop' : method)} onPreviewPlay={onPreviewPlay} onImagesBusyChange={setAddingImages}/>;
   const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>
     <fieldset>
       {!compact && <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>}

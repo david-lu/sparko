@@ -1,3 +1,4 @@
+import GenerationTimelineEditor from '../features/interstitials/GenerationTimelineEditor';
 import InterstitialEditor from '../features/interstitials/InterstitialEditor';
 import { GenerationWorkspaceContext } from '../features/interstitials/GenerationWorkspace';
 import { storyGenerationItem } from '../features/story-flow/referenceInputs';
@@ -22,7 +23,7 @@ import { getStatus, request } from '../shared/api';
 import type { AppStatus } from '../../shared/contracts';
 import { activeFlows, projectFlows } from '../features/project/types';
 import { composeFlows } from '../features/call-response/compose';
-import { playableResult } from '../../shared/interstitials';
+import { minimumDuration, playableResult } from '../../shared/interstitials';
 import ProjectStart from './ProjectStart';
 import { runtimeFlow } from '../features/story-flow/model';
 import { useStoryEditor } from '../features/story-flow/useStoryEditor';
@@ -409,8 +410,8 @@ export default function App() {
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
       <WorkspaceLockContext.Provider value={workspace.locked}>{workspace.freeDock && !preview && storyGraph && !generationItem ? <DockWorkspace locked={workspace.locked} items={{viewer: playerElement, timeline: storyCanvasElement, library: <StoryLibrary editor={storyEditor}/>, create: <StoryAddClips editor={storyEditor}/>, inspector: <StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>}}/> : <div className="workspace-grid" data-generation-editing={!!generationItem && !preview} inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
         <Activity mode={generationItem && !preview ? 'hidden' : 'visible'}>{playerElement}</Activity>
-        {generationItem && !preview && <InterstitialEditor key={generationItem.id} timelineOnly compact selected={storyGenerationItem(generationItem, storyGraph?.nodes.find(node => node.interstitialId === generationItem.id))}
-          controller={interstitials} engine={engine} info={info} status={status} active projects={projects} player={controller} onPreviewPlay={() => controller.pause()}/>}
+        {generationItem && !preview && <GenerationTimelineEditor key={generationItem.id} workspace selected={storyGenerationItem(generationItem, storyGraph?.nodes.find(node => node.interstitialId === generationItem.id))}
+          controller={interstitials} info={info} projects={projects} minDuration={minimumDuration('comfy-loop')} onPreviewPlay={() => controller.pause()}/>}
       </section><Activity mode={preview ? 'hidden' : 'visible'}><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Workspace panels">
         {storyGraph?<WorkspacePanels workspace={workspace} inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} create={<StoryAddClips editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={resetWorkspace}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
         <InterstitialPanel player={controller} projects={projects} items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}

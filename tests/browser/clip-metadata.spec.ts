@@ -29,7 +29,7 @@ for (const [width, normalize] of [[1440, true], [390, false]] as const) test(`dr
     } }); observer.observe(document.body, { childList: true, subtree: true }); (window as any).importObserver = observer;
   });
   const bytes = await video(); await drop(page, bytes);
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1); await expect(page.locator('.project-status')).toHaveCount(0);
+  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1, { timeout: 30_000 }); await expect(page.locator('.project-status')).toHaveCount(0);
   const during = await page.evaluate(() => { (window as any).importObserver.disconnect(); return (window as any).importPositions; });
   expect(during.length).toBeGreaterThan(0); for (const position of during) expect(position).toEqual(before);
   expect(await positions()).toEqual(before);

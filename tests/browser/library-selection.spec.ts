@@ -264,6 +264,7 @@ test('batch deletion omits dependencies contained entirely within the selection'
   await single.getByRole('button', { name: 'Delete asset', exact: true }).click();
   await asset(page, 'A.png').click();
   await page.locator('.asset-inspector .inspector-output > summary').click();
+  await page.locator('.asset-inspector .generated-output-details > summary').click();
   await page.getByRole('button', { name: 'Saved reference errors', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Saved reference errors', exact: true })).toContainText('Input.png');
 });
