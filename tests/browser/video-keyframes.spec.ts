@@ -1,5 +1,5 @@
 import { test, expect, openVideo, addBridge, readProject, type Page } from './fixtures';
-const openTimeline = (page: Page) => page.getByRole('button', { name: 'Expand generation timeline', exact: true }).click();
+const openTimeline = (page: Page) => page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
 const closeTimeline = (page: Page) => page.getByRole('button', { name: 'Close generation timeline', exact: true }).click();
 const layout = (page: Page, editor: boolean) => page.locator(editor ? '.generation-timeline-editor' : '.interstitial-editor').evaluate((root, editor) => {
   const top = root.getBoundingClientRect().top;
@@ -49,8 +49,7 @@ for (const width of [1440, 390]) test(`keyframe upload and enhancement keep layo
   await page.getByLabel('Keyframe frame', { exact: true }).fill('87'); await closeTimeline(page);
   await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeDisabled();
   await openTimeline(page);
-  await page.getByRole('button', { name: 'Keyframes', exact: true }).click();
-  await page.getByLabel('Selected image keyframe', { exact: true }).selectOption({ index: 1 });
+  await page.getByLabel('Selected generation input', { exact: true }).selectOption({ index: 2 });
   await page.locator('.video-keyframe-footer').getByRole('checkbox', { name: 'Enabled', exact: true }).uncheck();
   await closeTimeline(page); await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
   expect((await readProject(page)).interstitials[0].keyframes[1].enabled).toBe(false); expect(errors).toEqual([]);
@@ -67,7 +66,7 @@ test('changing a timed image cancels enhancement and shortening duration preserv
   let finish!: () => void, sent = false; const gate = new Promise<void>(resolve => { finish = resolve; });
   await page.route('**/api/interstitials/enhance-prompt', async route => { sent = true; await gate; await route.fulfill({ json: { prompt: 'Old timing', model: 'test' } }).catch(() => {}); });
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click(); await expect.poll(() => sent).toBe(true);
-  await openTimeline(page); await page.getByRole('button', { name: 'Keyframes', exact: true }).click();
+  await openTimeline(page); await page.getByLabel('Selected generation input', { exact: true }).selectOption({ index: 1 });
   await page.getByLabel('Keyframe frame', { exact: true }).fill('120'); finish();
   await page.getByLabel('Duration', { exact: true }).fill('3');
   await expect(page.locator('.video-keyframe-error')).toContainText('Outside the generated section');

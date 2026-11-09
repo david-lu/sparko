@@ -8,3 +8,8 @@
 .clip-media-asset{display:flex;align-items:center;gap:7px;min-height:28px;min-width:0;color:var(--text-secondary);font-size:11px}
 .clip-media-asset>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .clip-media-picker{width:100%;min-width:0;height:28px;background:var(--input);border:1px solid var(--line);border-radius:3px;color:var(--text);font-size:11px}
+.generated-output-compact .clip-preview-stage{height:128px;background:#080808}
+.generated-output-compact .clip-preview-stage video{width:100%;height:100%;object-fit:contain}
+.generated-output-compact .interstitial-preview{margin:0}
+.generated-output-compact .interstitial-preview-heading{font-size:10px}
+.generated-output-details>summary{font-size:11px;cursor:pointer;padding:7px 0;color:var(--muted)}

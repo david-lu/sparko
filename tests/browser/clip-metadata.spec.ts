@@ -39,7 +39,7 @@ for (const [width, normalize] of [[1440, true], [390, false]] as const) test(`dr
   await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText(normalize ? '24 fps' : '25 fps');
   if (normalize) expect(project.library.find((a: any) => a.assetId === project.interstitials[0].result.assetId)).toMatchObject({ normalizedFps: 24, originalAssetId: expect.any(String) });
   await expect(page.getByLabel('Video prompt', { exact: true })).toHaveValue(clipMetadata.settings.prompt);
-  await page.locator('.inspector-output>summary').click();
+  await page.locator('.inspector-output>summary').click();await page.locator('.generated-output-details > summary').click();
   await expect(page.getByLabel('Generation seed', { exact: true })).toHaveText(String(clipMetadata.seed));
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Opening video');
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Ending video');
@@ -85,7 +85,7 @@ for (const width of [1440, 390]) test(`imported scene references stay disconnect
   const generated = imported.storyFlow.nodes.find((n: { interstitialId?: string }) => n.interstitialId === imported.interstitials[0].id);
   const showReferences = async () => {
     await fitAll(page); await page.locator(`[data-node-id="${generated.id}"] .story-clip-title`).click();
-    await page.locator('.inspector-output>summary').click();
+    await page.locator('.inspector-output>summary').click();await page.locator('.generated-output-details > summary').click();
   };
   await showReferences();
   const names = page.locator('.generated-reference-videos');

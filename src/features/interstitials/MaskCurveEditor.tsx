@@ -154,6 +154,7 @@ export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoM
     <div className="mask-graph-editor" onKeyDown={event=>{
       event.stopPropagation();
       if(event.key==='Escape' && (context || drag.current)){event.preventDefault();context?setContext(null):endDrag(true);}
+      else if(event.key==='Escape'){event.preventDefault();onClose();}
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.shiftKey?redo():undo();}
     }}>
       <header className="mask-editor-header"><div><span className="eyebrow">GENERATION · VALUE GRAPH</span><h2 id={headingId ?? id}>{title(active)} mask editor</h2></div>

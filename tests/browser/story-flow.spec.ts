@@ -80,7 +80,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   });
   expect(portable.prompt).toBe('Continue the scene');expect(portable.references.before.name).toBe('interstitial-reference.mp4');
   expect(portable.media).toEqual({start:1,duration:2,totalDuration:4});
-  await page.locator('.inspector-output>summary').click();await expect(page.getByRole('region',{name:'Video breakdown'})).toContainText('Generated section');
+  await page.locator('.inspector-output>summary').click();await page.locator('.generated-output-details > summary').click();await expect(page.getByRole('region',{name:'Video breakdown'})).toContainText('Generated section');
   await page.locator('.inspector-output .interstitial-prompt-details>summary').click();await expect(page.locator('.inspector-output .interstitial-prompt-details pre')).toHaveText('Continue the scene');
   await page.getByLabel('Video prompt',{exact:true}).fill('A different next render');await expect(page.locator('.inspector-output .interstitial-prompt-details pre')).toHaveText('Continue the scene');await expect(page.locator('.inspector-references-panel .interstitial-prompt-details')).toHaveCount(0);
   expect(await libraryControls()).toEqual(libraryBefore);
@@ -99,7 +99,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await expect(page.getByLabel('Reference matching')).toContainText('Reference mismatch');await expect(page.getByLabel('Reference matching')).toContainText('Configured crossfades still apply');
   await page.setViewportSize({width:1440,height:1000});await fitAll(page);await page.screenshot({path:'test-results/reference-mismatch.png',fullPage:true});
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-edge.reference-mismatch')).toHaveCount(0);
-  await generated.locator('.story-clip-title').click();await page.locator('.inspector-output>summary').click();await page.getByRole('region',{name:'Video breakdown'}).scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/generated-reference-sections.png',fullPage:true});
+  await generated.locator('.story-clip-title').click();await page.locator('.inspector-output>summary').click();await page.locator('.generated-output-details > summary').click();await page.getByRole('region',{name:'Video breakdown'}).scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/generated-reference-sections.png',fullPage:true});
   await page.locator('summary').filter({hasText:/^File$/}).click();const downloadEvent=page.waitForEvent('download');await page.getByRole('menuitem',{name:'Export project',exact:true}).click();const download=await downloadEvent;
   const context=await browser.newContext({baseURL:new URL(page.url()).origin}),restored=await context.newPage();const errors:string[]=[];restored.on('pageerror',e=>errors.push(e.message));await restored.goto('/');
   await expect(restored.getByRole('button',{name:/^New project/})).toBeEnabled();
@@ -107,7 +107,7 @@ test('connected generation uses clip references, keeps controls stable, and reop
   await expect(restored.locator('.story-clip')).toHaveCount(3,{timeout:60000});await restored.locator('.story-clip.type-simple .story-clip-title').click();
   expect((await saved(restored)).storyFlow.edges.map((e:any)=>e.videoCrossfade)).toEqual([undefined,.5]);
   await fitAll(restored);await restored.locator('.story-edge-hit').first().press('Enter');await expect(restored.getByLabel('Video crossfade duration',{exact:true})).toHaveValue('0.75');await expect(restored.locator('.connection-inspector')).toContainText('Automatic: 75%');await restored.locator('.story-clip.type-simple .story-clip-title').click();
-  await restored.locator('.inspector-output>summary').click();const breakdown=restored.getByRole('region',{name:'Video breakdown'});await expect(breakdown).toContainText('0.000 s – 1.000 s');await expect(breakdown).toContainText('1.000 s – 3.000 s');await expect(breakdown).toContainText('3.000 s – 4.000 s');
+  await restored.locator('.inspector-output>summary').click();await restored.locator('.generated-output-details > summary').click();const breakdown=restored.getByRole('region',{name:'Video breakdown'});await expect(breakdown).toContainText('0.000 s – 1.000 s');await expect(breakdown).toContainText('1.000 s – 3.000 s');await expect(breakdown).toContainText('3.000 s – 4.000 s');
   await expect(restored.getByLabel('Video crossfade duration',{exact:true})).toHaveCount(0);await expect(restored.locator('.story-clip.type-simple')).toHaveAttribute('data-duration','2');expect(errors).toEqual([]);
   await restored.getByRole('slider',{name:'Scrub New scene',exact:true}).focus();await restored.keyboard.press('ArrowRight');await restored.keyboard.press('Space');await expect(restored.locator('.story-playhead')).toBeVisible();
   await context.close();

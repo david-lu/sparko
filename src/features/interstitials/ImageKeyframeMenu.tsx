@@ -1,10 +1,19 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useExclusiveMenu, useMenuScrollDismiss } from '../../shared/DropdownMenu';
 
 export default function ImageKeyframeMenu({ x, y, enabled, deleteLabel, onToggle, onDelete, onClose, restoreFocus }: {
   x: number; y: number; enabled?: boolean; deleteLabel: string; onToggle?: () => void;
   onDelete: () => void; onClose: () => void; restoreFocus: () => void;
+}) {
+  return <ImageTimelineMenu x={x} y={y} label="Image keyframe actions" onClose={onClose} restoreFocus={restoreFocus}>
+    {onToggle && <button type="button" role="menuitem" onClick={onToggle}>{enabled ? 'Disable keyframe' : 'Enable keyframe'}</button>}
+    <button type="button" role="menuitem" className="generation-image-delete" onClick={onDelete}><Trash2 size={14}/>{deleteLabel}</button>
+  </ImageTimelineMenu>;
+}
+
+export function ImageTimelineMenu({ x, y, label, onClose, restoreFocus, children }: {
+  x: number; y: number; label: string; onClose: () => void; restoreFocus: () => void; children: ReactNode;
 }) {
   const element = useRef<HTMLDivElement>(null);
   useExclusiveMenu(element, true, onClose, restoreFocus);
@@ -17,7 +26,7 @@ export default function ImageKeyframeMenu({ x, y, enabled, deleteLabel, onToggle
     menu.style.top = `${Math.max(8, Math.min(y, innerHeight - box.height - 8))}px`;
     menu.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
   }, [x, y]);
-  return <div ref={element} popover="manual" className="generation-image-menu" role="menu" aria-label="Image keyframe actions"
+  return <div ref={element} popover="manual" className="generation-image-menu" role="menu" aria-label={label}
     onContextMenu={event => { event.preventDefault(); event.stopPropagation(); }}
     onKeyDown={event => {
       event.stopPropagation();
@@ -27,7 +36,6 @@ export default function ImageKeyframeMenu({ x, y, enabled, deleteLabel, onToggle
       const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
       buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
     }}>
-    {onToggle && <button type="button" role="menuitem" onClick={onToggle}>{enabled ? 'Disable keyframe' : 'Enable keyframe'}</button>}
-    <button type="button" role="menuitem" className="generation-image-delete" onClick={onDelete}><Trash2 size={14}/>{deleteLabel}</button>
+    {children}
   </div>;
 }

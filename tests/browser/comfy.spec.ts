@@ -140,7 +140,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   expect(await controls()).toEqual(idleControls);
   await expect(page.locator('.inspector-clip-meta')).toContainText('Generated');
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await page.locator('.inspector-output > summary').click();
+  await page.locator('.inspector-output > summary').click();await page.locator('.generated-output-details > summary').click();
   await expect(page.getByLabel('Generation seed', { exact: true })).toHaveText('0');
   const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click();
   const downloaded = await download;

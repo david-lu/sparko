@@ -39,10 +39,11 @@ export type InterstitialEditorProps = {
   resultDetails?: ReactNode;
   compact?: boolean;
   showOutput?: boolean;
+  timelineOnly?: boolean;
   projects?: ProjectController;
   player?: PromptFramePlayer;
 };
-export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, showOutput = true, projects, player }: InterstitialEditorProps) {
+export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, showOutput = true, timelineOnly = false, projects, player }: InterstitialEditorProps) {
   const promptId = useId(), resolutionId = useId(), analysisId = useId();
   const dependency = controller.dependency(selected.id);
   useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId), ...(selected.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...(selected.keyframes ?? []).flatMap(k => k.image ? [k.image.assetId] : [])]);
@@ -158,24 +159,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
             ...(saved.endImageIndex !== undefined && endImageIndex === undefined ? { endReferenceType: 'none' } : {}) });
         }} />;
 
-  const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>
-    <fieldset>
-      {!compact && <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>}
-      <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} instructions={selected.loraInstructions} strength={selected.loraStrength} loras={projects?.getSnapshot().project?.loras} onChange={(lora, loraInstructions, loraStrength) => controller.edit(selected.id, { lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => controller.edit(selected.id, { loraStrength })} turbo={selected.turbo} onTurboChange={turbo => controller.edit(selected.id, { turbo })}/>
-      <div className="field inspector-prompt">
-        <div className="prompt-field-heading">
-          <label htmlFor={promptId}>Prompt</label>
-          {changed && <span className="interstitial-edited" title="Changes apply to the next generation">Edited</span>}
-          <label className="prompt-reference-analysis" title={analysisUnavailable ?? "Analyze reference clips when enhancing or editing"}><input id={analysisId} type="checkbox" aria-label="Analyze reference videos with AI" checked={selected.analyzeReferences === true} disabled={!!analysisUnavailable && !selected.analyzeReferences} onChange={event => controller.edit(selected.id, { analyzeReferences: event.target.checked })}/>Analyze references</label>
-          <EnhancePromptActions key={selected.id} promptId={promptId} enhancing={enhancing} analyzing={analyzing} enabled={!!selected.prompt.trim() && !enhancementUnavailable} connected={!!status?.providers.openai}
-            unavailableReason={enhancementUnavailable}
-            onEnhance={() => void enhance()} onEdit={enhance} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); setAnalyzing(false); }} />
-        </div>
-        <textarea id={promptId} aria-label="Video prompt" aria-describedby={`${promptId}-length`} rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
-        <span id={`${promptId}-length`} className="hint prompt-character-count">{normalizeH3Prompt(selected.prompt).length.toLocaleString('en-US')} / {H3_PROMPT_MAX_LENGTH.toLocaleString('en-US')} characters</span>
-        {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
-      </div>
-      <GenerationTimeline key={selected.id} generatedUrl={fullVideoUrl} item={selected} projects={projects} reference={dependency?.reference}
+  const timeline = <GenerationTimeline key={selected.id} itemId={selected.id} workspace={timelineOnly} generatedUrl={fullVideoUrl} generatedFrames={currentResult ? Math.round((currentResult.fullRange?.totalDuration ?? currentResult.totalDuration) * TIMELINE_FPS) : undefined} item={selected} projects={projects} reference={dependency?.reference}
         prefixFrames={comfyPlan?.prefixFrames ?? (selected.useInputReference === false ? 0 : Math.round(selected.start_range * TIMELINE_FPS))}
         middleFrames={comfyPlan?.middleFrames ?? Math.round(selected.duration * TIMELINE_FPS)}
         suffixFrames={comfyPlan?.suffixFrames ?? (method === 'comfy-extend' || selected.useOutputReference === false ? 0 : Math.round(selected.end_range * TIMELINE_FPS))}
@@ -185,7 +169,26 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         onPreviewPlay={onPreviewPlay} onChange={patch => controller.edit(selected.id, patch)} onKeyframesChange={update => {
           const current = controller.getSnapshot().items.find(item => item.id === selected.id);
           if (current) controller.edit(selected.id, { keyframes: update(current.keyframes ?? []) });
-        }}/>
+        }}/>;
+  if (timelineOnly) return timeline;
+  const form = <form onSubmit={event => { event.preventDefault(); if (enhancing || sequenced || addingImages) return; if (recovering) void controller.resume(selected.id); else if (canGenerate) void controller.generate(selected.id, engine, info); }}>
+    <fieldset>
+      {!compact && <p className="hint">Comfy Cloud · {method === 'comfy-extend' ? 'H3 extension' : method === 'comfy-loop' ? 'H3 loop' : 'H3 bridge'}</p>}
+      <GenerationLora key={`lora:${selected.id}`} model={H3_MODEL_ID} value={selected.lora} instructions={selected.loraInstructions} strength={selected.loraStrength} loras={projects?.getSnapshot().project?.loras} onChange={(lora, loraInstructions, loraStrength) => controller.edit(selected.id, { lora, loraInstructions, loraStrength })} onStrengthChange={loraStrength => controller.edit(selected.id, { loraStrength })} turbo={selected.turbo} onTurboChange={turbo => controller.edit(selected.id, { turbo })}/>
+      <div className="field inspector-prompt">
+        <div className="prompt-field-heading">
+          <label htmlFor={promptId}>Prompt</label>
+          <span className="interstitial-edited" style={{ visibility: changed ? 'visible' : 'hidden' }} aria-hidden={!changed} title="Changes apply to the next generation">Edited</span>
+          <label className="prompt-reference-analysis" title={analysisUnavailable ?? "Analyze reference clips when enhancing or editing"}><input id={analysisId} type="checkbox" aria-label="Analyze reference videos with AI" checked={selected.analyzeReferences === true} disabled={!!analysisUnavailable && !selected.analyzeReferences} onChange={event => controller.edit(selected.id, { analyzeReferences: event.target.checked })}/>Analyze references</label>
+          <EnhancePromptActions key={selected.id} promptId={promptId} enhancing={enhancing} analyzing={analyzing} enabled={!!selected.prompt.trim() && !enhancementUnavailable} connected={!!status?.providers.openai}
+            unavailableReason={enhancementUnavailable}
+            onEnhance={() => void enhance()} onEdit={enhance} onCancel={() => { enhancement.current?.abort(); enhancement.current = null; setEnhancing(false); setAnalyzing(false); }} />
+        </div>
+        <textarea id={promptId} aria-label="Video prompt" aria-describedby={`${promptId}-length`} rows={compact ? 3 : 4} required maxLength={8000} placeholder="Describe the action, camera, sound…" value={selected.prompt} onChange={event => controller.edit(selected.id, { prompt: event.target.value })} />
+        <span id={`${promptId}-length`} className="hint prompt-character-count">{normalizeH3Prompt(selected.prompt).length.toLocaleString('en-US')} / {H3_PROMPT_MAX_LENGTH.toLocaleString('en-US')} characters</span>
+        {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends only the prompt above.</p>}
+      </div>
+      {timeline}
       <div className="field interstitial-resolution">
         <label className="interstitial-option" htmlFor={resolutionId}>
           <input id={resolutionId} type="checkbox" aria-label="Enable 2K regeneration" aria-describedby={`${resolutionId}-help`} checked={selected.resolution === '2k'}

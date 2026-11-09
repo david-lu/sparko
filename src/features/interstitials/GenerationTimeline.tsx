@@ -1,13 +1,13 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
-import { DiamondPlus, Maximize2, Trash2, Video, X } from 'lucide-react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { DiamondPlus, Pencil, Trash2, Video, X } from 'lucide-react';
 import { COMFY, TIMELINE_FPS } from '../../../shared/constants';
 import type { GenerationReference, InterstitialSettings } from '../../../shared/interstitials';
 import { MAX_VIDEO_KEYFRAMES, validateVideoKeyframes, type VideoKeyframe } from '../../../shared/video-keyframes';
 import type { ProjectController } from '../project/ProjectController';
 import AssetThumbnail from '../project/AssetThumbnail';
-import ModalBackdrop from '../../shared/ModalBackdrop';
+import { useGenerationWorkspace } from './GenerationWorkspace';
 import VideoKeyframes from './VideoKeyframes';
-import ImageKeyframeMenu from './ImageKeyframeMenu';
+import ImageKeyframeMenu, { ImageTimelineMenu } from './ImageKeyframeMenu';
 import { MaskCurvePanel, type MaskChannel, type MaskCurves } from './MaskCurveEditor';
 import { maskVideoBoundaries } from './mask-video-boundaries';
 import { generationTimelineSegments, timelineSeconds } from './generation-timeline';
@@ -18,11 +18,12 @@ import TimelineVideoProperties from './TimelineVideoProperties';
 import { inputMaskCurve, inputMaskStrength, h3MaskGroups } from '../../../shared/generation-inputs';
 import { validateTimelineVideos } from '../../../shared/video-references';
 import InterstitialTimeField from './InterstitialTimeField';
+import { useGenerationDrop } from './useGenerationDrop';
 
 type Selection = 'references' | 'frames' | 'videos' | MaskChannel;
 type ImageTarget = { kind: 'keyframe'; id: string } | { kind: 'endpoint'; side: 'start' | 'end' };
 type Props = {
-  generatedUrl?: string; item: InterstitialSettings; projects?: ProjectController; reference?: GenerationReference;
+  itemId: string; workspace?: boolean; generatedUrl?: string; generatedFrames?: number; item: InterstitialSettings; projects?: ProjectController; reference?: GenerationReference;
   prefixFrames: number; middleFrames: number; suffixFrames: number;
   videoMs: number; audioMs: number; imageControls?: ReactNode; durationControl: ReactNode;
   onChange: (patch: Partial<InterstitialSettings>) => void;
@@ -44,21 +45,44 @@ export default function GenerationTimeline(props: Props) {
   const before = prefixFrames / TIMELINE_FPS, duration = middleFrames / TIMELINE_FPS, after = suffixFrames / TIMELINE_FPS;
   const [selection, setSelection] = useState<Selection>(keyframes.length ? 'frames' : 'references');
   const [selectedId, setSelectedId] = useState<string | undefined>(keyframes[0]?.id), [segmentId, setSegmentId] = useState<string>();
-  const [expanded, setExpanded] = useState(false), [zoom, setZoom] = useState(1);
+  const workspace = useGenerationWorkspace();
+  const [inline, setInline] = useState(false), [zoom, setZoom] = useState(1);
+  const expanded = props.workspace || inline;
+  const open = () => { if (workspace) workspace.open(props.itemId); else setInline(true); };
   const [cursorFrame, setCursorFrame] = useState(prefixFrames + Math.floor(middleFrames / 2));
   const [videoDrag, setVideoDrag] = useState<{ id: string; frame: number }>();
-  const videoGesture = useRef<{ id: string; x: number; frame: number; width: number; next: number } | undefined>(undefined);
+  const videoGesture = useRef<{ id: string; x: number; frame: number; width: number; next: number; moved: boolean } | undefined>(undefined);
   const [maskPreview, setMaskPreview] = useState<MaskCurves>();
   const [dragFrame, setDragFrame] = useState<{ id: string; frame: number }>();
   const [endpoint, setEndpoint] = useState<'start' | 'end' | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; target: ImageTarget; trigger: HTMLButtonElement }>();
+  const [cluster, setCluster] = useState<{ ids: string[]; x: number; y: number; trigger: HTMLButtonElement }>();
+  const [laneWidth, setLaneWidth] = useState(0), imageClick = useRef(false);
   const [notice, setNotice] = useState('');
+  const videoButtons = useRef(new Map<string, HTMLButtonElement>()), addVideoButton = useRef<HTMLButtonElement>(null);
+  const videoClick = useRef(false);
   const addButton = useRef<HTMLButtonElement>(null), markers = useRef(new Map<string, HTMLButtonElement>());
   const drag = useRef<{ id: string; startX: number; frame: number; width: number; moved: boolean; previewFrame?: number } | null>(null);
   const maskButtons = useRef<Partial<Record<MaskChannel, HTMLButtonElement | null>>>({}), restoreMask = useRef<MaskChannel | null>(null);
   const previousSelection = useRef<Selection>('references');
   const container = useRef<HTMLDivElement>(null), frameLane = useRef<HTMLDivElement>(null), expandButton = useRef<HTMLButtonElement>(null);
   const headingId = useId();
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    container.current?.querySelector<HTMLElement>('.generation-timeline-heading')?.scrollIntoView({ block: 'nearest' });
+    container.current?.querySelector<HTMLButtonElement>('.generation-return')?.focus({ preventScroll: true });
+  }, [expanded]);
+  useLayoutEffect(() => {
+    if (!expanded || !frameLane.current) return;
+    const observer = new ResizeObserver(([entry]) => setLaneWidth(entry.contentRect.width));
+    observer.observe(frameLane.current); return () => observer.disconnect();
+  }, [expanded]);
+  const frameGroups: VideoKeyframe[][] = [];
+  for (const keyframe of [...keyframes].sort((a, b) => a.frame - b.frame)) {
+    const previous = frameGroups.at(-1), last = previous?.at(-1);
+    if (last && (Math.min(keyframe.frame, middleFrames - 1) - Math.min(last.frame, middleFrames - 1)) / totalFrames * laneWidth < 40) previous!.push(keyframe);
+    else frameGroups.push([keyframe]);
+  }
   const segments = generationTimelineSegments(reference, prefixFrames, middleFrames, suffixFrames);
   const library = projects?.getSnapshot().project?.library ?? [];
   const nameFor = (assetId?: string) => library.find(asset => asset.assetId === assetId)?.name;
@@ -68,14 +92,33 @@ export default function GenerationTimeline(props: Props) {
   const cursor = Math.max(0, Math.min(totalFrames - 1, cursorFrame));
   const percent = (frame: number) => `${frame / totalFrames * 100}%`;
   const isMask = selection === 'video' || selection === 'audio';
-  const choose = (value: Selection) => { setMaskPreview(undefined); setSelection(value); setEndpoint(null); setMenu(undefined); };
+  const choose = (value: Selection) => { setMaskPreview(undefined); setSelection(value); setEndpoint(null); setMenu(undefined); setCluster(undefined); };
   const openMask = (channel: MaskChannel) => {
     restoreMask.current = channel;
     if (!isMask) previousSelection.current = selection;
-    choose(channel); setExpanded(true);
+    choose(channel);
   };
-  const finishMask = () => { choose(previousSelection.current); requestAnimationFrame(() => restoreMask.current && maskButtons.current[restoreMask.current]?.focus({ preventScroll: true })); };
-  const close = () => { setExpanded(false); setMenu(undefined); if (isMask) choose(previousSelection.current); };
+  const finishMask = () => { container.current?.focus({ preventScroll: true }); choose(previousSelection.current); requestAnimationFrame(() => restoreMask.current && maskButtons.current[restoreMask.current]?.focus({ preventScroll: true })); };
+  const close = () => { if (isMask) { finishMask(); return; } setInline(false); workspace?.close(); setMenu(undefined); setCluster(undefined); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.generation-timeline-summary')?.focus({ preventScroll: true })); };
+  const selectVideo = (id: string) => { choose('videos'); setVideoId(id); const video = videos.find(v => v.id === id); if (video) setCursorFrame(prefixFrames + video.frame); };
+  const removeVideo = (id: string) => {
+    const index = videos.findIndex(v => v.id === id), remaining = videos.filter(v => v.id !== id), next = remaining[Math.min(index, remaining.length - 1)];
+    onChange({ timelineVideos: remaining }); setVideoId(next?.id); setNotice('Video removed. Undo restores it.');
+    requestAnimationFrame(() => (next && videoButtons.current.get(next.id) || addVideoButton.current)?.focus({ preventScroll: true }));
+  };
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    const scroll = container.current?.querySelector<HTMLElement>('.generation-timeline-scroll'), line = container.current?.querySelector<HTMLElement>('.generation-cursor-line');
+    if (!scroll || !line) return;
+    const view = scroll.getBoundingClientRect(), point = line.getBoundingClientRect().left;
+    if (point < view.left + 24 || point > view.right - 24) scroll.scrollLeft += point - (view.left + view.width / 2);
+  }, [cursor, zoom, expanded]);
+  useLayoutEffect(() => {
+    if (!isMask || !expanded) return;
+    const panel = container.current?.querySelector<HTMLElement>('.generation-mask-editor');
+    panel?.scrollIntoView({ block: 'nearest' });
+    panel?.querySelector<SVGSVGElement>('[aria-label="Mask value graph"]')?.focus({ preventScroll: true });
+  }, [isMask, expanded]);
   const setFrame = (id: string, frame: number) => onKeyframesChange(current => current.map(keyframe => keyframe.id === id ? { ...keyframe, frame } : keyframe));
   const selectImage = (target: ImageTarget) => {
     setNotice('');
@@ -139,91 +182,123 @@ export default function GenerationTimeline(props: Props) {
     : endpointInput ? { assetId: endpointInput.image.assetId, kind: 'image', sourceFrame: 0, label: endpointInput.image.name }
     : videoInput?.video ? { assetId: videoInput.video.assetId, sourceFrame: videoInput.video.inFrame + cursor - prefixFrames - videoInput.frame, label: videoInput.video.name }
     : referenceInput?.clip ? { assetId: referenceInput.clip.assetId, kind: referenceInput.clip.kind, sourceFrame: referenceInput.clip.inFrame + (referenceInput.held ? 0 : cursor - referenceInput.startFrame), label: nameFor(referenceInput.clip.assetId) ?? 'Reference', held: referenceInput.held } : undefined;
+  const drop = useGenerationDrop({ active: expanded && !isMask, projects, item, prefix: prefixFrames, middle: middleFrames, total: totalFrames, onChange, onKeyframesChange, onFrame: setCursorFrame,
+    onSelect: (type, id) => { choose(type === 'image' ? 'frames' : 'videos'); if (type === 'image') setSelectedId(id); else setVideoId(id); } });
   let videoError = ''; try { const active = enabledImageReferences(item); validateTimelineVideos(videos, middleFrames); validateVideoKeyframes(keyframes, middleFrames, active.startImageIndex !== undefined, active.endImageIndex !== undefined); } catch (error) { videoError = (error as Error).message; }
-  const content = <div className="generation-timeline-editor" data-expanded={expanded} ref={container}
+  const content = <div className="generation-timeline-editor" data-workspace={expanded} data-mask={isMask} role="region" aria-labelledby={headingId} ref={container} tabIndex={-1}
     onKeyDown={event => {
-      // The expanded editor is hosted inside the generation form. Enter edits a field, never submits a render.
+      if (event.target instanceof Element && event.target.closest('dialog,[popover]')) return;
+      // Editing a timeline field never submits a render or triggers regular playback.
+      if (event.key === ' ') event.stopPropagation();
       if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault();
-      if (event.key === 'Escape' && drag.current) { event.preventDefault(); event.stopPropagation(); drag.current = null; setDragFrame(undefined); }
+      if (event.key === 'Escape' && videoGesture.current) { event.preventDefault(); event.stopPropagation(); setCursorFrame(prefixFrames + videoGesture.current.frame); videoGesture.current = undefined; videoClick.current = true; setVideoDrag(undefined); }
+      if (event.key === 'Escape' && drag.current) { event.preventDefault(); event.stopPropagation(); setCursorFrame(prefixFrames + drag.current.frame); drag.current = null; imageClick.current = true; setDragFrame(undefined); }
+      if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); close(); }
     }}>
     <header className="generation-timeline-heading"><div><h2 id={headingId}>Generation timeline</h2><span>Full video · {timelineSeconds(totalFrames)}s · 24 fps</span></div>
-      {expanded ? <button type="button" className="icon-button" aria-label="Close generation timeline" onClick={close}><X size={16}/></button>
-        : <button ref={expandButton} type="button" className="text-button generation-expand" aria-label="Expand generation timeline" onClick={() => { restoreMask.current = null; setExpanded(true); }}><Maximize2 size={14}/>Expand</button>}
+      <button type="button" className="text-button generation-return" aria-label={isMask ? 'Cancel mask edits' : 'Close generation timeline'} onClick={close}>{isMask ? 'Cancel mask' : 'Back to timeline'}<X size={14}/></button>
     </header>
-    <div className="generation-editor-workspace"><GenerationPlayer frame={cursor} frames={totalFrames} input={previewInput} generatedUrl={props.generatedUrl} onFrame={setCursorFrame} onPlay={onPreviewPlay}/>
+    <div className="generation-editor-workspace"><GenerationPlayer frame={cursorFrame} frames={totalFrames} input={previewInput} generatedUrl={props.generatedUrl} generatedFrames={props.generatedFrames} onFrame={setCursorFrame} onPlay={onPreviewPlay}/>
     <aside className="generation-selection-panel">
-      <nav className="generation-timeline-selection" aria-label="Timeline properties">
-        <button type="button" aria-pressed={selection === 'references'} onClick={() => choose('references')}>References</button>
-        <button type="button" aria-pressed={selection === 'frames'} onClick={() => choose('frames')}>Keyframes</button>
-        <button type="button" aria-pressed={selection === 'videos'} onClick={() => choose('videos')}>Videos</button>
-      </nav>
+      <div className="generation-inputs-heading">Inputs</div>
       <div className="generation-timeline-properties">
-        {selection === 'references' && <>
+        {!isMask && <>
           {(['start', 'end'] as const).map(side => {
-            const start = side === 'start', field = start ? 'useInputReference' : 'useOutputReference';
+            const start = side === 'start', linked = item.method === 'comfy-loop', field = start || linked ? 'useInputReference' : 'useOutputReference';
             const enabled = item[field] !== false && (start || item.method !== 'comfy-extend');
             return <div className="generation-reference-toggle" key={side}>
-              <label><input type="checkbox" aria-label={`Reference ${side} video`} checked={enabled} onChange={event => onChange({ [item.method === 'comfy-loop' ? 'useInputReference' : field]: event.target.checked, [item.method === 'comfy-loop' || start ? 'startReferenceType' : 'endReferenceType']: event.target.checked ? 'video' : 'none', [item.method === 'comfy-loop' || start ? 'startImageIndex' : 'endImageIndex']: undefined })}/>{start ? 'Start video' : 'End video'}</label>
-              <div inert={!enabled}><InterstitialTimeField name={start ? 'start_range' : 'end_range'} label="Duration" value={start ? item.start_range : item.end_range} min={COMFY.minContextFrames / TIMELINE_FPS} max={4} step={1 / TIMELINE_FPS} onChange={value => onChange({ [item.method === 'comfy-loop' || start ? 'start_range' : 'end_range']: value })}/></div>
+              <label title={!start && linked ? 'Uses the start reference’s final pose; these controls are linked.' : undefined}><input type="checkbox" aria-label={`Reference ${side} video`} checked={enabled} onChange={event => onChange({ [field]: event.target.checked, [linked || start ? 'startReferenceType' : 'endReferenceType']: event.target.checked ? 'video' : 'none', [linked || start ? 'startImageIndex' : 'endImageIndex']: undefined, ...(!start && !linked ? { method: event.target.checked ? 'comfy' : 'comfy-extend' } : {}) })}/>{start ? 'Start video' : linked ? 'End · linked' : 'End video'}</label>
+              <div inert={!enabled}><InterstitialTimeField name={start ? 'start_range' : 'end_range'} label="Duration" value={start || linked ? item.start_range : item.end_range} min={COMFY.minContextFrames / TIMELINE_FPS} max={4} step={1 / TIMELINE_FPS} onChange={value => onChange({ [linked || start ? 'start_range' : 'end_range']: value })}/></div>
             </div>;
           })}
           <details className="generation-image-references"><summary>Image references <small>{item.imageReferences?.filter(image => image.enabled !== false).length ?? 0}</small></summary>{props.imageControls}</details>
           {selectedEndpoint && <div className="generation-property-actions"><span>{imageLabel}</span><button type="button" className="text-button" onClick={() => removeImage({ kind: 'endpoint', side: selectedEndpoint.side })}>Remove image</button></div>}
         </>}
+        {!isMask && !!(keyframes.length || videos.length) && <label className="generation-selected-input">Selected input<select aria-label="Selected generation input" value={selection === 'frames' && selected ? `image:${selected.id}` : selection === 'videos' && selectedVideo ? `video:${selectedVideo.id}` : 'references'} onChange={event => {
+          const value = event.target.value;
+          if (value.startsWith('image:')) selectImage({ kind: 'keyframe', id: value.slice(6) });
+          else if (value.startsWith('video:')) selectVideo(value.slice(6)); else choose('references');
+        }}><option value="references">Start / end references</option>
+          {keyframes.map((k, i) => <option key={k.id} value={`image:${k.id}`}>Image {i + 1} · {k.image?.name ?? 'Choose image'}</option>)}
+          {videos.map((v, i) => <option key={v.id} value={`video:${v.id}`}>Video {i + 1} · {v.video?.name ?? 'Choose video'}</option>)}
+        </select></label>}
         {selection === 'frames' && projects && <>
           <VideoKeyframes projects={projects} value={keyframes} selectedId={selectedId} onSelect={id => selectImage({ kind: 'keyframe', id })} middleFrames={middleFrames} prefixFrames={prefixFrames} onChange={onKeyframesChange} onPreviewPlay={onPreviewPlay}/>
           {selectedKeyframe && <button type="button" className="generation-image-delete" aria-label="Delete image keyframe" onClick={() => removeImage({ kind: 'keyframe', id: selectedKeyframe.id })}><Trash2 size={14}/>Delete keyframe</button>}
           {!keyframes.length && <p className="hint">Add a keyframe at the playhead.</p>}
         </>}
         {selection === 'videos' && projects && (selectedVideo ? <>
-          <label className="generation-video-select">Video<select aria-label="Selected timeline video" value={selectedVideo.id} onChange={event => setVideoId(event.target.value)}>{videos.map((v, i) => <option key={v.id} value={v.id}>{v.video?.name ?? `Video ${i + 1}`}</option>)}</select></label>
-          <TimelineVideoProperties value={selectedVideo} prefixFrames={prefixFrames} middleFrames={middleFrames} projects={projects} onPreviewPlay={onPreviewPlay}
+          <label className="generation-video-select">Video<select aria-label="Selected timeline video" value={selectedVideo.id} onChange={event => selectVideo(event.target.value)}>{videos.map((v, i) => <option key={v.id} value={v.id}>{v.video?.name ?? `Video ${i + 1}`}</option>)}</select></label>
+          <TimelineVideoProperties key={selectedVideo.id} value={selectedVideo} prefixFrames={prefixFrames} middleFrames={middleFrames} projects={projects} onPreviewPlay={onPreviewPlay}
             onChange={patch => onChange({ timelineVideos: videos.map(v => v.id === selectedVideo.id ? { ...v, ...patch } : v) })}
-            onDelete={() => { const next = videos.filter(v => v.id !== selectedVideo.id); onChange({ timelineVideos: next }); setVideoId(next[0]?.id); }}/>
+            onDelete={() => removeVideo(selectedVideo.id)}/>
         </> : <p className="hint">Add a video at the playhead.</p>)}
         {isMask && <p className="hint">Edit the selected mask below. 0% keeps input; 100% regenerates.</p>}
-        <div className="generation-property-status" role="status">{videoError || notice}</div>
+        <div className="generation-property-status" role="status">{drop.message || videoError || notice}</div>
       </div>
     </aside></div>
     <div className="generation-timeline-toolbar">
-      <button ref={addButton} type="button" className="text-button" onClick={add} disabled={!projects || keyframes.length >= MAX_VIDEO_KEYFRAMES}><DiamondPlus size={14}/>Add image keyframe</button>
-      <button type="button" className="text-button" disabled={!projects || videos.length >= 16} onClick={() => { const id = crypto.randomUUID(); onChange({ timelineVideos: [...videos, { id, frame: Math.max(0, Math.min(middleFrames - 1, cursor - prefixFrames)), enabled: true }] }); setVideoId(id); choose('videos'); }}><Video size={14}/>Add video</button>
-      <div className="generation-duration-control">{props.durationControl}</div><label>Zoom<select aria-label="Generation timeline zoom" value={zoom} onChange={event => setZoom(Number(event.target.value))}>{[1, 2, 4, 8].map(value => <option key={value} value={value}>{value === 1 ? 'Fit' : `${value}×`}</option>)}</select></label>
+      <button ref={addButton} type="button" className="text-button" onClick={add} disabled={isMask || !projects || keyframes.length >= MAX_VIDEO_KEYFRAMES}><DiamondPlus size={14}/>Add image keyframe</button>
+      <button ref={addVideoButton} type="button" className="text-button" disabled={isMask || !projects || videos.length >= 16} onClick={() => { const id = crypto.randomUUID(); onChange({ timelineVideos: [...videos, { id, frame: Math.max(0, Math.min(middleFrames - 1, cursor - prefixFrames)), enabled: true }] }); setVideoId(id); choose('videos'); }}><Video size={14}/>Add video</button>
+      <div className="generation-duration-control" inert={isMask}>{props.durationControl}</div><label>Zoom<select aria-label="Generation timeline zoom" value={zoom} onChange={event => setZoom(Number(event.target.value))}>{[1, 2, 4, 8].map(value => <option key={value} value={value}>{value === 1 ? 'Fit' : `${value}×`}</option>)}</select></label>
     </div>
     <div className="generation-timeline-scroll" role="group" aria-label="Generation timeline tracks">
-      <div className="generation-timeline-tracks" style={{ width: `${zoom * 100}%` }}>
+      <div className="generation-timeline-tracks" style={{ width: `${zoom * 100}%` }} {...drop.handlers}>
         <div className="generation-time-ruler" onPointerDown={event => seek(event, event.currentTarget)}>
           {Array.from({ length: 5 * zoom + 1 }, (_, i) => <span key={i} style={{ left: `${i / (5 * zoom) * 100}%` }}>{timelineSeconds(Math.round(totalFrames * i / (5 * zoom)))}s</span>)}
         </div>
         <div className="generation-footage-lane" role="group" aria-label="Reference and generated footage">
-          <button type="button" className="generation-body-segment" aria-label="Edit generated duration" style={{ left: percent(prefixFrames), width: percent(middleFrames) }} onClick={() => {
+          <button type="button" className="generation-body-segment" disabled={isMask} aria-label="Edit generated duration" style={{ left: percent(prefixFrames), width: percent(middleFrames) }} onClick={() => {
             choose('references'); container.current?.querySelector<HTMLInputElement>('[aria-label="Duration"]')?.focus();
           }} title={`${timelineSeconds(prefixFrames)}–${timelineSeconds(prefixFrames + middleFrames)}s · new video and audio`}><span>Generated</span></button>
           {segments.map(segment => {
             const name = nameFor(segment.clip?.assetId) ?? (segment.side === 'start' ? 'Start reference' : 'End reference');
-            return <button type="button" key={segment.id} className="generation-reference-segment" data-side={segment.side} data-selected={segmentId === segment.id && selection === 'references'}
+            return <button type="button" key={segment.id} className="generation-reference-segment" disabled={isMask} data-side={segment.side} data-selected={segmentId === segment.id && selection === 'references'}
               style={{ left: percent(segment.startFrame), width: percent(segment.endFrame - segment.startFrame) }}
               aria-label={`${segment.side === 'start' ? 'Start' : 'End'} reference: ${name}${segment.held ? ' (held frame)' : ''}`}
               title={`${name}${segment.held ? ' · held frame' : ''} · ${timelineSeconds(segment.startFrame)}–${timelineSeconds(segment.endFrame)}s`}
-              onClick={() => { choose('references'); setSegmentId(segment.id); }}>
+              onClick={() => { choose('references'); setSegmentId(segment.id); setCursorFrame(segment.startFrame); }}>
               {segment.clip && <AssetThumbnail asset={{ ...segment.clip, kind: segment.clip.kind ?? 'video' }} kind={segment.clip.kind ?? 'video'} name={name}/>}
               <span>{segment.held ? 'Held frame' : name}</span>
             </button>;
           })}
         </div>
-        {!!videos.length && <div className="generation-video-lane" aria-label="Added videos">{videos.map((v, i) => <button type="button" key={v.id} className="generation-added-video" data-selected={selection === 'videos' && videoId === v.id} data-enabled={v.enabled} aria-label={`Select timeline video ${i + 1}`}
-          style={{ left: percent(prefixFrames + (videoDrag?.id === v.id ? videoDrag.frame : v.frame)), width: percent(v.video ? Math.max(1, Math.min(middleFrames - v.frame, v.video.outFrame - v.video.inFrame)) : 12) }} onClick={() => { choose('videos'); setVideoId(v.id); setCursorFrame(prefixFrames + v.frame); }}
-          onPointerDown={event => { if (event.button !== 0) return; event.currentTarget.setPointerCapture(event.pointerId); choose('videos'); setVideoId(v.id); videoGesture.current = { id: v.id, x: event.clientX, frame: v.frame, next: v.frame, width: event.currentTarget.parentElement!.getBoundingClientRect().width }; }}
-          onPointerMove={event => { const gesture = videoGesture.current; if (!gesture || gesture.id !== v.id) return; const frame = Math.max(0, Math.min(middleFrames - (v.video ? v.video.outFrame - v.video.inFrame : 1), gesture.frame + Math.round((event.clientX - gesture.x) / gesture.width * totalFrames))); gesture.next = frame; setVideoDrag({ id: v.id, frame }); setCursorFrame(prefixFrames + frame); }}
-          onPointerUp={() => { const gesture = videoGesture.current; videoGesture.current = undefined; setVideoDrag(undefined); if (gesture && gesture.next !== gesture.frame) onChange({ timelineVideos: videos.map(clip => clip.id === v.id ? { ...clip, frame: gesture.next } : clip) }); }}
-          onPointerCancel={() => { videoGesture.current = undefined; setVideoDrag(undefined); }}
-          onKeyDown={event => { if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); onChange({ timelineVideos: videos.filter(clip => clip.id !== v.id) }); } }}>
-          <Video size={14}/><span>{v.video?.name ?? 'Choose video'}</span></button>)}</div>}
+        {!!videos.length && <div className="generation-video-lane" aria-label="Added videos">{videos.map((v, i) => {
+          const maxFrame = Math.max(0, middleFrames - (v.video ? v.video.outFrame - v.video.inFrame : 1));
+          const frame = videoDrag?.id === v.id ? videoDrag.frame : v.frame;
+          return <button type="button" key={v.id} ref={el => { if (el) videoButtons.current.set(v.id, el); else videoButtons.current.delete(v.id); }}
+            className="generation-added-video" disabled={isMask} data-selected={selection === 'videos' && selectedVideo?.id === v.id} data-enabled={v.enabled} aria-label={`Select timeline video ${i + 1}`}
+            style={{ left: percent(prefixFrames + Math.min(frame, middleFrames - 1)), width: percent(v.video ? Math.max(1, Math.min(middleFrames - frame, v.video.outFrame - v.video.inFrame)) : 12) }}
+            onClick={() => { if (videoClick.current) { videoClick.current = false; return; } selectVideo(v.id); }}
+            onPointerDown={event => {
+              if (event.button !== 0) return;
+              event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); event.currentTarget.setPointerCapture(event.pointerId); selectVideo(v.id); videoClick.current = false;
+              videoGesture.current = { id: v.id, x: event.clientX, frame: v.frame, next: v.frame, width: event.currentTarget.parentElement!.getBoundingClientRect().width, moved: false };
+            }}
+            onPointerMove={event => {
+              const gesture = videoGesture.current; if (!gesture || gesture.id !== v.id || !gesture.moved && Math.abs(event.clientX - gesture.x) < 3) return;
+              gesture.moved = true;
+              const frame = Math.max(0, Math.min(maxFrame, gesture.frame + Math.round((event.clientX - gesture.x) / gesture.width * totalFrames)));
+              gesture.next = frame; setVideoDrag({ id: v.id, frame }); setCursorFrame(prefixFrames + frame);
+            }}
+            onPointerUp={() => {
+              const gesture = videoGesture.current; videoGesture.current = undefined; setVideoDrag(undefined);
+              if (gesture?.moved) { videoClick.current = true; if (gesture.next !== gesture.frame) onChange({ timelineVideos: videos.map(clip => clip.id === v.id ? { ...clip, frame: gesture.next } : clip) }); }
+            }}
+            onPointerCancel={() => { if (videoGesture.current) setCursorFrame(prefixFrames + videoGesture.current.frame); videoGesture.current = undefined; setVideoDrag(undefined); }}
+            onKeyDown={event => {
+              if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); removeVideo(v.id); }
+              if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.preventDefault(); event.stopPropagation(); const frame = Math.max(0, Math.min(maxFrame, v.frame + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 10 : 1)));
+                onChange({ timelineVideos: videos.map(clip => clip.id === v.id ? { ...clip, frame } : clip) }); setCursorFrame(prefixFrames + frame);
+              }
+            }}><Video size={14}/><span>{v.video?.name ?? 'Choose video'}</span></button>;
+        })}</div>}
         <div className="generation-guides-lane" role="group" aria-label="Timed image guides" ref={frameLane}
           onPointerDown={event => { if (event.target === event.currentTarget) seek(event, event.currentTarget); }}>
           <span className="generation-lane-label">Images</span>
           {!keyframes.length && !endpointImages.length && <span className="generation-empty-images">Add an image to guide a moment</span>}
-          {endpointImages.map(({ side, image, frame }) => <button type="button" key={side} className="generation-image-marker endpoint" style={{ left: percent(frame) }}
+          {endpointImages.map(({ side, image, frame }) => <button type="button" key={side} className="generation-image-marker endpoint" disabled={isMask} style={{ left: percent(frame) }}
             data-selected={selectedEndpoint?.side === side} aria-pressed={selectedEndpoint?.side === side} aria-haspopup="menu"
             aria-label={`${side === 'start' ? 'Start' : 'End'} image guide: ${image.name}`} title={`${side} image · ${timelineSeconds(frame)}s`}
             onClick={() => selectImage({ kind: 'endpoint', side })}
@@ -236,18 +311,26 @@ export default function GenerationTimeline(props: Props) {
             <AssetThumbnail asset={{ ...image, kind: 'image' }} kind="image" name={image.name}/>
           </button>)}
           {keyframes.map((keyframe, index) => {
+            const group = frameGroups.find(group => group.some(k => k.id === keyframe.id))!;
+            const representative = group.find(k => k.id === selectedId) ?? group[0];
+            if (representative.id !== keyframe.id) return null;
             const frame = dragFrame?.id === keyframe.id ? dragFrame.frame : keyframe.frame, invalid = frame >= middleFrames;
             const position = prefixFrames + Math.min(frame, middleFrames - 1);
-            return <button key={keyframe.id} ref={element => { if (element) markers.current.set(keyframe.id, element); else markers.current.delete(keyframe.id); }} type="button" className="generation-image-marker" data-enabled={keyframe.enabled} data-invalid={invalid}
+            return <button key={keyframe.id} ref={element => { if (element) markers.current.set(keyframe.id, element); else markers.current.delete(keyframe.id); }} type="button" className="generation-image-marker" disabled={isMask} data-enabled={keyframe.enabled} data-invalid={invalid}
               data-selected={selected?.id === keyframe.id && selection === 'frames'} aria-pressed={selected?.id === keyframe.id && selection === 'frames'}
               aria-label={`Select image keyframe ${index + 1}`} aria-haspopup="menu" style={{ left: percent(position) }}
               title={`${keyframe.image?.name ?? 'Choose an image'} · ${timelineSeconds(prefixFrames + frame)}s${invalid ? ' · outside the generated section' : ''}`}
-              onClick={event => { if (event.detail === 0) selectImage({ kind: 'keyframe', id: keyframe.id }); else { choose('frames'); setSelectedId(keyframe.id); } }}
+              onClick={event => {
+                if (imageClick.current) { imageClick.current = false; return; }
+                selectImage({ kind: 'keyframe', id: keyframe.id });
+                if (group.length > 1) { const box = event.currentTarget.getBoundingClientRect(); setCluster({ ids: group.map(k => k.id), x: box.left, y: box.bottom, trigger: event.currentTarget }); }
+              }}
               onContextMenu={event => { event.preventDefault(); event.stopPropagation(); openImageMenu(event.currentTarget, { kind: 'keyframe', id: keyframe.id }, event.clientX, event.clientY); }}
               onPointerDown={event => {
                 if (event.button === 2) { event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); return; }
                 if (event.button !== 0) return; event.preventDefault(); event.stopPropagation(); event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId);
                 selectImage({ kind: 'keyframe', id: keyframe.id });
+                imageClick.current = false;
                 drag.current = { id: keyframe.id, startX: event.clientX, frame: keyframe.frame, width: frameLane.current!.getBoundingClientRect().width, moved: false };
               }}
               onPointerMove={event => {
@@ -257,7 +340,7 @@ export default function GenerationTimeline(props: Props) {
                 const frame = Math.max(0, Math.min(middleFrames - 1, current.frame + Math.round((event.clientX - current.startX) / current.width * totalFrames)));
                 current.previewFrame = frame; setDragFrame({ id: current.id, frame }); setCursorFrame(prefixFrames + frame);
               }}
-              onPointerUp={() => { if (drag.current?.moved && drag.current.previewFrame !== undefined) setFrame(drag.current.id, drag.current.previewFrame); drag.current = null; setDragFrame(undefined); }}
+              onPointerUp={() => { if (!drag.current) return; imageClick.current = drag.current.moved; if (drag.current.moved && drag.current.previewFrame !== undefined) setFrame(drag.current.id, drag.current.previewFrame); drag.current = null; setDragFrame(undefined); }}
               onPointerCancel={() => { drag.current = null; setDragFrame(undefined); }}
               onKeyDown={event => {
                 if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -275,10 +358,11 @@ export default function GenerationTimeline(props: Props) {
               }}>
               {keyframe.image ? <AssetThumbnail asset={{ ...keyframe.image, kind: 'image' }} kind="image" name={keyframe.image.name}/> : <DiamondPlus size={16}/>}
               <small>{index + 1}</small>
+              {group.length > 1 && <span className="generation-marker-count" aria-label={`${group.length} nearby keyframes`}>{group.length}</span>}
             </button>;
           })}
         </div>
-        <div className="mask-curve-control generation-mask-lanes">{(['video', 'audio'] as const).map(channel => <button key={channel} ref={element => { maskButtons.current[channel] = element; }} type="button" className="generation-mask-lane" data-selected={selection === channel} aria-label={`Edit ${channel} mask`} onClick={() => openMask(channel)}>
+        <div className="mask-curve-control generation-mask-lanes">{(['video', 'audio'] as const).map(channel => <button key={channel} ref={element => { maskButtons.current[channel] = element; }} type="button" className="generation-mask-lane" disabled={isMask} data-selected={selection === channel} aria-label={`Edit ${channel} mask`} onClick={() => openMask(channel)}>
           <span className="generation-lane-label">{channel === 'video' ? 'Video' : 'Audio'} mask</span>
           <span className="generation-mask-edit">Edit</span>
           <svg viewBox="0 0 1000 44" preserveAspectRatio="none" aria-hidden="true">
@@ -293,8 +377,13 @@ export default function GenerationTimeline(props: Props) {
           {keyframes.filter(keyframe => keyframe.enabled && keyframe.frame < middleFrames).map(keyframe => <i className="generation-guide-line" key={keyframe.id} style={{ left: percent(prefixFrames + (dragFrame?.id === keyframe.id ? dragFrame.frame : keyframe.frame)) }}/>)}
           <i className="generation-cursor-line" style={{ left: percent(cursor) }}/>
         </div>
+        {(drop.preview || videoDrag || dragFrame) && <output className="generation-placement-time" style={{ left: percent(cursor) }}>{timelineSeconds(cursor)}s · frame {cursor}</output>}
+        {drop.preview?.placements.map((p, i) => <div className={`generation-drop-preview ${p.image ? 'image' : 'video'}`} key={i} style={{ left: percent(prefixFrames + p.frame), width: p.image ? 36 : percent(p.frames) }}>
+          <AssetThumbnail asset={p.asset} kind={p.image ? 'image' : 'video'} name={p.asset.name}/><span>{p.asset.name}</span>
+        </div>)}
       </div>
     </div>
+    <div className="generation-drop-status" role="status" title={drop.preview?.error || drop.message}>{drop.busy ? 'Adding media…' : drop.preview?.error || (drop.preview ? 'Release to add reference' : 'Drag images or videos from Library onto the timeline')}</div>
     {isMask && <div className="generation-mask-editor"><MaskCurvePanel key={`${selection}:${prefixFrames}:${middleFrames}:${suffixFrames}`} before={before} after={after} duration={duration} videoMs={videoMs} audioMs={audioMs}
       active={selection} initial={savedCurves} onPreview={setMaskPreview} onChange={onChange} onClose={finishMask} allowBody={!!ranges.length}
       boundaries={maskVideoBoundaries(reference, before, duration, after)} imageKeyframes={keyframes.filter(k => k.enabled).map(k => ({ id: k.id, name: k.image?.name ?? 'Image', time: (prefixFrames + k.frame) / TIMELINE_FPS }))}/></div>}
@@ -304,14 +393,20 @@ export default function GenerationTimeline(props: Props) {
         onKeyframesChange(current => current.map(value => value.id === menuKeyframe.id ? { ...value, enabled: !value.enabled } : value));
         setMenu(undefined); menu.trigger.focus({ preventScroll: true });
       } : undefined}/>}
+    {cluster && <ImageTimelineMenu x={cluster.x} y={cluster.y} label="Nearby image keyframes" onClose={() => setCluster(undefined)} restoreFocus={() => cluster.trigger.focus({ preventScroll: true })}>
+      {keyframes.filter(k => cluster.ids.includes(k.id)).map(k => <button type="button" role="menuitem" key={k.id} onClick={() => {
+        selectImage({ kind: 'keyframe', id: k.id }); requestAnimationFrame(() => markers.current.get(k.id)?.focus({ preventScroll: true }));
+      }}>{keyframes.indexOf(k) + 1}. {k.image?.name ?? 'Choose image'} · {timelineSeconds(prefixFrames + k.frame)}s</button>)}
+    </ImageTimelineMenu>}
   </div>;
+  if (props.workspace) return content;
   return <div className="generation-timeline">
-    <button ref={expandButton} type="button" className="generation-timeline-summary" aria-label="Expand generation timeline" onClick={() => setExpanded(true)}>
-      <span className="generation-summary-heading">Timeline <small>{timelineSeconds(totalFrames)}s</small><Maximize2 size={14}/></span>
+    <button ref={expandButton} type="button" className="generation-timeline-summary" aria-label="Edit generation timeline" onClick={open}>
+      <span className="generation-summary-heading">Timeline <small>{timelineSeconds(totalFrames)}s</small><Pencil size={14}/></span>
       <span className="generation-summary-track"><i style={{ left: percent(prefixFrames), width: percent(middleFrames) }}/>{segments.map(segment => <b key={segment.id} style={{ left: percent(segment.startFrame), width: percent(segment.endFrame - segment.startFrame) }}/>)}</span>
       <span className="generation-summary-guides">{keyframes.filter(k => k.enabled).map(k => <i key={k.id} style={{ left: percent(prefixFrames + Math.min(k.frame, middleFrames - 1)) }}/>)}</span>
       {(['video', 'audio'] as const).map(channel => <svg key={channel} viewBox="0 0 500 16" preserveAspectRatio="none" aria-hidden="true"><path d={Array.from({ length: 121 }, (_, i) => `${i ? 'L' : 'M'}${i / 120 * 500},${14 - inputMaskStrength(curves[channel], i / 120 * totalFrames, prefixFrames, middleFrames, suffixFrames, ranges, channel === 'video' ? preservedFrames : []) * 11}`).join(' ')}/></svg>)}
     </button>
-    {expanded && <ModalBackdrop labelledBy={headingId} onCancel={close} restoreFocus={() => expandButton.current?.focus({ preventScroll: true })}>{content}</ModalBackdrop>}
+    {inline && content}
   </div>;
 }

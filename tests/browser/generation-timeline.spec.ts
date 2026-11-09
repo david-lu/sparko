@@ -3,9 +3,9 @@ import { test, expect, openVideo, addBridge, readProject } from './fixtures';
 for (const width of [1440, 390]) test(`timeline keyframes drag, delete, and undo inside the editor at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
   await openVideo(page); await addBridge(page);
-  const open = () => page.getByRole('button', { name: 'Expand generation timeline', exact: true }).click();
+  const open = () => page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
   await open();
-  const editor = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
+  const editor = page.getByRole('region', { name: 'Generation timeline', exact: true });
   await editor.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
   await editor.getByLabel('Upload Keyframe image', { exact: true }).setInputFiles('src/app/tutorial/images/save.png');
   await expect(editor.getByRole('group', { name: 'Keyframe image', exact: true })).toHaveAttribute('aria-busy', 'false');
@@ -39,7 +39,7 @@ for (const width of [1440, 390]) test(`timeline keyframes drag, delete, and undo
 for (const loop of [false, true]) test(`legacy endpoint images remain removable${loop ? ' with linked loop endpoints' : ''}`, async ({ page }) => {
   await openVideo(page); await addBridge(page);
   if (loop) await page.getByRole('checkbox', { name: 'Loop', exact: true }).check();
-  await page.getByRole('button', { name: 'Expand generation timeline', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
   await page.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
   await page.getByLabel('Upload Keyframe image', { exact: true }).setInputFiles('src/app/tutorial/images/save.png');
   await expect(page.getByRole('group', { name: 'Keyframe image', exact: true })).toHaveAttribute('aria-busy', 'false');
@@ -55,8 +55,8 @@ for (const loop of [false, true]) test(`legacy endpoint images remain removable$
   });
   await page.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'Endpoint images.sparko', mimeType: 'application/zip', buffer: Buffer.from(bytes) });
   await page.locator(`[data-node-id="${nodeId}"] .story-clip-title`).click();
-  await page.getByRole('button', { name: 'Expand generation timeline', exact: true }).click();
-  const editor = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
+  await page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
+  const editor = page.getByRole('region', { name: 'Generation timeline', exact: true });
   const start = editor.getByRole('button', { name: 'Start image guide: save.png', exact: true }), end = editor.getByRole('button', { name: 'End image guide: save.png', exact: true });
   await expect(start).toBeVisible(); await end.click();
   await editor.getByRole('button', { name: 'Remove image', exact: true }).click();

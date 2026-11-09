@@ -27,6 +27,13 @@ for (const width of [1440, 390]) test(`generation details belong to the compact 
   await output.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `test-results/compact-generation-closed-${width}.png`, fullPage: true });
 
+  await output.locator(':scope > summary').click();
+  await expect(output.locator('.generated-output-details')).not.toHaveAttribute('open');
+  await expect(output.getByRole('region', { name: 'Generation info', includeHidden: true })).toBeHidden();
+  expect((await output.boundingBox())!.height).toBeLessThan(250);
+  await output.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `test-results/compact-generation-preview-${width}.png`, fullPage: true });
+
   await showGenerationInfo(page);
   await expect(output.getByLabel('Generation seed', { exact: true })).toHaveText('42');
   await expect(output.locator('.generated-video-seed')).toHaveCount(1);
@@ -47,7 +54,7 @@ for (const width of [1440, 390]) test(`generation details belong to the compact 
   expect((await output.boundingBox())!.height).toBeLessThanOrEqual(30);
   await expect(await showGenerationInfo(page)).toContainText(metadata.prompt);
   await expect(output.getByLabel('Generation seed', { exact: true })).toHaveText('42');
-  expect((await output.locator('.generated-video-seed').boundingBox())!.y).toBeLessThan((await output.locator('.asset-preview').boundingBox())!.y);
+  expect((await output.locator('.asset-preview').boundingBox())!.y).toBeLessThan((await output.locator('.generated-video-seed').boundingBox())!.y);
   await expect(page.locator('.asset-generation-info')).toHaveCount(1);
   expect((await readProject(page)).library.find((a: any) => a.assetId === assetId).generation.result.prompt).toBe(metadata.prompt);
   await output.locator('summary').first().scrollIntoViewIfNeeded();

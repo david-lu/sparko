@@ -51,10 +51,12 @@ export default function AssetInspector({ editor }: { editor: StoryEditor; status
     {kind === 'video' && <VideoFrameRate projects={editor.projects} onConverted={asset => editor.selectLibrary({ type: 'asset', id: asset.assetId })} assetId={asset.assetId}/>}
     {kind === 'image' && <ImageDimensions assetId={asset.assetId}/>}
     <details key={`output:${asset.assetId}`} className={`inspector-group${asset.generation ? ' inspector-output' : ''}`} open={!asset.generation}><summary>{asset.generation ? `Generated ${kind}` : 'Preview'}</summary>
-      {asset.generation?.provider === 'comfy' && <GeneratedVideoSeed result={asset.generation.result} settings={asset.generation.settings}/>}
       <AssetPreview id={asset.assetId} kind={kind} name={asset.name} onPlay={() => editor.player.pause()}/>
       <div className="asset-preview-actions"><AssetDownload asset={asset}/><button className="text-button" onClick={() => void editor.addAsset(asset.assetId)}>Add to timeline</button></div>
-      <AssetGenerationInfo asset={asset}/>
+      {asset.generation && <details className="generated-output-details"><summary>Render details</summary>
+        {asset.generation.provider === 'comfy' && <GeneratedVideoSeed result={asset.generation.result} settings={asset.generation.settings}/>}
+        <AssetGenerationInfo asset={asset}/>
+      </details>}
     </details>
     {!!asset.duration && kind !== 'image' && <details className="inspector-group" open><summary>Properties</summary><p className="hint">{asset.duration.toFixed(2)} seconds</p></details>}
     <details className="inspector-group" open><summary>Used in project<span>{uses.length}</span></summary>{uses.length ? uses.map((use, i) => <p className="hint" key={i}>{use.owner} · {use.role}</p>) : <p className="hint">Not used on the timeline.</p>}</details>

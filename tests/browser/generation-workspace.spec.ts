@@ -1,6 +1,6 @@
 import { test, expect, openVideo, addBridge, readProject, saveAndReopen } from './fixtures';
 
-for (const width of [1440, 390]) test(`generation edits stay in the full-screen timeline at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390]) test(`generation edits stay in the player workspace at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   let submissions = 0; await page.route('**/api/comfy/interstitials', route => { submissions++; return route.abort(); });
@@ -11,9 +11,10 @@ for (const width of [1440, 390]) test(`generation edits stay in the full-screen 
   await expect(page.getByRole('button', { name: 'Add image keyframe', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Keyframe frame', { exact: true })).toHaveCount(0);
   await overview.click();
-  const editor = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
+  const editor = page.getByRole('region', { name: 'Generation timeline', exact: true });
   await expect(editor).toBeVisible();
-  expect((await editor.boundingBox())!.width).toBe(width);
+  expect((await editor.boundingBox())!.width).toBe((await page.locator('.main-column').boundingBox())!.width);
+  await expect(page.getByRole('dialog', { name: 'Generation timeline', exact: true })).toHaveCount(0);
   await expect(editor.getByRole('button', { name: 'Input', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(editor.getByRole('button', { name: 'Generated', exact: true })).toBeDisabled();
   await editor.getByRole('checkbox', { name: 'Reference start video', exact: true }).uncheck();
@@ -36,7 +37,7 @@ for (const width of [1440, 390]) test(`generation edits stay in the full-screen 
   await editor.getByRole('button', { name: 'Edit audio mask', exact: true }).click();
   await expect(editor.locator('.mask-graph-editor')).toBeVisible();
   await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await editor.getByRole('button', { name: 'References', exact: true }).click();
+  await editor.getByLabel('Selected generation input', { exact: true }).selectOption('references');
   await expect(editor.getByRole('group', { name: 'Image references', exact: true })).toBeHidden();
   await editor.locator('.generation-image-references > summary').click();
   await editor.getByLabel('Choose image references', { exact: true }).setInputFiles('src/app/tutorial/images/save.png');
@@ -45,8 +46,8 @@ for (const width of [1440, 390]) test(`generation edits stay in the full-screen 
   await expect.poll(async () => (await readProject(page)).interstitials[0].imageReferences[0].enabled).toBe(false);
   await editor.locator('.generation-image-references > summary').click();
   await expect(editor.getByLabel('Enable Picture 1', { exact: true })).toBeHidden();
-  expect(await editor.locator('.generation-timeline-editor').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-  await editor.locator('.generation-timeline-editor').evaluate(el => { el.scrollTop = 0; });
+  expect(await editor.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await editor.evaluate(el => { el.scrollTop = 0; });
   await page.screenshot({ path: `test-results/generation-workspace-${width}.png` });
   await editor.getByRole('button', { name: 'Close generation timeline', exact: true }).click();
   await expect(page.getByLabel('Keyframe method', { exact: true })).toHaveCount(0);
@@ -57,8 +58,8 @@ for (const width of [1440, 390]) test(`generation edits stay in the full-screen 
 
 test('prepares and submits a full input movie with videos, both keyframe methods and independent audio', async ({ page }) => {
   await openVideo(page); await addBridge(page);
-  await page.getByRole('button', { name: 'Expand generation timeline', exact: true }).click();
-  const editor = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
+  await page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
+  const editor = page.getByRole('region', { name: 'Generation timeline', exact: true });
   await editor.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
   await editor.getByLabel('Upload Keyframe image', { exact: true }).setInputFiles('src/app/tutorial/images/save.png');
   await expect(editor.getByRole('group', { name: 'Keyframe image', exact: true })).toHaveAttribute('aria-busy', 'false');
@@ -104,18 +105,20 @@ test('the player switches between input footage and the saved generated result o
   });
   await page.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'Generated preview.sparko', mimeType: 'application/zip', buffer: Buffer.from(bytes) });
   await page.locator(`[data-node-id="${nodeId}"] .story-clip-title`).click();
-  await page.getByRole('button', { name: 'Expand generation timeline', exact: true }).click();
-  const editor = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
+  await page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
+  const editor = page.getByRole('region', { name: 'Generation timeline', exact: true });
   const slider = editor.getByRole('slider', { name: 'Generation timeline playhead', exact: true });
   await slider.focus(); await slider.press('Home'); await slider.press('ArrowRight');
   await expect(editor.locator('.generation-player-screen video')).toBeVisible();
   await editor.getByRole('button', { name: 'Generated', exact: true }).click();
   await expect(editor.getByRole('button', { name: 'Generated', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(slider).toHaveValue('1');
+  await expect(slider).toHaveAttribute('max', '95');
   await editor.getByRole('button', { name: 'Play timeline', exact: true }).click();
   await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(5);
   await editor.getByRole('button', { name: 'Pause timeline', exact: true }).click();
   const frame = await slider.inputValue();
   await editor.getByRole('button', { name: 'Input', exact: true }).click();
   await expect(slider).toHaveValue(frame);
+  await expect(slider).toHaveAttribute('max', '225');
 });

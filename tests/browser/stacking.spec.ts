@@ -99,19 +99,20 @@ for (const width of [1440, 390]) {
   test(`inspector popovers and modal dialogs stay above the workspace at ${width}px`, async ({ page }) => {
     await open(page, width);
     await page.getByRole('button', { name: 'Add video', exact: true }).dragTo(page.locator('.story-scroll'), { targetPosition: { x: 90, y: 60 } });
+    await page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
     await page.getByRole('spinbutton', { name: 'Duration', exact: true }).click();
     await expectOnTop(page.locator('.interstitial-time-popover')); await page.keyboard.press('Escape');
-    await expect(page.locator('.inspector-references-panel')).toBeVisible();
-    await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Generation timeline', exact: true })).toBeVisible();
     for (const channel of ['video', 'audio']) {
       await page.getByRole('button', { name: `Edit ${channel} mask`, exact: true }).click();
-      const editor = page.getByRole('dialog', { name: 'Generation timeline', exact: true });
-      await expectOnTop(editor.locator('.generation-timeline-editor'));
+      const editor = page.getByRole('region', { name: 'Generation timeline', exact: true });
+      await expectOnTop(editor);
       await editor.getByRole('button', { name: `Apply ${channel} mask`, exact: true }).scrollIntoViewIfNeeded();
       await expect(editor.getByRole('button', { name: `Apply ${channel} mask`, exact: true })).toBeInViewport();
-      expect(await editor.evaluate(el => el.matches(':modal'))).toBe(true);
-      await page.keyboard.press('Escape'); await expect(editor).toHaveCount(0);
+      expect(await editor.evaluate(el => el.matches(':modal'))).toBe(false);
+      await page.keyboard.press('Escape'); await expect(editor.locator('.mask-graph-editor')).toHaveCount(0);
     }
+    await page.getByRole('button', { name: 'Close generation timeline', exact: true }).click();
     await page.getByRole('button', { name: 'Generation details', exact: true }).click();
     await expectOnTop(page.locator('.inspector-status-popover:popover-open')); await page.keyboard.press('Escape');
     await saveSelectionAsTemplate(page);
