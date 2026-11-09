@@ -11,7 +11,7 @@ const providers: Providers = {
   openai: vi.fn<Providers['openai']>(async input => ({ caption: 'A caption', description: 'A description', provider: 'openai', model: 'test-openai', start: input.start, end: input.end, basis: 'Sampled frames' })),
   gemini: vi.fn(),
   voice: vi.fn<Providers['voice']>(async (provider, input) => ({ transcript: 'My spoken answer', response: 'Answer received.', provider, model: `test-${provider}`, context: input.context })),
-  voiceChoice: vi.fn<Providers['voiceChoice']>(async input => ({ answerId: input.context.options[0].id, probability: 0.9, model: 'test-hume' })),
+  voiceChoice: vi.fn<Providers['voiceChoice']>(async input => ({ answerId: input.context.conditions[0].id, probability: 0.9, model: 'test-hume' })),
   enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(),
 };
 let app: Express;
@@ -97,23 +97,24 @@ describe('server API boundaries', () => {
       .attach('audio', wavFixture(), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(429);
     expect(result.text).not.toContain('secret-value');
   });
-  it('matches a spoken WAV answer against a conditional\'s options', async () => {
-    const context = { question: 'Which door?', options: [{ id: 'edge-red', label: 'Red door', values: ['red'] }, { id: 'edge-blue', label: 'Blue door', values: [] }] };
+  it('judges a spoken WAV answer against a conditional\'s described conditions', async () => {
+    const context = { question: 'What do trees give us?', conditions: [{ id: 'edge-air', description: 'The viewer says something similar to "trees breathe air"' }, { id: 'edge-excited', description: 'The viewer sounds excited' }] };
     const result = await post('/api/voice/choice').field('context', JSON.stringify(context))
       .attach('audio', wavFixture(0.5), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(200);
-    expect(result.body).toEqual({ answerId: 'edge-red', probability: 0.9, model: 'test-hume' });
+    expect(result.body).toEqual({ answerId: 'edge-air', probability: 0.9, model: 'test-hume' });
     expect(providers.voiceChoice).toHaveBeenCalledWith(expect.objectContaining({ context, audio: wavFixture(0.5), signal: expect.any(AbortSignal) }));
   });
   it('rejects invalid voice choices before calling Hume', async () => {
     vi.mocked(providers.voiceChoice).mockClear();
-    const option = (id: string) => ({ id, label: id, values: [] });
+    const option = (id: string, description = `The viewer says ${id}`) => ({ id, description });
     const send = (context: unknown, audio = wavFixture(), contentType = 'audio/wav') => post('/api/voice/choice')
       .field('context', JSON.stringify(context)).attach('audio', audio, { filename: 'answer.wav', contentType });
-    await send({ options: [] }).expect(400);
-    await send({ options: Array.from({ length: 20 }, (_, i) => option(`o${i}`)) }).expect(400);
-    await send({ options: [option('a'), option('a')] }).expect(400);
-    await send({ options: [option('a')] }, wavFixture(), 'audio/webm').expect(400);
-    await send({ options: [option('a')] }, wavFixture(13)).expect(400);
+    await send({ conditions: [] }).expect(400);
+    await send({ conditions: Array.from({ length: 21 }, (_, i) => option(`o${i}`)) }).expect(400);
+    await send({ conditions: [option('a'), option('a')] }).expect(400);
+    await send({ conditions: [option('a', '   ')] }).expect(400);
+    await send({ conditions: [option('a')] }, wavFixture(), 'audio/webm').expect(400);
+    await send({ conditions: [option('a')] }, wavFixture(13)).expect(400);
     expect(providers.voiceChoice).not.toHaveBeenCalled();
     const missing = await createApp({ providers: { ...providers, configured: { openai: true, gemini: true, comfy: false } } }); missing.use(errorHandler);
     const result = await request(missing).post('/api/voice/choice').set('x-sparko-request', '1').expect(503);

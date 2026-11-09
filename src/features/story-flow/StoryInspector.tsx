@@ -63,7 +63,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   if (editor.selectedGroup) return <GroupInspector key={editor.selectedGroup.id} editor={editor} group={editor.selectedGroup} />;
   if (!node) return <ProjectInspector key={editor.projects.getSnapshot().project?.id} editor={editor}/>;
   const savedItem = items.find(i => i.id === node.interstitialId), item = savedItem && storyGenerationItem(savedItem, node);
-  const duration = nodeDuration(node, items), behavior=behaviors(node), conditions=conditionsFor(graph,node);
+  const duration = nodeDuration(node, items), behavior=behaviors(node), conditions=conditionsFor(graph,node), voice=node.conditionInput==='voice';
   const maxLoopFade = Math.floor(duration * TIMELINE_FPS / 2) / TIMELINE_FPS;
   return <div className="story-inspector clip-inspector" data-project-edit>
     <div className="inspector-clip-heading">
@@ -99,14 +99,21 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
           {input==='voice'?<Mic size={12} aria-hidden/>:<MousePointerClick size={12} aria-hidden/>}{input==='voice'?'Voice':'Button'}
         </label>)}</div>
       </div>
-      {node.conditionInput==='voice'&&<p className="inspector-behavior-hint condition-input-hint">{status&&!status.providers.hume?<strong>HUME_API_KEY is missing, so voice answers can't be judged. </strong>:null}
-        {conditions.length>VOICE_CHOICE.maxConditions?<strong>Voice supports up to {VOICE_CHOICE.maxConditions} conditions. </strong>:null}
-        Viewers answer out loud. Hume matches what they say to a condition's label or alternatives, so name conditions by the answer, like "Red door". Unclear answers take the default.</p>}
-      {conditions.map((condition,index)=><div className="inspector-rule" key={condition.id}>
-        <div className="inspector-rule-heading"><input aria-label={`Condition ${index+1} label`} maxLength={200} value={condition.label} onChange={e=>editor.updateConditions(node.id,conditions.map(c=>c.id===condition.id?{...c,label:e.target.value}:c))}/><button className="icon-button small" aria-label={`Remove condition ${index+1}`} onClick={()=>editor.updateConditions(node.id,conditions.filter(c=>c.id!==condition.id))}><Trash2 size={12}/></button></div>
-        <label className="condition-default"><input type="radio" name={`default-condition:${node.id}`} aria-label={`Use condition ${index+1} as default`} checked={defaultCondition(graph,node)?.id===condition.id} onChange={()=>editor.patch(node.id,{defaultConditionId:condition.id})}/>Default</label>
-        <details className="inspector-aliases"><summary>Also accept{condition.values.length?` (${condition.values.length})`:''}</summary><textarea aria-label={`Condition ${index+1} alternatives`} placeholder="One alternative per line" rows={2} value={condition.values.join('\n')} onChange={e=>editor.updateConditions(node.id,conditions.map(c=>c.id===condition.id?{...c,values:e.target.value.split('\n').slice(0,100).map(v=>v.slice(0,200))}:c))}/></details>
-      </div>)}
+      {voice&&<p className="inspector-behavior-hint condition-input-hint">{status&&!status.providers.hume?<strong>HUME_API_KEY is missing, so voice answers can't be judged. </strong>:null}
+        {conditions.length-1>VOICE_CHOICE.maxConditions?<strong>Voice judges up to {VOICE_CHOICE.maxConditions} conditions besides the default. </strong>:null}
+        Viewers answer out loud. Describe each condition as something Hume can decide from what it hears, such as: the viewer says something similar to "trees breathe air", or: the viewer sounds excited. The strongest match plays, and Default plays when nothing matches.</p>}
+      {conditions.map((condition,index)=>{
+        const isDefault=defaultCondition(graph,node)?.id===condition.id,name=`Condition ${index+1} label`;
+        // Descriptions are one line on the clip's output socket, so line breaks become spaces.
+        const rename=(label:string)=>editor.updateConditions(node.id,conditions.map(c=>c.id===condition.id?{...c,label:label.replace(/\s*\n\s*/g,' ')}:c));
+        return <div className="inspector-rule" key={condition.id}>
+        <div className="inspector-rule-heading">{voice&&!isDefault
+          ?<textarea className="condition-description" aria-label={name} rows={2} maxLength={200} placeholder={'e.g. The viewer says something similar to "trees breathe air"'} value={condition.label} onChange={e=>rename(e.target.value)}/>
+          :<input aria-label={name} maxLength={200} value={condition.label} onChange={e=>rename(e.target.value)}/>}
+          <button className="icon-button small" aria-label={`Remove condition ${index+1}`} onClick={()=>editor.updateConditions(node.id,conditions.filter(c=>c.id!==condition.id))}><Trash2 size={12}/></button></div>
+        <label className="condition-default"><input type="radio" name={`default-condition:${node.id}`} aria-label={`Use condition ${index+1} as default`} checked={isDefault} onChange={()=>editor.patch(node.id,{defaultConditionId:condition.id})}/>{voice&&isDefault?'Default · plays when nothing matches':'Default'}</label>
+        {!voice&&<details className="inspector-aliases"><summary>Also accept{condition.values.length?` (${condition.values.length})`:''}</summary><textarea aria-label={`Condition ${index+1} alternatives`} placeholder="One alternative per line" rows={2} value={condition.values.join('\n')} onChange={e=>editor.updateConditions(node.id,conditions.map(c=>c.id===condition.id?{...c,values:e.target.value.split('\n').slice(0,100).map(v=>v.slice(0,200))}:c))}/></details>}
+      </div>;})}
       <button className="text-button inspector-add-choice" disabled={conditions.length>=100} onClick={()=>editor.updateConditions(node.id,[...conditions,{id:freshId(),label:`Condition ${conditions.length+1}`,values:[]}])}>+ Add condition</button>
       <p className="hint">Drag each labeled output on the clip to its destination.</p>
     </BehaviorSection>

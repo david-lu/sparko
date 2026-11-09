@@ -40,6 +40,8 @@
 .voice-answer-button[data-state="listening"]::after,.voice-answer-button[data-state="hearing"]::after{content:"";position:absolute;inset:-5px;z-index:-1;border:2px solid #fff;border-radius:calc(var(--choice-radius) + 5px);animation:voice-answer-pulse 1.4s ease-out infinite;pointer-events:none}
 .voice-answer-button[data-state="hearing"]::after{animation-duration:.7s}
 .voice-answer-button[data-state="thinking"],.voice-answer-button[data-state="starting"]{cursor:progress}
+.player-branch-controls[data-phase="exiting"] .voice-answer-button{animation:choice-pop-out var(--choice-exit-duration) ease-in both;pointer-events:none}
+.player-branch-controls[data-phase="exiting"] .player-voice-status{visibility:hidden}
 .voice-answer-button[data-state="thinking"] .voice-answer-icon{animation:voice-answer-think 1s ease-in-out infinite alternate}
 .player-voice-status{grid-column:1/-1;min-height:2.8em;margin:0;color:#fff;-webkit-text-stroke:2px #000;paint-order:stroke fill;font-size:clamp(11px,1.2vw,15px);font-weight:600;line-height:1.4;text-align:center;text-wrap:balance;overflow-wrap:anywhere}
 @keyframes voice-answer-pulse{from{opacity:.9;scale:1}to{opacity:0;scale:1.12}}

@@ -15,10 +15,10 @@ export type VoiceAnswer = {
   model: string;
   context: VoiceContext;
 };
-/** A condition a viewer can choose by speaking; `values` are alternative answers that also count. */
-export type VoiceChoiceOption = { id: string; label: string; values: string[] };
-export type VoiceChoiceContext = { question?: string; options: VoiceChoiceOption[] };
-/** `answerId` is null when the answer was unclear or matched none of the options. */
+/** A non-default condition, written in plain language for Hume to decide from the audio. */
+export type VoiceCondition = { id: string; description: string };
+export type VoiceChoiceContext = { question?: string; conditions: VoiceCondition[] };
+/** `answerId` is null when no condition matched, which plays the default condition. */
 export type VoiceChoice = { answerId: string | null; probability: number; model: string };
 export type CaptionResult = {
   caption: string;

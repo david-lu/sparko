@@ -114,3 +114,7 @@
 .segmented-control label:has(input:checked){background:var(--surface);color:var(--accent);box-shadow:inset 0 0 0 1px var(--line-strong)}
 .segmented-control label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:1px}
 .condition-input-hint strong{color:var(--text-secondary);font-weight:600}
+.inspector-rule-heading:has(.condition-description){align-items:flex-start}
+.condition-description{flex:1;min-width:0;min-height:38px;padding:4px 5px;border:1px solid transparent;border-radius:3px;background:var(--input);font:inherit;font-size:11px;line-height:1.35;color:var(--text);resize:vertical}
+.condition-description:hover{border-color:var(--line-strong)}
+.condition-description::placeholder{color:var(--muted)}

@@ -7,7 +7,7 @@ import PlayerVoiceAnswer from './PlayerVoiceAnswer';
 
 const EXIT_MS = 220;
 const HOLD_MS = 1000;
-type Choice = { id: string; label: string; values: string[]; outcome: Outcome; style: CSSProperties };
+type Choice = { id: string; label: string; outcome: Outcome; style: CSSProperties };
 type Presentation = {
   sceneId: SceneId; question: string; choices: Choice[]; selectedId: string | null; voice: boolean;
   phase: 'choosing' | 'dismissing' | 'holding' | 'exiting' | 'done';
@@ -29,7 +29,7 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
     .map(edge => {
       const index = value.flow.interaction.answers.findIndex(answer => answer.id === edge.when);
       const answer = value.flow.interaction.answers[index];
-      return { id: edge.id, outcome: edge.when, label: answer.label, values: answer.values, style: answerColorStyle(answer, index) as CSSProperties };
+      return { id: edge.id, outcome: edge.when, label: answer.label, style: answerColorStyle(answer, index) as CSSProperties };
     }), [value.flow, idleId]);
   const [presentation, setPresentation] = useState<Presentation | null>(null);
 
@@ -45,8 +45,11 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
     });
   }, [idleId, outcome, choices, question, voice]);
   useEffect(() => { if (!idleId) setNoMicScene(null); }, [idleId]);
-  const voiceContext = useMemo(() => ({ question: question.trim() || undefined,
-    options: choices.map(choice => ({ id: choice.outcome, label: choice.label, values: choice.values })) }), [choices, question]);
+  // Each non-default condition is a plain-language description Hume decides from the audio; the default plays when none match.
+  const fallbackId = interaction?.fallbackAnswerId ?? null;
+  const voiceContext = useMemo(() => ({ question: question.trim() || undefined, conditions: choices
+    .filter(choice => choice.outcome !== fallbackId && choice.label.trim())
+    .map(choice => ({ id: choice.outcome, description: choice.label })) }), [choices, question, fallbackId]);
 
   const selectedId = presentation?.selectedId;
   const sceneId = presentation?.sceneId;
@@ -73,8 +76,8 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
 
   if (!presentation || !presentation.choices.length || presentation.phase === 'done') return null;
   const listening = presentation.voice && noMicScene !== presentation.sceneId;
-  // Spoken answers show only the matched choice once it is chosen.
-  const shown = listening ? presentation.choices.filter(choice => choice.id === presentation.selectedId) : presentation.choices;
+  // Voice conditions are instructions for Hume, not viewer-facing labels, so no choice buttons are shown.
+  const shown = listening ? [] : presentation.choices;
   const choose = (choice: Choice) => {
     setPresentation({ ...presentation, selectedId: choice.id, phase: 'dismissing' });
     value.onBranch(presentation.sceneId, choice.outcome);
@@ -84,8 +87,8 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
     data-phase={presentation.phase} style={{ '--choice-columns': listening ? 1 : Math.min(3, presentation.choices.length), '--choice-exit-duration': `${EXIT_MS}ms` } as CSSProperties}
     onDoubleClick={event => event.stopPropagation()}>
     {presentation.question.trim() && <p id={questionId} className="player-branch-question">{presentation.question}</p>}
-    {listening && !selectedId && <PlayerVoiceAnswer context={voiceContext} onUnavailable={() => setNoMicScene(presentation.sceneId)} onAnswer={answerId => {
-      const choice = presentation.choices.find(choice => choice.outcome === (answerId ?? interaction?.fallbackAnswerId));
+    {listening && <PlayerVoiceAnswer context={voiceContext} chosen={!!selectedId} onUnavailable={() => setNoMicScene(presentation.sceneId)} onAnswer={answerId => {
+      const choice = presentation.choices.find(choice => choice.outcome === (answerId ?? fallbackId));
       if (!choice) return false;
       choose(choice); return true;
     }} />}

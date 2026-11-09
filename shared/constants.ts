@@ -40,16 +40,16 @@ export const VIDEO_PREPARATION = { maxHeight: 1344 } as const;
 export const MAX_VOICE_SECONDS = 60;
 // Keeps microphone requests below Vercel's function body limit, without public Blob uploads.
 export const MAX_VOICE_BYTES = 2 * 1024 * 1024;
-// Spoken answers for voice conditionals, judged by Hume's Audio Decisions API.
-// https://dev.hume.ai/audio-decisions/docs/limits: WAV or MP3, 1 s to 5 min, 2-20 choice options.
+// Spoken answers for voice conditionals. Hume's Audio Decisions API answers one yes/no question per condition.
+// https://dev.hume.ai/audio-decisions/docs/limits: WAV or MP3, 1 s to 5 min, up to 20 yes/no questions.
 export const VOICE_CHOICE = {
   endpoint: 'https://api.cloud.hume.ai/v0/decisions/file',
   // Short answers ("yes") are padded with trailing silence to Hume's 1 second minimum.
   minSeconds: 1.25, maxSeconds: 12,
-  // One option is reserved for "no clear answer", which takes the default condition.
-  maxConditions: 19,
-  // The winning option's share of simulated raters. Lower than a strict majority to give children the benefit of the doubt.
-  minProbability: 0.4,
+  // Conditions judged per answer; the default condition is never sent.
+  maxConditions: 20,
+  // Share of Hume's simulated raters answering yes. Below this, or with no conditions, the default plays.
+  minProbability: 0.5,
 } as const;
 export const VOICE_DETECTION = {
   positiveSpeechThreshold: 0.5, negativeSpeechThreshold: 0.35,

@@ -7,35 +7,25 @@ export type VoiceChoiceInput = { audio: Uint8Array; context: VoiceChoiceContext;
 export type VoiceChoiceProvider = (input: VoiceChoiceInput) => Promise<VoiceChoice>;
 
 export const VOICE_CHOICE_MODEL = 'hume-audio-decisions';
-/** Reserved option: silence, mumbling and unrelated answers take the node's default condition. */
-export const UNCLEAR_OPTION = 'No clear answer';
-const QUESTION_ID = 'answer';
 const CONTEXT = 'A young child answers out loud while an interactive video waits for their answer. Sound from the video may be faintly audible; judge only the child.';
+const ASK = 'Listen to the child\'s answer. Does this condition describe it? Condition: ';
+// Explicit outcomes separated matching and unrelated answers best in testing against Hume.
+const CRITERIA = {
+  true: 'The condition describes the child\'s answer, allowing for a young child\'s wording and pronunciation.',
+  false: 'The condition does not describe the answer, or the child is silent or unclear.',
+};
 
 const clip = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+const questionId = (index: number) => `condition-${index}`;
 
-/** Hume `choice` criteria: unique names of at most 50 characters, optional descriptions of at most 100. */
-export function choiceCriteria(context: VoiceChoiceContext) {
-  const used = new Set([UNCLEAR_OPTION.toLowerCase()]);
-  const options = context.options.map((option, index) => {
-    const label = option.label.trim() || `Option ${index + 1}`;
-    const base = clip(label, 50);
-    let name = base;
-    for (let n = 2; used.has(name.toLowerCase()); n++) name = `${clip(base, 50 - ` (${n})`.length)} (${n})`;
-    used.add(name.toLowerCase());
-    const alternatives = option.values.map(value => value.trim()).filter(Boolean);
-    const description = [name === label ? '' : label, alternatives.length ? `Also: ${alternatives.join(', ')}` : ''].filter(Boolean).join('. ');
-    return { id: option.id, name, ...(description ? { description: clip(description, 100) } : {}) };
-  });
-  return [...options, { id: null, name: UNCLEAR_OPTION, description: 'Silence, mumbling, an unrelated answer, or none of the other options' }];
-}
-
-export function choiceRequest(context: VoiceChoiceContext) {
-  const ask = 'Which option best matches the child\'s spoken answer? Judge what the child means, not exact wording, and give a clear attempt the benefit of the doubt.';
+/** One Hume yes/no (`noul`) question per condition, so each condition is decided from the audio independently. */
+export function decisionRequest(context: VoiceChoiceContext) {
   const question = context.question?.trim();
-  const instructions = question ? `The child was asked: "${clip(question, 500 - ask.length - 24)}" ${ask}` : ask;
-  return { questions: { [QUESTION_ID]: { type: 'choice', instructions,
-    criteria: choiceCriteria(context).map(({ name, description }) => ({ name, ...(description ? { description } : {}) })) } }, context: CONTEXT };
+  return {
+    questions: Object.fromEntries(context.conditions.map((condition, index) => [questionId(index),
+      { type: 'noul', instructions: ASK + clip(condition.description.trim(), 500 - ASK.length), criteria: CRITERIA }])),
+    context: clip(question ? `${CONTEXT} The child was asked: "${question}"` : CONTEXT, 1000),
+  };
 }
 
 /** Rewrites a PCM WAV with trailing silence so it meets a minimum duration. Throws for other formats. */
@@ -71,9 +61,7 @@ export function padWav(audio: Uint8Array, minSeconds: number): Uint8Array {
   return output;
 }
 
-const answerSchema = z.object({ answers: z.object({ [QUESTION_ID]: z.object({
-  type: z.literal('choice'), choice: z.string(), probabilities: z.record(z.string(), z.number()),
-}) }) });
+const answerSchema = z.object({ answers: z.record(z.string(), z.object({ type: z.literal('noul'), noul: z.number() })) });
 
 /** Hume error bodies are not forwarded; each status maps to a fixed message. */
 function humeError(status: number) {
@@ -87,20 +75,19 @@ function humeError(status: number) {
 export function createVoiceChoiceProvider(apiKey: string | undefined, fetcher: typeof fetch = fetch): VoiceChoiceProvider {
   return async ({ audio, context, signal }) => {
     if (!apiKey) throw new HttpError(503, 'HUME_API_KEY is missing. Add it to .env and restart the server.');
-    if (!context.options.length || context.options.length > VOICE_CHOICE.maxConditions) {
-      throw new HttpError(400, `Voice answers need 1 to ${VOICE_CHOICE.maxConditions} connected conditions.`);
+    if (!context.conditions.length || context.conditions.length > VOICE_CHOICE.maxConditions) {
+      throw new HttpError(400, `Voice answers need 1 to ${VOICE_CHOICE.maxConditions} conditions besides the default.`);
     }
-    const criteria = choiceCriteria(context);
     const body = new FormData();
-    body.set('request', new Blob([JSON.stringify(choiceRequest(context))], { type: 'application/json' }), 'request.json');
+    body.set('request', new Blob([JSON.stringify(decisionRequest(context))], { type: 'application/json' }), 'request.json');
     body.set('file', new Blob([Uint8Array.from(padWav(audio, VOICE_CHOICE.minSeconds))], { type: 'audio/wav' }), 'answer.wav');
     const response = await fetcher(VOICE_CHOICE.endpoint, { method: 'POST', headers: { 'X-Hume-Api-Key': apiKey }, body, signal });
     if (!response.ok) throw humeError(response.status);
     const parsed = answerSchema.safeParse(await response.json().catch(() => null));
-    if (!parsed.success) throw new HttpError(502, 'Hume returned an unexpected answer. Please try again.');
-    const { choice, probabilities } = parsed.data.answers[QUESTION_ID];
-    const probability = probabilities[choice] ?? 0;
-    const option = criteria.find(c => c.name === choice);
-    return { answerId: option?.id && probability >= VOICE_CHOICE.minProbability ? option.id : null, probability, model: VOICE_CHOICE_MODEL };
+    const scores = parsed.success ? context.conditions.map((_, index) => parsed.data.answers[questionId(index)]?.noul) : [];
+    if (!scores.length || scores.some(score => score === undefined)) throw new HttpError(502, 'Hume returned an unexpected answer. Please try again.');
+    // The strongest yes wins; the first condition breaks ties.
+    const best = scores.reduce((top, score, index) => score! > scores[top]! ? index : top, 0), probability = scores[best]!;
+    return { answerId: probability >= VOICE_CHOICE.minProbability ? context.conditions[best].id : null, probability, model: VOICE_CHOICE_MODEL };
   };
 }

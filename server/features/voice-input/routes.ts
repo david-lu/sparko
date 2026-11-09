@@ -12,12 +12,11 @@ const voiceContextSchema = z.object({
   sceneId: z.string().min(1).max(200).optional(), question: z.string().trim().max(2000).optional(),
 });
 
-const text = z.string().max(200);
 const voiceChoiceContextSchema = z.object({
   question: z.string().trim().max(2000).optional(),
-  options: z.array(z.object({ id: z.string().min(1).max(200), label: text, values: z.array(text).max(100) }))
-    .min(1).max(VOICE_CHOICE.maxConditions, `Voice answers support up to ${VOICE_CHOICE.maxConditions} conditions.`)
-    .refine(options => new Set(options.map(option => option.id)).size === options.length, 'Condition IDs must be unique.'),
+  conditions: z.array(z.object({ id: z.string().min(1).max(200), description: z.string().trim().min(1, 'Describe each condition.').max(500) }))
+    .min(1).max(VOICE_CHOICE.maxConditions, `Voice answers support up to ${VOICE_CHOICE.maxConditions} conditions besides the default.`)
+    .refine(conditions => new Set(conditions.map(condition => condition.id)).size === conditions.length, 'Condition IDs must be unique.'),
 });
 
 /** Rejects anything but a short audio-only recording before it reaches a paid provider. */
