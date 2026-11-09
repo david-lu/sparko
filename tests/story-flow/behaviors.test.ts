@@ -74,3 +74,14 @@ describe('independent clip behaviors and named outputs',()=>{
   });
 });
 const graphAsset=(graph:StoryGraph)=>graph.nodes[0].source!.assetId;
+describe('conditional input',()=>{
+  it('defaults to buttons and carries voice input into playback and saved graphs',()=>{
+    const {graph}=fixture();
+    expect(runtimeFlow(graph,[],graphAsset(graph),4).storyInteractions?.a.input).toBe('button');
+    const voice={...graph,nodes:graph.nodes.map(n=>n.id==='a'?{...n,conditionInput:'voice' as const}:n)};
+    const interaction=runtimeFlow(voice,[],graphAsset(voice),4).storyInteractions?.a;
+    expect(interaction?.input).toBe('voice');expect(interaction?.answers.map(a=>a.label)).toEqual(['Condition 1','Condition 2']);
+    expect(storyGraphSchema.parse(voice).nodes[0].conditionInput).toBe('voice');
+    expect(storyGraphSchema.safeParse({...voice,nodes:voice.nodes.map(n=>({...n,conditionInput:'gesture'}))}).success).toBe(false);
+  });
+});

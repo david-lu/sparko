@@ -19,6 +19,8 @@ export class MicrophoneController {
   private timer: ReturnType<typeof setInterval> | undefined;
   private deadline: ReturnType<typeof setTimeout> | undefined;
   private generation = 0;
+  /** `maxSeconds` caps one utterance; the default suits open answers, shorter limits suit quick choices. */
+  constructor(private readonly maxSeconds: number = MAX_VOICE_SECONDS) {}
 
   getSnapshot = (): MicrophoneState => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
@@ -62,8 +64,8 @@ export class MicrophoneController {
           if (generation !== this.generation) return;
           const started = performance.now();
           this.update({ phase: 'recording', seconds: 0 });
-          this.timer = setInterval(() => this.update({ seconds: Math.min(MAX_VOICE_SECONDS, (performance.now() - started) / 1000) }), 100);
-          this.deadline = setTimeout(() => void this.stop(), MAX_VOICE_SECONDS * 1000);
+          this.timer = setInterval(() => this.update({ seconds: Math.min(this.maxSeconds, (performance.now() - started) / 1000) }), 100);
+          this.deadline = setTimeout(() => void this.stop(), this.maxSeconds * 1000);
         },
         onVADMisfire: () => {
           if (generation !== this.generation) return;
@@ -72,7 +74,7 @@ export class MicrophoneController {
         onSpeechEnd: samples => {
           if (generation !== this.generation) return;
           // Include the short pre-speech buffer, preserving the beginning of the first word.
-          const audio = samples.subarray(0, MAX_VOICE_SECONDS * 16000);
+          const audio = samples.subarray(0, this.maxSeconds * 16000);
           const blob = new Blob([utils.encodeWAV(audio, 1, 16000, 1, 16)], { type: 'audio/wav' });
           this.generation++; this.releaseDevice();
           this.update({ phase: 'ready', seconds: audio.length / 16000, audio: blob });

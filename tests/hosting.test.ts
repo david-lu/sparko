@@ -16,7 +16,7 @@ async function passwordApp(vercel: string, password: string | undefined) {
   const providers: Providers = {
     configured: { openai: true, gemini: false, comfy: false }, models: { openai: 'test', gemini: 'test' },
     openai: vi.fn<Providers['openai']>(async input => ({ caption: 'A caption', description: 'A description', provider: 'openai', model: 'test', start: input.start, end: input.end, basis: 'Sampled frames' })),
-    gemini: vi.fn(), voice: vi.fn(), enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(),
+    gemini: vi.fn(), voice: vi.fn(), voiceChoice: vi.fn(), enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(),
   };
   const app = await createApp({ providers });
   app.use(errorHandler);

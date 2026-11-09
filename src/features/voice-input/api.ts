@@ -1,4 +1,4 @@
-import type { Provider, VoiceAnswer, VoiceContext } from '../../../shared/contracts';
+import type { Provider, VoiceAnswer, VoiceChoice, VoiceChoiceContext, VoiceContext } from '../../../shared/contracts';
 import { MAX_VOICE_BYTES } from '../../../shared/constants';
 import { request } from '../../shared/api';
 
@@ -12,4 +12,13 @@ export async function sendVoiceAnswer(audio: Blob, provider: Provider, context: 
   body.set('context', JSON.stringify(context));
   // Bounded microphone audio goes directly to the authenticated API, including on Vercel.
   return request<VoiceAnswer>(`/api/voice/${provider}`, { method: 'POST', body, signal });
+}
+
+/** Sends one WAV utterance to be matched against a conditional's options. */
+export async function sendVoiceChoice(audio: Blob, context: VoiceChoiceContext, signal?: AbortSignal): Promise<VoiceChoice> {
+  if (!audio.size || audio.size > MAX_VOICE_BYTES) throw new Error('Record an answer smaller than 2 MB.');
+  const body = new FormData();
+  body.set('audio', audio, 'answer.wav');
+  body.set('context', JSON.stringify(context));
+  return request<VoiceChoice>('/api/voice/choice', { method: 'POST', body, signal });
 }

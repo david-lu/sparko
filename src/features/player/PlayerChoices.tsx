@@ -3,19 +3,24 @@ import { answerColorStyle, getScene, interactionFor, type Outcome, type SceneId 
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import ChoiceFace from '../call-response/ChoiceFace';
 import { behaviors } from '../story-flow/behaviors';
+import PlayerVoiceAnswer from './PlayerVoiceAnswer';
 
 const EXIT_MS = 220;
 const HOLD_MS = 1000;
-type Choice = { id: string; label: string; outcome: Outcome; style: CSSProperties };
+type Choice = { id: string; label: string; values: string[]; outcome: Outcome; style: CSSProperties };
 type Presentation = {
-  sceneId: SceneId; question: string; choices: Choice[]; selectedId: string | null;
+  sceneId: SceneId; question: string; choices: Choice[]; selectedId: string | null; voice: boolean;
   phase: 'choosing' | 'dismissing' | 'holding' | 'exiting' | 'done';
 };
 
 export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   const scene = value.session ? getScene(value.flow, value.session.sceneId) : null;
   const idleId = scene?.clip.kind === 'idle' && !(scene.storyNode&&!behaviors(scene.storyNode).conditional&&scene.storyNode.loopCount>0) ? scene.id : null;
-  const question = idleId ? interactionFor(value.flow, idleId).question : '';
+  const interaction = idleId ? interactionFor(value.flow, idleId) : null;
+  const question = interaction?.question ?? '';
+  const voice = interaction?.input === 'voice';
+  // Scenes whose microphone failed fall back to buttons until the scene is entered again.
+  const [noMicScene, setNoMicScene] = useState<SceneId | null>(null);
   const questionId = useId();
   const controls = useRef<HTMLDivElement>(null);
   const outcome = value.session?.outcome;
@@ -24,7 +29,7 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
     .map(edge => {
       const index = value.flow.interaction.answers.findIndex(answer => answer.id === edge.when);
       const answer = value.flow.interaction.answers[index];
-      return { id: edge.id, outcome: edge.when, label: answer.label, style: answerColorStyle(answer, index) as CSSProperties };
+      return { id: edge.id, outcome: edge.when, label: answer.label, values: answer.values, style: answerColorStyle(answer, index) as CSSProperties };
     }), [value.flow, idleId]);
   const [presentation, setPresentation] = useState<Presentation | null>(null);
 
@@ -34,11 +39,14 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
       if (!idleId) return current?.selectedId ? current : null;
       const selectedId = choices.find(choice => choice.outcome === outcome)?.id ?? null;
       if (current?.sceneId === idleId && current.selectedId === selectedId) {
-        return current.choices === choices && current.question === question ? current : { ...current, choices, question };
+        return current.choices === choices && current.question === question && current.voice === voice ? current : { ...current, choices, question, voice };
       }
-      return { sceneId: idleId, question, choices, selectedId, phase: selectedId ? 'dismissing' : 'choosing' };
+      return { sceneId: idleId, question, choices, selectedId, voice, phase: selectedId ? 'dismissing' : 'choosing' };
     });
-  }, [idleId, outcome, choices, question]);
+  }, [idleId, outcome, choices, question, voice]);
+  useEffect(() => { if (!idleId) setNoMicScene(null); }, [idleId]);
+  const voiceContext = useMemo(() => ({ question: question.trim() || undefined,
+    options: choices.map(choice => ({ id: choice.outcome, label: choice.label, values: choice.values })) }), [choices, question]);
 
   const selectedId = presentation?.selectedId;
   const sceneId = presentation?.sceneId;
@@ -64,19 +72,30 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   }, [selectedId, sceneId, phase]);
 
   if (!presentation || !presentation.choices.length || presentation.phase === 'done') return null;
+  const listening = presentation.voice && noMicScene !== presentation.sceneId;
+  // Spoken answers show only the matched choice once it is chosen.
+  const shown = listening ? presentation.choices.filter(choice => choice.id === presentation.selectedId) : presentation.choices;
+  const choose = (choice: Choice) => {
+    setPresentation({ ...presentation, selectedId: choice.id, phase: 'dismissing' });
+    value.onBranch(presentation.sceneId, choice.outcome);
+  };
   return <div key={presentation.sceneId} ref={controls} className="player-branch-controls" role="group" aria-label="Choose an answer"
-    aria-describedby={presentation.question.trim() ? questionId : undefined}
-    data-phase={presentation.phase} style={{ '--choice-columns': Math.min(3, presentation.choices.length), '--choice-exit-duration': `${EXIT_MS}ms` } as CSSProperties}
+    aria-describedby={presentation.question.trim() ? questionId : undefined} data-input={listening ? 'voice' : 'button'}
+    data-phase={presentation.phase} style={{ '--choice-columns': listening ? 1 : Math.min(3, presentation.choices.length), '--choice-exit-duration': `${EXIT_MS}ms` } as CSSProperties}
     onDoubleClick={event => event.stopPropagation()}>
     {presentation.question.trim() && <p id={questionId} className="player-branch-question">{presentation.question}</p>}
-    {presentation.choices.map((choice, index) => <button key={choice.id} className="choice-button"
+    {listening && !selectedId && <PlayerVoiceAnswer context={voiceContext} onUnavailable={() => setNoMicScene(presentation.sceneId)} onAnswer={answerId => {
+      const choice = presentation.choices.find(choice => choice.outcome === (answerId ?? interaction?.fallbackAnswerId));
+      if (!choice) return false;
+      choose(choice); return true;
+    }} />}
+    {shown.map((choice, index) => <button key={choice.id} className="choice-button"
       style={{ ...choice.style, animationDelay: selectedId ? '0ms' : `${Math.min(index, 6) * 100}ms` }}
       aria-label={`Choose ${choice.label}`} aria-pressed={selectedId === choice.id} aria-disabled={!!selectedId}
       tabIndex={selectedId && selectedId !== choice.id ? -1 : undefined}
       onClick={() => {
         if (selectedId) return;
-        setPresentation({ ...presentation, selectedId: choice.id, phase: 'dismissing' });
-        value.onBranch(presentation.sceneId, choice.outcome);
+        choose(choice);
       }} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>
       <ChoiceFace>{choice.label}</ChoiceFace>
     </button>)}

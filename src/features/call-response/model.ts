@@ -56,7 +56,8 @@ export type CallResponseFlow = {
   entrySceneId: SceneId;
   scenes: TimelineScene[];
   edges: FlowEdge[];
-  interaction: { question: string; answers: AnswerOption[]; fallbackAnswerId: Outcome | null; waitSceneId: SceneId };
+  /** `input` is set for story-graph conditionals; voice answers are judged by the server. */
+  interaction: { question: string; answers: AnswerOption[]; fallbackAnswerId: Outcome | null; waitSceneId: SceneId; input?: 'button' | 'voice' };
   /** Runtime composition of multiple pins. Saved groups retain their local scene IDs. */
   groups?: CallResponseFlow[];
   layout?: { starts: Record<string, number>; totalFrames: number };

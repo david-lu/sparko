@@ -1,9 +1,9 @@
 import ClipMediaSection from './ClipMediaSection';
 import ClipGenerationEditor from './ClipGenerationEditor';
-import { Copy, Flag, Scissors, Trash2 } from 'lucide-react';
+import { Copy, Flag, Mic, MousePointerClick, Scissors, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AppStatus } from '../../../shared/contracts';
-import { LOOP_CROSSFADE_SECONDS, TIMELINE_FPS } from '../../../shared/constants';
+import { LOOP_CROSSFADE_SECONDS, TIMELINE_FPS, VOICE_CHOICE } from '../../../shared/constants';
 import { playableResult } from '../../../shared/interstitials';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
@@ -93,6 +93,15 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <p className="inspector-behavior-hint">Blend the ending into the beginning. Set either fade to 0 for a cut. Each is limited to half the clip; repeats are shorter by the longer overlap.</p>
     </BehaviorSection>
     <BehaviorSection key={`conditional:${node.id}`} name="Conditional" enabled={behavior.conditional} onToggle={enabled=>editor.toggleBehavior(node.id,'conditional',enabled)}>
+      <div className="inspector-property condition-input" role="radiogroup" aria-label="Condition input"><span aria-hidden>Input</span>
+        <div className="segmented-control">{(['button','voice'] as const).map(input=><label key={input} title={input==='voice'?'Viewers say their answer out loud':'Viewers press a button'}>
+          <input type="radio" name={`condition-input:${node.id}`} value={input} checked={(node.conditionInput??'button')===input} onChange={()=>editor.patch(node.id,{conditionInput:input==='button'?undefined:input})}/>
+          {input==='voice'?<Mic size={12} aria-hidden/>:<MousePointerClick size={12} aria-hidden/>}{input==='voice'?'Voice':'Button'}
+        </label>)}</div>
+      </div>
+      {node.conditionInput==='voice'&&<p className="inspector-behavior-hint condition-input-hint">{status&&!status.providers.hume?<strong>HUME_API_KEY is missing, so voice answers can't be judged. </strong>:null}
+        {conditions.length>VOICE_CHOICE.maxConditions?<strong>Voice supports up to {VOICE_CHOICE.maxConditions} conditions. </strong>:null}
+        Viewers answer out loud. Hume matches what they say to a condition's label or alternatives, so name conditions by the answer, like "Red door". Unclear answers take the default.</p>}
       {conditions.map((condition,index)=><div className="inspector-rule" key={condition.id}>
         <div className="inspector-rule-heading"><input aria-label={`Condition ${index+1} label`} maxLength={200} value={condition.label} onChange={e=>editor.updateConditions(node.id,conditions.map(c=>c.id===condition.id?{...c,label:e.target.value}:c))}/><button className="icon-button small" aria-label={`Remove condition ${index+1}`} onClick={()=>editor.updateConditions(node.id,conditions.filter(c=>c.id!==condition.id))}><Trash2 size={12}/></button></div>
         <label className="condition-default"><input type="radio" name={`default-condition:${node.id}`} aria-label={`Use condition ${index+1} as default`} checked={defaultCondition(graph,node)?.id===condition.id} onChange={()=>editor.patch(node.id,{defaultConditionId:condition.id})}/>Default</label>

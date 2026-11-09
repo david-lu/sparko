@@ -15,6 +15,11 @@ export type VoiceAnswer = {
   model: string;
   context: VoiceContext;
 };
+/** A condition a viewer can choose by speaking; `values` are alternative answers that also count. */
+export type VoiceChoiceOption = { id: string; label: string; values: string[] };
+export type VoiceChoiceContext = { question?: string; options: VoiceChoiceOption[] };
+/** `answerId` is null when the answer was unclear or matched none of the options. */
+export type VoiceChoice = { answerId: string | null; probability: number; model: string };
 export type CaptionResult = {
   caption: string;
   description: string;
@@ -27,7 +32,7 @@ export type CaptionResult = {
 export type AppStatus = {
   uploadMode: 'local' | 'blob';
   requiresPassword: boolean;
-  providers: Record<Provider | 'comfy', boolean> & { fal?: boolean };
+  providers: Record<Provider | 'comfy', boolean> & { fal?: boolean; hume?: boolean };
   models: Record<Provider, string>;
   defaultVideo: { name: string; url: string; size: number };
   defaultProject?: { url: string } | null;

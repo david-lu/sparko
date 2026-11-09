@@ -7,10 +7,11 @@ import type { Express } from 'express';
 import { wavFixture } from './fixtures/audio';
 
 const providers: Providers = {
-  configured: { openai: true, gemini: true, comfy: false }, models: { openai: 'test-openai', gemini: 'test-gemini' },
+  configured: { openai: true, gemini: true, comfy: false, hume: true }, models: { openai: 'test-openai', gemini: 'test-gemini' },
   openai: vi.fn<Providers['openai']>(async input => ({ caption: 'A caption', description: 'A description', provider: 'openai', model: 'test-openai', start: input.start, end: input.end, basis: 'Sampled frames' })),
   gemini: vi.fn(),
   voice: vi.fn<Providers['voice']>(async (provider, input) => ({ transcript: 'My spoken answer', response: 'Answer received.', provider, model: `test-${provider}`, context: input.context })),
+  voiceChoice: vi.fn<Providers['voiceChoice']>(async input => ({ answerId: input.context.options[0].id, probability: 0.9, model: 'test-hume' })),
   enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(),
 };
 let app: Express;
@@ -19,10 +20,10 @@ const post = (url: string) => request(app).post(url).set('x-sparko-request', '1'
 describe('server API boundaries', () => {
   it('reports configuration without exposing secrets', async () => {
     const result = await request(app).get('/api/status').expect(200);
-    expect(result.body.providers).toEqual({ openai: true, gemini: true, comfy: false, fal: false });
+    expect(result.body.providers).toEqual({ openai: true, gemini: true, comfy: false, hume: true, fal: false });
     expect(result.body.defaultVideo.name).toBe('sample.mp4');
     expect(result.body.defaultVideo.url).toBe('/media/sample.mp4');
-    expect(result.text).not.toMatch(/sk-|COMFY_CLOUD_API_KEY|OPENAI_API_KEY|GEMINI_KEY/);
+    expect(result.text).not.toMatch(/sk-|COMFY_CLOUD_API_KEY|OPENAI_API_KEY|GEMINI_KEY|HUME_API_KEY/);
   });
   it('serves partial video responses', async () => {
     const result = await request(app).get('/media/sample.mp4').set('Range', 'bytes=0-63').expect(206);
@@ -95,6 +96,28 @@ describe('server API boundaries', () => {
     const result = await post('/api/voice/openai').field('context', JSON.stringify({ sourceId: 'episode', videoTime: 1 }))
       .attach('audio', wavFixture(), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(429);
     expect(result.text).not.toContain('secret-value');
+  });
+  it('matches a spoken WAV answer against a conditional\'s options', async () => {
+    const context = { question: 'Which door?', options: [{ id: 'edge-red', label: 'Red door', values: ['red'] }, { id: 'edge-blue', label: 'Blue door', values: [] }] };
+    const result = await post('/api/voice/choice').field('context', JSON.stringify(context))
+      .attach('audio', wavFixture(0.5), { filename: 'answer.wav', contentType: 'audio/wav' }).expect(200);
+    expect(result.body).toEqual({ answerId: 'edge-red', probability: 0.9, model: 'test-hume' });
+    expect(providers.voiceChoice).toHaveBeenCalledWith(expect.objectContaining({ context, audio: wavFixture(0.5), signal: expect.any(AbortSignal) }));
+  });
+  it('rejects invalid voice choices before calling Hume', async () => {
+    vi.mocked(providers.voiceChoice).mockClear();
+    const option = (id: string) => ({ id, label: id, values: [] });
+    const send = (context: unknown, audio = wavFixture(), contentType = 'audio/wav') => post('/api/voice/choice')
+      .field('context', JSON.stringify(context)).attach('audio', audio, { filename: 'answer.wav', contentType });
+    await send({ options: [] }).expect(400);
+    await send({ options: Array.from({ length: 20 }, (_, i) => option(`o${i}`)) }).expect(400);
+    await send({ options: [option('a'), option('a')] }).expect(400);
+    await send({ options: [option('a')] }, wavFixture(), 'audio/webm').expect(400);
+    await send({ options: [option('a')] }, wavFixture(13)).expect(400);
+    expect(providers.voiceChoice).not.toHaveBeenCalled();
+    const missing = await createApp({ providers: { ...providers, configured: { openai: true, gemini: true, comfy: false } } }); missing.use(errorHandler);
+    const result = await request(missing).post('/api/voice/choice').set('x-sparko-request', '1').expect(503);
+    expect(result.body.error).toContain('HUME_API_KEY');
   });
   it('does not expose the removed generation routes', async () => {
     await post('/api/interstitials').expect(404);
