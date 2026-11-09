@@ -58,7 +58,7 @@ for(const width of [1440,390])test(`auto layout clears compressed conditional ro
   const original=(await saved(page)).storyFlow;
   const clearance=()=>page.locator('.story-scroll').evaluate(el=>{
     const clips=[...el.querySelectorAll('.story-clip')].filter(el=>el.querySelector('.story-clip-title')?.textContent?.match(/upper|lower/));
-    const bounds=clips.map(clip=>[clip,...clip.querySelectorAll('.conditional-output')].map(el=>el.getBoundingClientRect())).map(rects=>({top:Math.min(...rects.map(r=>r.top)),bottom:Math.max(...rects.map(r=>r.bottom))})).sort((a,b)=>a.top-b.top);
+    const bounds=clips.map(clip=>[clip,...clip.querySelectorAll('.conditional-output')].filter(el=>el.getClientRects().length).map(el=>el.getBoundingClientRect())).map(rects=>({top:Math.min(...rects.map(r=>r.top)),bottom:Math.max(...rects.map(r=>r.bottom))})).sort((a,b)=>a.top-b.top);
     return bounds[1].top-bounds[0].bottom;
   });
   await expect.poll(clearance).toBeGreaterThanOrEqual(20);

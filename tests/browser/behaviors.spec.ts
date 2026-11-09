@@ -21,7 +21,7 @@ test('independent behaviors expose named condition sockets with separate draggab
   // Connections use sockets; the separate media section can still offer asset replacement.
   await expect(loopSection.or(conditionalSection).getByRole('combobox')).toHaveCount(0);
   await expect(page.getByLabel('Next clip',{exact:true})).toHaveCount(0);
-  await expect(page.getByRole('combobox',{name:'Replace clip asset',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Choose clip asset',exact:true})).toBeVisible();
   const yes=clip.locator('[data-condition-id]').first(),no=clip.locator('[data-condition-id]').last();
   await yes.dragTo(page.locator(`[data-node-id="${b.id}"] .story-port.input`));await no.dragTo(page.locator(`[data-node-id="${c.id}"] .story-port.input`));
   let graph=(await saved(page)).storyFlow;const yesId=graph.nodes[0].conditions[0].id,noId=graph.nodes[0].conditions[1].id;

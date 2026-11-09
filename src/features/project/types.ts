@@ -24,6 +24,8 @@ export type Project = {
   callResponses?: CallResponseFlow[];
   storyFlow?: StoryGraph;
   library?: LibraryAsset[];
+  /** Intentionally unavailable media. Keep IDs and references so undo and missing-input errors work. */
+  deletedAssetIds?: string[];
   libraryFolders?: LibraryFolder[];
   clipGenerations?: AssetGeneration[];
   /** Legacy Library-only recipes, consumed by the project migration. */
@@ -41,11 +43,11 @@ export const activeFlows = (project?: Project | null) => projectFlows(project).f
 export const withFlows = (project: Project, callResponses: CallResponseFlow[]): Project => ({ ...project, callResponses, callResponse: callResponses[0] });
 export const assetIds = (project: Project) => [...new Set([project.source.assetId, project.source.originalAssetId, project.subtitle?.assetId,
   ...[...project.clipGenerations??[],...project.assetGenerations??[],...project.storyFlow?.templates.flatMap(t=>t.generations??[])??[]].flatMap(g => [g.selectedAssetId, ...g.versions.flatMap(v => [v.assetId, ...v.settings.references.map(r => r.assetId)]), ...g.settings.references.map(r => r.assetId), ...(g.submitted?.references.map(r => r.assetId) ?? [])]),
-  ...project.storyFlow?.templates.flatMap(template => Object.values(template.settings).flatMap(settings => [...videoAssets(settings, 'start').map(r => r.assetId), ...videoAssets(settings, 'end').map(r => r.assetId), ...settings.imageReferences?.map(image => image.assetId) ?? []])) ?? [],
+  ...project.storyFlow?.templates.flatMap(template => Object.values(template.settings).flatMap(settings => [...(settings.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...videoAssets(settings, 'start').map(r => r.assetId), ...videoAssets(settings, 'end').map(r => r.assetId), ...settings.imageReferences?.map(image => image.assetId) ?? [], ...settings.keyframes?.flatMap(keyframe => keyframe.image ? [keyframe.image.assetId] : []) ?? []])) ?? [],
   ...(project.library ?? []).flatMap(item => [item.assetId, item.originalAssetId]),
   ...project.storyFlow?.nodes.flatMap(node => node.source ? [node.source.assetId,node.source.originalAssetId] : []) ?? [],
   ...project.storyFlow?.templates.flatMap(t => t.nodes.flatMap(node => node.source ? [node.source.assetId,node.source.originalAssetId] : [])) ?? [],
   ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId)),
   ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId,
-    ...[item, item.generationSettings].flatMap(settings => [...videoAssets(settings ?? {}, 'start').map(r => r.assetId), ...videoAssets(settings ?? {}, 'end').map(r => r.assetId), ...settings?.imageReferences?.map(image => image.assetId) ?? []]),
-    ...[item.result?.reference, item.previousResult?.reference, item.requestReference].flatMap(input => [...referenceClips(input, 'before'), ...referenceClips(input, 'after')].map(r => r.assetId))])].filter((id): id is string => !!id))];
+    ...[item, item.generationSettings].flatMap(settings => [...(settings?.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...videoAssets(settings ?? {}, 'start').map(r => r.assetId), ...videoAssets(settings ?? {}, 'end').map(r => r.assetId), ...settings?.imageReferences?.map(image => image.assetId) ?? [], ...settings?.keyframes?.flatMap(keyframe => keyframe.image ? [keyframe.image.assetId] : []) ?? []]),
+    ...[item.result?.reference, item.previousResult?.reference, item.requestReference].flatMap(input => [...referenceClips(input, 'before'), ...referenceClips(input, 'after')].map(r => r.assetId))])].filter((id): id is string => !!id && !project.deletedAssetIds?.includes(id)))];

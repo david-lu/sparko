@@ -1,4 +1,4 @@
-import { expect, test, openVideo, addBridge, readProject, saveAndReopen, fitAll } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, setVideoReference, expect, test, openVideo, addBridge, readProject, saveAndReopen, fitAll } from './fixtures';
 import { generationProgress } from '../../server/features/comfy/progress';
 import { ComfyNodeProgress } from '../../server/features/comfy/node-progress';
 import { readFile } from 'node:fs/promises';
@@ -7,7 +7,7 @@ import { readClipMetadata } from '../../src/media/clipMetadata';
 for (const width of [1440,390]) for (const detailed of [true, false]) test(`mocked Comfy generation, status recovery, and regeneration with ${detailed ? 'detailed' : 'aggregate-only'} progress at ${width}px`, { tag: ['@generation', '@slow'] }, async ({ page }) => {
   await page.setViewportSize({width,height:width===390?844:1000});
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: false, gemini: false, comfy: true } } }); });
-  await page.route('**/api/comfy/status', route => route.fulfill({ json: { ready: true } }));
+  await page.route('**/api/comfy/status*', route => route.fulfill({ json: { ready: true } }));
   let complete = false, failStatus = false, comfySubmissions = 0, statusReads = 0;
   const aggregate = generationProgress({ value: .9892857142857142, nodes_done: 27, nodes_total: 28 });
   const progress = detailed ? new ComfyNodeProgress('comfy-test-job').read(JSON.stringify({ type: 'progress', data: { prompt_id: 'comfy-test-job', node: 'sample', value: 7, max: 20 } }))!
@@ -28,8 +28,8 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
     expect(form.get('seed')).toBe('0');
     expect(origin.settings.seed).toBe(0);
     expect(form.get('maskInjection')).toBe('standard');
-    expect(form.get('audioMaskTransitionMs')).toBe(comfySubmissions === 1 ? '250' : '0');
-    expect(form.get('videoMaskTransitionMs')).toBe('1000');
+    expect(JSON.parse(String(form.get('audioMaskCurve'))).start).toEqual(expect.arrayContaining([expect.objectContaining({ strength: comfySubmissions === 1 ? .25 : 0 })]));
+    expect(JSON.parse(String(form.get('videoMaskCurve'))).start).toEqual(expect.arrayContaining([expect.objectContaining({ strength: .75 })]));
     expect(form.has('maskTransitionMs')).toBe(false);
     expect(form.has('interpolateMiddle')).toBe(false);
     await route.fulfill({ status: 202, json: { requestId: 'comfy-test-job', status: 'IN_QUEUE', insertion: { start: 39 / 24, duration: 148 / 24, totalDuration: 226 / 24 } } });
@@ -57,7 +57,7 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
     return route.fulfill({ contentType: 'video/mp4', body: Buffer.from(bytes) });
   });
   await addBridge(page);
-  await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
+  await setVideoReference(page, 'end', true);
   await expect(page.getByRole('combobox', { name: 'Video generation method' })).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion' })).toHaveCount(0);
   await page.getByLabel('Video prompt').fill('Continue the motion');
@@ -66,23 +66,24 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(page.getByRole('button', { name: 'Use last seed', exact: true })).toBeDisabled();
   await seedMode.selectOption('fixed'); await seedValue.fill('0');
   await expect(seedValue).toHaveValue('0');
-  await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
-  await page.getByText('Simple transition durations',{exact:true}).click();
-  const audioTransition = page.getByRole('spinbutton', { name: 'Audio mask transition duration', exact: true });
-  const videoTransition = page.getByRole('spinbutton', { name: 'Video mask transition duration', exact: true });
-  await expect(audioTransition).toHaveValue('500');
-  await expect(videoTransition).toHaveValue('500');
-  await audioTransition.fill('250');
-  await expect(videoTransition).toHaveValue('500');
-  await videoTransition.fill('1000');
-  await expect(audioTransition).toHaveValue('250');
-  const mask = page.getByRole('button', { name: 'Edit video mask', exact: true });
+  const editMask = async (channel: 'audio' | 'video', strength: string, add = true) => {
+    await openGenerationTimeline(page);
+    await page.getByRole('button', { name: `Edit ${channel} mask`, exact: true }).click();
+    if (add) await page.getByRole('button', { name: 'Add keyframe', exact: true }).click();
+    else await page.getByRole('button', { name: `${channel === 'audio' ? 'Audio' : 'Video'} start keyframe 2`, exact: true }).focus();
+    await page.getByLabel('Keyframe regeneration', { exact: true }).fill(strength);
+    await page.getByRole('button', { name: `Apply ${channel} mask`, exact: true }).click();
+    await closeGenerationTimeline(page);
+  };
+  await editMask('audio', '25'); await editMask('video', '75');
+  const videoCurve = (await readProject(page)).interstitials[0].videoMaskCurve;
+  const mask = page.getByRole('button', { name: 'Edit generation timeline', exact: true });
   await expect(mask).toBeVisible();
   await expect(page.getByRole('button', { name: /^Mask injection:/ })).toHaveCount(0);
   await expect(page.getByText(/FILM \+/)).toHaveCount(0);
   const controls = () => page.locator('.interstitial-editor').evaluate(form => {
     const top=form.getBoundingClientRect().top;
-    return ['textarea','.generation-seed','.interstitial-time-fields','button[type=submit]','.task-status','input[aria-label="Audio mask transition duration"]','input[aria-label="Video mask transition duration"]'].map(selector=>{
+    return ['textarea','.generation-seed','.generation-timeline-summary','button[type=submit]','.task-status'].map(selector=>{
       const bounds=form.querySelector(selector)!.getBoundingClientRect();return {top:bounds.top-top,height:bounds.height};
     });
   });
@@ -135,12 +136,12 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   expect((await saved()).requestSeed).toBe(0);
   expect((await saved()).requestMethod).toBe('comfy');
   expect((await saved()).generationSettings.maskInjection).toBe('standard');
-  expect((await saved()).generationSettings).toMatchObject({ audioMaskTransitionMs: 250, videoMaskTransitionMs: 1000 });
+  expect((await saved()).generationSettings).toMatchObject({ audioMaskCurve: { start: expect.arrayContaining([expect.objectContaining({ strength: .25 })]) }, videoMaskCurve: videoCurve });
   expect(await optionPosition()).toBeCloseTo(optionTop, 0);
   expect(await controls()).toEqual(idleControls);
   await expect(page.locator('.inspector-clip-meta')).toContainText('Generated');
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await page.locator('.inspector-output > summary').click();
+  await page.locator('.inspector-output > summary').click();await page.locator('.generated-output-details > summary').click();
   await expect(page.getByLabel('Generation seed', { exact: true })).toHaveText('0');
   const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click();
   const downloaded = await download;
@@ -150,8 +151,8 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   await expect(page.getByLabel('Generation seed', { exact: true })).toHaveText('0');
   await page.getByRole('button', { name: 'Use last seed', exact: true }).click();
   await expect(seedMode).toHaveValue('fixed'); await expect(seedValue).toHaveValue('0');
-  await audioTransition.fill('0');
-  await expect(videoTransition).toHaveValue('1000');
+  await editMask('audio', '0', false);
+  expect((await readProject(page)).interstitials[0].videoMaskCurve).toEqual(videoCurve);
   await expect(page.locator('.interstitial-edited')).toHaveText('Edited');
   await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
   // Regeneration prepares real reference media before reaching the mocked provider.
@@ -162,13 +163,11 @@ for (const width of [1440,390]) for (const detailed of [true, false]) test(`mock
   expect((await saved()).requestSeed).toBe(0);
   expect((await saved()).requestMethod).toBe('comfy');
   expect((await saved()).generationSettings.maskInjection).toBe('standard');
-  expect((await saved()).generationSettings).toMatchObject({ audioMaskTransitionMs: 0, videoMaskTransitionMs: 1000 });
+  expect((await saved()).generationSettings).toMatchObject({ audioMaskCurve: { start: expect.arrayContaining([expect.objectContaining({ strength: 0 })]) }, videoMaskCurve: videoCurve });
   await saveAndReopen(page);
   await fitAll(page);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await expect(page.locator('.inspector-references-panel')).toHaveAttribute('open', '');
-  await page.getByText('Simple transition durations', { exact: true }).click();
-  await expect(audioTransition).toHaveValue('0');
-  await expect(videoTransition).toHaveValue('1000');
+  expect((await saved()).audioMaskCurve.start).toEqual(expect.arrayContaining([expect.objectContaining({ strength: 0 })]));
+  expect((await saved()).videoMaskCurve).toEqual(videoCurve);
   await expect(seedMode).toHaveValue('fixed'); await expect(seedValue).toHaveValue('0');
 });

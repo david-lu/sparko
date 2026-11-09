@@ -3,15 +3,16 @@ import { interstitialSettings, type Interstitial, type InterstitialSettings } fr
 import type { LibraryAsset, Project } from './types';
 
 export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId'> & InterstitialSettings;
-export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'libraryFolders' | 'subtitle' | 'crossfadeFrames' | 'loras'> & { interstitials: InterstitialEdit[]; clipGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings' | 'versions' | 'selectedAssetId'>[] };
+export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'libraryFolders' | 'deletedAssetIds' | 'subtitle' | 'crossfadeFrames' | 'loras'> & { interstitials: InterstitialEdit[]; clipGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings' | 'versions' | 'selectedAssetId'>[] };
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
-  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [] })),
-    callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, libraryFolders: project.libraryFolders,
+  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [], keyframes: item.keyframes ?? [], timelineVideos: item.timelineVideos ?? [] })),
+    callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, libraryFolders: project.libraryFolders, deletedAssetIds: project.deletedAssetIds,
     loras: project.loras, clipGenerations: project.clipGenerations?.map(({id,name,kind,folderId,settings,versions,selectedAssetId}) => ({id,name,kind,folderId,settings,versions,selectedAssetId})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }
 function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' | 'key'> {
+  if (!same(before.deletedAssetIds, after.deletedAssetIds)) return { label: 'Delete assets' };
   if (!same(before.loras, after.loras)) return { label: 'Edit project LoRAs' };
   if (!same(before.libraryFolders, after.libraryFolders)) return { label: 'Organize library folders' };
   if (!same(before.clipGenerations, after.clipGenerations)) return { label: 'Edit generation', key: 'asset-generation' };

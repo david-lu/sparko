@@ -2,7 +2,7 @@ import { COMFY, TIMELINE_FPS } from '../../../shared/constants.js';
 import { maskStrength, type MaskCurve } from '../../../shared/mask-curves.js';
 
 export function videoCurvePoints(curve: MaskCurve, prefix: number, suffix: number, frames: number): string {
-  return Array.from({ length: frames }, (_, frame) => `${frame}:(${Number(maskStrength(curve, (frame + .5) / TIMELINE_FPS,
+  return Array.from({ length: frames }, (_, frame) => `${frame}:(${frame >= prefix && frame < frames - suffix ? 1 : Number(maskStrength(curve, (frame + .5) / TIMELINE_FPS,
     prefix / TIMELINE_FPS, (frames - prefix - suffix) / TIMELINE_FPS, suffix / TIMELINE_FPS).toFixed(6))})`).join(',');
 }
 

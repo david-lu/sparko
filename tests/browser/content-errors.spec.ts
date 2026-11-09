@@ -1,4 +1,4 @@
-import { addDraft, dragIntoView, expect, fitAll, openVideo, readProject, test, type Page } from './fixtures';
+import { setVideoReference, addBridge, addDraft, expect, fitAll, openVideo, readProject, test, type Page } from './fixtures';
 
 async function mockProviders(page: Page) {
   let submissions = 0;
@@ -11,10 +11,10 @@ async function mockProviders(page: Page) {
   }
   return () => submissions;
 }
-const referenceType = (page: Page, side: 'Start' | 'End', kind: 'None' | 'Video' | 'Image') => page.getByRole('group', { name: `${side} reference type`, exact: true }).getByRole('button', { name: kind, exact: true }).click();
+const referenceType = (page: Page, side: 'Start' | 'End', kind: 'None' | 'Video') => setVideoReference(page, side === 'Start' ? 'start' : 'end', kind === 'Video');
 const positions = (page: Page) => page.locator('.clip-inspector').evaluate(el => {
   const root = el.getBoundingClientRect();
-  return ['.inspector-reference-heading', '.inspector-options', '.inspector-generation-status'].map(selector => {
+  return ['.generation-timeline-summary', '.inspector-prompt', '.task-status'].map(selector => {
     const box = el.querySelector(selector)!.getBoundingClientRect(); return { x: box.x - root.x, y: box.y - root.y, width: box.width, height: box.height };
   });
 });
@@ -23,18 +23,9 @@ for (const width of [1440, 390]) test(`missing Start/End content has clickable e
   const submissions = await mockProviders(page), errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   await page.setViewportSize({ width, height: 1000 }); await openVideo(page); await addDraft(page, 'Reference test');
   await referenceType(page, 'Start', 'Video'); await referenceType(page, 'End', 'Video');
-  const startError = page.getByRole('button', { name: 'Start reference errors', exact: true });
-  const endError = page.getByRole('button', { name: 'End reference errors', exact: true });
-  await expect(startError).toBeVisible(); await expect(endError).toBeVisible();
+  const status = page.locator('.task-status');
+  await expect(status).toContainText('Connect an incoming clip');
   const before = await positions(page);
-  await startError.click();
-  const details = page.getByRole('dialog', { name: 'Start reference errors', exact: true });
-  await expect(details).toContainText('Connect an incoming clip'); await expect(details).toContainText('Choose other videos / images');
-  expect(await positions(page)).toEqual(before);
-  await page.keyboard.press('Escape'); await expect(details).not.toBeVisible();
-  await endError.focus(); await page.keyboard.press('Space');
-  await expect(page.getByRole('dialog', { name: 'End reference errors', exact: true })).toContainText('Connect a following clip');
-  await page.getByRole('button', { name: 'Close error details', exact: true }).click();
   await fitAll(page);
   const graph = (await readProject(page)).storyFlow;
   const timelineError = page.getByRole('button', { name: 'Reference test errors', exact: true });
@@ -43,21 +34,16 @@ for (const width of [1440, 390]) test(`missing Start/End content has clickable e
   await page.screenshot({ path: `test-results/content-errors-${width}.png`, fullPage: true });
   await page.keyboard.press('Escape'); expect((await readProject(page)).storyFlow).toEqual(graph);
   await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await referenceType(page, 'Start', 'Image'); await startError.click();
-  await expect(details).toContainText('Add an image for the start reference'); await page.keyboard.press('Escape');
-  await referenceType(page, 'Start', 'Video'); await page.getByLabel('Use arbitrary start video', { exact: true }).check();
-  await startError.click(); await expect(details).toContainText('Choose videos or images for the start reference'); await page.keyboard.press('Escape');
   await referenceType(page, 'Start', 'None'); await referenceType(page, 'End', 'None');
-  await expect(startError).toHaveCount(0); await expect(endError).toHaveCount(0); await expect(timelineError).toHaveCount(0);
+  await expect(status).not.toContainText('Connect an incoming clip'); await expect(timelineError).toHaveCount(0);
+  expect(await positions(page)).toEqual(before);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   expect(errors).toEqual([]); expect(submissions()).toBe(0);
 });
 
 test('missing video files surface on the clip and reference, block generation, and clear after restoration', async ({ page }) => {
-  const submissions = await mockProviders(page); await openVideo(page); await addDraft(page, 'Missing media scene');
+  const submissions = await mockProviders(page); await openVideo(page); await addBridge(page); await page.getByLabel('Clip name', { exact: true }).fill('Missing media scene');
   await referenceType(page, 'Start', 'Video'); await referenceType(page, 'End', 'None');
-  await page.getByLabel('Use arbitrary start video', { exact: true }).check();
-  await dragIntoView(page, page.getByRole('button', { name: 'Library asset interstitial-reference.mp4', exact: true }), page.getByRole('group', { name: 'Start video', exact: true }));
   await page.getByLabel('Video prompt', { exact: true }).fill('A local test that must never submit.');
   const generate = page.getByRole('button', { name: 'Generate', exact: true }); await expect(generate).toBeEnabled();
   const before = await positions(page), id = (await readProject(page)).source.assetId;
@@ -71,13 +57,13 @@ test('missing video files surface on the clip and reference, block generation, a
     });
     await assets.open(id).catch(() => {});
   }, id);
-  const error = page.getByRole('button', { name: 'Start reference errors', exact: true }); await expect(error).toBeVisible();
+  const error = page.getByRole('button', { name: 'Missing media scene errors', exact: true }); await expect(error).toBeVisible();
   await expect(generate).toBeDisabled(); expect(await positions(page)).toEqual(before);
-  await error.click(); await expect(page.getByRole('dialog', { name: 'Start reference errors', exact: true })).toContainText('saved media file is missing');
+  await error.click(); await expect(page.getByRole('dialog', { name: 'Missing media scene errors', exact: true })).toContainText('saved media file is missing');
   await page.keyboard.press('Escape'); await fitAll(page);
-  await page.locator('.story-clip.type-source').getByRole('button', { name: /errors$/ }).click();
+  await page.locator('.story-clip.type-source').first().getByRole('button', { name: /errors$/ }).click();
   await expect(page.getByRole('dialog')).toContainText('Source video unavailable'); await page.keyboard.press('Escape');
-  await expect(page.getByRole('img', { name: 'Video unavailable: missing media', exact: true })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Video unavailable: missing media', exact: true }).first()).toBeVisible();
   await page.evaluate(async () => {
     const { writeAsset } = await import('/src/features/project/database.ts' as string);
     const { assets } = await import('/src/features/project/assets.ts' as string);

@@ -50,6 +50,12 @@ describe('server API boundaries', () => {
     await post('/api/analyze/gemini').field('start', '0').field('end', '1').attach('media', Buffer.from('not a video'), { filename: 'bad.mp4', contentType: 'video/mp4' }).expect(400);
     expect(providers.gemini).not.toHaveBeenCalled();
   });
+  it('bounds reference analysis to short zero-based windows before inference', async () => {
+    for (const [start, end] of [['0', '5'], ['1', '2']]) {
+      await post('/api/analyze/gemini').field('purpose', 'reference-timing').field('start', start).field('end', end).expect(400);
+    }
+    expect(providers.gemini).not.toHaveBeenCalled();
+  });
   it('returns missing-key and provider-rate-limit errors without leaking errors', async () => {
     const missing = await createApp({ providers: { ...providers, configured: { openai: false, gemini: false, comfy: false } } }); missing.use(errorHandler);
     await request(missing).post('/api/analyze/openai').set('x-sparko-request', '1').expect(503);

@@ -1,4 +1,4 @@
-import { test, expect, addDraft, readProject, saveAndReopen } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, test, expect, addDraft, readProject, saveAndReopen } from './fixtures';
 
 for (const width of [1440, 390]) for (const loop of [false, true]) for (const conditional of [false, true]) {
   test(`create from scratch: loop ${loop}, conditional ${conditional}, ${width}px`, { tag: width === 1440 && loop ? '@slow' : [] }, async ({ page }) => {
@@ -26,15 +26,17 @@ for (const width of [1440, 390]) for (const loop of [false, true]) for (const co
     await page.goto('/'); await page.getByRole('button', { name: /^New project/ }).click(); await addDraft(page);
     if (loop) await page.getByRole('checkbox', { name: 'Loop', exact: true }).check();
     if (conditional) await page.getByRole('checkbox', { name: 'Conditional', exact: true }).check();
-    for (const side of loop ? ['Loop'] : ['Start', 'End']) await expect(page.getByRole('group', { name: `${side} reference`, exact: true }).getByRole('button', { name: 'None', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await openGenerationTimeline(page);
+    for (const side of ['start', 'end']) await expect(page.getByRole('checkbox', { name: `Reference ${side} video`, exact: true })).not.toBeChecked();
+    await closeGenerationTimeline(page);
     const prompt = page.getByLabel('Video prompt', { exact: true }); await prompt.fill('Clouds drift gently across a sunset sky.');
     const controls = () => page.locator('.interstitial-editor').evaluate(root => {
       const top = root.getBoundingClientRect().top;
-      return ['textarea', '.inspector-references-panel', '.interstitial-resolution', '.interstitial-time-fields', 'button[type=submit]', '.task-status', '.inspector-output'].map(selector => {
+      return ['textarea', '.interstitial-resolution', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
         const rect = root.querySelector(selector)!.getBoundingClientRect(); return { top: rect.top - top, height: rect.height };
       });
     });
-    const idle = await controls();
+    const idle = await controls(); const output = page.locator('.clip-inspector .inspector-output'); const outputHeight = (await output.boundingBox())!.height;
     await page.getByRole('button', { name: 'Generate', exact: true }).click();
     await expect.poll(() => submitted).toBe(1); expect(await controls()).toEqual(idle);
     fail = true; await expect(page.locator('.task-status')).toContainText('Test generation failed'); expect(await controls()).toEqual(idle);
@@ -49,9 +51,11 @@ for (const width of [1440, 390]) for (const loop of [false, true]) for (const co
       const project = await readProject(page);
       expect(project.storyFlow.nodes[0]).toMatchObject({ loop: true, conditional: true });
       expect(project.interstitials[0].generationSettings).toMatchObject({ startReferenceType: 'none', useInputReference: false, useOutputReference: false });
-      await expect(page.getByRole('group', { name: 'Loop reference', exact: true }).getByRole('button', { name: 'None', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await openGenerationTimeline(page);
+      await expect(page.getByRole('checkbox', { name: 'Reference start video', exact: true })).not.toBeChecked();
+      await closeGenerationTimeline(page);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    expect(errors).toEqual([]);
+    expect((await output.boundingBox())!.height).toBe(outputHeight); expect(errors).toEqual([]);
   });
 }

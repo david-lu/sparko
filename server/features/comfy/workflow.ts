@@ -1,4 +1,7 @@
+import { replaceImageFrame, timelineAudio, timelineVideoMask } from './timeline-input.js';
+import { validateInputRanges, type TimelineInputRange } from '../../../shared/generation-inputs.js';
 import { COMFY, COMFY_MODELS, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants.js';
+import { normalizeH3Prompt, validateH3PromptLength } from '../../../shared/h3-prompt.js';
 import { comfyBridgePlan, validateComfyResolution, type ComfyMode } from '../../../shared/comfy.js';
 import { validateMaskTransitionMs, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { audioCurveSpans, videoCurvePoints, videoTransitionPoints } from './mask-transition.js';
@@ -6,22 +9,30 @@ import { maskCurveSchema, type MaskCurve } from '../../../shared/mask-curves.js'
 import { isLoraFilename, loraStrengthSchema, LORA_STRENGTH } from '../../../shared/loras.js';
 import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 import { CLIP_METADATA_TAG, serializeClipMetadata, type ClipOrigin } from '../../../shared/clip-metadata.js';
+import { MAX_VIDEO_KEYFRAMES, validateVideoKeyframeInputs, type VideoKeyframeInput } from '../../../shared/video-keyframes.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown>; _meta?: Record<string, unknown> }>;
-export type BridgeInput = { seed?: number; clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
+export type BridgeInput = { fullInput?: boolean; timelineInputs?: TimelineInputRange[]; keyframes?: VideoKeyframeInput[]; seed?: number; clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Separately encoded references stay frozen outside their soft transitions.
  * The original source footage is kept by Sparko's compositor, outside this render.
  */
-export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, _legacyMaskAssetId?: string, imageAssetIds: string[] = []): Workflow {
+export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, seed: number, _legacyMaskAssetId?: string, imageAssetIds: string[] = [], keyframeImageIds: string[] = []): Workflow {
+  validateH3PromptLength(input.prompt);
+  input = { ...input, prompt: normalizeH3Prompt(input.prompt) };
   if (imageAssetIds.length > IMAGE_REFERENCE.maxCount) throw new Error('H3 supports up to 9 image references.');
   const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
   validateComfyResolution(plan,input.resolution);
   const { prefixFrames, suffixFrames, totalFrames, insertion } = plan;
+  validateInputRanges(input.timelineInputs ?? [], plan.middleFrames);
+  if ((input.timelineInputs?.length || input.keyframes?.some(k => k.method === 'frame')) && !input.fullInput) throw new Error('Prepare the complete timeline input before generating.');
+  if (input.fullInput && !assetId) throw new Error('Timeline input video is missing.');
   const imageLoop = input.mode === 'loop' && !prefixFrames && !suffixFrames;
   const startImageIndex = input.startImageIndex ?? (imageLoop ? input.endImageIndex ?? (input.loopImageGuide !== false && imageAssetIds.length ? 0 : undefined) : undefined);
   const endImageIndex = imageLoop ? startImageIndex : input.endImageIndex;
+  if (keyframeImageIds.length > MAX_VIDEO_KEYFRAMES) throw new Error('Use up to 9 image keyframes.');
+  validateVideoKeyframeInputs(input.keyframes ?? [], plan.middleFrames, keyframeImageIds.length, startImageIndex !== undefined && !prefixFrames, endImageIndex !== undefined && !suffixFrames);
   if (input.loopImageGuide && !imageAssetIds.length) throw new Error('Choose an image as the shared loop reference.');
   for (const [index, footage] of [[startImageIndex, prefixFrames], [endImageIndex, suffixFrames]]) {
     if (index !== undefined && (!Number.isInteger(index) || !imageAssetIds[index] || footage)) throw new Error('Choose an uploaded image or video footage for each endpoint.');
@@ -60,23 +71,40 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   });
   if (startImageIndex !== undefined) positive = add(imageLoop ? 'loop_start' : 'guide_start', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: [`reference_image_${startImageIndex}`, 0], frame_idx: 0 });
   if (endImageIndex !== undefined) positive = add(imageLoop ? 'loop_end' : 'guide_end', 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image: [`reference_image_${endImageIndex}`, 0], frame_idx: -1 });
+  const preservedImages: { frame: number; image: (string | number)[] }[] = [];
+  for (const [index, keyframe] of [...input.keyframes ?? []].sort((a, b) => a.frame - b.frame).entries()) {
+    const image = add(`keyframe_image_${index}`, 'LoadImage', { image: { __type: 'core/ASSET', info: { id: keyframeImageIds[keyframe.imageIndex] } } });
+    if (keyframe.method === 'frame') {
+      const resized = add(`keyframe_resize_${index}`, 'ImageScale', { image, upscale_method: 'lanczos', width: input.width, height: input.height, crop: 'center' });
+      preservedImages.push({ frame: prefixFrames + keyframe.frame, image: resized });
+      continue;
+    }
+    positive = add(`keyframe_guide_${index}`, 'MiniMaxH3AddGuide', { positive, latent: ['conditioning', 1], vae, image, frame_idx: prefixFrames + keyframe.frame });
+  }
   const empty = add('empty_streams', 'LTXVSeparateAVLatent', { av_latent: ['conditioning', 1] });
   const target = empty;
   const startLatent = before ? add('encode_before', 'VAEEncode', { pixels: before, vae }) : undefined;
   const endLatent = after ? add('encode_after', 'VAEEncode', { pixels: after, vae }) : undefined;
   const prefix = startLatent ? add('place_before', 'ReplaceVideoLatentFrames', { destination: target, source: startLatent, index: 0 }) : target;
-  const endpoints = endLatent ? add('place_after', 'ReplaceVideoLatentFrames', { destination: prefix, source: endLatent, index: -(2 + (suffixFrames - 5) / 17 * 5) }) : prefix;
+  let endpoints = endLatent ? add('place_after', 'ReplaceVideoLatentFrames', { destination: prefix, source: endLatent, index: -(2 + (suffixFrames - 5) / 17 * 5) }) : prefix;
+  const fullInput = input.fullInput ? add('timeline_input', 'VHS_LoadVideoFFmpeg', loader(0, totalFrames)) : undefined;
+  if (fullInput) {
+    let pixels = fullInput;
+    for (const [index, preserved] of preservedImages.entries()) pixels = replaceImageFrame(graph, `inject_frame_${index}`, pixels, preserved.image, preserved.frame, totalFrames);
+    endpoints = add('encode_timeline', 'VAEEncode', { pixels, vae });
+  }
   // Spatially uniform masks need only one model token (32px), not a full-size video batch.
-  const mask = (input.videoMaskCurve || videoTransitionMs > 0) && (before || after)
+  const mask = input.fullInput ? add('middle_mask', 'CreateFadeMaskAdvanced', { width: 32, height: 32, frames: totalFrames, invert: false, interpolation: 'linear', points_string: timelineVideoMask(input, plan) }) : (input.videoMaskCurve || videoTransitionMs > 0) && (before || after)
     ? add('middle_mask', 'CreateFadeMaskAdvanced', { width: 32, height: 32, frames: totalFrames, invert: false, interpolation: 'linear',
       points_string: input.videoMaskCurve ? videoCurvePoints(input.videoMaskCurve, prefixFrames, suffixFrames, totalFrames)
         : videoTransitionPoints(prefixFrames, suffixFrames, totalFrames, videoTransitionMs) })
     : add('middle_mask', 'MVEx_FrameRangeMask', { width: 32, height: 32, frames: totalFrames, ranges: `${prefixFrames}:${totalFrames - suffixFrames}` });
   const latentMask = add('latent_mask', 'MVEx_MaskToLatentSpace', { masks: mask, compression: 'auto', vae,
-    spatial_method: 'max', temporal_method: 'max', grow_spatial: 0, grow_temporal: 0 });
+    spatial_method: 'max', temporal_method: preservedImages.length ? 'min' : 'max', grow_spatial: 0, grow_temporal: 0 });
   const frozenVideo = add('freeze_video', 'SetLatentNoiseMask', { samples: endpoints, mask: latentMask });
   let joint = add('joint', 'LTXVConcatAVLatent', { video_latent: frozenVideo, audio_latent: ['empty_streams', 1] });
-  if (input.hasAudio && (before || after)) {
+  if (input.hasAudio && fullInput) joint = timelineAudio(graph, input, plan, frozenVideo, ['timeline_input', 2], audioVae);
+  else if (input.hasAudio && (before || after)) {
     const silence = add('gap_audio', 'EmptyAudio', { duration: insertion.duration, sample_rate: 32000, channels: 2 });
     const a = before ? add('audio_prefix', 'AudioConcat', { audio1: ['before', 2], audio2: silence, direction: 'after' }) : silence;
     const audio = after ? add('audio_full', 'AudioConcat', { audio1: a, audio2: ['after', 2], direction: 'after' }) : a;
@@ -117,7 +145,8 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   const sigmas = add('schedule', 'BasicScheduler', { model: shifted, scheduler: 'simple', steps: input.turbo ? COMFY.turboSteps : COMFY.steps, denoise: 1 });
   const sample = add('sample', 'SamplerCustomAdvanced', { noise, guider, sampler, sigmas, latent_image: joint });
   const streams = add('streams', 'LTXVSeparateAVLatent', { av_latent: sample });
-  const images = add('decode_video', 'VAEDecode', { samples: streams, vae });
+  let images = add('decode_video', 'VAEDecode', { samples: streams, vae });
+  for (const [index, preserved] of preservedImages.entries()) images = replaceImageFrame(graph, `restore_frame_${index}`, images, preserved.image, preserved.frame, totalFrames);
   const audio = add('decode_audio', 'VAEDecodeAudio', { samples: ['streams', 1], vae: audioVae });
   if (input.resolution === '2k') {
     // The official partner node sends this untrimmed H3 video and its exact
@@ -126,9 +155,19 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
     const regenerated = add('regenerate_2k', 'MinimaxHailuo03RegenerateNode', {
       video: base, model: COMFY_MODELS.regeneration, 'model.prompt': input.prompt, 'model.resolution': '2K', watermark: false,
     });
+    let finalVideo = regenerated;
+    if (preservedImages.length) {
+      let pixels = add('regenerated_components', 'GetVideoComponents', { video: regenerated });
+      const size = add('regenerated_size', 'GetImageSize', { image: pixels });
+      for (const [index, preserved] of preservedImages.entries()) {
+        const image = add(`preserved_2k_${index}`, 'ImageScale', { image: preserved.image, upscale_method: 'lanczos', width: size, height: ['regenerated_size', 1], crop: 'center' });
+        pixels = replaceImageFrame(graph, `restore_2k_${index}`, pixels, image, preserved.frame, totalFrames);
+      }
+      finalVideo = add('preserved_2k_video', 'CreateVideo', { images: pixels, audio: ['regenerated_components', 1], fps: ['regenerated_components', 2] });
+    }
     // SaveVideo embeds the prompt graph by default while preserving the provider's
     // encoded result (unless the Comfy deployment disables metadata globally).
-    add('output', 'SaveVideo', { video: regenerated, filename_prefix: 'sparko/interstitial', format: 'mp4', 'format.codec': 'auto' });
+    add('output', 'SaveVideo', { video: finalVideo, filename_prefix: 'sparko/interstitial', format: 'mp4', 'format.codec': 'auto' });
   } else {
     // VHS embeds Comfy's prompt graph: the exact prompt, seed, models and settings.
     add('output', 'VHS_VideoCombine', { images, audio, frame_rate: TIMELINE_FPS, loop_count: 0, filename_prefix: 'sparko/interstitial',

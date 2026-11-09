@@ -2,7 +2,7 @@ import { toFile } from 'openai';
 import { z } from 'zod';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { CaptionResult, Slice } from '../../../shared/contracts.js';
-import { AI_MODELS } from '../../../shared/constants.js';
+import { AI_MODELS, TIMELINE_FPS } from '../../../shared/constants.js';
 import type { AIClients } from '../../shared/ai-clients.js';
 
 export const captionSchema = z.object({ caption: z.string().min(1).max(2000), description: z.string().min(1).max(16000) });
@@ -11,7 +11,7 @@ const outputSchema = {
   required: ['caption', 'description'], additionalProperties: false,
 };
 export type Frame = { time: number; dataUrl: string };
-export type AnalyzeInput = Slice & { instructions: string; signal: AbortSignal };
+export type AnalyzeInput = Slice & { instructions: string; signal: AbortSignal; purpose?: 'reference-timing' };
 
 export interface AnalysisProviders {
   openai(input: AnalyzeInput & { frames: Frame[]; audio?: Uint8Array }): Promise<CaptionResult>;
@@ -72,7 +72,8 @@ export function createAnalysisProviders({ openai, gemini }: AIClients): Analysis
         const response = await gemini.models.generateContent({
           model: models.gemini,
           contents: [{ role: 'user', parts: [
-            { fileData: { fileUri: file.uri, mimeType: 'video/mp4' } },
+            // A reference sequence can end with a single image frame; sample on its full frame clock.
+            { fileData: { fileUri: file.uri, mimeType: 'video/mp4' }, ...(input.purpose === 'reference-timing' ? { videoMetadata: { fps: TIMELINE_FPS, startOffset: '0s', endOffset: `${input.end - input.start}s` } } : {}) },
             { text: `${prompt(input)} The uploaded file contains only this segment, with its own time starting at zero.` },
           ] }],
           config: { systemInstruction: instructions, responseMimeType: 'application/json', responseJsonSchema: outputSchema,

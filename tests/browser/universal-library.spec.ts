@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { test, expect, openVideo, dragIntoView, addDraft, readProject, saveAndReopen, type Page } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, showImageReferences, test, expect, openVideo, dragIntoView, addDraft, readProject, saveAndReopen, type Page } from './fixtures';
 
 async function create(page: Page, kind: 'Image' | 'Audio') {
   await page.getByRole('button',{name:`Add ${kind.toLowerCase()}`,exact:true}).press('Enter');
@@ -21,7 +21,7 @@ async function importImage(page: Page) {
   return png;
 }
 
-test('Library background deselects; deletion identifies clip inputs and unused deletion supports undo', async ({ page }) => {
+test('deleting referenced media shows missing inputs, supports undo and survives project export', async ({ page }) => {
   await openVideo(page); await importImage(page);
   const asset = page.getByRole('button', { name: 'Library asset Character.png', exact: true });
   await expect(page.getByLabel('Asset name', { exact: true })).toHaveValue('Character.png');
@@ -33,19 +33,54 @@ test('Library background deselects; deletion identifies clip inputs and unused d
   await expect(page.getByRole('menu', { name: 'Library actions', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await addDraft(page, 'Character scene');
+  await showImageReferences(page);
   await dragIntoView(page, asset, page.getByRole('group', { name: 'Image references', exact: true }));
   await expect(page.getByRole('button', { name: 'Remove Picture 1', exact: true })).toBeVisible();
   await asset.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Delete asset…', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Character scene'); await expect(dialog).toContainText('image input');
-  await expect(dialog.getByRole('button', { name: 'Delete asset', exact: true })).toBeDisabled();
-  await dialog.getByRole('button', { name: 'Keep asset', exact: true }).click();
-  await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await page.getByRole('button', { name: 'Remove Picture 1', exact: true }).click();
-  await asset.click(); await asset.press('Delete');
+  await expect(dialog.getByRole('button', { name: 'Delete asset', exact: true })).toBeEnabled();
   await dialog.getByRole('button', { name: 'Delete asset', exact: true }).click();
   await expect(asset).toHaveCount(0); await expect(page.locator('.story-clip')).toHaveCount(2);
+  await closeGenerationTimeline(page);await page.locator('.story-clip.type-simple .story-clip-title').click();await showImageReferences(page);
+  await page.getByRole('button', { name: 'Picture 1 errors', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Picture 1 errors', exact: true })).toContainText('Character.png');
+  await expect(page.getByRole('dialog', { name: 'Picture 1 errors', exact: true })).toContainText('deleted');
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(asset).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Picture 1 errors', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(asset).toHaveCount(0);
+  await closeGenerationTimeline(page);await saveAndReopen(page);
+  await expect(asset).toHaveCount(0);
+  await page.locator('.story-clip.type-simple .story-clip-title').click();
+  await showImageReferences(page);
+  await expect(page.getByRole('button', { name: 'Picture 1 errors', exact: true })).toBeVisible();
+});
+
+for (const width of [1440, 390]) test(`deleted image inputs report their names without moving generation controls at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 }); await falStatus(page); await openVideo(page); await importImage(page); await create(page, 'Image');
+  const asset = page.getByRole('button', { name: 'Library asset Character.png', exact: true });
+  await page.getByLabel('Generation prompt', { exact: true }).fill('A warm portrait');
+  await dragIntoView(page, asset, page.getByRole('group', { name: 'Reference assets', exact: true }));
+  const positions = () => page.locator('.clip-generation-editor').evaluate(el => {
+    const top = el.getBoundingClientRect().top;
+    return ['textarea', 'button[type=submit]', '.asset-generation-feedback'].map(selector => {
+      const r = el.querySelector(selector)!.getBoundingClientRect(); return { top: r.top - top, height: r.height };
+    });
+  });
+  const before = await positions();
+  await asset.click({ button: 'right' }); await page.getByRole('menuitem', { name: 'Delete asset…', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete asset', exact: true }).click();
+  await page.getByRole('button', { name: 'Select Untitled image', exact: true }).press('Enter');
+  await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeDisabled();
+  expect(await positions()).toEqual(before);
+  await page.getByRole('button', { name: 'Generation errors', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Generation errors', exact: true })).toContainText('Character.png');
+  await expect(page.getByRole('dialog', { name: 'Generation errors', exact: true })).toContainText('deleted');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeEnabled();
+  expect(await positions()).toEqual(before);
 });
 
 for (const width of [1440, 390]) test(`image generation keeps Inspector controls stable at ${width}px and saves its submitted inputs`, async ({ page }) => {
@@ -117,19 +152,18 @@ test('folders import media without creating timeline clips and Start/End video t
   await expect(page.locator('.story-clip')).toHaveCount(1);
   const project = await readProject(page); expect(project.library.find((a: any) => a.name === 'Arbitrary.mp4').folderId).toBe(project.libraryFolders[0].id);
   await addDraft(page);
-  await page.getByRole('group', { name: 'Start reference type', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByRole('group', { name: 'End reference type', exact: true }).getByRole('button', { name: 'Video', exact: true }).click();
-  await page.getByLabel('Use arbitrary start video', { exact: true }).check();
-  await expect(page.getByLabel('Use arbitrary end video', { exact: true })).not.toBeChecked();
-  await dragIntoView(page, page.getByRole('button', { name: 'Library asset Arbitrary.mp4', exact: true }), page.getByRole('group', { name: 'Start video', exact: true }));
-  await expect(page.getByRole('group', { name: 'Start video', exact: true })).toContainText('Arbitrary.mp4');
-  await page.getByLabel('Use arbitrary end video', { exact: true }).check();
-  await dragIntoView(page, page.getByRole('button', { name: 'Library asset interstitial-reference.mp4', exact: true }), page.getByRole('group', { name: 'End video', exact: true }));
-  await expect(page.getByRole('group', { name: 'End video', exact: true })).toContainText('interstitial-reference.mp4');
-  await page.getByLabel('Use arbitrary start video', { exact: true }).uncheck();
-  await expect(page.getByLabel('Use arbitrary end video', { exact: true })).toBeChecked();
+  const editor = await openGenerationTimeline(page);
+  await editor.getByRole('checkbox', { name: 'Reference start video', exact: true }).check();
+  await editor.getByRole('checkbox', { name: 'Reference end video', exact: true }).check();
+  await editor.getByRole('button', { name: 'Add video', exact: true }).click();
+  await dragIntoView(page, page.getByRole('button', { name: 'Library asset Arbitrary.mp4', exact: true }), editor.getByRole('group', { name: 'Timeline video', exact: true }));
+  await expect(editor.getByRole('group', { name: 'Timeline video', exact: true })).toContainText('Arbitrary.mp4');
+  const video = (await readProject(page)).interstitials[0].timelineVideos[0];
+  await editor.getByRole('checkbox', { name: 'Reference start video', exact: true }).uncheck();
+  await expect(editor.getByRole('checkbox', { name: 'Reference end video', exact: true })).toBeChecked();
   const item = (await readProject(page)).interstitials[0];
-  expect(item.startVideoAsset.name).toBe('Arbitrary.mp4'); expect(item.endVideoAsset.name).toBe('interstitial-reference.mp4'); expect(item.useStartVideoAsset).toBe(false); expect(item.useEndVideoAsset).toBe(true);
+  expect(item.timelineVideos[0]).toEqual(video); expect(item.useInputReference).toBe(false); expect(item.useOutputReference).toBe(true);
+
 });
 
 test('audio generation saves a playable output and exposes the supported audio models', async ({ page }) => {

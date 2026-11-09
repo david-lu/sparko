@@ -1,6 +1,6 @@
 import type { MediaSource } from './media';
 
-export const DEFAULT_IMAGE_DURATION = 4;
+export const DEFAULT_IMAGE_DURATION = 1;
 
 /** Decode once, including only the first frame of animated image formats. */
 export async function loadStillImage(source: MediaSource, signal?: AbortSignal): Promise<ImageBitmap> {

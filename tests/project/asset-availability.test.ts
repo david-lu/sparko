@@ -4,9 +4,33 @@ import { readAsset } from '../../src/features/project/database';
 import type { Asset } from '../../src/features/project/types';
 
 vi.mock('../../src/features/project/database', () => ({ readAsset: vi.fn(), writeAsset: vi.fn() }));
-afterEach(() => { assets.releaseExcept(new Set()); vi.resetAllMocks(); });
+afterEach(() => { assets.setDeleted([]); assets.releaseExcept(new Set()); vi.resetAllMocks(); });
 
 describe('local media availability', () => {
+  it('marks deletion as unavailable even when the stored blob is retained for undo', async () => {
+    const id = crypto.randomUUID();
+    vi.mocked(readAsset).mockResolvedValue({ id, name: 'Reference.png', blob: new Blob(['image']) });
+    const { url } = await assets.open(id);
+    expect(url).toBeTruthy();
+    assets.setDeleted([id]);
+    expect(assets.url(id)).toBeUndefined();
+    expect(assets.error(id)).toContain('deleted');
+    await expect(assets.open(id)).rejects.toThrow('deleted');
+    expect(readAsset).toHaveBeenCalledTimes(1);
+    assets.setDeleted([]);
+    await assets.open(id);
+    expect(assets.error(id)).toBeUndefined();
+    expect(assets.url(id)).toBeTruthy();
+  });
+  it('cannot resurrect a deleted asset when an older read finishes', async () => {
+    const id = crypto.randomUUID(); let finish!: (asset: Asset) => void;
+    vi.mocked(readAsset).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const pending = assets.open(id);
+    assets.setDeleted([id]);
+    finish({ id, name: 'Reference.png', blob: new Blob(['image']) });
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(assets.url(id)).toBeUndefined(); expect(assets.error(id)).toContain('deleted');
+  });
   it('does not flag pending reads and shares one read between consumers', async () => {
     const id = crypto.randomUUID(); let finish!: (asset: Asset) => void;
     vi.mocked(readAsset).mockReturnValue(new Promise(resolve => { finish = resolve; }));

@@ -1,3 +1,5 @@
+import { timelineInputRangesSchema, validateInputRanges } from '../../../shared/generation-inputs.js';
+import { videoKeyframeInputsSchema, validateVideoKeyframeInputs } from '../../../shared/video-keyframes.js';
 import { generationSeedSchema } from '../../../shared/generation-seed.js';
 import express, { type Express } from 'express';
 import { H3_MODEL_ID, loraAddressSchema, loraStrengthSchema } from '../../../shared/loras.js';
@@ -7,7 +9,8 @@ import { pipeline } from 'node:stream/promises';
 import { once } from 'node:events';
 import { Input, BlobSource, ALL_FORMATS } from 'mediabunny';
 import { z } from 'zod';
-import { COMFY, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants.js';
+import { COMFY, H3_PROMPT_MAX_LENGTH, INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants.js';
+import { H3_PROMPT_LENGTH_ERROR, normalizeH3Prompt } from '../../../shared/h3-prompt.js';
 import { comfyBridgePlan, comfyDimensions, validateComfyResolution } from '../../../shared/comfy.js';
 import { generationResolutions, maskInjections, normalizeMaskInjection } from '../../../shared/interstitials.js';
 import { authenticate } from '../../hosting.js';
@@ -29,6 +32,12 @@ const maskCurve = z.preprocess(value => {
   try { return JSON.parse(value); } catch { return value; }
 }, maskCurveSchema.optional());
 const schema = z.object({
+  fullInput: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
+  timelineInputs: z.preprocess(value => { if (typeof value !== 'string' || value.length > 10000) return value; try { return JSON.parse(value); } catch { return value; } }, timelineInputRangesSchema.optional()),
+  keyframes: z.preprocess(value => {
+    if (typeof value !== 'string' || value.length > 10000) return value;
+    try { return JSON.parse(value); } catch { return value; }
+  }, videoKeyframeInputsSchema.optional()),
   seed: z.preprocess(value => typeof value === 'string' && value.trim() ? Number(value) : value, generationSeedSchema.optional()),
   lora: loraAddressSchema.optional(),
   turbo: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
@@ -48,7 +57,8 @@ const schema = z.object({
   endImageIndex: z.coerce.number().int().min(0).max(IMAGE_REFERENCE.maxCount - 1).optional(),
   loopImageGuide: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
   interpolateMiddle: z.enum(['true', 'false']).optional(),
-  duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().min(1).max(8000).refine(value => !!value.trim(), 'Add a prompt before generating.') })
+  duration: z.coerce.number().min(1).max(INTERSTITIAL.maxDuration), prompt: z.string().transform(normalizeH3Prompt)
+    .pipe(z.string().min(1).max(H3_PROMPT_MAX_LENGTH, H3_PROMPT_LENGTH_ERROR).refine(value => !!value.trim(), 'Add a prompt before generating.')) })
   .transform(({ interpolateMiddle, maskTransitionMs, ...value }) => ({ ...value,
     audioMaskTransitionMs: value.audioMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
     videoMaskTransitionMs: value.videoMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
@@ -73,6 +83,8 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
   app.post('/api/comfy/interstitials', authenticate, requireComfy, ...receive('video'), async (req, res) => {
     const parsed = schema.parse(req.body);
     const images = parseImageReferences(req.body.imageReferences);
+    const keyframeImages = parseImageReferences(req.body.keyframeImages);
+    const imageArgs: [Blob[], Blob[]] | [Blob[]] | [] = keyframeImages.length ? [images, keyframeImages] : images.length ? [images] : [];
     const settings = parsed;
     for (const [index, footage] of [[settings.startImageIndex, settings.before], [settings.endImageIndex, settings.after]]) {
       if (index !== undefined && (!images[index] || footage)) throw new HttpError(400, 'Choose an uploaded image or video footage for each endpoint.');
@@ -80,12 +92,17 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     if (settings.mode === 'loop' && settings.startImageIndex !== undefined && settings.endImageIndex !== undefined && settings.startImageIndex !== settings.endImageIndex) throw new HttpError(400, 'A loop uses the same image at both ends.');
     if (settings.loopImageGuide && !images.length) throw new HttpError(400, 'Choose an image as the shared loop reference.');
     let plan;
-    try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); validateComfyResolution(plan,settings.resolution); }
+    try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); validateComfyResolution(plan,settings.resolution);
+      const imageLoop = settings.mode === 'loop' && !plan.prefixFrames && !plan.suffixFrames && (settings.startImageIndex !== undefined || settings.endImageIndex !== undefined || settings.loopImageGuide !== false && images.length > 0);
+      validateInputRanges(settings.timelineInputs ?? [], plan.middleFrames);
+      if ((settings.timelineInputs?.length || settings.keyframes?.some(k => k.method === 'frame')) && !settings.fullInput) throw new Error('Prepare the complete timeline input before generating.');
+      validateVideoKeyframeInputs(settings.keyframes ?? [], plan.middleFrames, keyframeImages.length, imageLoop || settings.startImageIndex !== undefined, imageLoop || settings.endImageIndex !== undefined);
+    }
     catch (error) { throw new HttpError(400, (error as Error).message); }
     if (Math.round(settings.before * TIMELINE_FPS) !== plan.prefixFrames || Math.round(settings.after * TIMELINE_FPS) !== plan.suffixFrames) throw new HttpError(400, 'Prepare the Comfy reference on the H3 frame grid.');
-    if (!plan.prefixFrames && !plan.suffixFrames) {
+    if (!plan.prefixFrames && !plan.suffixFrames && !settings.fullInput) {
       if (!settings.width || !settings.height) throw new HttpError(400, 'Set the video dimensions for generation without references.');
-      const job = await provider().submit(undefined, { ...settings, ...comfyDimensions(settings.width, settings.height, settings.resolution), hasAudio: false }, ...(images.length ? [images] as const : []));
+      const job = await provider().submit(undefined, { ...settings, ...comfyDimensions(settings.width, settings.height, settings.resolution), hasAudio: false }, ...imageArgs);
       if (res.destroyed) { await provider().cancel(job.requestId).catch(() => undefined); return; }
       res.status(202).json(job); return;
     }
@@ -98,15 +115,16 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
       if (!video) throw new HttpError(400, 'The reference must contain video.');
       const duration = await media.computeDuration();
       const stats = await video.computePacketStats(100);
-      if (Math.abs(duration - settings.before - settings.after) > 0.1 || Math.abs(stats.averagePacketRate - TIMELINE_FPS) > 0.01) throw new HttpError(400, 'The reference must contain exactly the two context windows at 24 fps.');
+      if (Math.abs(duration - (settings.fullInput ? plan.totalFrames / TIMELINE_FPS : settings.before + settings.after)) > 0.1 || Math.abs(stats.averagePacketRate - TIMELINE_FPS) > 0.01) throw new HttpError(400, 'The reference must contain exactly the two context windows at 24 fps.');
       dimensions = comfyDimensions(video.displayWidth, video.displayHeight, settings.resolution);
       hasAudio = !!await media.getPrimaryAudioTrack();
+      if (settings.fullInput && Math.abs(await video.computeDuration() - plan.totalFrames / TIMELINE_FPS) > 1 / TIMELINE_FPS + .001) throw new HttpError(400, 'The input video must cover the complete generation timeline.');
     } catch (error) {
       if (error instanceof HttpError) throw error;
       throw new HttpError(400, 'Unable to read the Comfy reference MP4.');
     } finally { media.dispose(); }
     if (res.destroyed) return;
-    const job = await provider().submit(file, { ...settings, ...dimensions, hasAudio }, ...(images.length ? [images] as const : []));
+    const job = await provider().submit(file, { ...settings, ...dimensions, hasAudio }, ...imageArgs);
     if (res.destroyed) { await provider().cancel(job.requestId).catch(() => undefined); return; }
     res.status(202).json(job);
   });

@@ -17,12 +17,22 @@ for (const width of [1440, 390]) test(`generation details belong to the compact 
   await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles({ name: 'Generated.mp4', mimeType: 'video/mp4', buffer: Buffer.from(await blob.arrayBuffer()) });
   const output = page.locator('.inspector-output');
   await expect(output).toHaveCount(1); await expect(output).not.toHaveAttribute('open');
+  await expect(page.locator('.clip-inspector > .inspector-media').last()).toContainText('Media assets');
+  await expect(page.locator('.inspector-media > .inspector-output')).toHaveCount(1);
+  expect(await page.locator('.inspector-media').evaluate(el => el.parentElement?.lastElementChild === el)).toBe(true);
   expect((await output.boundingBox())!.height).toBeLessThanOrEqual(30);
   await expect(page.getByText('Render info', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Generation info', includeHidden: true })).toHaveCount(1);
   await expect(page.getByRole('region', { name: 'Generation info', includeHidden: true })).toBeHidden();
   await output.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `test-results/compact-generation-closed-${width}.png`, fullPage: true });
+
+  await output.locator(':scope > summary').click();
+  await expect(output.locator('.generated-output-details')).not.toHaveAttribute('open');
+  await expect(output.getByRole('region', { name: 'Generation info', includeHidden: true })).toBeHidden();
+  expect((await output.boundingBox())!.height).toBeLessThan(250);
+  await output.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `test-results/compact-generation-preview-${width}.png`, fullPage: true });
 
   await showGenerationInfo(page);
   await expect(output.getByLabel('Generation seed', { exact: true })).toHaveText('42');
@@ -44,7 +54,7 @@ for (const width of [1440, 390]) test(`generation details belong to the compact 
   expect((await output.boundingBox())!.height).toBeLessThanOrEqual(30);
   await expect(await showGenerationInfo(page)).toContainText(metadata.prompt);
   await expect(output.getByLabel('Generation seed', { exact: true })).toHaveText('42');
-  expect((await output.locator('.generated-video-seed').boundingBox())!.y).toBeLessThan((await output.locator('.asset-preview').boundingBox())!.y);
+  expect((await output.locator('.asset-preview').boundingBox())!.y).toBeLessThan((await output.locator('.generated-video-seed').boundingBox())!.y);
   await expect(page.locator('.asset-generation-info')).toHaveCount(1);
   expect((await readProject(page)).library.find((a: any) => a.assetId === assetId).generation.result.prompt).toBe(metadata.prompt);
   await output.locator('summary').first().scrollIntoViewIfNeeded();

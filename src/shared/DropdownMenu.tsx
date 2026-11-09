@@ -3,6 +3,25 @@ import { flushSync } from 'react-dom';
 
 let dismissActiveMenu: (() => void) | undefined;
 
+/** Ignore scroll events queued before a menu opened; dismiss when its surroundings actually move. */
+export function useMenuScrollDismiss<T extends HTMLElement>(element: RefObject<T | null>, onClose: () => void) {
+  const close = useRef(onClose); close.current = onClose;
+  useLayoutEffect(() => {
+    const menu = element.current!;
+    const positions = new Map<EventTarget, [number, number]>([[document, [window.scrollX, window.scrollY]]]);
+    for (let parent = menu.parentElement; parent; parent = parent.parentElement) positions.set(parent, [parent.scrollLeft, parent.scrollTop]);
+    const dismiss = () => close.current();
+    const scroll = (event: Event) => {
+      if (!(event.target instanceof Node) || menu.contains(event.target)) return;
+      const before = positions.get(event.target);
+      const now = event.target instanceof HTMLElement ? [event.target.scrollLeft, event.target.scrollTop] : [window.scrollX, window.scrollY];
+      if (!before || before[0] !== now[0] || before[1] !== now[1]) dismiss();
+    };
+    window.addEventListener('resize', dismiss); window.addEventListener('scroll', scroll, true);
+    return () => { window.removeEventListener('resize', dismiss); window.removeEventListener('scroll', scroll, true); };
+  }, [element]);
+}
+
 /** Dropdowns and portaled context menus share a single active menu. */
 export function useExclusiveMenu<T extends HTMLElement>(element:RefObject<T|null>,open:boolean,onClose:()=>void,onEscape?:()=>void) {
   const callbacks=useRef({onClose,onEscape});callbacks.current={onClose,onEscape};

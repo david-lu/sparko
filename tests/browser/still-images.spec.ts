@@ -1,4 +1,4 @@
-import { test, expect, readProject, saveAndReopen, addDraft, openVideo, fitAll, type Page } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, test, expect, readProject, saveAndReopen, addDraft, openVideo, fitAll, type Page } from './fixtures';
 
 async function imageFile(page: Page, name = 'Still.png', color = '#00ff00') {
   const bytes = await page.evaluate(async color => {
@@ -36,7 +36,7 @@ for (const width of [1440, 390]) test(`still image import, duration, playback an
   expect(await workspaceBounds(page)).toEqual(idle);
   await page.locator('.story-clip-title').click();
   const duration = page.getByLabel('Image duration', { exact: true });
-  await expect(duration).toHaveValue('4');
+  await expect(duration).toHaveValue('1');
   await duration.fill('0.001');
   await expect.poll(async () => (await readProject(page)).storyFlow.nodes[0].source.outFrame).toBe(1);
   await expect(duration).toHaveValue(String(1 / 24));
@@ -49,6 +49,8 @@ for (const width of [1440, 390]) test(`still image import, duration, playback an
   await duration.fill('1');
   await page.getByRole('slider', { name: 'Trim end of Still.png', exact: true }).press('Home');
   await expect(duration).toHaveValue(String(1 / 24));
+  await page.getByRole('slider', { name: 'Trim end of Still.png', exact: true }).press('ArrowRight');
+  await expect(duration).toHaveValue(String(2 / 24));
   await duration.fill('9.5'); await duration.press('Tab');
   await expect.poll(async () => (await readProject(page)).storyFlow.nodes[0].source.outFrame).toBe(228);
   await expect(page.locator('.story-clip .video-filmstrip img')).toBeVisible();
@@ -88,6 +90,98 @@ for (const width of [1440, 390]) test(`still image import, duration, playback an
   await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles({ name: 'Broken.png', mimeType: 'image/png', buffer: Buffer.from('invalid image') });
   await expect(page.getByRole('alert')).toBeVisible(); await expect(page.locator('.project-status')).toHaveCount(0);
   expect(await workspaceBounds(page)).toEqual(beforeFailure); expect(await readProject(page)).toEqual(projectBeforeFailure);
+  expect(errors).toEqual([]);
+});
+
+for (const width of [1440, 390]) test(`one-frame clips hide crowded circles while retaining trimming and connections at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
+  await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles(await imageFile(page));
+  await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Select Still.png', exact: true }).press('Enter');
+  await page.getByRole('slider', { name: 'Trim end of Still.png', exact: true }).press('Home');
+  await fitAll(page);
+  const [video, still] = (await readProject(page)).storyFlow.nodes;
+  expect(still.source.outFrame - still.source.inFrame).toBe(1);
+  const imageClip = page.locator(`[data-node-id="${still.id}"]`), videoClip = page.locator(`[data-node-id="${video.id}"]`);
+  const circleSizes = () => page.locator('.story-port:visible').evaluateAll(elements => elements.map(el => {
+    const bounds = el.getBoundingClientRect(); return { width: bounds.width, height: bounds.height };
+  }));
+  await expect(imageClip.locator('.story-port:visible')).toHaveCount(0);
+  expect(await circleSizes()).toEqual(Array(2).fill({ width: 14, height: 14 }));
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Zoom out story', exact: true }).click();
+  await expect(imageClip.locator('.story-port:visible')).toHaveCount(0);
+  for(const circle of await circleSizes())expect(circle).toEqual({ width: 14, height: 14 });
+  await videoClip.locator('.story-clip-title').click({button:'right'});
+  await page.getByRole('menuitem',{name:'Connect to clip…',exact:true}).click();
+  await imageClip.locator('.story-clip-title').press('Enter');
+  await expect.poll(async () => (await readProject(page)).storyFlow.edges.length).toBe(1);
+  await imageClip.locator('.story-clip-title').click({button:'right'});
+  await page.getByRole('menuitem',{name:'Connect to clip…',exact:true}).click();
+  await videoClip.locator('.story-clip-title').click();
+  await expect.poll(async () => (await readProject(page)).storyFlow.edges.length).toBe(2);
+  await imageClip.locator('.story-clip-title').press('Enter');
+  const handle = page.getByRole('slider', { name: 'Trim end of Still.png', exact: true });
+  await expect(handle).toBeVisible();
+  await handle.press('ArrowRight'); await expect(page.getByLabel('Image duration', { exact: true })).toHaveValue(String(2 / 24));
+  await handle.press('Home'); await expect(page.getByLabel('Image duration', { exact: true })).toHaveValue(String(1 / 24));
+  const bounds = (await handle.boundingBox())!;
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height * .8); await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 24, bounds.y + bounds.height * .8, { steps: 6 }); await page.mouse.up();
+  await expect.poll(async () => (await readProject(page)).storyFlow.nodes[1].source.outFrame).toBeGreaterThan(1);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByLabel('Image duration', { exact: true })).toHaveValue(String(1 / 24));
+  await videoClip.locator('.story-clip-title').press('Enter');
+  await page.getByRole('slider', { name: `Trim end of ${video.name}`, exact: true }).press('Home');
+  expect(await circleSizes()).toEqual([]);
+  await expect(page.getByRole('slider', { name: `Trim end of ${video.name}`, exact: true })).toBeVisible();
+  await page.screenshot({ path: `test-results/one-frame-handles-${width}.png`, fullPage: true });
+  await saveAndReopen(page);
+  const restored = (await readProject(page)).storyFlow;
+  expect(restored.edges).toHaveLength(2);
+  expect(restored.nodes.map((node: any) => node.source.outFrame - node.source.inFrame)).toEqual([1, 1]);
+  expect(await circleSizes()).toEqual([]);
+});
+
+for (const width of [1440, 390]) test(`the left image handle extends, shortens, cancels and saves a held frame at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles(await imageFile(page));
+  await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Select Still.png', exact: true }).press('Enter');
+  await page.getByRole('slider', { name: 'Trim end of Still.png', exact: true }).press('Home');
+  await page.getByRole('button', { name: 'Fit', exact: true }).click();
+  const node = async () => (await readProject(page)).storyFlow.nodes[1], original = await node();
+  const right = (node: any) => node.x + (node.source.outFrame - node.source.inFrame) / 24 * 32;
+  const handle = page.getByRole('slider', { name: 'Trim start of Still.png', exact: true });
+  const scrub = page.getByRole('slider', { name: 'Scrub Still.png', exact: true });
+  await scrub.press('Home'); await handle.press('Shift+ArrowLeft');
+  await expect.poll(async () => (await node()).source.outFrame).toBe(11);
+  expect((await node()).source.inFrame).toBe(0); expect(right(await node())).toBeCloseTo(right(original));
+  await expect(handle).toHaveAttribute('aria-valuenow', String(11 / 24));
+  await expect(scrub).toHaveAttribute('aria-valuenow', String(10 / 24));
+  await handle.press('ArrowRight'); await expect.poll(async () => (await node()).source.outFrame).toBe(10);
+  await expect(scrub).toHaveAttribute('aria-valuenow', String(9 / 24));
+  await handle.press('End'); await expect.poll(async () => (await node()).source.outFrame).toBe(1);
+  expect((await node()).x).toBeCloseTo(original.x);
+  await page.getByRole('button', { name: 'Fit', exact: true }).click();
+  const before = await workspaceBounds(page);
+  const dragLeft = async (cancel = false) => {
+    await handle.scrollIntoViewIfNeeded(); const bounds = (await handle.boundingBox())!;
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height * .8); await page.mouse.down();
+    await page.mouse.move(bounds.x + bounds.width / 2 - 64, bounds.y + bounds.height * .8, { steps: 6 });
+    await expect(page.locator('.story-clip.trimming')).toHaveCount(1);
+    expect(await workspaceBounds(page)).toEqual(before);
+    if (cancel) await page.keyboard.press('Escape');
+    await page.mouse.up();
+  };
+  await dragLeft(); await expect.poll(async () => (await node()).source.outFrame).toBeGreaterThan(1);
+  const extended = await node(); expect(extended.x).toBeLessThan(original.x); expect(right(extended)).toBeCloseTo(right(original));
+  expect(extended.source.inFrame).toBe(0); expect(await workspaceBounds(page)).toEqual(before);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect.poll(async () => (await node()).source.outFrame).toBe(1);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect.poll(node).toEqual(extended);
+  await dragLeft(true); expect(await node()).toEqual(extended); expect(await workspaceBounds(page)).toEqual(before);
+  await saveAndReopen(page); expect((await node()).source).toMatchObject({ kind: 'image', inFrame: 0, outFrame: extended.source.outFrame });
+  expect((await node()).x).toBeCloseTo(extended.x);
   expect(errors).toEqual([]);
 });
 
@@ -141,40 +235,32 @@ test('encodes ordered mixed references with exact windows and silent image secti
   expect(result.colors.map(color => color.map(value => value > 200))).toEqual([[true, false, false], [false, true, false], [false, false, true], [true, false, false]]);
 });
 
-for (const width of [1440, 390]) test(`chooses and reorders multiple image references independently for Start and End at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390]) test(`image keyframe positions and methods stay independent and persist at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
   await page.goto('/'); await page.getByRole('button', { name: /^New project/ }).click(); await addDraft(page);
-  const start = page.getByRole('group', { name: 'Start reference', exact: true });
-  await start.getByRole('button', { name: 'Video', exact: true }).click();
-  await start.getByRole('checkbox', { name: 'Use arbitrary start video' }).check();
-  const first = await imageFile(page, 'First.png'), second = await imageFile(page, 'Second.png', '#0000ff');
-  await page.getByLabel('Upload Start video', { exact: true }).setInputFiles([first, second]);
-  await expect(start.locator('.reference-sequence-clip')).toHaveCount(2);
-  const imageDuration = page.getByLabel('Start First.png duration', { exact: true });
-  await imageDuration.fill('0.001');
-  await expect.poll(async () => (await readProject(page)).interstitials[0].startVideoAssets[0].outFrame).toBe(1);
-  await expect(imageDuration).toHaveValue(String(1 / 24));
-  expect(await imageDuration.evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(true);
-  await imageDuration.press('ArrowUp'); await expect(imageDuration).toHaveValue(String(2 / 24));
-  await imageDuration.press('ArrowDown'); await imageDuration.press('ArrowDown');
-  await expect(imageDuration).toHaveValue(String(1 / 24));
-  await imageDuration.fill('0'); await expect(imageDuration).toHaveValue(String(1 / 24));
-  await imageDuration.fill('2');
-  await page.getByLabel('Move Second.png earlier', { exact: true }).click();
-  await expect.poll(async () => (await readProject(page)).interstitials[0].startVideoAssets?.map((r: any) => r.name)).toEqual(['Second.png', 'First.png']);
-  expect((await readProject(page)).interstitials[0].startVideoAssets[1].outFrame).toBe(48);
-  const end = page.getByRole('group', { name: 'End reference', exact: true });
-  await end.getByRole('button', { name: 'Video', exact: true }).click(); await end.getByRole('checkbox', { name: 'Use arbitrary end video' }).check();
-  const ids = (await readProject(page)).interstitials[0].startVideoAssets.map((r: any) => r.assetId);
-  const dataTransfer = await page.evaluateHandle(ids => {
-    const data = new DataTransfer(); data.effectAllowed = 'copyMove';
-    data.setData('application/x-sparko-library-items', JSON.stringify(ids.map((id: string) => ({ type: 'asset', id })))); return data;
-  }, ids);
-  await end.getByRole('group', { name: 'End video', exact: true }).dispatchEvent('drop', { dataTransfer });
-  await expect(end.locator('.reference-sequence-clip')).toHaveCount(2);
-  expect((await readProject(page)).interstitials[0].startVideoAssets).toHaveLength(2);
+  const editor = await openGenerationTimeline(page);
+  for (const [name, frame] of [['First.png', '0'], ['Second.png', '48']]) {
+    await editor.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
+    await editor.getByLabel('Upload Keyframe image', { exact: true }).setInputFiles(await imageFile(page, name));
+    await expect(editor.getByRole('group', { name: 'Keyframe image', exact: true })).toHaveAttribute('aria-busy', 'false');
+    await editor.getByLabel('Keyframe frame', { exact: true }).fill(frame);
+  }
+  await editor.getByLabel('Keyframe method', { exact: true }).selectOption('frame');
+  await editor.getByLabel('Selected generation input', { exact: true }).selectOption({ index: 1 });
+  await expect(editor.getByLabel('Keyframe frame', { exact: true })).toHaveValue('0');
+  await expect(editor.getByLabel('Keyframe method', { exact: true })).toHaveValue('guide');
+  await editor.getByLabel('Keyframe frame', { exact: true }).press('ArrowUp'); await expect(editor.getByLabel('Keyframe frame', { exact: true })).toHaveValue('1');
+  const frames = (await readProject(page)).interstitials[0].keyframes;
+  expect(frames).toMatchObject([{ frame: 1, image: { name: 'First.png' } }, { frame: 48, method: 'frame', image: { name: 'Second.png' } }]);
+  await closeGenerationTimeline(page); await saveAndReopen(page);
+  const restored = (await readProject(page)).interstitials[0].keyframes;
+  expect(restored).toMatchObject(frames.map(({ image, ...frame }: any) => ({ ...frame, image: { name: image.name } })));
+  expect(await page.evaluate(async () => {
+    const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
+    const frames = (await readActiveProject()).interstitials[0].keyframes;
+    return Promise.all(frames.map(async (frame: any) => (await readAsset(frame.image.assetId))?.blob.size > 0));
+  })).toEqual([true, true]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-  await page.screenshot({ path: `test-results/reference-sequence-${width}.png`, fullPage: true });
 });
 
 test('opens an image directly as a silent timeline source', async ({ page }) => {
@@ -183,7 +269,7 @@ test('opens an image directly as a silent timeline source', async ({ page }) => 
   await expect(page.locator('.story-clip')).toHaveCount(1);
   await expect(page.locator('.playback-canvas')).toHaveAttribute('data-layer-count', '1');
   const project = await readProject(page);
-  expect(project.storyFlow.nodes[0].source).toMatchObject({ kind: 'image', inFrame: 0, outFrame: 96 });
+  expect(project.storyFlow.nodes[0].source).toMatchObject({ kind: 'image', inFrame: 0, outFrame: 24 });
   expect(project.library[0].kind).toBe('image'); expect(project.library[0].duration).toBeUndefined();
 });
 
@@ -191,6 +277,8 @@ test('Preview seeks and plays across a video-to-image connection', async ({ page
   await openVideo(page);
   await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles(await imageFile(page));
   await expect(page.locator('.story-clip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Select Still.png', exact: true }).click();
+  await page.getByLabel('Image duration', { exact: true }).fill('4');
   const project = await readProject(page), [video, still] = project.storyFlow.nodes;
   await fitAll(page);
   await page.locator(`[data-node-id="${video.id}"] .story-port.output`).dragTo(page.locator(`[data-node-id="${still.id}"] .story-port.input`));

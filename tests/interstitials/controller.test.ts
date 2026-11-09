@@ -22,6 +22,7 @@ vi.mock('../../src/media/MediaEngine', () => ({ MediaEngine: class { inspect() {
 vi.mock('../../src/features/project/assets', () => ({ assets: {
   fetch: async () => ({ id: 'fetched-asset', name: 'video.mp4', blob: new Blob(['video']) }),
   save: async () => ({ id: 'stored-asset' }), open: async () => ({ url: 'blob:local-asset' }),
+  error: vi.fn(),
 } }));
 const info = { duration: 20, fps: 25, width: 320, height: 180, codec: 'avc', hasAudio: true };
 const media = {} as MediaEngine;
@@ -45,6 +46,14 @@ async function readyScene() {
 }
 
 describe('interstitial lifecycle', () => {
+  it('keeps a deleted saved output identifiable without resuming it on reopen', async () => {
+    const item = await readyScene();
+    vi.mocked(assets.error).mockReturnValue('This asset was deleted from the Library.');
+    const resume = vi.spyOn(controller, 'resume');
+    controller.load('source', [item]);
+    expect(resume).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().items[0]).toMatchObject({ phase: 'ready', result: item.result });
+  });
   it.each([undefined, 0, Number.MAX_SAFE_INTEGER])('owns seed selection before submission and saves the actual seed independently of edits (%s)', async seed => {
     const id = add(); controller.edit(id, { seed });
     let used!: number;
@@ -400,7 +409,7 @@ describe('interstitial lifecycle', () => {
     const original = await readyScene(), before = edits();
     await controller.remove(original.id);
     await controller.restoreEdits(before, undefined, new AbortController().signal);
-    expect(controller.getSnapshot().items[0]).toEqual({ ...original, turbo: false });
+    expect(controller.getSnapshot().items[0]).toEqual(original);
     expect(controller.getSnapshot().selectedId).toBe(original.id);
     expect(generateInterstitial).toHaveBeenCalledTimes(1);
   });

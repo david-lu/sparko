@@ -31,6 +31,28 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('preserves reference analysis preferences without marking a render as changed', async () => {
+    const snapshot = structuredClone(project), item = snapshot.interstitials[0];
+    item.analyzeReferences = false; item.generationSettings = interstitialSettings(item); item.analyzeReferences = true;
+    const restored = (await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress)).project.interstitials[0];
+    expect(restored.analyzeReferences).toBe(true);
+    expect(restored.generationSettings?.analyzeReferences).toBe(false);
+    expect(hasUnsubmittedChanges(restored)).toBe(false);
+  });
+  it('retains intentionally missing references without packaging their deleted media', async () => {
+    const snapshot = structuredClone(project);
+    snapshot.deletedAssetIds = [sourceId, sceneId];
+    snapshot.interstitials[0].imageReferences = [{ assetId: sourceId, name: 'Deleted reference' }];
+    const restored = await unpackProject(await packProject(snapshot, media, signal(), progress), signal(), progress);
+    expect(restored.assets).toHaveLength(1);
+    expect(restored.assets[0].id).toBe(restored.project.subtitle!.assetId);
+    expect(restored.project.deletedAssetIds).toContain(restored.project.source.assetId);
+    expect(restored.project.deletedAssetIds).toContain(restored.project.interstitials[1].result!.assetId);
+    expect(restored.project.interstitials[0].imageReferences![0]).toEqual({ assetId: restored.project.source.assetId, name: 'Deleted reference' });
+    expect(restored.project.deletedAssetIds).not.toContain(sourceId);
+    expect(assetIds(restored.project)).toEqual([restored.project.subtitle!.assetId]);
+    await expect(packProject(restored.project, restored.assets, signal(), progress)).resolves.toBeInstanceOf(Blob);
+  });
   it.each([undefined, 0, Number.MAX_SAFE_INTEGER])('preserves the seed setting (%s), submitted seed and template settings', async seed => {
     const snapshot = structuredClone(project), item = snapshot.interstitials[0];
     item.seed = seed; item.requestSeed = 42; item.generationSettings = interstitialSettings(item);
@@ -89,6 +111,20 @@ describe('portable project archives', () => {
       expect(settings).toMatchObject({ startReferenceType: 'image', endReferenceType: 'none', startImageIndex: 0 });
     }
     expect(idFor('style.jpg')).not.toBe(images[1].id);
+    expect(hasUnsubmittedChanges(restored.project.interstitials[0])).toBe(true);
+  });
+  it('preserves timed keyframes in draft, submitted settings and templates, remapping their image assets', async () => {
+    const images = ['draft-pose.jpg', 'submitted-pose.jpg', 'template-pose.jpg'].map(name => ({ id: crypto.randomUUID(), name, blob: new Blob([name], { type: 'image/jpeg' }) }));
+    const pose = (i: number) => ({ id: `pose-${i}`, frame: 24 * (i + 1), enabled: i !== 2, image: { assetId: images[i].id, name: images[i].name } });
+    const snapshot = structuredClone(project), item = snapshot.interstitials[0];
+    item.keyframes = [pose(1)]; item.generationSettings = interstitialSettings(item);
+    item.keyframes = [pose(0)];
+    const node = { id: 'node', name: 'Scene', kind: 'simple' as const, interstitialId: item.id, x: 0, y: 0, loopCount: 0 };
+    snapshot.storyFlow = { version: 1, entryId: node.id, nodes: [node], edges: [], templates: [{ id: 'poses', name: 'Poses', entryId: node.id, nodes: [node], edges: [], settings: { node: { ...interstitialSettings(item), keyframes: [pose(2)] } } }] };
+    expect(assetIds(snapshot)).toEqual(expect.arrayContaining(images.map(image => image.id)));
+    const restored = await unpackProject(await packProject(snapshot, [...media, ...images], signal(), progress), signal(), progress);
+    const settings = [restored.project.interstitials[0], restored.project.interstitials[0].generationSettings, restored.project.storyFlow!.templates[0].settings.node];
+    settings.forEach((value, i) => expect(value?.keyframes).toEqual([{ ...pose(i), image: { ...pose(i).image, assetId: restored.assets.find(asset => asset.name === images[i].name)!.id } }]));
     expect(hasUnsubmittedChanges(restored.project.interstitials[0])).toBe(true);
   });
   it('saves and restores an empty project without a source asset',async()=>{

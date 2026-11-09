@@ -1,5 +1,8 @@
 import type { Locator } from '@playwright/test';
-import { test, expect, openVideo, readProject, dragIntoView, type Page } from './fixtures';
+import { readFile } from 'node:fs/promises';
+import { writeClipMetadata } from '../../src/media/clipMetadata';
+import { clipMetadata } from '../fixtures/clip-metadata';
+import { test, expect, openVideo, readProject, dragIntoView, saveAndReopen, type Page } from './fixtures';
 
 const asset = (page: Page, name: string) => page.getByRole('button', { name: `Library asset ${name}`, exact: true });
 const selected = (page: Page) => page.locator('.library-media button[aria-pressed=true]');
@@ -226,15 +229,85 @@ for (const width of [1440, 390]) test(`multi-selection menus preserve assets, mo
   await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(asset(page, 'One.png')).toHaveCount(0); await expect(generation).toHaveCount(0);
 });
 
-test('batch deletion protects used assets and does not delete the unused part of a blocked selection', async ({ page }) => {
+test('batch deletion omits dependencies contained entirely within the selection', async ({ page }) => {
+  await openVideo(page); await importImages(page, ['Input.png', 'A.png', 'B.png']);
+  const archive = await page.evaluate(async () => {
+    const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
+    const { packProject } = await import('/src/features/project/archive.ts' as string);
+    const { assetIds } = await import('/src/features/project/types.ts' as string);
+    const { newAssetGeneration } = await import('/shared/asset-generation.ts' as string);
+    const project = await readActiveProject(), input = project.library.find((a: any) => a.name === 'Input.png'), a = project.library.find((a: any) => a.name === 'A.png'), b = project.library.find((a: any) => a.name === 'B.png');
+    [[a, input], [b, a]].forEach(([output, reference]) => {
+      const generation = newAssetGeneration('image'); generation.name = output.name; generation.phase = 'ready';
+      generation.settings.references = [{ assetId: reference.assetId, name: reference.name, kind: 'image' }];
+      generation.submitted = structuredClone(generation.settings);
+      generation.versions = [{ assetId: output.assetId, name: output.name, createdAt: 0, settings: structuredClone(generation.settings) }];
+      output.generation = { provider: 'fal', createdAt: 0, settings: generation.settings };
+    });
+    const blob = await packProject(project, await Promise.all(assetIds(project).map(readAsset)), new AbortController().signal, () => {});
+    return [...new Uint8Array(await blob.arrayBuffer())];
+  });
+  await page.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'Chain.sparko', mimeType: 'application/zip', buffer: Buffer.from(archive) });
+  await expect.poll(async () => (await readProject(page)).library.filter((asset: any) => asset.generation).length).toBe(2);
+  await asset(page, 'Input.png').click(); await asset(page, 'A.png').click({ modifiers: [modifier] }); await asset(page, 'B.png').click({ modifiers: [modifier] });
+  await asset(page, 'B.png').press('Delete');
+  const dialog = page.getByRole('dialog', { name: 'Delete 3 assets?', exact: true });
+  await expect(dialog).not.toContainText('remaining uses');
+  await dialog.getByRole('button', { name: 'Delete assets', exact: true }).click();
+  await expect(asset(page, 'Input.png')).toHaveCount(0); await expect(asset(page, 'A.png')).toHaveCount(0); await expect(asset(page, 'B.png')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(asset(page, 'A.png')).toBeVisible();
+  // Deleting only the input still reports the surviving generated media.
+  await asset(page, 'Input.png').click(); await asset(page, 'Input.png').press('Delete');
+  const single = page.getByRole('dialog', { name: 'Delete Input.png?', exact: true });
+  await expect(single).toContainText('A.png');
+  await single.getByRole('button', { name: 'Delete asset', exact: true }).click();
+  await asset(page, 'A.png').click();
+  await page.locator('.asset-inspector .inspector-output > summary').click();
+  await page.locator('.asset-inspector .generated-output-details > summary').click();
+  await page.getByRole('button', { name: 'Saved reference errors', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Saved reference errors', exact: true })).toContainText('Input.png');
+});
+
+test('deleted generated video stays missing after export without resuming its saved render', async ({ page }) => {
+  const blob = await writeClipMetadata(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')], { type: 'video/mp4' }), clipMetadata, new AbortController().signal);
+  await page.goto('/');
+  await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'Generated.mp4', mimeType: 'video/mp4', buffer: Buffer.from(await blob.arrayBuffer()) });
+  await expect(page.locator('.story-clip')).toHaveCount(1);
+  await expect.poll(async () => (await readProject(page)).interstitials[0].phase).toBe('ready');
+  const output = asset(page, 'Across the doorway');
+  await output.click(); await output.press('Delete');
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete asset', exact: true }).click();
+  await expect(output).toHaveCount(0);
+  await saveAndReopen(page);
+  await expect(output).toHaveCount(0);
+  await expect(page.getByRole('img', { name: 'Video unavailable: missing media', exact: true })).toBeVisible();
+  const project = await readProject(page);
+  expect(project.interstitials[0].phase).toBe('ready');
+  expect(project.deletedAssetIds).toContain(project.interstitials[0].result.assetId);
+  await page.getByRole('button', { name: 'Across the doorway errors', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Across the doorway errors', exact: true })).toContainText('deleted');
+});
+
+test('batch deletion permits used source media and restores it with undo', async ({ page }) => {
   await openVideo(page); await importImages(page, ['Unused.png']);
   const source = asset(page, 'interstitial-reference.mp4');
   await source.click(); await asset(page, 'Unused.png').click({ modifiers: [modifier] });
   await asset(page, 'Unused.png').press('Delete');
   const dialog = page.getByRole('dialog', { name: 'Delete 2 assets?', exact: true });
-  await expect(dialog).toContainText('Timeline footage'); await expect(dialog.getByRole('button', { name: 'Delete assets', exact: true })).toBeDisabled();
-  await dialog.getByRole('button', { name: 'Keep assets', exact: true }).click();
-  await expect(source).toBeVisible(); await expect(asset(page, 'Unused.png')).toBeVisible(); await expect(selected(page)).toHaveCount(2);
+  await expect(dialog).toContainText('Timeline footage'); await expect(dialog.getByRole('button', { name: 'Delete assets', exact: true })).toBeEnabled();
+  await dialog.getByRole('button', { name: 'Delete assets', exact: true }).click();
+  await expect(source).toHaveCount(0); await expect(asset(page, 'Unused.png')).toHaveCount(0);
+  await page.locator('.story-clip-title').click();
+  await expect(page.getByRole('button', { name: 'Source video errors', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(source).toBeVisible(); await expect(asset(page, 'Unused.png')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Source video errors', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await saveAndReopen(page);
+  await expect(source).toHaveCount(0); await expect(asset(page, 'Unused.png')).toHaveCount(0);
+  await page.locator('.story-clip-title').click();
+  await expect(page.getByRole('button', { name: 'Source video errors', exact: true })).toBeVisible();
 });
 
 for(const width of [1440,390])test(`clip deletion waits for generation cancellation and keeps assets at ${width}px`,async({page})=>{

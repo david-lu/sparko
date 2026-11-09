@@ -7,7 +7,7 @@ const points = z.array(point)
   .min(2).max(16).refine(points => points.length >= 2 && points[0].position === 0 && points.at(-1)!.position === 1
     && points.every((point, i) => !i || point.position > points[i - 1].position), 'Mask pins must be ordered from 0 to 1.');
 /** Positions are relative to each reference, so edits survive reference length changes. */
-export const maskCurveSchema = z.object({ interpolation: z.enum(['linear', 'smooth', 'bezier']), start: points, end: points })
+export const maskCurveSchema = z.object({ interpolation: z.enum(['linear', 'smooth', 'bezier']), start: points, end: points, body: points.optional() })
   .refine(curve => curve.start.at(-1)?.strength === 1 && curve.end[0]?.strength === 1, 'The generated section must stay fully masked.');
 export type MaskCurve = z.infer<typeof maskCurveSchema>;
 export type MaskSide = 'start' | 'end';
@@ -42,5 +42,6 @@ export function curveStrength(points: MaskPoint[], position: number, interpolati
 export function maskStrength(curve: MaskCurve, time: number, before: number, duration: number, after: number): number {
   if (before > 0 && time < before) return curveStrength(curve.start, time / before, curve.interpolation);
   if (after > 0 && time >= before + duration) return curveStrength(curve.end, (time - before - duration) / after, curve.interpolation);
+  if (curve.body && duration > 0) return curveStrength(curve.body, (time - before) / duration, curve.interpolation);
   return 1;
 }

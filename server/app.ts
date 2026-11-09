@@ -24,6 +24,8 @@ export async function createApp(options: { root?: string; providers?: Providers;
   app.use(protectRequests);
   const fal = options.fal ?? (process.env.SPARKO_TEST_MODE !== '1' && process.env.FAL_KEY ? createFalClient(process.env.FAL_KEY) : undefined);
   addAssetGenerationRoutes(app, fal);
+  // Up to nine timed image previews alongside the existing scene references.
+  app.use('/api/interstitials/enhance-prompt', express.json({ limit: '2mb' }));
   app.use(express.json({ limit: '1mb' }));
   addHostingRoutes(app);
   const receive = createUploadReceiver(uploadDir);

@@ -1,12 +1,10 @@
-import { test, expect, fitAll, type Page } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, openVideo, addBridge, test, expect, fitAll, type Page } from './fixtures';
 import { readFile } from 'node:fs/promises';
 
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
 const open=async(page:Page)=>{
   await page.route('**/api/status',async route=>{const response=await route.fetch();await route.fulfill({json:{...await response.json(),providers:{openai:false,gemini:false,comfy:true}}});});
-  await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);
-  await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
-  await page.getByRole('button',{name:'Add video',exact:true}).dragTo(page.locator('.story-crossfade'));await page.getByLabel('Video prompt',{exact:true}).fill('Continue with fine detail');
+  await openVideo(page);await addBridge(page);await page.getByLabel('Video prompt',{exact:true}).fill('Continue with fine detail');
 };
 
 for(const width of [1440,390])test(`official H3 2K generation keeps loading layout stable and persists with templates at ${width}px`,{tag:['@generation','@slow']},async({page})=>{
@@ -21,7 +19,7 @@ for(const width of [1440,390])test(`official H3 2K generation keeps loading layo
   await page.route('**/api/comfy/jobs/resolution-test-job',route=>route.fulfill({json:complete?{requestId:'resolution-test-job',status:'COMPLETED',videoUrl:'https://example.test/2k.mp4'}:{requestId:'resolution-test-job',status:'IN_PROGRESS',progressDetails:{stage:'Regenerating with H3 2K'}}}));
   await page.route('https://example.test/2k.mp4',route=>route.fulfill({contentType:'video/mp4',path:'tests/fixtures/interstitial-reference.mp4'}));
   await open(page);const resolution=page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true});await expect(resolution).not.toBeChecked();await resolution.check();
-  const controls=()=>page.locator('.interstitial-editor').evaluate(el=>{const root=el.getBoundingClientRect();return ['textarea','.interstitial-resolution','.interstitial-time-fields','button[type=submit]','.task-status'].map(selector=>{const r=el.querySelector(selector)!.getBoundingClientRect();return {top:r.top-root.top,height:r.height};});});
+  const controls=()=>page.locator('.interstitial-editor').evaluate(el=>{const root=el.getBoundingClientRect();return ['textarea','.interstitial-resolution','.generation-timeline-summary','button[type=submit]','.task-status'].map(selector=>{const r=el.querySelector(selector)!.getBoundingClientRect();return {top:r.top-root.top,height:r.height};});});
   const before=await controls();await page.getByRole('button',{name:'Generate',exact:true}).click();await expect.poll(()=>submitted,{timeout:60000}).toBe(1);expect(preflights).toBe(1);
   await expect(page.locator('.generation-feedback,.task-status').last()).toContainText('Regenerating with H3 2K');expect(await controls()).toEqual(before);
   await expect(resolution).toBeEnabled();await resolution.uncheck();expect(await controls()).toEqual(before);complete=true;
@@ -45,7 +43,7 @@ test('unavailable 2K capability fails before submission and keeps the draft edit
 
 test('short clips explain the official 2K minimum before generation and remain available in Native',{tag:'@generation'},async({page})=>{
   let submitted=0;await page.route('**/api/comfy/interstitials',route=>{submitted++;return route.abort();});await open(page);
-  for(const name of ['Start reference','End reference']) await page.getByRole('group',{name,exact:true}).getByRole('button',{name:'None',exact:true}).click();await page.getByLabel('Duration',{exact:true}).fill('2');await page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true}).check();
+  await openGenerationTimeline(page);for(const side of ['start','end']) await page.getByRole('checkbox',{name:`Reference ${side} video`,exact:true}).uncheck();await page.getByLabel('Duration',{exact:true}).fill('2');await closeGenerationTimeline(page);await page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true}).check();
   await expect(page.getByRole('button',{name:'Generate',exact:true})).toBeDisabled();await expect(page.locator('.task-status')).toContainText('4.46 seconds');expect(submitted).toBe(0);
   await page.getByRole('checkbox',{name:'Enable 2K regeneration',exact:true}).uncheck();await expect(page.getByRole('button',{name:'Generate',exact:true})).toBeEnabled();
 });

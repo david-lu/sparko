@@ -12,5 +12,5 @@ export default function ModalBackdrop({ labelledBy, onCancel, restoreFocus, chil
     return () => { element.close(); focus.current?.(); };
   }, []);
   return <dialog ref={dialog} className="modal-backdrop" aria-labelledby={labelledBy}
-    onCancel={event => { event.preventDefault(); onCancel?.(); }}>{children}</dialog>;
+    onCancel={event => { event.preventDefault(); event.stopPropagation(); onCancel?.(); }}>{children}</dialog>;
 }

@@ -4,8 +4,10 @@ import type { LibraryAsset, Project } from './types';
 /** The library owns media independently of its instances on the timeline. */
 export function collectLibrary(project: Project, sourceDuration?: number): LibraryAsset[] {
   // Older working copies may still contain subtitles in the library.
-  const entries = new Map((project.library ?? []).filter(item => ['video', 'generated', 'image', 'audio'].includes(item.kind)).map(item => [item.assetId, item]));
+  const deleted = new Set(project.deletedAssetIds);
+  const entries = new Map((project.library ?? []).filter(item => !deleted.has(item.assetId) && ['video', 'generated', 'image', 'audio'].includes(item.kind)).map(item => [item.assetId, item]));
   const add = (item: LibraryAsset) => {
+    if (deleted.has(item.assetId)) return;
     const existing = entries.get(item.assetId);
     entries.set(item.assetId, existing ? { ...item, ...existing, duration: existing.duration ?? item.duration } : item);
   };
@@ -29,6 +31,8 @@ export function collectLibrary(project: Project, sourceDuration?: number): Libra
   }
   for (const generation of [...project.clipGenerations ?? [], ...project.assetGenerations ?? []]) for (const version of generation.versions) add({ assetId: version.assetId, name: version.name, kind: generation.kind === 'video' ? 'generated' : generation.kind, generationId: generation.id, folderId: generation.folderId,
     generation: { provider: 'fal', settings: version.settings, createdAt: version.createdAt } });
+  for (const item of project.interstitials) for (const clip of item.timelineVideos ?? []) if (clip.video) add({ assetId: clip.video.assetId, name: clip.video.name, kind: 'video' });
+  for (const item of project.interstitials) for (const keyframe of item.keyframes ?? []) if (keyframe.image) add({ ...keyframe.image, kind: 'image' });
   for (const item of project.interstitials) for (const ref of item.imageReferences ?? []) add({ assetId: ref.assetId, name: ref.name, kind: 'image' });
   return [...entries.values()];
 }

@@ -22,7 +22,7 @@ test('video creation and new versions use H3 and expose prompt enhancement', asy
   await page.locator(`[data-node-id="${source.id}"] .story-clip-title`).click();
   await page.getByRole('button', { name: 'Generate a new version', exact: true }).click();
   const enhance = page.getByRole('button', { name: 'Enhance prompt', exact: true });
-  await expect(enhance).toBeDisabled(); await expect(enhance).toHaveAttribute('title', 'Enter a draft prompt to enhance.');
+  await expect(enhance).toBeDisabled(); await expect(enhance).toHaveAttribute('title', 'Enter a draft prompt first.');
   await page.getByLabel('Video prompt', { exact: true }).fill('Ocean waves'); await expect(enhance).toBeEnabled();
   const converted = await readProject(page), node = converted.storyFlow.nodes.find((n: any) => n.id === source.id);
   expect(node.source).toEqual(source.source); expect(node.interstitialId).toBeTruthy(); expect(node.generationId).toBeUndefined();

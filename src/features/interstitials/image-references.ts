@@ -1,5 +1,6 @@
 import { IMAGE_REFERENCE, type ImageReference } from '../../../shared/image-references';
 import { assets } from '../project/assets';
+import { imagePreview } from '../../media/imagePreview';
 
 export function imageDataUrl(blob: Blob, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -61,18 +62,8 @@ export async function referenceImagePreviews(references: ImageReference[] = [], 
   const images: string[] = [];
   for (const reference of references) {
     signal.throwIfAborted();
-    const { asset } = await assets.open(reference.assetId), bitmap = await createImageBitmap(asset.blob);
-    try {
-      const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Unable to preview image references.');
-      for (const size of [512, 384, 256, 128]) {
-        const scale = Math.min(1, size / Math.max(bitmap.width, bitmap.height));
-        canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        const data = canvas.toDataURL('image/jpeg', .65);
-        if (data.length <= 32_000) { images.push(data); break; }
-      }
-    } finally { bitmap.close(); }
+    const { asset } = await assets.open(reference.assetId);
+    images.push(await imagePreview(asset.blob, signal));
   }
   return images;
 }

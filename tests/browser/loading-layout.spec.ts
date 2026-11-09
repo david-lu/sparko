@@ -2,7 +2,7 @@ import { expect, test, addBridge, type Page } from './fixtures';
 import { readFile } from 'node:fs/promises';
 
 const workspace = ['.workspace-grid', '.video-stage', '.story-canvas', '.sidebar'];
-const editor = ['.interstitial-editor', '.prompt-field-heading', '.enhance-prompt', 'textarea', '.interstitial-time-fields', '.interstitial-editor button[type=submit]', '.task-status'];
+const editor = ['.interstitial-editor', '.prompt-field-heading', '.enhance-prompt', 'textarea', '.generation-timeline-summary', '.interstitial-editor button[type=submit]', '.task-status'];
 async function bounds(page: Page, selectors: string[], scrollRoot?: string) {
   return page.evaluate(({ selectors, scrollRoot }) => selectors.map(selector => {
     const element = document.querySelector(selector)!;
@@ -212,7 +212,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.goto('/__loading-layout');
     await expect(page.locator('#clip .interstitial-editor').first()).toBeVisible();
     await page.getByRole('button', { name: 'Enable mic', exact: true }).evaluate(button => (button as HTMLButtonElement).click());
-    const selectors = ['#clip .panel-content', ...[1, 2, 3, 4].map(n => `#clip .clip-subpanel:nth-child(${n}) .clip-subpanel-heading`), '#clip .interstitial-editor', '#clip textarea', '#clip .interstitial-time-fields', '#clip button[type=submit]', '#clip .task-status', '#rows .interstitial-row', '#voice .mic-status', '#voice .voice-capture-actions', '#voice .voice-capture-actions>.button'];
+    const selectors = ['#clip .panel-content', ...[1, 2, 3, 4].map(n => `#clip .clip-subpanel:nth-child(${n}) .clip-subpanel-heading`), '#clip .interstitial-editor', '#clip textarea', '#clip .generation-timeline-summary', '#clip button[type=submit]', '#clip .task-status', '#rows .interstitial-row', '#voice .mic-status', '#voice .voice-capture-actions', '#voice .voice-capture-actions>.button'];
     const idle = await bounds(page, selectors);
     const stages = [
       { phase: 'preparing', progress: .2 }, { phase: 'uploading' }, { phase: 'queued', queuePosition: 1000 },

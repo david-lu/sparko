@@ -1,4 +1,4 @@
-import { expect, test, openVideo, seekSource, saveAndReopen } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, expect, test, openVideo, seekSource, saveAndReopen } from './fixtures';
 import { readFile } from 'node:fs/promises';
 
 test.beforeEach(async ({ page }) => {
@@ -164,7 +164,7 @@ test('opens a saved 25 fps source without moving its drafts', async ({ page }) =
   expect(prepared.project.interstitials).toMatchObject(legacy.interstitials);
   expect(prepared.project.interstitials[0].duration).toBe(6);
   await page.locator('.story-clip-title').filter({ hasText: 'Opening' }).click();
-  await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6');
+  await openGenerationTimeline(page); await expect(page.getByRole('spinbutton', { name: 'Duration', exact: true })).toHaveValue('6'); await closeGenerationTimeline(page);
   await expect(page.getByRole('checkbox', { name: 'Prompt expansion', exact: true })).toHaveCount(0);
 });
 

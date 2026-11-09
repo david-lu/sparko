@@ -1,4 +1,4 @@
-import { test, expect, openVideo, addQuestionTemplate, readProject } from './fixtures';
+import { setVideoReference, test, expect, openVideo, addQuestionTemplate, readProject } from './fixtures';
 
 test('each template prompt enhances independently without submitting a generation', async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { openai: true, comfy: true } } }); });
@@ -12,10 +12,10 @@ test('each template prompt enhances independently without submitting a generatio
   for (const [index, name] of ['Ask a question', 'Wait for the viewer', 'Celebrate', 'Encourage'].entries()) {
     await page.locator('.story-clip-title').filter({ hasText: name }).click();
     // Draft predecessors have no media yet. Text-only enhancement is still available.
-    if (name === 'Wait for the viewer') await page.getByRole('group', { name: 'Loop reference', exact: true }).getByRole('button', { name: 'None', exact: true }).click();
+    if (name === 'Wait for the viewer') await setVideoReference(page, 'start', false);
     else {
-      await page.getByRole('group', { name: 'Start reference', exact: true }).getByRole('button', { name: 'None', exact: true }).click();
-      await page.getByRole('group', { name: 'End reference', exact: true }).getByRole('button', { name: 'None', exact: true }).click();
+      await setVideoReference(page, 'start', false);
+      await setVideoReference(page, 'end', false);
     }
     await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
     await expect(page.getByLabel('Video prompt')).toHaveValue(`Enhanced prompt ${index + 1}`);

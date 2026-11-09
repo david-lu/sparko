@@ -1,4 +1,4 @@
-import { test, expect, readProject, saveAndReopen, dragIntoView, addDraft, type Page } from './fixtures';
+import { showImageReferences, test, expect, readProject, saveAndReopen, dragIntoView, addDraft, type Page } from './fixtures';
 import { writeClipMetadata } from '../../src/media/clipMetadata';
 import { clipMetadata } from '../fixtures/clip-metadata';
 
@@ -39,6 +39,68 @@ async function openCaptureMenu(page: Page) {
   const capture = page.getByRole('menuitem', { name: 'Create image from playhead', exact: true });
   await expect(capture).toBeEnabled(); return capture;
 }
+
+for (const kind of ['video', 'image'] as const) for (const width of [1440, 390]) test(`${kind} enhancement snapshots the displayed trimmed frame and cancels capture at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.route('**/api/status', async route => {
+    const response = await route.fetch(), status = await response.json();
+    await route.fulfill({ json: { ...status, providers: { ...status.providers, openai: true, comfy: true, fal: true } } });
+  });
+  await openColors(page);
+  await page.locator('.story-clip-title').click();
+  await page.getByLabel('Source in', { exact: true }).fill('1');
+  await page.getByLabel('Source out', { exact: true }).fill('3.5');
+  const strip = page.locator('.story-filmstrip');
+  await strip.press('Home'); await strip.press('Shift+ArrowRight');
+  for (let frame = 0; frame < 12; frame++) await strip.press('ArrowRight');
+  if (kind === 'video') await addDraft(page);
+  else await page.getByRole('button', { name: 'Add image', exact: true }).press('Enter');
+  const prompt = page.getByLabel(kind === 'video' ? 'Video prompt' : 'Generation prompt', { exact: true });
+  await prompt.fill('Keep the current scene and add a bird.');
+  await expect(page.locator('.buffering')).toHaveCount(0);
+  let body: any, requests = 0;
+  await page.route(kind === 'video' ? '**/api/interstitials/enhance-prompt' : '**/api/image-prompts/enhance', async route => {
+    requests++; body = route.request().postDataJSON();
+    await route.fulfill({ json: { prompt: 'A bird in the current scene.', model: body.settings?.model ?? 'test' } });
+  });
+  // Delay only the first real snapshot, so cancellation is tested during capture.
+  await page.evaluate(() => {
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function(callback, ...args) {
+      if (!this.classList.contains('playback-canvas')) return original.call(this, callback, ...args);
+      HTMLCanvasElement.prototype.toBlob = original;
+      original.call(this, blob => { (window as any).releasePromptFrame = () => callback(blob); }, ...args);
+    };
+  });
+  const enhance = page.getByRole('button', { name: 'Enhance prompt', exact: true });
+  await enhance.scrollIntoViewIfNeeded();
+  const positions = () => page.locator('.clip-inspector').evaluate(root => ['textarea', '.generation-timeline-summary, .asset-input', 'button[type=submit]'].map(selector => {
+    const r = root.querySelector(selector)!.getBoundingClientRect(); return { y: r.top - root.getBoundingClientRect().top, height: r.height };
+  }));
+  const before = await positions();
+  await enhance.click();
+  await page.waitForFunction(() => typeof (window as any).releasePromptFrame === 'function');
+  expect(await positions()).toEqual(before); expect(requests).toBe(0);
+  await page.getByRole('button', { name: 'Cancel prompt enhancement', exact: true }).click();
+  await page.evaluate(() => (window as any).releasePromptFrame());
+  await expect(enhance).toBeEnabled();
+  await expect(prompt).toHaveValue('Keep the current scene and add a bird.');
+  expect(requests).toBe(0);
+  await enhance.click();
+  await expect(prompt).toHaveValue('A bird in the current scene.');
+  expect(requests).toBe(1); expect(await positions()).toEqual(before);
+  expect(body.currentFrame).toMatch(/^data:image\/jpeg;base64,/);
+  expect(body.currentFrame.length).toBeLessThanOrEqual(32_000);
+  const color = await page.evaluate(async url => {
+    const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+    const canvas = new OffscreenCanvas(1, 1), context = canvas.getContext('2d')!;
+    context.drawImage(bitmap, 0, 0, 1, 1); bitmap.close();
+    return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map(value => value > 128);
+  }, body.currentFrame);
+  expect(color).toEqual([false, false, true]); // Source 2.5s, not its first frame or the trim start.
+  expect((await readProject(page)).library.filter((asset: any) => asset.kind === 'image')).toHaveLength(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+});
 
 for (const width of [1440, 390]) test(`capture uses the trimmed playhead frame and keeps controls stable at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 }); await openColors(page);
@@ -83,7 +145,7 @@ for (const width of [1440, 390]) test(`capture uses the trimmed playhead frame a
     await expect.poll(async () => (await readProject(page)).library.filter((asset: any) => asset.kind === 'image').length).toBe(0);
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
     await saveAndReopen(page); expect(await capturedImage(page)).toEqual(image);
-    await addDraft(page);
+    await addDraft(page); await showImageReferences(page);
     await dragIntoView(page, page.getByRole('button', { name: `Library asset ${image.name}`, exact: true }), page.getByRole('group', { name: 'Image references', exact: true }));
     await expect(page.getByRole('button', { name: 'Remove Picture 1', exact: true })).toBeVisible();
   }

@@ -22,6 +22,7 @@ import type { StoryGraph } from '../story-flow/model';
 import { storyDependency } from '../story-flow/dependencies';
 import { captureClipOrigin } from './clipMetadata';
 import { readClipMetadata, writeClipMetadata } from '../../media/clipMetadata';
+import { defaultTurboEnabled } from '../../shared/preferences';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null; sequence: GenerationSequence | null };
 const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -37,7 +38,7 @@ export class InterstitialController {
   setStoryGraph(graph:StoryGraph|undefined,assetId='',duration=0) { this.story=graph?{graph,assetId,duration}:undefined;if(graph)this.linkedDurationIds=[]; }
   private defaultLora: string | null = null;
   private defaultLoraStrength = LORA_STRENGTH.default;
-  private defaultTurbo = false;
+  private defaultTurbo = defaultTurboEnabled;
   setDefaultTurbo(enabled: boolean) { this.defaultTurbo = enabled; }
   setDefaultLora(address: string | null, strength = LORA_STRENGTH.default) { this.defaultLora = address; this.defaultLoraStrength = loraStrengthSchema.parse(strength); }
   private withGenerationDefaults(item: Interstitial): Interstitial {
@@ -98,7 +99,8 @@ export class InterstitialController {
     // Initialize every group's legacy references before resuming any downloads.
     const referenced = this.callResponses.reduce<Interstitial[]>((items, flow) => baselineReferences(flow, items), normalized);
     this.update({ items: referenced, selectedId: null, error: null, sequence: null });
-    for (const item of this.state.items) if (['queued', 'rendering', 'loading', 'ready'].includes(item.phase)) void this.resume(item.id);
+    for (const item of this.state.items) if (['queued', 'rendering', 'loading', 'ready'].includes(item.phase)
+      && !(item.phase === 'ready' && item.result?.assetId && assets.error(item.result.assetId))) void this.resume(item.id);
   }
   select(id: string | null) { this.update({ selectedId: id }); }
   clearError() { this.update({ error: null }); }

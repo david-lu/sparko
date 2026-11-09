@@ -1,0 +1,72 @@
+import { test, expect, openVideo, addBridge } from './fixtures';
+
+for (const kind of ['video', 'image'] as const) for (const width of [1440, 390]) test(`${kind} AI prompt edits support undo, retry and cancellation without layout shifts at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.route('**/api/status', async route => {
+    const status = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...status, providers: { ...status.providers, openai: true, fal: true, comfy: true } } });
+  });
+  await openVideo(page);
+  if (kind === 'video') await addBridge(page);
+  else await page.getByRole('button', { name: 'Add image', exact: true }).press('Enter');
+  const original = kind === 'video' ? 'She holds a sock silently.' : 'A poster reading "SUNRISE".';
+  const instructions = kind === 'video' ? 'Add "Or this sock?" while she holds the sock.' : 'Change the title to "MOONRISE".';
+  const edited = kind === 'video' ? 'She holds the sock and asks <d>[English] Or this sock?</d>.' : 'A poster reading "MOONRISE".';
+  const prompt = page.getByLabel(kind === 'video' ? 'Video prompt' : 'Generation prompt', { exact: true });
+  const edit = page.getByRole('button', { name: 'Edit with AI', exact: true });
+  await prompt.fill(''); await expect(edit).toBeDisabled();
+  await prompt.fill(original); await expect(edit).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeVisible();
+  await edit.scrollIntoViewIfNeeded();
+  const fieldLayout = () => page.locator('.inspector-prompt').evaluate(root => {
+    const top = root.getBoundingClientRect().top;
+    return [...root.children].map(el => ({ top: el.getBoundingClientRect().top - top, height: el.getBoundingClientRect().height }));
+  });
+  const before = await fieldLayout();
+  let finish!: () => void, gate = new Promise<void>(resolve => { finish = resolve; }), calls = 0, generations = 0;
+  await page.route('**/api/comfy/interstitials', route => { generations++; return route.fulfill({ status: 500, json: { error: 'Unexpected generation' } }); });
+  await page.route('**/api/library-generations', route => { generations++; return route.fulfill({ status: 500, json: { error: 'Unexpected generation' } }); });
+  await page.route(kind === 'video' ? '**/api/interstitials/enhance-prompt' : '**/api/image-prompts/enhance', async route => {
+    calls++;
+    const body = route.request().postDataJSON();
+    expect(body.editInstructions).toBe(instructions);
+    expect(kind === 'video' ? body.prompt : body.settings.prompt).toBe(calls === 1 ? original : edited);
+    if (calls === 2) return route.fulfill({ status: 502, json: { error: 'Please retry this edit.' } });
+    await gate;
+    await route.fulfill({ json: { prompt: edited, model: body.settings?.model ?? 'test-model' } }).catch(() => undefined);
+  });
+  await edit.click();
+  const dialog = page.getByRole('dialog', { name: 'Edit prompt with AI', exact: true });
+  const changes = dialog.getByLabel('What should change?', { exact: true });
+  await expect(changes).toBeFocused();
+  await expect(dialog.getByRole('button', { name: 'Apply edit', exact: true })).toBeDisabled();
+  await changes.fill(instructions);
+  const dialogLayout = () => dialog.locator('form').evaluate(root => {
+    const top = root.getBoundingClientRect().top;
+    return [...root.children].map(el => ({ top: el.getBoundingClientRect().top - top, height: el.getBoundingClientRect().height }));
+  });
+  const idle = await dialogLayout();
+  await dialog.getByRole('button', { name: 'Apply edit', exact: true }).click();
+  await expect.poll(() => calls).toBe(1);
+  await expect(dialog.getByRole('button', { name: 'Editing…', exact: true })).toBeDisabled();
+  expect(await dialogLayout()).toEqual(idle); expect(await fieldLayout()).toEqual(before);
+  await page.screenshot({ path: `test-results/prompt-edit-${kind}-${width}-loading.png` });
+  finish();
+  await expect(dialog).toHaveCount(0); await expect(prompt).toHaveValue(edited); await expect(edit).toBeFocused();
+  expect(await fieldLayout()).toEqual(before); expect(generations).toBe(0);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(prompt).toHaveValue(original);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(prompt).toHaveValue(edited);
+  await edit.click(); await changes.fill(instructions);
+  await changes.press('Control+Enter');
+  await expect(dialog.getByRole('status')).toContainText('Please retry this edit.');
+  await expect(changes).toHaveValue(instructions); await expect(prompt).toHaveValue(edited);
+  expect(await dialogLayout()).toEqual(idle); expect(await fieldLayout()).toEqual(before);
+  await page.screenshot({ path: `test-results/prompt-edit-${kind}-${width}-error.png` });
+  gate = new Promise<void>(resolve => { finish = resolve; });
+  await dialog.getByRole('button', { name: 'Apply edit', exact: true }).click();
+  await expect.poll(() => calls).toBe(3);
+  await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
+  finish(); await expect(edit).toBeEnabled(); await expect(prompt).toHaveValue(edited);
+  expect(await fieldLayout()).toEqual(before); expect(generations).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+});

@@ -1,3 +1,7 @@
+import GenerationTimelineEditor from '../features/interstitials/GenerationTimelineEditor';
+import InterstitialEditor from '../features/interstitials/InterstitialEditor';
+import { GenerationWorkspaceContext } from '../features/interstitials/GenerationWorkspace';
+import { storyGenerationItem } from '../features/story-flow/referenceInputs';
 import DockWorkspace from '../shared/panels/DockWorkspace';
 import { Activity, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { Download, Eye, FolderOpen, Pencil, Redo2, Save, Undo2, X } from 'lucide-react';
@@ -19,7 +23,7 @@ import { getStatus, request } from '../shared/api';
 import type { AppStatus } from '../../shared/contracts';
 import { activeFlows, projectFlows } from '../features/project/types';
 import { composeFlows } from '../features/call-response/compose';
-import { playableResult } from '../../shared/interstitials';
+import { minimumDuration, playableResult } from '../../shared/interstitials';
 import ProjectStart from './ProjectStart';
 import { runtimeFlow } from '../features/story-flow/model';
 import { useStoryEditor } from '../features/story-flow/useStoryEditor';
@@ -70,7 +74,12 @@ export default function App() {
   const interstitialState = useSyncExternalStore(interstitials.subscribe, interstitials.getSnapshot);
   const [projects] = useState(() => new ProjectController(interstitials));
   const projectState = useSyncExternalStore(projects.subscribe, projects.getSnapshot);
+  const [generationId, setGenerationId] = useState<string | null>(null);
+  useEffect(() => { setGenerationId(null); }, [projectState.activationRevision]);
+  const generationWorkspace = useMemo(() => ({ open: (id: string) => { controller.pause(); setGenerationId(id); }, close: () => setGenerationId(null) }), [controller]);
   const storyGraph=projectState.project?.storyFlow;
+  const generationItem = interstitialState.items.find(item => item.id === generationId);
+  useEffect(() => { if (generationId && !generationItem) setGenerationId(null); }, [generationId, generationItem]);
   const storyEditor=useStoryEditor(storyGraph,interstitialState.items,projects,interstitials,controller);
   const crossfadeFrames = projectState.project?.crossfadeFrames ?? INTERSTITIAL_CROSSFADE_FRAMES;
   const source = useMemo<MediaSource>(()=>projectState.source??{id:projectState.project?.id??'empty',name:projectState.project?.name??'Untitled project',url:''},[projectState.source,projectState.project?.id,projectState.project?.name]);
@@ -369,7 +378,7 @@ export default function App() {
           controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
           onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
           timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} />;
-  return <div className={`app-shell${preview ? ' preview-mode' : ''}`} onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => { event.preventDefault(); if (preview) event.dataTransfer.dropEffect = 'none'; }} onDrop={event => { event.preventDefault(); if (preview) return; const files=Array.from(event.dataTransfer.files);if(!files.length)return;if(storyGraph&&files.every(file=>!/\.sparko$/i.test(file.name)))void storyEditor.importVideos(files);else openFile(files[0]); }}>
+  return <GenerationWorkspaceContext.Provider value={generationWorkspace}><div className={`app-shell${preview ? ' preview-mode' : ''}`} onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => { event.preventDefault(); if (preview) event.dataTransfer.dropEffect = 'none'; }} onDrop={event => { event.preventDefault(); if (preview) return; const files=Array.from(event.dataTransfer.files);if(!files.length)return;if(storyGraph&&files.every(file=>!/\.sparko$/i.test(file.name)))void storyEditor.importVideos(files);else openFile(files[0]); }}>
     {!projectState.project ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasSampleProject={!!status?.defaultProject}
       onNewProject={() => void projects.newProject()} onOpenProject={() => void openProjectFile()}
       onOpenSampleProject={() => { if (status?.defaultProject) void projects.openSampleProject(status.defaultProject.url); }}
@@ -399,11 +408,13 @@ export default function App() {
     <main className="workspace">
       {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }}><X size={16} /></button></div>}
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
-      <WorkspaceLockContext.Provider value={workspace.locked}>{workspace.freeDock && !preview && storyGraph ? <DockWorkspace locked={workspace.locked} items={{viewer: playerElement, timeline: storyCanvasElement, library: <StoryLibrary editor={storyEditor}/>, create: <StoryAddClips editor={storyEditor}/>, inspector: <StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>}}/> : <div className="workspace-grid" inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
-        {playerElement}
+      <WorkspaceLockContext.Provider value={workspace.locked}>{workspace.freeDock && !preview && storyGraph && !generationItem ? <DockWorkspace locked={workspace.locked} items={{viewer: playerElement, timeline: storyCanvasElement, library: <StoryLibrary editor={storyEditor}/>, create: <StoryAddClips editor={storyEditor}/>, inspector: <StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>}}/> : <div className="workspace-grid" data-generation-editing={!!generationItem && !preview} inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
+        <Activity mode={generationItem && !preview ? 'hidden' : 'visible'}>{playerElement}</Activity>
+        {generationItem && !preview && <GenerationTimelineEditor key={generationItem.id} workspace selected={storyGenerationItem(generationItem, storyGraph?.nodes.find(node => node.interstitialId === generationItem.id))}
+          controller={interstitials} info={info} projects={projects} minDuration={minimumDuration('comfy-loop')} onPreviewPlay={() => controller.pause()}/>}
       </section><Activity mode={preview ? 'hidden' : 'visible'}><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Workspace panels">
         {storyGraph?<WorkspacePanels workspace={workspace} inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} create={<StoryAddClips editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={resetWorkspace}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
-        <InterstitialPanel projects={projects} items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
+        <InterstitialPanel player={controller} projects={projects} items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}
           callResponse={panelTimeline} groups={groupTimelines}
           renderClipControls={clipControls}
           connectedIds={groupTimelines.flatMap(group => group.flow.scenes.flatMap(scene => scene.interstitialId ? [scene.interstitialId] : []))}
@@ -434,5 +445,5 @@ export default function App() {
       event.preventDefault(); sessionStorage.setItem('sparko:password', password); setLoginError('');
       void request('/api/session', { method: 'POST' }).then(() => { setLogin(false); setPassword(''); }).catch(err => { sessionStorage.removeItem('sparko:password'); setLoginError(err.message); });
     }}><label className="field">Workspace password<input type="password" autoFocus autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label><button className="button primary full-width" type="submit">Unlock</button></form>{loginError && <p className="inline-error" role="alert">{loginError}</p>}</div></ModalBackdrop>}
-  </div>;
+  </div></GenerationWorkspaceContext.Provider>;
 }

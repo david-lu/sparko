@@ -1,12 +1,12 @@
-import { test, expect, openVideo, addQuestionTemplate, readProject, saveAndReopen, fitAll } from './fixtures';
+import { openGenerationTimeline, closeGenerationTimeline, test, expect, openVideo, addQuestionTemplate, readProject, saveAndReopen, fitAll } from './fixtures';
 
 // Question/response is now a graph template: clips and behaviors are edited independently.
 for (const width of [1440, 390]) test(`template durations and conditions are independent and persist at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await openVideo(page); await addQuestionTemplate(page);
   const clip = (name: string) => page.locator('.story-clip-title').filter({ hasText: name });
-  await clip('Celebrate').press('Enter'); await page.getByLabel('Duration', { exact: true }).fill('8');
+  await clip('Celebrate').press('Enter'); await openGenerationTimeline(page); await page.getByLabel('Duration', { exact: true }).fill('8'); await closeGenerationTimeline(page);
   await page.getByRole('button', { name: 'Auto layout', exact: true }).click(); await fitAll(page);
-  await clip('Encourage').press('Enter'); await expect(page.getByLabel('Duration', { exact: true })).toHaveValue('6');
+  await clip('Encourage').press('Enter'); await openGenerationTimeline(page); await expect(page.getByLabel('Duration', { exact: true })).toHaveValue('6'); await closeGenerationTimeline(page);
   await clip('Wait for the viewer').press('Enter');
   await expect(page.getByRole('checkbox', { name: 'Loop', exact: true })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Conditional', exact: true })).toBeChecked();

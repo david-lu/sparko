@@ -15,7 +15,7 @@ vi.mock('../../src/features/project/database', async importOriginal => ({
   listSavedProjects: vi.fn(async () => []), listRecentFiles: vi.fn(async () => []),
   rememberRecentFile: vi.fn(), clearActiveProject: vi.fn(),
 }));
-vi.mock('../../src/features/project/assets', () => ({ assets: { releaseExcept: vi.fn() } }));
+vi.mock('../../src/features/project/assets', () => ({ assets: { releaseExcept: vi.fn(), setDeleted: vi.fn(), error: vi.fn() } }));
 vi.mock('../../src/features/project/archive', () => ({ packProject: vi.fn(async () => new Blob(['archive'])), unpackProject: vi.fn() }));
 
 const project = (): Project => ({ id: 'project', name: 'Test', source: { name: 'Empty' }, updatedAt: 0,

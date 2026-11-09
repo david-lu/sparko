@@ -4,11 +4,12 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await openVideo(page); await addBridge(page);
+  await page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
   let savedVideo: unknown;
   for (const channel of ['video', 'audio']) {
     const title = channel === 'video' ? 'Video' : 'Audio';
     await page.getByRole('button', { name: `Edit ${channel} mask`, exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: `${title} mask editor`, exact: true });
+    const dialog = page.getByRole('region', { name: 'Generation timeline', exact: true });
     const menu = dialog.getByRole('menu', { name: 'Mask keyframe actions' });
     const keys = dialog.locator('.mask-keyframe-hit');
     const key = (side: string, index: number) => dialog.getByRole('button', { name: `${title} ${side} keyframe ${index}`, exact: true });
@@ -19,6 +20,7 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
     await expect(keys).toHaveCount(3);
     await key('start', 3).focus();
     const before = Number(await dialog.getByLabel('Keyframe time', { exact: true }).inputValue());
+    await dialog.locator('.mask-editor-graph').scrollIntoViewIfNeeded();
     const plot = (await dialog.locator('.mask-plot-background').boundingBox())!;
     // A single click halfway up the default half-second ramp adds a point on the curve.
     await page.mouse.click(plot.x + plot.width * (before - .25) / before, plot.y + plot.height / 2);
@@ -30,8 +32,10 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
     await dialog.getByRole('button', { name: 'Redo mask edit' }).click(); await expect(keys).toHaveCount(4);
 
     await key('start', 3).focus();
+    await dialog.locator('.mask-editor-graph').scrollIntoViewIfNeeded();
+    const contextPlot = (await dialog.locator('.mask-plot-background').boundingBox())!;
     const idle = await positions();
-    await page.mouse.click(plot.x + plot.width * .3, plot.y + plot.height * .4, { button: 'right' });
+    await page.mouse.click(contextPlot.x + contextPlot.width * .3, contextPlot.y + contextPlot.height * .4, { button: 'right' });
     await expect(menu).toBeVisible();
     await expect(menu.getByRole('menuitem', { name: 'Add keyframe' })).toBeEnabled();
     await expect(menu.getByRole('menuitem', { name: 'Delete keyframe' })).toBeDisabled();
@@ -59,7 +63,7 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
     await expect(menu.getByRole('menuitem', { name: 'Add keyframe' })).toBeDisabled();
     await page.keyboard.press('Escape'); await expect(key('start', 1)).toBeFocused();
     await dialog.getByRole('button', { name: 'Fit', exact: true }).click();
-    await dialog.locator('.mask-generated-region').click({ button: 'right' });
+    await dialog.locator('.mask-editor-graph .mask-generated-region').click({ button: 'right' });
     await expect(menu.getByRole('menuitem', { name: 'Add keyframe' })).toBeDisabled();
     await expect(menu.getByRole('menuitem', { name: 'Delete keyframe' })).toBeDisabled();
     await page.keyboard.press('Escape'); await expect(dialog).toBeVisible();
@@ -69,6 +73,7 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
     const endStart = Number(await dialog.getByLabel('Keyframe time', { exact: true }).inputValue());
     await key('end', 3).focus();
     const after = Number(await dialog.getByLabel('Keyframe time', { exact: true }).inputValue()) - endStart;
+    await dialog.locator('.mask-editor-graph').scrollIntoViewIfNeeded();
     const endPlot = (await dialog.locator('.mask-plot-background').boundingBox())!;
     await page.mouse.click(endPlot.x + endPlot.width * .25 / after, endPlot.y + endPlot.height / 2);
     await expect(keys).toHaveCount(4);
@@ -92,7 +97,7 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
   // Cancelling a context-menu edit preserves the saved curve.
   const saved = (await readProject(page)).interstitials[0].audioMaskCurve;
   await page.getByRole('button', { name: 'Edit audio mask', exact: true }).click();
-  const audio = page.getByRole('dialog', { name: 'Audio mask editor', exact: true });
+  const audio = page.getByRole('region', { name: 'Generation timeline', exact: true });
   await audio.getByRole('button', { name: 'Start', exact: true }).click();
   await audio.getByRole('button', { name: 'Audio start keyframe 2', exact: true }).click({ button: 'right' });
   await audio.getByRole('menuitem', { name: 'Delete keyframe' }).click();

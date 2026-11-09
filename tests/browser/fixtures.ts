@@ -6,9 +6,36 @@ export const readProject = (page: Page) => page.evaluate(async () => {
   return readActiveProject();
 });
 
+export async function openGenerationTimeline(page: Page) {
+  const timeline = page.getByRole('region', { name: 'Generation timeline', exact: true });
+  if (!await timeline.count()) await page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
+  await expect(timeline).toBeVisible();
+  return timeline;
+}
+
+export async function closeGenerationTimeline(page: Page) {
+  await page.getByRole('button', { name: 'Close generation timeline', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Generation timeline', exact: true })).toHaveCount(0);
+}
+
+export async function setVideoReference(page: Page, side: 'start' | 'end', enabled: boolean) {
+  const timeline = await openGenerationTimeline(page);
+  await timeline.getByRole('checkbox', { name: `Reference ${side} video`, exact: true }).setChecked(enabled);
+  await closeGenerationTimeline(page);
+}
+
+export async function showImageReferences(page: Page) {
+  const timeline = await openGenerationTimeline(page);
+  const images = timeline.locator('.generation-image-references');
+  if (await images.getAttribute('open') === null) await images.locator(':scope > summary').click();
+  return images;
+}
+
 export async function showGenerationInfo(page: Page) {
   const output = page.locator('.inspector-output');
   if (await output.getAttribute('open') === null) await output.locator(':scope > summary').click();
+  const details = output.locator('.generated-output-details');
+  if (await details.count() && await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
   const prompt = output.locator('.interstitial-prompt-details');
   if (await prompt.getAttribute('open') === null) await prompt.locator(':scope > summary').click();
   return output.getByRole('region', { name: 'Generation info', exact: true });
