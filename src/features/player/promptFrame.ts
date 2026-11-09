@@ -2,6 +2,7 @@ import { imagePreview } from '../../media/imagePreview';
 import type { VideoPlayerController } from './VideoPlayerController';
 
 export type PromptFramePlayer = Pick<VideoPlayerController, 'captureFrame' | 'getSnapshot'> & Partial<Pick<VideoPlayerController, 'subscribe'>>;
+export type PromptFrameCapture = (signal: AbortSignal) => Promise<string | undefined>;
 
 function waitForFrame(player: PromptFramePlayer, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -21,8 +22,13 @@ function waitForFrame(player: PromptFramePlayer, signal: AbortSignal) {
 }
 
 /** Snapshot the displayed composition before awaiting any other reference reads. */
-export async function capturePromptFrame(player: PromptFramePlayer | undefined, signal: AbortSignal): Promise<string | undefined> {
+export async function capturePromptFrame(player: PromptFramePlayer | undefined, signal: AbortSignal, capture?: PromptFrameCapture): Promise<string | undefined> {
   signal.throwIfAborted();
+  if (capture) {
+    const frame = await capture(signal);
+    signal.throwIfAborted();
+    return frame;
+  }
   if (!player || !player.getSnapshot().duration) return undefined;
   // Reattaching the story view starts decoding its saved playhead. Enhancement
   // can be clicked immediately; wait for that frame instead of failing the action.

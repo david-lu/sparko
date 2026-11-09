@@ -7,8 +7,10 @@ import { request } from '../../shared/api';
 import { showErrorToast } from '../../shared/toasts';
 import { capturePromptFrame } from '../player/promptFrame';
 import type { PromptEditResult } from '../interstitials/EnhancePromptActions';
+import { useGenerationWorkspace } from '../interstitials/GenerationWorkspace';
 
 export function useImagePromptEnhancement(editor: StoryEditor, generation: AssetGeneration | undefined, connected: boolean) {
+  const workspace = useGenerationWorkspace();
   const task = useRef<AbortController | null>(null), [enhancing, setEnhancing] = useState(false);
   const projectId = editor.projects.getSnapshot().project?.id, fingerprint = JSON.stringify(generation?.settings);
   const loraInstructions = generation && generationLoraInstructions(generation.settings, editor.projects.getSnapshot().project?.loras, generation.settings.model);
@@ -22,7 +24,7 @@ export function useImagePromptEnhancement(editor: StoryEditor, generation: Asset
     const operation = new AbortController(), settings = structuredClone(generation.settings);
     task.current = operation; setEnhancing(true);
     try {
-      const currentFrame = await capturePromptFrame(editor.player, operation.signal);
+      const currentFrame = await capturePromptFrame(editor.player, operation.signal, workspace?.getFrameCapture());
       const images = await referenceImagePreviews(settings.references.filter(r => r.kind === 'image'), operation.signal);
       operation.signal.throwIfAborted();
       const result = await request<{ prompt: string; model: string }>('/api/image-prompts/enhance', { method: 'POST', signal: operation.signal,

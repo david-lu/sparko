@@ -23,6 +23,7 @@ import { useGenerationDrop } from './useGenerationDrop';
 import { useTimelineScrub } from './useTimelineScrub';
 import { useTimelineZoom } from './useTimelineZoom';
 import GenerationWaveform, { type WaveformClip } from './GenerationWaveform';
+import { captureGenerationPromptFrame } from './generation-prompt-frame';
 
 type Selection = 'references' | 'frames' | 'videos' | MaskChannel;
 type ImageTarget = { kind: 'keyframe'; id: string } | { kind: 'endpoint'; side: 'start' | 'end' };
@@ -192,6 +193,9 @@ export default function GenerationTimeline(props: Props) {
     keyframes: dragFrame ? keyframes.map(k => k.id === dragFrame.id ? { ...k, frame: dragFrame.frame } : k) : keyframes,
     timelineVideos: videoDrag ? videos.map(v => v.id === videoDrag.id ? { ...v, frame: videoDrag.frame } : v) : videos };
   const previewInput = generationInputAtFrame(previewItem, segments, cursor, prefixFrames, middleFrames, inputFrames, nameFor);
+  useLayoutEffect(() => {
+    if (expanded) return workspace?.registerFrameCapture(signal => captureGenerationPromptFrame(preview, previewInput, signal));
+  }, [expanded, workspace, preview, previewInput]);
   const waveformClips: WaveformClip[] = previewMode === 'generated' ? (preview.generated ? [{ url: preview.generated.url, sourceFrame: 0, startFrame: 0, frames: totalFrames, label: 'Generated video' }] : [])
     : [...segments.flatMap(segment => segment.clip && segment.clip.kind !== 'image' && !segment.held ? [{ assetId: segment.clip.assetId, sourceFrame: segment.clip.inFrame, startFrame: segment.startFrame, frames: segment.endFrame - segment.startFrame, label: nameFor(segment.clip.assetId) ?? 'Reference video' }] : []),
       ...videos.flatMap(video => video.enabled && video.video && video.frame < middleFrames ? [{ assetId: video.video.assetId, sourceFrame: video.video.inFrame, startFrame: prefixFrames + video.frame, frames: Math.min(video.video.outFrame - video.video.inFrame, middleFrames - video.frame), label: video.video.name }] : [])];

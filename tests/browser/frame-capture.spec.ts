@@ -1,4 +1,4 @@
-import { showImageReferences, test, expect, readProject, saveAndReopen, dragIntoView, addDraft, type Page } from './fixtures';
+import { showImageReferences, test, expect, readProject, saveAndReopen, dragIntoView, addDraft, addBridge, openGenerationTimeline, closeGenerationTimeline, type Page } from './fixtures';
 import { writeClipMetadata } from '../../src/media/clipMetadata';
 import { clipMetadata } from '../fixtures/clip-metadata';
 
@@ -39,6 +39,92 @@ async function openCaptureMenu(page: Page) {
   const capture = page.getByRole('menuitem', { name: 'Create image from playhead', exact: true });
   await expect(capture).toBeEnabled(); return capture;
 }
+
+for (const width of [1440, 390]) test(`AI editing from generation uses its visible preview and handles empty input at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.route('**/api/status', async route => {
+    const status = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...status, providers: { ...status.providers, openai: true, fal: true } } });
+  });
+  await openColors(page); await addBridge(page);
+  const saved = await page.evaluate(async () => {
+    const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
+    const { packProject } = await import('/src/features/project/archive.ts' as string);
+    const project = await readActiveProject(), item = project.interstitials[0], asset = await readAsset(project.source.assetId);
+    item.phase = 'ready'; item.result = { assetId: asset.id, url: 'asset:' + asset.id, start: 0, duration: 4, totalDuration: 4 };
+    const archive = await packProject(project, [asset], new AbortController().signal, () => {});
+    return [...new Uint8Array(await archive.arrayBuffer())];
+  });
+  await page.getByLabel('Choose project file', { exact: true }).setInputFiles({ name: 'Preview.sparko', mimeType: 'application/zip', buffer: Buffer.from(saved) });
+  await page.locator('.story-clip.type-simple .story-clip-title').click();
+  const prompt = page.getByLabel('Video prompt', { exact: true }); await prompt.fill('Keep this scene.');
+  const region = await openGenerationTimeline(page), ruler = region.getByRole('slider', { name: 'Timeline ruler', exact: true });
+  await page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
+  const bodies: any[] = [];
+  await page.route('**/api/interstitials/enhance-prompt', async route => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ json: { prompt: `Edited scene ${bodies.length}.`, model: 'test' } });
+  });
+  const edit = async (color?: boolean[]) => {
+    const count = bodies.length;
+    await page.getByRole('button', { name: 'Edit with AI', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit prompt with AI', exact: true });
+    await dialog.getByLabel('What should change?', { exact: true }).fill('Make it more cheerful.');
+    await dialog.getByRole('button', { name: 'Apply edit', exact: true }).click();
+    await expect(prompt).toHaveValue(`Edited scene ${count + 1}.`, { timeout: 15000 });
+    const body = bodies.at(-1); expect(body.editInstructions).toBe('Make it more cheerful.');
+    if (!color) expect(body).not.toHaveProperty('currentFrame');
+    else {
+      expect(body.currentFrame).toMatch(/^data:image\/jpeg;base64,/); expect(body.currentFrame.length).toBeLessThanOrEqual(32_000);
+      const actual = await page.evaluate(async url => {
+        const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+        const canvas = new OffscreenCanvas(1, 1), context = canvas.getContext('2d')!;
+        context.drawImage(bitmap, 0, 0, 1, 1); bitmap.close();
+        return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map(value => value > 128);
+      }, body.currentFrame);
+      expect(actual).toEqual(color);
+    }
+  };
+  await edit(); // The unfilled Input interval has no frame, even with a saved result.
+  expect(bodies[0].referenceFrames).toHaveLength(2);
+  await expect(region.getByRole('button', { name: 'Input', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(region.locator('.generation-player-screen')).toHaveAttribute('data-empty', 'true');
+  await ruler.press('Home'); for (let i = 0; i < 3; i++) await ruler.press('Shift+ArrowRight');
+  await edit([false, true, false]); // Reference trim offset plus frame 30, not the hidden story playhead.
+  const referenceFrame = bodies.at(-1).currentFrame;
+  await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
+  await expect(prompt).toHaveValue('Edited scene 3.', { timeout: 15000 });
+  expect(bodies.at(-1).currentFrame).toBe(referenceFrame);
+  await region.getByRole('button', { name: 'Generated', exact: true }).click();
+  await ruler.press('Home'); for (let i = 0; i < 6; i++) await ruler.press('Shift+ArrowRight');
+  await edit([false, false, true]); // Generated frame 60 = 2.5 seconds.
+  await region.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
+  const image = await page.evaluate(async () => {
+    const canvas = new OffscreenCanvas(24, 24), context = canvas.getContext('2d')!;
+    context.fillStyle = '#ff00ff'; context.fillRect(0, 0, 24, 24);
+    return [...new Uint8Array(await (await canvas.convertToBlob()).arrayBuffer())];
+  });
+  await region.getByLabel('Upload Keyframe image', { exact: true }).setInputFiles({ name: 'magenta.png', mimeType: 'image/png', buffer: Buffer.from(image) });
+  await expect(region.getByRole('group', { name: 'Keyframe image', exact: true })).toHaveAttribute('aria-busy', 'false');
+  await edit([true, false, true]);
+  const keyframe = bodies.at(-1).currentFrame;
+  await page.getByRole('button', { name: 'Add image', exact: true }).press('Enter');
+  const imagePrompt = page.getByLabel('Generation prompt', { exact: true }); await imagePrompt.fill('A cheerful scene.');
+  await page.route('**/api/image-prompts/enhance', async route => {
+    const body = route.request().postDataJSON(); expect(body.currentFrame).toBe(keyframe);
+    await route.fulfill({ json: { prompt: 'A cheerful magenta scene.', model: body.settings.model } });
+  });
+  await page.getByRole('button', { name: 'Edit with AI', exact: true }).click();
+  const imageDialog = page.getByRole('dialog', { name: 'Edit prompt with AI', exact: true });
+  await imageDialog.getByLabel('What should change?', { exact: true }).fill('Add more detail.');
+  await imageDialog.getByRole('button', { name: 'Apply edit', exact: true }).click();
+  await expect(imagePrompt).toHaveValue('A cheerful magenta scene.', { timeout: 15000 });
+  await closeGenerationTimeline(page);
+  await page.locator('.story-clip.type-source .story-filmstrip').first().press('Home');
+  await page.locator('.story-clip.type-simple .story-clip-title').press('Enter');
+  await edit([true, false, false]); // Closing restores capture from the story player.
+  await expect(region).toHaveCount(0);
+});
 
 for (const kind of ['video', 'image'] as const) for (const width of [1440, 390]) test(`${kind} enhancement snapshots the displayed trimmed frame and cancels capture at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });

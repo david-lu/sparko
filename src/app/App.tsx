@@ -1,6 +1,6 @@
 import GenerationTimelineEditor from '../features/interstitials/GenerationTimelineEditor';
 import InterstitialEditor from '../features/interstitials/InterstitialEditor';
-import { GenerationWorkspaceContext } from '../features/interstitials/GenerationWorkspace';
+import { createGenerationWorkspace, GenerationWorkspaceContext } from '../features/interstitials/GenerationWorkspace';
 import { storyGenerationItem } from '../features/story-flow/referenceInputs';
 import DockWorkspace from '../shared/panels/DockWorkspace';
 import { Activity, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
@@ -76,7 +76,7 @@ export default function App() {
   const projectState = useSyncExternalStore(projects.subscribe, projects.getSnapshot);
   const [generationId, setGenerationId] = useState<string | null>(null);
   useEffect(() => { setGenerationId(null); }, [projectState.activationRevision]);
-  const generationWorkspace = useMemo(() => ({ open: (id: string) => { controller.pause(); setGenerationId(id); }, close: () => setGenerationId(null) }), [controller]);
+  const generationWorkspace = useMemo(() => createGenerationWorkspace(id => { controller.pause(); setGenerationId(id); }, () => setGenerationId(null)), [controller]);
   const storyGraph=projectState.project?.storyFlow;
   const generationItem = interstitialState.items.find(item => item.id === generationId);
   useEffect(() => { if (generationId && !generationItem) setGenerationId(null); }, [generationId, generationItem]);

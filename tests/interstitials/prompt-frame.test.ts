@@ -12,6 +12,18 @@ function player(buffering = true) {
   return { value, listeners, update: (patch: Partial<PlayerState>) => { state = { ...state, ...patch }; listeners.forEach(listener => listener()); } };
 }
 describe('enhancement immediately after returning to the story player', () => {
+  it.each(['data:image/jpeg;base64,Yg==', undefined])('uses the active preview, including its empty frame: %s', async frame => {
+    const p = player(), capture = vi.fn(async () => frame), signal = new AbortController().signal;
+    expect(await capturePromptFrame(p.value, signal, capture)).toBe(frame);
+    expect(capture).toHaveBeenCalledWith(signal);
+    expect(p.value.captureFrame).not.toHaveBeenCalled(); expect(p.listeners.size).toBe(0);
+  });
+  it('does not return an active-preview snapshot after cancellation', async () => {
+    const p = player(false), operation = new AbortController();
+    const capture = async () => { operation.abort(); return 'data:image/jpeg;base64,Yg=='; };
+    await expect(capturePromptFrame(p.value, operation.signal, capture)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(p.value.captureFrame).not.toHaveBeenCalled();
+  });
   it('waits for the restored frame and then captures without pausing the user', async () => {
     const p = player(), result = capturePromptFrame(p.value, new AbortController().signal);
     expect(p.value.captureFrame).not.toHaveBeenCalled(); expect(p.listeners.size).toBe(1);

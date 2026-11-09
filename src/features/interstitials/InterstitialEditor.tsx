@@ -30,6 +30,7 @@ import { maskCurveSchema } from '../../../shared/mask-curves';
 import type { ProjectController } from '../project/ProjectController';
 import { showErrorToast } from '../../shared/toasts';
 import type { PromptFramePlayer } from '../player/promptFrame';
+import { useGenerationWorkspace } from './GenerationWorkspace';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -41,6 +42,7 @@ export type InterstitialEditorProps = {
   player?: PromptFramePlayer;
 };
 export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, showOutput = true, projects, player }: InterstitialEditorProps) {
+  const workspace = useGenerationWorkspace();
   const promptId = useId(), resolutionId = useId(), analysisId = useId();
   const dependency = controller.dependency(selected.id);
   useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId), ...(selected.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...(selected.keyframes ?? []).flatMap(k => k.image ? [k.image.assetId] : [])]);
@@ -61,7 +63,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
     const operation = new AbortController(); enhancement.current = operation;
     setEnhancing(true);
     try {
-      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal, { player, editInstructions,
+      const result = await enhancePrompt({ ...selected, loraInstructions }, kind, dependency?.reference, engine, info, operation.signal, { player, captureFrame: workspace?.getFrameCapture(), editInstructions,
         onAnalyzing: value => { if (enhancement.current === operation) setAnalyzing(value); } });
       const current = controller.getSnapshot().items.find(item => item.id === selected.id);
       if (!operation.signal.aborted && enhancement.current === operation && current?.prompt === selected.prompt && current.lora === selected.lora

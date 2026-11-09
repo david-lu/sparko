@@ -10,7 +10,7 @@ import type { MediaEngine } from '../../media/MediaEngine';
 import { request } from '../../shared/api';
 import { assets } from '../project/assets';
 import { referenceImagePreviews } from './image-references';
-import { capturePromptFrame, type PromptFramePlayer } from '../player/promptFrame';
+import { capturePromptFrame, type PromptFramePlayer, type PromptFrameCapture } from '../player/promptFrame';
 import { comfyReferenceRange } from '../../../shared/comfy';
 import { referenceTiming } from '../../../shared/reference-clips';
 import type { PromptReferenceTiming, PromptReferenceDescription } from '../../../shared/prompt-timing';
@@ -28,7 +28,7 @@ function promptReferences(item: PromptItem, reference: GenerationReference | und
 }
 
 export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, reference: GenerationReference | undefined,
-  engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, { target, player, editInstructions, onAnalyzing }: { target?: 'continuity'; player?: PromptFramePlayer; editInstructions?: string; onAnalyzing?: (active: boolean) => void } = {}) {
+  engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, { target, player, captureFrame, editInstructions, onAnalyzing }: { target?: 'continuity'; player?: PromptFramePlayer; captureFrame?: PromptFrameCapture; editInstructions?: string; onAnalyzing?: (active: boolean) => void } = {}) {
   const savedPictures = (item.imageReferences ?? []).map((image, index) => ({ image, index })).filter(value => value.image.enabled !== false);
   item = enabledImageReferences(item);
   const referenceTiming = target === 'continuity' ? undefined : promptReferences(item, reference, info?.duration);
@@ -37,7 +37,7 @@ export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, refe
     const timeline = promptTimeline(item.duration, referenceTiming ?? { prefixFrames: 0, suffixFrames: 0 });
     validateVideoKeyframes(item.keyframes, Math.round(timeline.generatedDuration * TIMELINE_FPS), item.startImageIndex !== undefined, item.endImageIndex !== undefined || item.method === 'comfy-loop' && item.startImageIndex !== undefined);
   }
-  const currentFrame = await capturePromptFrame(player, signal);
+  const currentFrame = await capturePromptFrame(player, signal, captureFrame);
   const referenceFrames: string[] = [];
   if (reference) {
     if (reference.before) {
