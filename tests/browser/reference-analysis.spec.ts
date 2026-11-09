@@ -59,7 +59,7 @@ for (const width of [1440, 390]) test(`analyzes the actual start/end windows for
   await dialog.getByLabel('What should change?').fill('Make the question brighter.');
   const dialogBox = await dialog.boundingBox();
   await dialog.getByRole('button', { name: 'Apply edit' }).click();
-  await expect.poll(() => analyses).toBe(3);
+  await expect.poll(() => analyses, { timeout: 60000 }).toBe(3);
   await expect(dialog.getByRole('status')).toContainText('Analyzing reference videos');
   expect(await dialog.boundingBox()).toEqual(dialogBox); expect(await layout()).toEqual(idle);
   finish(); await expect(dialog).toHaveCount(0); expect(enhancements).toBe(2); expect(analyses).toBe(4);
@@ -85,14 +85,18 @@ test('keeps the draft on analysis failure, cancellation and reference changes; s
     expect(route.request().postDataJSON()).not.toHaveProperty('referenceDescriptions');
     await route.fulfill({ json: { prompt: 'A wave.', model: 'test' } });
   });
-  await enhance.click(); await expect(page.getByRole('alert')).toContainText('Could not analyze the start reference');
+  await enhance.click();
+  // Preparing the reference video uses software encoding on CI. Wait for the
+  // request before measuring how quickly the UI reports its mocked failure.
+  await expect.poll(() => analyses, { timeout: 60000 }).toBe(1);
+  await expect(page.getByRole('alert')).toContainText('Could not analyze the start reference');
   await expect(prompt).toHaveValue(original); expect(enhancements).toBe(0);
   await page.getByRole('button', { name: 'Dismiss notification' }).click();
-  await enhance.click(); await expect.poll(() => analyses).toBe(2);
+  await enhance.click(); await expect.poll(() => analyses, { timeout: 60000 }).toBe(2);
   await page.getByRole('button', { name: 'Cancel prompt enhancement' }).click(); finish();
   await expect(enhance).toBeEnabled(); await expect(prompt).toHaveValue(original);
   gate = new Promise<void>(resolve => { finish = resolve; });
-  await enhance.click(); await expect.poll(() => analyses).toBe(3);
+  await enhance.click(); await expect.poll(() => analyses, { timeout: 60000 }).toBe(3);
   await openGenerationTimeline(page); await page.getByRole('spinbutton', { name: 'start_range', exact: true }).fill('1.75'); await closeGenerationTimeline(page);
   await expect(enhance).toBeEnabled(); finish();
   await expect(prompt).toHaveValue(original); expect(enhancements).toBe(0);
