@@ -2,7 +2,6 @@ import { playableResult, type Interstitial, type InterstitialResult } from '../.
 import type { MediaInfo, MediaSource } from './media';
 import { assets } from '../features/project/assets';
 import { INTERSTITIAL_CROSSFADE_FRAMES, TIMELINE_FPS } from '../../shared/constants';
-import type { AudioLayer } from '../features/project/audioLayers';
 import { generatedClipAudio, type ClipAudio } from '../features/player/clipAudioTracks';
 
 export type TimelineSegment = {
@@ -25,11 +24,9 @@ export class TimelineComposition {
   readonly crossfade: boolean;
   readonly crossfadeFrames: number;
   readonly matchFraming: boolean;
-  readonly audioLayers: AudioLayer[];
   /** Sound over each generated video, played wherever that video plays. */
   readonly clipAudio: ClipAudio;
-  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean; audioLayers?: AudioLayer[] } = {}) {
-    this.audioLayers = options.audioLayers ?? [];
+  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean } = {}) {
     this.clipAudio = generatedClipAudio(items);
     this.crossfade = options.crossfade ?? true;
     this.crossfadeFrames = options.crossfadeFrames ?? INTERSTITIAL_CROSSFADE_FRAMES;

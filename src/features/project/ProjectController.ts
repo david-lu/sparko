@@ -18,6 +18,7 @@ import { ProjectHistory } from './ProjectHistory';
 // removes old hashed chunks. Load archive support with the application.
 import { packProject, unpackProject } from './archive';
 import { freshId, migrateFades, migrateGraph, removeNodes, type StoryGraph, type StoryNode } from '../story-flow/model';
+import { keepComments } from '../story-flow/comments';
 import { collectLibrary } from './library';
 import { migrateClipMedia, assetPlacement } from './migrateClipMedia';
 import { inspectAsset, mediaKind, mediaFile, type LibraryFile } from './libraryFiles';
@@ -28,7 +29,7 @@ import { resolveClipReferences, restoreClip } from '../interstitials/clipMetadat
 import { projectContent } from './projectContent';
 import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
 import { savedConvertImportedVideo } from '../../shared/preferences';
-import { audioLayersSchema, type AudioLayer } from './audioLayers';
+import { withoutAudioLayers } from './legacyAudioLayers';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
   busy: boolean; message: string; progress: number | null; error: string | null;
@@ -233,27 +234,6 @@ export class ProjectController {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private update(patch: Partial<State>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
   clearError() { this.update({ error: null }); }
-  addAudioLayers(assetIds: string[], startFrame = 0) {
-    const project = this.state.project;
-    if (!project || this.operation) return;
-    const added = assetIds.map(assetId => {
-      const asset = project.library?.find(asset => asset.assetId === assetId);
-      if (!asset || asset.kind !== 'audio' || !asset.duration || project.deletedAssetIds?.includes(assetId)) throw new Error('Choose an available audio file from Library.');
-      return { id: freshId(), assetId, name: asset.name, startFrame, inFrame: 0,
-        outFrame: Math.max(1, Math.floor(asset.duration * TIMELINE_FPS)), volume: 1, muted: false };
-    });
-    this.setAudioLayers([...project.audioLayers ?? [], ...added]);
-  }
-  setAudioLayers(layers: AudioLayer[]) {
-    const project = this.state.project;
-    if (!project || this.operation) return;
-    const parsed = audioLayersSchema.parse(layers);
-    for (const layer of parsed) {
-      const duration = project.library?.find(asset => asset.assetId === layer.assetId)?.duration;
-      if (duration && layer.outFrame > Math.max(1, Math.floor(duration * TIMELINE_FPS))) throw new Error('The audio out point exceeds the file duration.');
-    }
-    this.save({ ...project, audioLayers: parsed });
-  }
   editAssets(change: (project: Project) => Project, record = true) {
     if (this.state.project) {
       let next=change(this.state.project);
@@ -319,10 +299,12 @@ export class ProjectController {
     }) ?? [];
   }
   private normalizeContent(project: Project) {
-    project = migrateClipMedia(project);
+    project = migrateClipMedia(withoutAudioLayers(project));
     return { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
   }
   private save(project: Project, record = true) {
+    // Every edit path that removes clips keeps their comments on the canvas.
+    if (project.storyFlow) project = { ...project, storyFlow: keepComments(this.state.project?.id === project.id ? this.state.project.storyFlow : undefined, project.storyFlow) };
     project = this.normalizeContent(project);
     const deletionChanged = JSON.stringify(project.deletedAssetIds ?? []) !== JSON.stringify(this.state.project?.deletedAssetIds ?? []);
     assets.setDeleted(project.deletedAssetIds);
@@ -723,7 +705,7 @@ export class ProjectController {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
           ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, storyFlow: target.storyFlow, library: target.library, libraryFolders: target.libraryFolders, deletedAssetIds: target.deletedAssetIds,
-            audioLayers: target.audioLayers, loras: target.loras, promptInstructions: target.promptInstructions, clipGenerations: target.clipGenerations?.map(g => {
+            loras: target.loras, promptInstructions: target.promptInstructions, clipGenerations: target.clipGenerations?.map(g => {
               const cached=this.generationStates.get(g.id),versions=[...new Map([...cached?.versions??[],...g.versions].map(v=>[v.assetId,v])).values()].filter(v=>target.library?.some(a=>a.assetId===v.assetId));
               const pinned=target.storyFlow?.nodes.find(n=>n.generationId===g.id)?.source?.assetId;
               return {phase:'draft' as const,...cached,...g,versions,selectedAssetId:versions.some(v=>v.assetId===pinned)?pinned:undefined};

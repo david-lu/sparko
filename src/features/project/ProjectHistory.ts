@@ -3,7 +3,7 @@ import { interstitialSettings, type Interstitial, type InterstitialSettings } fr
 import type { LibraryAsset, Project } from './types';
 
 export type InterstitialEdit = Pick<Interstitial, 'id' | 'label' | 'time' | 'kind' | 'groupId'> & InterstitialSettings;
-export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'audioLayers' | 'library' | 'libraryFolders' | 'deletedAssetIds' | 'subtitle' | 'crossfadeFrames' | 'loras' | 'promptInstructions'> & { interstitials: InterstitialEdit[]; clipGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings' | 'versions' | 'selectedAssetId'>[] };
+export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'storyFlow' | 'library' | 'libraryFolders' | 'deletedAssetIds' | 'subtitle' | 'crossfadeFrames' | 'loras' | 'promptInstructions'> & { interstitials: InterstitialEdit[]; clipGenerations?: Pick<import('../../../shared/asset-generation').AssetGeneration, 'id' | 'name' | 'kind' | 'folderId' | 'settings' | 'versions' | 'selectedAssetId'>[] };
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
@@ -11,16 +11,10 @@ export function projectEdit(project: Project): ProjectEdit {
   return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [], keyframes: item.keyframes ?? [], timelineVideos: item.timelineVideos ?? [],
     inputAudioTracks: item.inputAudioTracks ?? [], generatedAudioTracks: item.generatedAudioTracks ?? [], startReferenceVolume: item.startReferenceVolume ?? 1, endReferenceVolume: item.endReferenceVolume ?? 1 })),
     callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, libraryFolders: project.libraryFolders, deletedAssetIds: project.deletedAssetIds,
-    audioLayers: project.audioLayers, loras: project.loras, promptInstructions: project.promptInstructions, clipGenerations: project.clipGenerations?.map(({id,name,kind,folderId,settings,versions,selectedAssetId}) => ({id,name,kind,folderId,settings,versions,selectedAssetId})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
+    loras: project.loras, promptInstructions: project.promptInstructions, clipGenerations: project.clipGenerations?.map(({id,name,kind,folderId,settings,versions,selectedAssetId}) => ({id,name,kind,folderId,settings,versions,selectedAssetId})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }
 function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' | 'key'> {
   if (!same(before.deletedAssetIds, after.deletedAssetIds)) return { label: 'Delete assets' };
-  if (!same(before.audioLayers, after.audioLayers)) {
-    const a = before.audioLayers ?? [], b = after.audioLayers ?? [];
-    if (a.length !== b.length) return { label: a.length < b.length ? 'Add audio layers' : 'Remove audio layers' };
-    const changed = b.filter(layer => !same(layer, a.find(old => old.id === layer.id)));
-    return { label: 'Edit audio layer', key: changed.length === 1 ? `audio:${changed[0].id}` : undefined };
-  }
   if (!same(before.loras, after.loras)) return { label: 'Edit project LoRAs' };
   if ((before.promptInstructions ?? '') !== (after.promptInstructions ?? '')) return { label: 'Edit enhance instructions', key: 'promptInstructions' };
   if (!same(before.libraryFolders, after.libraryFolders)) return { label: 'Organize library folders' };
@@ -33,6 +27,16 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
     if(a.entryId!==b.entryId)return {label:'Change start video'};
     if(!same(a.templates,b.templates))return {label:'Save group template'};
     if(!same(a.groups,b.groups))return {label:(b.groups?.length??0)>(a.groups?.length??0)?'Group clips':(b.groups?.length??0)<(a.groups?.length??0)?'Ungroup clips':'Edit group'};
+    if(!same(a.comments,b.comments)){
+      const previous=a.comments??[],next=b.comments??[];
+      if(next.length!==previous.length)return {label:next.length>previous.length?'Add comment':'Delete comment'};
+      const changed=next.filter(c=>!same(c,previous.find(p=>p.id===c.id))),old=changed.length===1?previous.find(p=>p.id===changed[0].id):undefined;
+      if(old&&!!old.resolved!==!!changed[0].resolved)return {label:changed[0].resolved?'Resolve comment':'Reopen comment'};
+      if(old&&old.color!==changed[0].color)return {label:'Change comment color'};
+      // Arrow-key nudges on one pin merge like a slider drag.
+      if(old&&!same(old.anchor,changed[0].anchor))return {label:'Move comment',key:`comment:${old.id}:move`};
+      return {label:'Edit comment'};
+    }
     if(!same(a.edges,b.edges)){
       // Fade duration and shape edits on one connection merge like a slider drag.
       const changed=b.edges.filter(e=>!same(e,a.edges.find(p=>p.id===e.id))),previous=changed.length===1?a.edges.find(e=>e.id===changed[0].id):undefined;

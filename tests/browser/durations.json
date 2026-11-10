@@ -1,7 +1,6 @@
 {
   "asset-picker.spec.ts": 46,
   "asset-volume.spec.ts": 33,
-  "audio-layers.spec.ts": 31,
   "audio.spec.ts": 35,
   "auto-layout.spec.ts": 53,
   "behaviors.spec.ts": 10,
@@ -19,7 +18,6 @@
   "crossfade-curves.spec.ts": 27,
   "crossfades.spec.ts": 6,
   "drag-placement.spec.ts": 38,
-  "draw-groups.spec.ts": 39,
   "example.spec.ts": 27,
   "flow-buffering.spec.ts": 41,
   "frame-capture.spec.ts": 118,
@@ -37,6 +35,7 @@
   "generation-timeline.spec.ts": 39,
   "generation-workspace-drop.spec.ts": 13,
   "generation-workspace.spec.ts": 29,
+  "group-frames.spec.ts": 39,
   "groups.spec.ts": 4,
   "h3-video-creation.spec.ts": 15,
   "help-create.spec.ts": 37,

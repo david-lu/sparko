@@ -1,10 +1,13 @@
 import { AudioBufferSink, AudioSample, type Input, type WrappedAudioBuffer } from 'mediabunny';
 import { TIMELINE_FPS as FPS } from '../../shared/constants';
-import { audioLayerEnd, type AudioLayer } from '../features/project/audioLayers';
 import { assets } from '../features/project/assets';
 import { openInput } from './media';
 import { resampledAudio } from './ResampledAudio';
 import { COMPOSITION_AUDIO_CHANNELS as CHANNELS, COMPOSITION_AUDIO_RATE as RATE } from './AudioNormalizer';
+
+/** A sound placed on a composition's frame clock and mixed over its footage audio. */
+export type AudioLayer = { id: string; assetId: string; name: string; startFrame: number; inFrame: number; outFrame: number; volume: number; muted: boolean };
+export const audioLayerEnd = (layer: AudioLayer) => layer.startFrame + layer.outFrame - layer.inFrame;
 
 type Decoder = { input: Input; samples: AsyncGenerator<WrappedAudioBuffer, void, unknown>; current?: WrappedAudioBuffer; ended?: boolean };
 

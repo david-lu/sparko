@@ -51,8 +51,6 @@ export type FlowEdge = {
   transitionCurve?: FadeCurve; audioTransitionCurve?: FadeCurve;
 };
 export type CallResponseFlow = {
-  /** Project-wide soundtrack layers, supplied at runtime. */
-  audioLayers?: import('../project/audioLayers').AudioLayer[];
   /** Sound over generated videos, keyed by asset and supplied at runtime. */
   clipAudio?: import('../player/clipAudioTracks').ClipAudio;
   storyGraph?: boolean;

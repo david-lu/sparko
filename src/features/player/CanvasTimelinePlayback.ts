@@ -1,7 +1,6 @@
 import type { TimelineComposition, TimelineSegment } from '../../media/TimelineComposition';
 import { compositionTransitions, segmentTime, transitionWeight } from '../../media/CompositionTransitions';
 import { CanvasMediaDecks, type PlaybackClip, type PlaybackLayer, type PlaybackSettings } from './CanvasMediaDecks';
-import { playbackAudioLayers } from './audioLayers';
 import { clipAudioLayers } from './clipAudioTracks';
 
 /** A timeline clock over decoded frames and audio. No frames are encoded for preview. */
@@ -55,7 +54,7 @@ export class CanvasTimelinePlayback {
         { ...this.clip(transition.after, frame), opacity: weight, gain: weight, gainRate: rate }];
     } else layers = [{ ...this.clip(current, frame), opacity: 1, gain: 1 }];
     try {
-      this.ready = this.decks.render(layers, this.playing, this.settings, 0, [...playbackAudioLayers(composition.audioLayers, this.time), ...clipAudioLayers(layers, composition.clipAudio)]);
+      this.ready = this.decks.render(layers, this.playing, this.settings, 0, clipAudioLayers(layers, composition.clipAudio));
       const last = transition?.after ?? current, next = composition.segments[composition.segments.indexOf(last) + 1];
       if (next) this.decks.prepare(this.clip(next, this.transitions.find(edge => edge.after === next)?.startFrame ?? next.startFrame));
       this.changed(this.time, this.playing, !this.ready);

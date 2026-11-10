@@ -7,7 +7,6 @@ import type { Interstitial, InterstitialSettings, InterstitialResult } from '../
 import type { CallResponseFlow } from '../call-response/model';
 import type { StoryGraph } from '../story-flow/model';
 import type { AssetGeneration, AssetSettings } from '../../../shared/asset-generation';
-import type { AudioLayer } from './audioLayers';
 
 export type Asset = { id: string; name: string; blob: Blob };
 export type MediaGeneration = { provider: 'comfy'; settings?: InterstitialSettings; result: InterstitialResult }
@@ -25,7 +24,6 @@ export type Project = {
   callResponse?: CallResponseFlow;
   callResponses?: CallResponseFlow[];
   storyFlow?: StoryGraph;
-  audioLayers?: AudioLayer[];
   library?: LibraryAsset[];
   /** Intentionally unavailable media. Keep IDs and references so undo and missing-input errors work. */
   deletedAssetIds?: string[];
@@ -47,7 +45,6 @@ export const projectFlows = (project?: Pick<Project, 'callResponse' | 'callRespo
 export const activeFlows = (project?: Project | null) => projectFlows(project).filter(flow => project?.interstitials.find(item => item.id === flow.interstitial.id)?.kind !== 'regular');
 export const withFlows = (project: Project, callResponses: CallResponseFlow[]): Project => ({ ...project, callResponses, callResponse: callResponses[0] });
 export const assetIds = (project: Project) => [...new Set([project.source.assetId, project.source.originalAssetId, project.subtitle?.assetId,
-  ...project.audioLayers?.map(layer => layer.assetId) ?? [],
   ...[...project.clipGenerations??[],...project.assetGenerations??[],...project.storyFlow?.templates.flatMap(t=>t.generations??[])??[]].flatMap(g => [g.selectedAssetId, ...g.versions.flatMap(v => [v.assetId, ...v.settings.references.map(r => r.assetId)]), ...g.settings.references.map(r => r.assetId), ...(g.submitted?.references.map(r => r.assetId) ?? [])]),
   ...project.storyFlow?.templates.flatMap(template => Object.values(template.settings).flatMap(settings => [...(settings.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...videoAssets(settings, 'start').map(r => r.assetId), ...videoAssets(settings, 'end').map(r => r.assetId), ...settings.imageReferences?.map(image => image.assetId) ?? [], ...settings.keyframes?.flatMap(keyframe => keyframe.image ? [keyframe.image.assetId] : []) ?? [], ...audioTrackAssetIds(settings.inputAudioTracks), ...audioTrackAssetIds(settings.generatedAudioTracks)])) ?? [],
   ...(project.library ?? []).flatMap(item => [item.assetId, item.originalAssetId]),

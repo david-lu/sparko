@@ -14,9 +14,6 @@
 .story-group-resize:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .story-group-preview{z-index:6;border-style:dashed;background:color-mix(in srgb,var(--group-color) 12%,transparent)}
 .story-group-preview *{pointer-events:none}
-.story-group-drawing{position:absolute;z-index:8;box-sizing:border-box;border:1px dashed #82a5bd;background:#82a5bd22;pointer-events:none;overflow:hidden}
-.story-group-drawing>span{display:block;padding:7px 10px;white-space:nowrap;font-size:11px;color:#b4d5ed}
-.draw-group-tool .story-scroll,.draw-group-tool .story-scroll *{cursor:crosshair}
 .group-clip-row{display:flex;align-items:center;min-width:0}.group-clip-row>button:first-child{flex:1;min-width:0}.group-clip-row>.icon-button{flex:none}
 .group-actions-hint{display:flex;align-items:center;gap:7px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}.group-actions-hint svg{flex:none}
 .group-color-swatch{display:block;flex:none;width:14px;height:14px;border-radius:50%}

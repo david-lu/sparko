@@ -6,7 +6,8 @@ import { playableResult, type Interstitial } from '../../../shared/interstitials
 import type { ProjectController } from '../project/ProjectController';
 import type { InterstitialController } from '../interstitials/InterstitialController';
 import type { VideoPlayerController } from '../player/VideoPlayerController';
-import { autoLayout, connect, createNode, edge, freshId, nodeDuration, splitClip, withReferenceFade, type GroupBounds, type NodeKind, type StoryGraph, type StoryNode, type StoryTemplate, type StoryGroup } from './model';
+import { autoLayout, connect, createNode, edge, freshId, nodeDuration, splitClip, withReferenceFade, type CommentAnchor, type NodeKind, type StoryComment, type StoryGraph, type StoryNode, type StoryTemplate, type StoryGroup } from './model';
+import { COMMENT_LIMIT, COMMENT_TEXT_LIMIT, splitComments } from './comments';
 import { captureTemplate, instantiateTemplate, makePreset } from './templates';
 import { groupClips, copyGroups, setGroupMembers } from './groups';
 import { conditionsFor, normalizeConditions, setBehavior } from './behaviors';
@@ -90,8 +91,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   };
   const selectGroup=(id:string,next=graph)=>{const group=next?.groups?.find(g=>g.id===id);if(!group)return;setLibrarySelections([]);setSelectedGroupId(id);setSelection(group.nodeIds);setSelectedEdge(null);jobs.select(null);setInspectorRevision(n=>n+1);};
   const patchGroup=(id:string,patch:Partial<Pick<StoryGroup,'name'|'color'|'bounds'>>)=>{if(graph)change({...graph,groups:graph.groups?.map(g=>g.id===id?{...g,...patch,name:patch.name?.trim().slice(0,200)||g.name}:g)});};
-  const createGroup=(ids:string[],bounds?:GroupBounds,name=`Group ${(graph?.groups?.length??0)+1}`)=>{if(!graph)return;const result=groupClips(graph,ids,name,'blue',bounds);if(!result.group)return;change(result.graph);selectGroup(result.group.id,result.graph);setNotice('Group created. Drag its header to move it. Right-click for group actions.');};
-  const groupSelection=(name?:string)=>createGroup(selected,undefined,name);
+  const groupSelection=(name=`Group ${(graph?.groups?.length??0)+1}`)=>{if(!graph)return;const result=groupClips(graph,selected,name);if(!result.group)return;change(result.graph);selectGroup(result.group.id,result.graph);setNotice('Group created. Drag its header to move it. Right-click for group actions.');};
   const changeGroupMembers=(id:string,ids:string[])=>{if(!graph)return;const next=setGroupMembers(graph,id,ids,items);change(next);selectGroup(id,next);setNotice('Group updated. Clips and connections are preserved.');};
   const removeFromGroup=(id:string,ids:string[])=>{const group=graph?.groups?.find(g=>g.id===id);if(group)changeGroupMembers(id,group.nodeIds.filter(n=>!ids.includes(n)));};
   const ungroup=(id=selectedGroup?.id)=>{if(!graph)return;const groups=graph.groups?.filter(g=>id?g.id!==id:!g.nodeIds.some(n=>selected.includes(n)));change({...graph,groups});setSelectedGroupId(null);setNotice('Group removed. Clips and connections are preserved. Undo restores the frame.');};
@@ -214,7 +214,28 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
       const recipe=project?.clipGenerations?.find(g=>g.id===n.generationId);if(!recipe)return n;
       const copy={...structuredClone(recipe),id:freshId(),name:n.name,phase:n.source?'ready' as const:'draft' as const,requestId:undefined,submitted:undefined,error:undefined};generations.push(copy);return {...n,generationId:copy.id};
     });
-    change(autoLayout(result.graph,[...items,...result.items]),result.items,generations);setSelected([id]);setNotice('Clip split. Media is preserved; outgoing connections follow the second half.');return true;};
+    const next=result.rightId?splitComments(result.graph,id,result.rightId):result.graph;
+    change(autoLayout(next,[...items,...result.items]),result.items,generations);setSelected([id]);setNotice('Clip split. Media is preserved; outgoing connections follow the second half.');return true;};
+  const addComment=(anchor:CommentAnchor,text:string,color?:ClipColor)=>{
+    const value=text.trim().slice(0,COMMENT_TEXT_LIMIT);if(!graph||!value)return;
+    if((graph.comments?.length??0)>=COMMENT_LIMIT){setNotice(`A project can contain up to ${COMMENT_LIMIT.toLocaleString()} comments.`);return;}
+    const id=freshId();
+    projects.endHistoryGroup();change({...graph,comments:[...graph.comments??[],{id,text:value,createdAt:Date.now(),anchor,...(color?{color}:{})}]});projects.endHistoryGroup();
+    setNotice('Comment added. Drag its pin to move it; Undo removes it.');return id;
+  };
+  const updateComment=(id:string,patch:Partial<Pick<StoryComment,'text'|'resolved'|'anchor'|'color'>>)=>{
+    const comment=graph?.comments?.find(c=>c.id===id);if(!graph||!comment)return;
+    const next={...comment,...patch,...(patch.text!==undefined?{text:patch.text.trim().slice(0,COMMENT_TEXT_LIMIT)||comment.text}:{})};
+    if(JSON.stringify(next)===JSON.stringify(comment))return;
+    // Only pin nudges merge into one undo step.
+    const nudge=Object.keys(patch).every(key=>key==='anchor');
+    if(!nudge)projects.endHistoryGroup();change({...graph,comments:graph.comments!.map(c=>c.id===id?next:c)});if(!nudge)projects.endHistoryGroup();
+  };
+  const removeComment=(id:string)=>{
+    if(!graph?.comments?.some(c=>c.id===id))return;
+    projects.endHistoryGroup();change({...graph,comments:graph.comments.filter(c=>c.id!==id)});projects.endHistoryGroup();
+    setNotice('Comment deleted. Undo restores it.');
+  };
   const projectBusy=projects.getSnapshot().busy;
   const joinReasons=useMemo(()=>[...(graph?joinProblems(graph,items,selected):['Open a project and select at least two clips to join.']),
     ...(project?.clipGenerations?.some(g=>generationBusy(g)&&graph?.nodes.some(n=>selected.includes(n.id)&&n.generationId===g.id))?['Wait for selected clips to finish generating before joining.']:[]),
@@ -252,7 +273,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     const ids=await projects.importLibraryAsset(assetId,position);
     if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice('Added clip from the library.');}
   };
-  return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,revealClip,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
-    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,librarySelections,selectLibrary,clipJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame,colorClips,addMedia,replaceAsset,makeGenerative,removingClips};
+  return {graph,items,selected,selectedGroup,selectGroup,patchGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,revealClip,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
+    selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,librarySelections,selectLibrary,clipJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame,colorClips,addMedia,replaceAsset,makeGenerative,removingClips,addComment,updateComment,removeComment};
 }
 export type StoryEditor=ReturnType<typeof useStoryEditor>;

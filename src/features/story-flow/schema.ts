@@ -26,6 +26,8 @@ const groupColor=z.enum(['blue','purple','green','amber','rose']);
 export const storyGroupSchema=z.object({id,name:z.string().min(1).max(200),nodeIds:z.array(id).max(1000),color:groupColor,
   bounds:z.object({x:z.number().finite(),y:z.number().finite(),width:z.number().finite().positive(),height:z.number().finite().positive()}).optional()
 }).refine(g=>g.nodeIds.length>0||!!g.bounds,'An empty group needs a frame.');
+const commentAnchor=z.union([z.object({nodeId:id,frame:z.number().int().min(0)}),z.object({x:z.number().finite(),y:z.number().finite()})]);
+export const storyCommentSchema=z.object({id,text:z.string().max(4000).refine(text=>!!text.trim(),'A comment needs text.'),createdAt:z.number().finite().min(0),resolved:z.boolean().optional(),anchor:commentAnchor,color:z.enum(Object.keys(clipColors) as [keyof typeof clipColors, ...Array<keyof typeof clipColors>]).optional()});
 const structure={entryId:id,nodes:z.array(storyNodeSchema).min(1).max(1000),edges:z.array(storyEdgeSchema).max(5000)};
 function valid(value:{entryId:string;nodes:z.infer<typeof storyNodeSchema>[];edges:z.infer<typeof storyEdgeSchema>[]}){
   const ids=new Set(value.nodes.map(n=>n.id));
@@ -39,5 +41,6 @@ function valid(value:{entryId:string;nodes:z.infer<typeof storyNodeSchema>[];edg
 }
 export const storyTemplateSchema=z.object({id,name:z.string().min(1).max(200),...structure,color:groupColor.optional(),generations:z.array(assetGenerationSchema).max(1000).optional(),settings:z.record(id,templateSettings)})
   .refine(valid,'Invalid template connections.').refine(t=>t.nodes.every(n=>!n.generationId||t.generations?.some(g=>g.id===n.generationId)),'Missing template generation settings.').refine(t=>t.nodes.every(n=>n.kind==='source'||!!t.settings[n.id]),'A template clip is missing its generation settings.');
-export const storyGraphSchema=z.object({version:z.literal(1),...structure,entryId:z.string().max(200),nodes:z.array(storyNodeSchema).max(1000),templates:z.array(storyTemplateSchema).max(100),groups:z.array(storyGroupSchema).max(1000).optional()}).refine(valid,'Invalid story connections.')
-  .refine(g=>{const groups=g.groups??[],members=groups.flatMap(group=>group.nodeIds);return new Set(groups.map(group=>group.id)).size===groups.length&&new Set(members).size===members.length&&members.every(id=>g.nodes.some(n=>n.id===id));},'Invalid group membership.');
+export const storyGraphSchema=z.object({version:z.literal(1),...structure,entryId:z.string().max(200),nodes:z.array(storyNodeSchema).max(1000),templates:z.array(storyTemplateSchema).max(100),groups:z.array(storyGroupSchema).max(1000).optional(),comments:z.array(storyCommentSchema).max(1000).optional()}).refine(valid,'Invalid story connections.')
+  .refine(g=>{const groups=g.groups??[],members=groups.flatMap(group=>group.nodeIds);return new Set(groups.map(group=>group.id)).size===groups.length&&new Set(members).size===members.length&&members.every(id=>g.nodes.some(n=>n.id===id));},'Invalid group membership.')
+  .refine(g=>{const comments=g.comments??[];return new Set(comments.map(c=>c.id)).size===comments.length&&comments.every(({anchor})=>!('nodeId' in anchor)||g.nodes.some(n=>n.id===anchor.nodeId));},'Invalid story comments.');

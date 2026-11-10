@@ -49,7 +49,12 @@ export const groupColors = { blue: '#82a5bd', purple: '#a391c2', green: '#80a69a
 export type GroupBounds = { x: number; y: number; width: number; height: number };
 export type StoryGroup = { id: string; name: string; nodeIds: string[]; color: keyof typeof groupColors; bounds?: GroupBounds };
 export type StoryTemplate = { id: string; name: string; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; settings: Record<string, InterstitialSettings>; generations?: AssetGeneration[]; color?: StoryGroup['color'] };
-export type StoryGraph = { version: 1; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; templates: StoryTemplate[]; groups?: StoryGroup[] };
+/** A clip comment stays on one moment of that clip's media; a canvas comment keeps its timeline position. */
+export type CommentAnchor = { nodeId: string; frame: number } | { x: number; y: number };
+export type StoryComment = { id: string; text: string; createdAt: number; resolved?: boolean; anchor: CommentAnchor;
+  /** Missing means the default light pin. */
+  color?: ClipColor };
+export type StoryGraph = { version: 1; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; templates: StoryTemplate[]; groups?: StoryGroup[]; comments?: StoryComment[] };
 export const PIXELS_PER_SECOND = 32;
 export const CLIP_HEIGHT = 76;
 /** Conditional sockets and labels remain fixed-size and can extend beyond the clip. */
