@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import type { Locator } from '@playwright/test';
 import { expect, fitAll, test, type Page } from './fixtures';
 
 // Matches the declaration in voice.spec.ts; both specs share one global type.
@@ -68,45 +69,46 @@ async function judgeWith(page: Page, decide: (request: Judged) => string | null,
   });
   return requests;
 }
-const indicator = (page: Page) => page.locator('.voice-answer-indicator');
-/** Waits for the microphone to open on its own, checks the live badge, then speaks. Returns the control's box while listening. */
+const cue = (page: Page) => page.locator('.player-voice-cue');
+// Measure after entry animations, which scale elements while they appear.
+const box = async (locator: Locator) => {
+  await locator.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
+  return (await locator.boundingBox())!;
+};
+/** The voice state is a small badge in the top-right corner of the video, not a large control. */
+async function expectCornerBadge(page: Page) {
+  const at = await box(cue(page)), stage = (await page.locator('.video-stage').boundingBox())!;
+  expect(at.y - stage.y).toBeLessThanOrEqual(16); expect(stage.x + stage.width - (at.x + at.width)).toBeLessThanOrEqual(16);
+  expect(at.height).toBeLessThan(32);
+}
+/** Waits for the microphone to open on its own, then speaks. */
 async function answer(page: Page) {
-  await expect(indicator(page)).toHaveAttribute('data-state', 'listening', { timeout: 30000 });
-  await expect(indicator(page)).toHaveText('Listening…');
-  // The live-microphone badge rests at the top of the video, apart from the answer control.
-  const cue = page.locator('.player-listening-cue');
-  await expect(cue).toBeVisible();
-  const at = (await cue.boundingBox())!, stage = (await page.locator('.video-stage').boundingBox())!;
-  expect(at.y - stage.y).toBeLessThan(40); expect(Math.abs(at.x + at.width / 2 - (stage.x + stage.width / 2))).toBeLessThan(2);
-  const listening = await box(page);
+  await expect(cue(page)).toHaveAttribute('data-state', 'listening', { timeout: 30000 });
+  await expect(cue(page)).toHaveText('Listening');
+  await expectCornerBadge(page);
   await page.screenshot({ path: 'test-results/voice-conditional-listening.png' });
   await page.evaluate(() => window.voiceTest.play('/test-speech.wav'));
-  return listening;
 }
-// Measure after the entry animation, which scales the control while it pops in.
-const box = async (page: Page) => {
-  await indicator(page).evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
-  return (await indicator(page).boundingBox())!;
-};
 
-test('a voice conditional listens on its own, keeps its layout while judging, and follows the matched condition', async ({ page }) => {
+test('a voice conditional listens on its own, shows only a corner badge, and follows the matched condition', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   let release!: () => void;
   const requests = await judgeWith(page, request => request.conditions[0].id, new Promise<void>(resolve => { release = resolve; }));
   const { celebrate } = await openVoiceQuestion(page);
-  // Nothing to tap: no choice buttons and no talk button.
-  const controls = page.getByRole('group', { name: 'Choose an answer' });
+  // Nothing to tap and no large controls: only the question stays in the answer area.
+  const controls = page.getByRole('group', { name: 'Choose an answer' }), question = page.locator('.player-branch-question');
   await expect(controls.getByRole('button')).toHaveCount(0);
-  const listening = await answer(page);
-  await expect(indicator(page)).toHaveText('Thinking…', { timeout: 30000 });
-  await expect(indicator(page)).toHaveAttribute('aria-busy', 'true');
-  await expect(page.locator('.player-listening-cue')).toHaveCount(0);
-  expect(await box(page)).toEqual(listening);
+  await expect(page.locator('.video-stage .choice-button')).toHaveCount(0);
+  const before = await box(question);
+  await answer(page);
+  await expect(cue(page)).toHaveText('Thinking…', { timeout: 30000 });
+  await expect(cue(page)).toHaveAttribute('aria-busy', 'true');
+  await expectCornerBadge(page);
+  expect(await box(question)).toEqual(before);
   await page.screenshot({ path: 'test-results/voice-conditional-thinking.png' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(indicator(page)).toBeVisible();
-  const narrow = await box(page);
-  expect(narrow.x).toBeGreaterThanOrEqual(0); expect(narrow.x + narrow.width).toBeLessThanOrEqual(390);
+  await expect(cue(page)).toBeVisible();
+  await expectCornerBadge(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: 'test-results/voice-conditional-thinking-mobile.png' });
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -117,8 +119,7 @@ test('a voice conditional listens on its own, keeps its layout while judging, an
   expect(requests[0].question).toBe('Wait for the viewer');
   expect(requests[0].bytes.toString('ascii', 0, 4)).toBe('RIFF'); expect(requests[0].bytes.readUInt32LE(24)).toBe(16000);
   release();
-  await expect(indicator(page)).toHaveText('Got it!');
-  expect(await box(page)).toEqual(listening);
+  await expect(cue(page)).toHaveText('Got it');
   await expect(page.locator(`[data-node-id="${celebrate.id}"] .story-playhead`)).toBeVisible({ timeout: 15000 });
   expect(errors).toEqual([]);
 });
@@ -127,7 +128,7 @@ test('a voice answer that matches no condition plays the default', async ({ page
   await judgeWith(page, () => null);
   const { encourage } = await openVoiceQuestion(page);
   await answer(page);
-  await expect(indicator(page)).toHaveText('Got it!', { timeout: 30000 });
+  await expect(cue(page)).toHaveText('Got it', { timeout: 30000 });
   await expect(page.locator(`[data-node-id="${encourage.id}"] .story-playhead`)).toBeVisible({ timeout: 15000 });
 });
 
@@ -136,11 +137,11 @@ test('a failed check listens again on its own, and repeated failures fall back t
   await page.route('**/api/voice/choice', async route => { calls++; await route.fulfill({ status: 429, json: { error: 'Hume is busy. Wait a moment and try again.' } }); });
   await openVoiceQuestion(page);
   await answer(page);
-  await expect(indicator(page)).toHaveAttribute('data-state', 'listening', { timeout: 30000 });
-  await expect(page.locator('.player-voice-status')).toHaveText('Hume is busy. Wait a moment and try again.');
+  await expect(cue(page)).toHaveAttribute('data-state', 'listening', { timeout: 30000 });
+  await expect(cue(page)).toHaveText('Hume is busy. Wait a moment and try again.');
   await page.evaluate(() => window.voiceTest.play('/test-speech.wav'));
   await expect(page.getByRole('button', { name: 'Choose Not yet', exact: true })).toBeVisible({ timeout: 30000 });
-  await expect(indicator(page)).toHaveCount(0);
+  await expect(cue(page)).toHaveCount(0);
   expect(calls).toBe(2);
 });
 
@@ -149,5 +150,5 @@ test('a voice conditional offers buttons when the microphone is unavailable', as
   await openVoiceQuestion(page);
   await expect(page.getByRole('button', { name: 'Choose Not yet', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Choose an answer' }).getByRole('button', { name: /^Choose / })).toHaveCount(2);
-  await expect(indicator(page)).toHaveCount(0);
+  await expect(cue(page)).toHaveCount(0);
 });

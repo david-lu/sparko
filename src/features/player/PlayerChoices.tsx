@@ -3,8 +3,7 @@ import { answerColorStyle, getScene, interactionFor, type Outcome, type SceneId 
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import ChoiceFace from '../call-response/ChoiceFace';
 import { behaviors } from '../story-flow/behaviors';
-import { Mic } from 'lucide-react';
-import PlayerVoiceAnswer, { type ListeningState } from './PlayerVoiceAnswer';
+import PlayerVoiceAnswer from './PlayerVoiceAnswer';
 
 const EXIT_MS = 220;
 const HOLD_MS = 1000;
@@ -22,7 +21,6 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   const voice = interaction?.input === 'voice';
   // Scenes where voice is unavailable fall back to buttons until the scene is entered again.
   const [noMicScene, setNoMicScene] = useState<SceneId | null>(null);
-  const [micState, setMicState] = useState<ListeningState>(null);
   const questionId = useId();
   const controls = useRef<HTMLDivElement>(null);
   const outcome = value.session?.outcome;
@@ -85,20 +83,11 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
     value.onBranch(presentation.sceneId, choice.outcome);
   };
   return <>
-  {/* Sits at the top of the video, apart from the answer controls, so it never moves them. */}
-  {listening && micState && <span className="player-listening-cue" data-state={micState} aria-hidden="true">
-    <Mic size={14} strokeWidth={2.5} /><span className="player-listening-bars"><i /><i /><i /></span>
-  </span>}
   <div key={presentation.sceneId} ref={controls} className="player-branch-controls" role="group" aria-label="Choose an answer"
     aria-describedby={presentation.question.trim() ? questionId : undefined} data-input={listening ? 'voice' : 'button'}
     data-phase={presentation.phase} style={{ '--choice-columns': listening ? 1 : Math.min(3, presentation.choices.length), '--choice-exit-duration': `${EXIT_MS}ms` } as CSSProperties}
     onDoubleClick={event => event.stopPropagation()}>
     {presentation.question.trim() && <p id={questionId} className="player-branch-question">{presentation.question}</p>}
-    {listening && <PlayerVoiceAnswer context={voiceContext} chosen={!!selectedId} onUnavailable={() => setNoMicScene(presentation.sceneId)} onListening={setMicState} onAnswer={answerId => {
-      const choice = presentation.choices.find(choice => choice.outcome === (answerId ?? fallbackId));
-      if (!choice) return false;
-      choose(choice); return true;
-    }} />}
     {shown.map((choice, index) => <button key={choice.id} className="choice-button"
       style={{ ...choice.style, animationDelay: selectedId ? '0ms' : `${Math.min(index, 6) * 100}ms` }}
       aria-label={`Choose ${choice.label}`} aria-pressed={selectedId === choice.id} aria-disabled={!!selectedId}
@@ -110,5 +99,11 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
       <ChoiceFace>{choice.label}</ChoiceFace>
     </button>)}
   </div>
+  {/* Voice answers show only a corner badge, outside the controls so it never moves them. It follows them in the DOM so their exit phase can fade it. */}
+  {listening && <PlayerVoiceAnswer key={`${presentation.sceneId}:voice`} context={voiceContext} chosen={!!selectedId} onUnavailable={() => setNoMicScene(presentation.sceneId)} onAnswer={answerId => {
+    const choice = presentation.choices.find(choice => choice.outcome === (answerId ?? fallbackId));
+    if (!choice) return false;
+    choose(choice); return true;
+  }} />}
   </>;
 }
