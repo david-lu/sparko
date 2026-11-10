@@ -1,4 +1,5 @@
 import { H3_MODEL_ID, projectLoraAddress, projectLoraStrength, saveProjectLora, type ProjectLora } from '../../../shared/loras';
+import { PROMPT_INSTRUCTIONS_MAX_LENGTH } from '../../../shared/prompt-instructions';
 import { generationModel } from '../../../shared/generation-models';
 import type { MediaInfo, MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
@@ -271,6 +272,10 @@ export class ProjectController {
     this.editAssets(project => ({ ...project, loras: saveProjectLora(project.loras, entry, previousModel) }));
   }
   removeLora(model: string) { this.editAssets(project => ({ ...project, loras: project.loras?.filter(lora => lora.model !== model) })); }
+  setPromptInstructions(value: string) {
+    const project = this.state.project, promptInstructions = value.slice(0, PROMPT_INSTRUCTIONS_MAX_LENGTH) || undefined;
+    if (project && project.promptInstructions !== promptInstructions) this.save({ ...project, promptInstructions, updatedAt: Date.now() });
+  }
   async importAssets(entries: LibraryFile[], folderId?: string, onProgress?: (message: string) => void) {
     const initial = this.state.project;
     if (!initial || !entries.length) return [];
@@ -718,7 +723,7 @@ export class ProjectController {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
           ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, storyFlow: target.storyFlow, library: target.library, libraryFolders: target.libraryFolders, deletedAssetIds: target.deletedAssetIds,
-            audioLayers: target.audioLayers, loras: target.loras, clipGenerations: target.clipGenerations?.map(g => {
+            audioLayers: target.audioLayers, loras: target.loras, promptInstructions: target.promptInstructions, clipGenerations: target.clipGenerations?.map(g => {
               const cached=this.generationStates.get(g.id),versions=[...new Map([...cached?.versions??[],...g.versions].map(v=>[v.assetId,v])).values()].filter(v=>target.library?.some(a=>a.assetId===v.assetId));
               const pinned=target.storyFlow?.nodes.find(n=>n.generationId===g.id)?.source?.assetId;
               return {phase:'draft' as const,...cached,...g,versions,selectedAssetId:versions.some(v=>v.assetId===pinned)?pinned:undefined};

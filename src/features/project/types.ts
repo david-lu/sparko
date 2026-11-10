@@ -36,6 +36,8 @@ export type Project = {
   /** Original asset IDs mapped to this project's local IDs, for portable video references. */
   assetAliases?: Record<string, string>;
   loras?: ProjectLora[];
+  /** Raw text as typed; applied to every prompt enhancement and AI edit in the project. */
+  promptInstructions?: string;
   subtitle: { name: string; assetId: string } | null;
   analysis: AnalysisState;
 };

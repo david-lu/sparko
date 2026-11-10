@@ -1,4 +1,5 @@
 import ProjectLoras from '../project/ProjectLoras';
+import ProjectPromptInstructions from '../project/ProjectPromptInstructions';
 import { Flag, LocateFixed, Video } from 'lucide-react';
 import { useState } from 'react';
 import { TIMELINE_FPS } from '../../../shared/constants';
@@ -44,6 +45,7 @@ export default function ProjectInspector({editor}:{editor:StoryEditor}) {
     </div>
     <button type="button" className="button project-entry-reveal" disabled={!start||busy} onClick={()=>start&&editor.selectNew(start.id)}><LocateFixed size={13}/>Show in timeline</button>
     <ProjectLoras key={`${project.id}:${editor.projects.getSnapshot().activationRevision}`} projects={editor.projects}/>
+    <ProjectPromptInstructions projects={editor.projects}/>
     <dl className="project-inspector-summary"><div><dt>Videos</dt><dd>{graph.nodes.length}</dd></div><div><dt>Frame rate</dt><dd>{TIMELINE_FPS} fps</dd></div></dl>
   </section>;
 }

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { interstitialSettings, type Interstitial } from '../../../shared/interstitials';
 import { H3_MODEL_ID, generationLoraInstructions } from '../../../shared/loras';
+import { projectPromptInstructions } from '../../../shared/prompt-instructions';
 import { promptEnhancementPatch } from '../../../shared/prompt-versions';
 import { showErrorToast } from '../../shared/toasts';
 import { enhancePrompt } from './enhance-prompt';
@@ -15,11 +16,12 @@ export function useVideoPromptEnhancement({ selected, controller, engine, info, 
   const enhance = async (editInstructions?: string): Promise<PromptEditResult> => {
     if (!status?.providers.openai || !selected.prompt.trim()) return { applied: false };
     const project = projects?.getSnapshot(), source = controller.generationItem(selected);
-    const loraInstructions = generationLoraInstructions(source, project?.project?.loras, H3_MODEL_ID);
+    const loraInstructions = generationLoraInstructions(source, project?.project?.loras, H3_MODEL_ID), projectInstructions = projectPromptInstructions(project?.project);
     const fingerprint = (item: Interstitial) => JSON.stringify({
       settings: interstitialSettings(item), time: item.time, kind: controller.clipKind(item.id),
       reference: controller.dependency(item.id)?.reference,
       loraInstructions: generationLoraInstructions(item, projects?.getSnapshot().project?.loras, H3_MODEL_ID),
+      projectInstructions: projectPromptInstructions(projects?.getSnapshot().project),
     });
     const submitted = fingerprint(source);
     return tasks.run(selected.id, {
@@ -34,7 +36,7 @@ export function useVideoPromptEnhancement({ selected, controller, engine, info, 
       },
       execute: (signal, onAnalyzing) => enhancePrompt({ ...source, loraInstructions }, controller.clipKind(selected.id),
         controller.dependency(selected.id)?.reference, engine, info, signal,
-        { player, captureFrame: workspace?.getFrameCapture(), editInstructions, onAnalyzing }),
+        { player, captureFrame: workspace?.getFrameCapture(), editInstructions, projectInstructions, onAnalyzing }),
       apply: result => controller.edit(selected.id, promptEnhancementPatch(selected, result, !!editInstructions)),
       onError: message => { if (!editInstructions) showErrorToast('Video prompt enhancement failed', message, selected.label); },
     });

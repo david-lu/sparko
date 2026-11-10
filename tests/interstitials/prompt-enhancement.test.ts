@@ -239,6 +239,22 @@ describe('AI-owned prompt enhancement', () => {
       kind: target === 'idle' ? 'idle' : 'call', target: target === 'continuity' ? 'continuity' : undefined })).prompt).toBe(prompt);
     expect(respond).toHaveBeenCalledOnce();
   });
+  it.each([
+    { name: 'Enhance', editInstructions: undefined, target: undefined },
+    { name: 'Edit', editInstructions: 'Make her laugh.', target: undefined },
+    { name: 'continuity Enhance', editInstructions: undefined, target: 'continuity' as const },
+  ])('applies project enhance instructions to $name as user guidance', async ({ editInstructions, target }) => {
+    output('She waves in Spanish.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, editInstructions, target, projectInstructions: 'Write all dialogue in Spanish.' });
+    const args = respond.mock.calls[0][0];
+    expect(JSON.parse(args.input[0].content[0].text).context.projectInstructions).toBe('Write all dialogue in Spanish.');
+    expect(args.instructions).toContain("context.projectInstructions holds the user's standing instructions");
+    expect(args.instructions).toContain('never over fixed timing guides');
+    respond.mockClear(); output('She waves.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, editInstructions, target, projectInstructions: '' });
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('projectInstructions');
+    expect(respond.mock.calls[0][0].instructions).not.toContain('context.projectInstructions');
+  });
   it('provides the same image as both endpoint guides for an image-only Idle loop', async () => {
     output('A quiet loop.');
     await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, kind: 'idle', duration: 2, referenceFrames: [], imageReferences: ['data:image/jpeg;base64,Yw=='] });
@@ -337,6 +353,13 @@ describe('prompt enhancement API', () => {
     expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ loraInstructions: 'Name Sema.' }));
     enhancePrompt.mockClear();
     for (const loraInstructions of ['x'.repeat(4001), 123, {}]) await send({ ...body, loraInstructions }).expect(400);
+    expect(enhancePrompt).not.toHaveBeenCalled();
+  });
+  it('validates and forwards optional project enhance instructions', async () => {
+    await send({ ...body, projectInstructions: '  Keep the 1970s film look.  ' }).expect(200);
+    expect(enhancePrompt).toHaveBeenCalledWith(expect.objectContaining({ projectInstructions: 'Keep the 1970s film look.' }));
+    enhancePrompt.mockClear();
+    for (const projectInstructions of ['x'.repeat(4001), 123, {}]) await send({ ...body, projectInstructions }).expect(400);
     expect(enhancePrompt).not.toHaveBeenCalled();
   });
   it('accepts a short Idle loop and retains compatibility with legacy dialogue settings', async () => {

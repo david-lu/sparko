@@ -3,6 +3,7 @@ import type { Express } from 'express';
 import { promptKeyframesSchema } from '../../../shared/prompt-keyframes.js';
 import { validateVideoKeyframeInputs } from '../../../shared/video-keyframes.js';
 import { loraInstructionsSchema } from '../../../shared/loras.js';
+import { promptInstructionsSchema } from '../../../shared/prompt-instructions.js';
 import { TIMELINE_FPS, H3_PROMPT_MAX_LENGTH, INTERSTITIAL, PROMPT_EDIT_MAX_LENGTH } from '../../../shared/constants.js';
 import type { PromptEnhancement } from '../../../shared/contracts.js';
 import type { AIClients } from '../../shared/ai-clients.js';
@@ -11,7 +12,7 @@ import { HttpError, requireProvider } from '../../shared/http.js';
 import type { Providers } from '../../providers.js';
 import { currentFrameContent, currentFrameInstructions, currentFrameSchema } from '../../shared/prompt-frame.js';
 import { promptReferenceTimingSchema, promptReferenceDescriptionSchema, promptReferenceContext, promptTimecode, promptTimeline, promptTimelineDirection, type PromptTimeline } from '../../../shared/prompt-timing.js';
-import { promptEditingInstructions } from '../../shared/prompt-editing.js';
+import { projectInstructionsGuidance, promptEditingInstructions } from '../../shared/prompt-editing.js';
 import { editPromptText, rewritePromptText } from '../../shared/prompt-editor.js';
 import { keyframeInstructions, promptKeyframeContent } from './prompt-keyframes.js';
 import { maskCurveSchema } from '../../../shared/mask-curves.js';
@@ -26,6 +27,7 @@ const inputSchema = z.object({
   kind: z.enum(['interstitial', 'call', 'idle', 'response']).default('interstitial'),
   target: z.literal('continuity').optional(),
   loraInstructions: loraInstructionsSchema.optional(),
+  projectInstructions: promptInstructionsSchema.optional(),
   continuity: z.string().max(maxContinuityBrief).optional(), dialogue: z.string().max(4000).optional(),
   referenceFrames: z.array(z.string().max(350_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/)).max(2).default([]),
   currentFrame: currentFrameSchema,
@@ -86,7 +88,7 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
   return async input => {
     if (!openai) throw new HttpError(503, 'OpenAI is not configured for prompt enhancement.');
     input.signal.throwIfAborted();
-    const isContinuity = input.target === 'continuity';
+    const isContinuity = input.target === 'continuity', projectInstructions = input.projectInstructions || undefined;
     const timeline = !isContinuity
       ? promptTimeline(input.duration, input.referenceTiming ?? { prefixFrames: 0, suffixFrames: 0 }) : undefined;
     const timingInstructions = timeline ? `${promptTimelineDirection(timeline)}\n${timingRepairInstructions}${input.keyframes?.length ? keyframeInstructions : ''}` : undefined;
@@ -101,7 +103,7 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
       referenceDescriptions: input.referenceDescriptions, referenceAudioMask: input.referenceAudioMask,
       imageGuides: { start: imageGuides.start === undefined ? undefined : `<Picture ${imageGuides.start + 1}>`,
         end: imageGuides.end === undefined ? undefined : `<Picture ${imageGuides.end + 1}>` },
-      continuity: input.continuity, dialogue: input.dialogue, loraInstructions: input.loraInstructions };
+      continuity: input.continuity, dialogue: input.dialogue, loraInstructions: input.loraInstructions, projectInstructions };
     const content = [...currentFrameContent(input.currentFrame), ...promptKeyframeContent(input.keyframes, timeline?.generatedStart),
       ...input.referenceFrames.map(image_url => ({ type: 'input_image' as const, image_url, detail: 'low' as const })),
       ...(input.imageReferences ?? []).flatMap((image_url, index) => [
@@ -117,10 +119,11 @@ export function createPromptEnhancer({ openai }: AIClients): PromptEnhancementPr
         ? `Apply these conventions to the text you add or change in enhancedPrompt; leave the original prompt in its own format.\n${conventions}` : undefined;
       return editPromptText(openai, { draft: input.prompt, enhancedPrompt: isContinuity ? undefined : input.enhancedPrompt,
         editInstructions: input.editInstructions, maxLength, signal: input.signal, context, content,
-        contextInstructions: [timingInstructions, pairedConventions].filter(Boolean).join('\n') || undefined });
+        contextInstructions: [timingInstructions, pairedConventions, projectInstructions && projectInstructionsGuidance].filter(Boolean).join('\n') || undefined });
     }
     return rewritePromptText(openai, { instructions: `${promptEditingInstructions}\n${isContinuity ? continuityInstructions : `${h3Instructions}\n${conventions}`}`
-        + (input.currentFrame ? `\n${currentFrameInstructions}` : '') + (timingInstructions ? `\n${timingInstructions}` : ''),
+        + (input.currentFrame ? `\n${currentFrameInstructions}` : '') + (timingInstructions ? `\n${timingInstructions}` : '')
+        + (projectInstructions ? `\n${projectInstructionsGuidance}` : ''),
       data: { draft: input.prompt, context }, content, maxLength, signal: input.signal });
   };
 }

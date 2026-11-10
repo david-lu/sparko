@@ -46,6 +46,14 @@ describe('project edit history', () => {
     history.endGroup(); history.record(shaped, graph({ videoCrossfade: .5, videoCrossfadeCurve: curve, to: 'c' }), 200);
     expect(history.undoLabel).toBe('Edit connections');
   });
+  it('groups project enhance instruction typing into one undo step', () => {
+    const history = new ProjectHistory(), start = project(), first = { ...start, promptInstructions: 'W' }, next = { ...start, promptInstructions: 'Warm light' };
+    history.record(start, first, 0); history.record(first, next, 100);
+    expect(history.undoLabel).toBe('Edit enhance instructions');
+    expect(history.target('undo')?.promptInstructions).toBeUndefined();
+    history.commit('undo');
+    expect(history.target('redo')?.promptInstructions).toBe('Warm light');
+  });
   it('groups consecutive typing, round-trips it, and starts a separate group after undo', () => {
     const history = new ProjectHistory(), start = project(), first = prompt(start, 'H'), next = prompt(first, 'Hello');
     history.record(start, first, 0); history.record(first, next, 100);

@@ -59,6 +59,19 @@ describe('model-specific image prompt enhancement', () => {
     await expect(enhance({ ...input(), loraInstructions: 'x'.repeat(4001) })).rejects.toThrow();
     expect(respond).not.toHaveBeenCalled();
   });
+  it.each([undefined, 'Change the title to "DAWN".'])('passes project enhance instructions with guidance (edit: %s)', async editInstructions => {
+    const enhance = createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt;
+    await enhance({ ...input(), editInstructions, projectInstructions: '  Use a muted risograph palette.  ' });
+    const args = respond.mock.calls[0][0];
+    expect(JSON.parse(args.input[0].content[0].text)).toMatchObject({ context: { projectInstructions: 'Use a muted risograph palette.' } });
+    expect(args.instructions).toContain("context.projectInstructions holds the user's standing instructions");
+    respond.mockClear();
+    await enhance({ ...input(), editInstructions });
+    expect(respond.mock.calls[0][0].instructions).not.toContain('context.projectInstructions');
+    respond.mockClear();
+    await expect(enhance({ ...input(), projectInstructions: 'x'.repeat(4001) })).rejects.toThrow();
+    expect(respond).not.toHaveBeenCalled();
+  });
   it.each(ASSET_MODELS.filter(m => m.kind === 'image'))('uses the official guide for $name', async model => {
     const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(input(model.id));
     expect(result).toEqual({ prompt, model: model.id, guideUrl: IMAGE_PROMPT_GUIDES[model.id].url });

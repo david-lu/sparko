@@ -6,8 +6,9 @@ import { enhancePrompt } from '../interstitials/enhance-prompt';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import { showErrorToast } from '../../shared/toasts';
 import { useGenerationWorkspace } from '../interstitials/GenerationWorkspace';
+import { projectPromptInstructions } from '../../../shared/prompt-instructions';
 
-export default function ContinuityBriefEditor({ value, engine, info, status, player }: Pick<InterstitialEditorProps, 'engine' | 'info' | 'status' | 'player'> & { value: FlowTimeline }) {
+export default function ContinuityBriefEditor({ value, engine, info, status, player, projects }: Pick<InterstitialEditorProps, 'engine' | 'info' | 'status' | 'player' | 'projects'> & { value: FlowTimeline }) {
   const workspace = useGenerationWorkspace();
   const promptId = useId(), { id, time, brief = '' } = value.flow.interstitial;
   const [enhancing, setEnhancing] = useState(false);
@@ -21,10 +22,12 @@ export default function ContinuityBriefEditor({ value, engine, info, status, pla
     if (enhancement.current || !status?.providers.openai || !brief.trim() || !value.onChange) return { applied: false };
     const operation = new AbortController(); enhancement.current = operation;
     setEnhancing(true);
+    const projectInstructions = projectPromptInstructions(projects?.getSnapshot().project);
     try {
-      const result = await enhancePrompt({ prompt: brief, time, duration: INTERSTITIAL.defaultDuration }, 'call', undefined, engine, info, operation.signal, { target: 'continuity', player, captureFrame: workspace?.getFrameCapture(), editInstructions });
+      const result = await enhancePrompt({ prompt: brief, time, duration: INTERSTITIAL.defaultDuration }, 'call', undefined, engine, info, operation.signal, { target: 'continuity', player, captureFrame: workspace?.getFrameCapture(), editInstructions, projectInstructions });
       const current = latest.current;
-      if (!operation.signal.aborted && enhancement.current === operation && current.flow.interstitial.id === id && (current.flow.interstitial.brief ?? '') === brief) {
+      if (!operation.signal.aborted && enhancement.current === operation && current.flow.interstitial.id === id && (current.flow.interstitial.brief ?? '') === brief
+        && projectPromptInstructions(projects?.getSnapshot().project) === projectInstructions) {
         current.onChange?.({ ...current.flow, interstitial: { ...current.flow.interstitial, brief: result.prompt } });
         return { applied: true };
       }
@@ -37,7 +40,7 @@ export default function ContinuityBriefEditor({ value, engine, info, status, pla
     } finally {
       if (enhancement.current === operation) { enhancement.current = null; setEnhancing(false); }
     }
-    return { applied: false, error: 'The brief changed. Try the edit again.' };
+    return { applied: false, error: 'The brief or project enhance instructions changed. Try the edit again.' };
   };
   return <div className="continuity-brief-editor" data-project-edit>
     <div className="field">

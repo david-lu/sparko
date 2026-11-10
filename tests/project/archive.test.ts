@@ -31,6 +31,12 @@ async function rewrite(blob: Blob, modify: (manifest: any) => void, omit?: strin
   await reader.close(); return writer.close();
 }
 describe('portable project archives', () => {
+  it('round-trips project enhance instructions and rejects oversized ones', async () => {
+    const promptInstructions = 'Keep the warm 16mm look.\nAll dialogue is in Spanish.';
+    const result = await unpackProject(await packProject({ ...project, promptInstructions }, media, signal(), progress), signal(), progress);
+    expect(result.project.promptInstructions).toBe(promptInstructions);
+    await expect(packProject({ ...project, promptInstructions: 'x'.repeat(4001) }, media, signal(), progress)).rejects.toThrow();
+  });
   it('preserves reference analysis preferences without marking a render as changed', async () => {
     const snapshot = structuredClone(project), item = snapshot.interstitials[0];
     item.analyzeReferences = false; item.generationSettings = interstitialSettings(item); item.analyzeReferences = true;
