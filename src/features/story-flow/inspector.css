@@ -106,3 +106,15 @@
 .reference-video-toggle{display:flex;align-items:center;gap:5px;font-size:10px;min-height:28px;flex-wrap:wrap}.reference-video-toggle input{accent-color:var(--accent)}.reference-video-toggle small{color:var(--muted);margin-left:auto}.inspector-reference .range-fields{grid-template-columns:1fr;gap:2px;padding:4px 0}
 
 .reference-sequence-clip{min-width:0}.reference-sequence-clip .inspector-reference-heading>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.reference-sequence-clip .inspector-reference-heading>div{display:flex;flex-shrink:0}
+.condition-input{margin-bottom:4px}
+.segmented-control{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;padding:2px;border-radius:var(--radius-sm);background:var(--input)}
+.segmented-control label{position:relative;display:flex;align-items:center;justify-content:center;gap:4px;height:20px;border-radius:3px;font-size:10px;color:var(--muted);cursor:pointer}
+.segmented-control input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.segmented-control label:hover{color:var(--text)}
+.segmented-control label:has(input:checked){background:var(--surface);color:var(--accent);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.segmented-control label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:1px}
+.condition-input-hint strong{color:var(--text-secondary);font-weight:600}
+.inspector-rule-heading:has(.condition-description){align-items:flex-start}
+.condition-description{flex:1;min-width:0;min-height:38px;padding:4px 5px;border:1px solid transparent;border-radius:3px;background:var(--input);font:inherit;font-size:11px;line-height:1.35;color:var(--text);resize:vertical}
+.condition-description:hover{border-color:var(--line-strong)}
+.condition-description::placeholder{color:var(--muted)}

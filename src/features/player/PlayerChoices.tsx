@@ -3,19 +3,24 @@ import { answerColorStyle, getScene, interactionFor, type Outcome, type SceneId 
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import ChoiceFace from '../call-response/ChoiceFace';
 import { behaviors } from '../story-flow/behaviors';
+import PlayerVoiceAnswer from './PlayerVoiceAnswer';
 
 const EXIT_MS = 220;
 const HOLD_MS = 1000;
 type Choice = { id: string; label: string; outcome: Outcome; style: CSSProperties };
 type Presentation = {
-  sceneId: SceneId; question: string; choices: Choice[]; selectedId: string | null;
+  sceneId: SceneId; question: string; choices: Choice[]; selectedId: string | null; voice: boolean;
   phase: 'choosing' | 'dismissing' | 'holding' | 'exiting' | 'done';
 };
 
 export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   const scene = value.session ? getScene(value.flow, value.session.sceneId) : null;
   const idleId = scene?.clip.kind === 'idle' && !(scene.storyNode&&!behaviors(scene.storyNode).conditional&&scene.storyNode.loopCount>0) ? scene.id : null;
-  const question = idleId ? interactionFor(value.flow, idleId).question : '';
+  const interaction = idleId ? interactionFor(value.flow, idleId) : null;
+  const question = interaction?.question ?? '';
+  const voice = interaction?.input === 'voice';
+  // Scenes where voice is unavailable fall back to buttons until the scene is entered again.
+  const [noMicScene, setNoMicScene] = useState<SceneId | null>(null);
   const questionId = useId();
   const controls = useRef<HTMLDivElement>(null);
   const outcome = value.session?.outcome;
@@ -34,11 +39,17 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
       if (!idleId) return current?.selectedId ? current : null;
       const selectedId = choices.find(choice => choice.outcome === outcome)?.id ?? null;
       if (current?.sceneId === idleId && current.selectedId === selectedId) {
-        return current.choices === choices && current.question === question ? current : { ...current, choices, question };
+        return current.choices === choices && current.question === question && current.voice === voice ? current : { ...current, choices, question, voice };
       }
-      return { sceneId: idleId, question, choices, selectedId, phase: selectedId ? 'dismissing' : 'choosing' };
+      return { sceneId: idleId, question, choices, selectedId, voice, phase: selectedId ? 'dismissing' : 'choosing' };
     });
-  }, [idleId, outcome, choices, question]);
+  }, [idleId, outcome, choices, question, voice]);
+  useEffect(() => { if (!idleId) setNoMicScene(null); }, [idleId]);
+  // Each non-default condition is a plain-language description Hume decides from the audio; the default plays when none match.
+  const fallbackId = interaction?.fallbackAnswerId ?? null;
+  const voiceContext = useMemo(() => ({ question: question.trim() || undefined, conditions: choices
+    .filter(choice => choice.outcome !== fallbackId && choice.label.trim())
+    .map(choice => ({ id: choice.outcome, description: choice.label })) }), [choices, question, fallbackId]);
 
   const selectedId = presentation?.selectedId;
   const sceneId = presentation?.sceneId;
@@ -64,6 +75,19 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   }, [selectedId, sceneId, phase]);
 
   if (!presentation || !presentation.choices.length || presentation.phase === 'done') return null;
+  const choose = (choice: Choice) => {
+    setPresentation({ ...presentation, selectedId: choice.id, phase: 'dismissing' });
+    value.onBranch(presentation.sceneId, choice.outcome);
+  };
+  // Voice conditions are instructions for Hume, not viewer-facing labels, so voice shows only a corner badge, never buttons.
+  if (presentation.voice && noMicScene !== presentation.sceneId) {
+    return <PlayerVoiceAnswer key={presentation.sceneId} context={voiceContext} chosen={!!selectedId} leaving={presentation.phase === 'exiting'}
+      onUnavailable={() => setNoMicScene(presentation.sceneId)} onAnswer={answerId => {
+        const choice = presentation.choices.find(choice => choice.outcome === (answerId ?? fallbackId));
+        if (!choice) return false;
+        choose(choice); return true;
+      }} />;
+  }
   return <div key={presentation.sceneId} ref={controls} className="player-branch-controls" role="group" aria-label="Choose an answer"
     aria-describedby={presentation.question.trim() ? questionId : undefined}
     data-phase={presentation.phase} style={{ '--choice-columns': Math.min(3, presentation.choices.length), '--choice-exit-duration': `${EXIT_MS}ms` } as CSSProperties}
@@ -75,8 +99,7 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
       tabIndex={selectedId && selectedId !== choice.id ? -1 : undefined}
       onClick={() => {
         if (selectedId) return;
-        setPresentation({ ...presentation, selectedId: choice.id, phase: 'dismissing' });
-        value.onBranch(presentation.sceneId, choice.outcome);
+        choose(choice);
       }} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>
       <ChoiceFace>{choice.label}</ChoiceFace>
     </button>)}

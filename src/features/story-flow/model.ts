@@ -31,7 +31,10 @@ export type StoryNode = {
   /** Independent repeat overlaps in seconds; zero makes a hard cut for that channel. */
   loopVideoCrossfade?: number; loopAudioCrossfade?: number;
   loop?: boolean; conditional?: boolean; conditions?: StoryCondition[]; defaultConditionId?: string;
+  /** How viewers choose a condition. Missing means buttons. */
+  conditionInput?: ConditionInput;
 };
+export type ConditionInput = 'button' | 'voice';
 export type FadeChannel = 'video' | 'audio';
 export type StoryEdge = { id: string; from: string; to: string; event: 'next' | 'answer' | 'fallback'; conditionId?: string; label: string; values: string[];
   /** Shared defaults from older projects; individual edits override only their channel. */
@@ -363,7 +366,8 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
   const interactions: NonNullable<CallResponseFlow['storyInteractions']> = {};
   for (const node of graph.nodes) {
     const behavior=behaviors(node);
-    if (behavior.conditional) interactions[node.id] = { question:node.name,waitSceneId:node.id,fallbackAnswerId:graph.edges.find(e=>e.from===node.id&&e.event==='answer'&&(e.conditionId??e.id)===defaultCondition(graph,node)?.id)?.id??null,
+    // A clip's name is an editor label, not a question for viewers, so it is neither shown over the video nor sent to Hume.
+    if (behavior.conditional) interactions[node.id] = { question:'',waitSceneId:node.id,input:node.conditionInput??'button',fallbackAnswerId:graph.edges.find(e=>e.from===node.id&&e.event==='answer'&&(e.conditionId??e.id)===defaultCondition(graph,node)?.id)?.id??null,
       answers:conditionsFor(graph,node).flatMap(c=>{const e=graph.edges.find(e=>e.from===node.id&&e.event==='answer'&&(e.conditionId??e.id)===c.id);return e?[{id:e.id,label:c.label,values:c.values,sceneId:e.to}]:[]}) };
     else if (behavior.loop) {
       const next = graph.edges.find(e => e.from === node.id && e.event === 'next');

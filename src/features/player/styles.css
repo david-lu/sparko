@@ -35,6 +35,25 @@
 .player-branch-controls button{min-height:62px;overflow-wrap:anywhere;touch-action:manipulation;animation:choice-pop-in 420ms cubic-bezier(.22,.8,.3,1) backwards;transition:translate .15s,scale .15s;transform-origin:50% 65%}
 .player-branch-question{grid-column:1/-1;margin:0;padding:10px 14px;color:#fff;-webkit-text-stroke:2px #000;paint-order:stroke fill;font-size:clamp(13px,1.6vw,20px);font-weight:650;line-height:1.35;text-align:center;text-wrap:balance;white-space:pre-wrap;overflow-wrap:anywhere;animation:question-in 360ms ease-out both}
 .player-branch-controls button[aria-pressed="true"]{outline:2px solid #fff;outline-offset:3px}
+.player-voice-cue{position:absolute;top:12px;right:12px;z-index:3;display:flex;align-items:center;gap:6px;max-width:min(260px,calc(100% - 24px));padding:5px 10px 5px 8px;border:1px solid #ffffff30;border-radius:999px;background:#17191ddd;color:#eee;font-size:11px;font-weight:600;line-height:1.3;box-shadow:0 2px 10px #0004;pointer-events:none;animation:voice-cue-in .2s ease-out both}
+.player-voice-cue svg{flex-shrink:0}
+.player-voice-cue[data-state="starting"]{color:#eeeeee99}
+.player-voice-cue[data-state="listening"] svg,.player-voice-cue[data-state="hearing"] svg{color:#ff5d52}
+.player-voice-cue[data-state="thinking"] svg{animation:voice-cue-think 1s ease-in-out infinite alternate}
+.player-voice-cue[data-state="answered"] svg{color:#5fd17f}
+.player-voice-cue[data-leaving]{animation:voice-cue-out .22s ease-in both}
+.player-voice-bars{display:flex;align-items:center;gap:2px;height:12px}
+.player-voice-bars i{width:3px;height:100%;border-radius:2px;background:#fff;scale:1 .45;animation:voice-bar-idle 1.6s ease-in-out infinite}
+.player-voice-bars i:nth-child(2){animation-delay:.2s}
+.player-voice-bars i:nth-child(3){animation-delay:.4s}
+.player-voice-cue[data-state="hearing"] .player-voice-bars i{animation:voice-bar-hear .45s ease-in-out infinite alternate}
+.player-voice-cue[data-state="hearing"] .player-voice-bars i:nth-child(2){animation-delay:-.2s}
+.player-voice-cue[data-state="hearing"] .player-voice-bars i:nth-child(3){animation-delay:-.32s}
+@keyframes voice-cue-in{from{opacity:0;scale:.85}}
+@keyframes voice-cue-out{to{opacity:0;scale:.85}}
+@keyframes voice-cue-think{to{opacity:.35}}
+@keyframes voice-bar-idle{50%{scale:1 .75}}
+@keyframes voice-bar-hear{from{scale:1 .35}to{scale:1 1}}
 @media(hover:hover){.player-branch-controls[data-phase="choosing"] button:hover{--choice-depth:6px}}
 .player-branch-controls[data-phase="choosing"] button:active{--choice-depth:1px}
 .player-branch-controls button:focus-visible{outline:3px solid white;outline-offset:5px}
@@ -49,7 +68,7 @@
 @keyframes question-in{from{opacity:0;transform:translateY(8px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes question-out{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-6px) scale(.96)}}
 @media(max-width:660px){.player-branch-controls{--choice-gap:8px;bottom:42px;max-width:70%;max-height:calc(100% - 48px);padding:8px 8px 12px;grid-template-columns:repeat(var(--choice-columns),auto)}.player-branch-controls button{--choice-radius:10px;--choice-padding:9px 8px;min-height:50px;font-size:14px}}
-@media(prefers-reduced-motion:reduce){.player-branch-controls[data-phase] button[aria-pressed],.player-branch-controls[data-phase] .player-branch-question{animation:none;transition:none}.player-branch-controls[data-phase="choosing"] button:hover,.player-branch-controls[data-phase="choosing"] button:active{--choice-depth:4px;translate:none;scale:none}}
+@media(prefers-reduced-motion:reduce){.player-voice-cue,.player-voice-cue svg,.player-voice-bars i{animation:none!important}.player-voice-bars i:nth-child(2){scale:1 .6}.player-voice-cue[data-state="hearing"] .player-voice-bars i{scale:1 .8}.player-branch-controls[data-phase] button[aria-pressed],.player-branch-controls[data-phase] .player-branch-question{animation:none;transition:none}.player-branch-controls[data-phase="choosing"] button:hover,.player-branch-controls[data-phase="choosing"] button:active{--choice-depth:4px;translate:none;scale:none}}
 @media(max-width:380px){.player-card:fullscreen .transport{height:auto;flex-wrap:wrap;justify-content:center;gap:2px 8px}.player-card:fullscreen .player-branch-controls{bottom:78px;max-height:calc(100% - 86px)}}
 .draft-preview-label{position:absolute;top:12px;left:12px;padding:5px 9px;border:1px solid #ffffff30;border-radius:5px;background:#17191ddd;color:#eee;font-size:11px;pointer-events:none;z-index:4}
 .player-empty{position:relative;pointer-events:none;color:var(--muted);font-size:12px;text-align:center;padding:16px}

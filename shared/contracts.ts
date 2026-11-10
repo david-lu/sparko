@@ -15,6 +15,11 @@ export type VoiceAnswer = {
   model: string;
   context: VoiceContext;
 };
+/** A non-default condition, written in plain language for Hume to decide from the audio. */
+export type VoiceCondition = { id: string; description: string };
+export type VoiceChoiceContext = { question?: string; conditions: VoiceCondition[] };
+/** `answerId` is null when no condition matched, which plays the default condition. */
+export type VoiceChoice = { answerId: string | null; probability: number; model: string };
 export type CaptionResult = {
   caption: string;
   description: string;
@@ -27,7 +32,7 @@ export type CaptionResult = {
 export type AppStatus = {
   uploadMode: 'local' | 'blob';
   requiresPassword: boolean;
-  providers: Record<Provider | 'comfy', boolean> & { fal?: boolean };
+  providers: Record<Provider | 'comfy', boolean> & { fal?: boolean; hume?: boolean };
   models: Record<Provider, string>;
   defaultVideo: { name: string; url: string; size: number };
   defaultProject?: { url: string } | null;
