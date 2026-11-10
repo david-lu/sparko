@@ -33,6 +33,15 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
     if(a.entryId!==b.entryId)return {label:'Change start video'};
     if(!same(a.templates,b.templates))return {label:'Save group template'};
     if(!same(a.groups,b.groups))return {label:(b.groups?.length??0)>(a.groups?.length??0)?'Group clips':(b.groups?.length??0)<(a.groups?.length??0)?'Ungroup clips':'Edit group'};
+    if(!same(a.comments,b.comments)){
+      const previous=a.comments??[],next=b.comments??[];
+      if(next.length!==previous.length)return {label:next.length>previous.length?'Add comment':'Delete comment'};
+      const changed=next.filter(c=>!same(c,previous.find(p=>p.id===c.id))),old=changed.length===1?previous.find(p=>p.id===changed[0].id):undefined;
+      if(old&&!!old.resolved!==!!changed[0].resolved)return {label:changed[0].resolved?'Resolve comment':'Reopen comment'};
+      // Arrow-key nudges on one pin merge like a slider drag.
+      if(old&&old.text===changed[0].text)return {label:'Move comment',key:`comment:${old.id}:move`};
+      return {label:'Edit comment'};
+    }
     if(!same(a.edges,b.edges)){
       // Fade duration and shape edits on one connection merge like a slider drag.
       const changed=b.edges.filter(e=>!same(e,a.edges.find(p=>p.id===e.id))),previous=changed.length===1?a.edges.find(e=>e.id===changed[0].id):undefined;

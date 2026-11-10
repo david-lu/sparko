@@ -113,7 +113,7 @@ const projectSchema = z.object({
   .refine(project=>!project.mediaModelVersion||project.storyFlow?.nodes.every(n=>!n.generationId||project.clipGenerations?.some(g=>g.id===n.generationId)),'A clip references missing generation settings.')
   .refine(project=>!project.mediaModelVersion||(project.clipGenerations??[]).every(g=>project.storyFlow?.nodes.filter(n=>n.generationId===g.id).length===1),'Generation settings must belong to exactly one timeline clip.')
   .refine(project=>!!project.source.assetId||!!project.storyFlow&&!project.callResponse&&!project.callResponses?.length,'A legacy project is missing its source video.');
-const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)]), project: projectSchema,
+const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8)]), project: projectSchema,
   assets: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(1000), mime: z.string().max(200), size: number.int().positive().max(MAX_BYTES) })).max(2000),
 });
 type Progress = (message: string, fraction: number) => void;
@@ -124,7 +124,7 @@ const hasAudioTracks = (project: Project) => [...project.interstitials.flatMap(i
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
   assets = assets.filter(asset => !project.deletedAssetIds?.includes(asset.id));
   const supplied = new Set(assets.map(asset => asset.id));
-  const manifest = manifestSchema.parse({ format: 'sparko-project', version: hasAudioTracks(project) ? 7 : project.audioLayers?.length ? 6 : project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
+  const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.storyFlow?.comments?.length ? 8 : hasAudioTracks(project) ? 7 : project.audioLayers?.length ? 6 : project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
     ...project,
     assetAliases: project.assetAliases ? Object.fromEntries(Object.entries(project.assetAliases).filter(([, id]) => supplied.has(id))) : undefined,
     interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
@@ -167,7 +167,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const entry = entries.find(entry => entry.filename === 'project.json');
     if (!entry || entry.directory || entry.uncompressedSize > MAX_MANIFEST) throw new Error('The archive is missing a valid project.json manifest.');
     const raw = JSON.parse(await entry.getData(new TextWriter(), { signal, checkSignature: true }));
-    if (![1, 2, 3, 4, 5, 6, 7].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
+    if (![1, 2, 3, 4, 5, 6, 7, 8].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
     const parsed = manifestSchema.safeParse(raw);
     if (!parsed.success) throw new Error(`Invalid project metadata: ${parsed.error.issues[0].message}`);
     const { project, assets: descriptions } = parsed.data;

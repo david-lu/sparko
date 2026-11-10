@@ -8,6 +8,7 @@ export const shortcutActions = [
   { id: 'select', label: 'Select tool', group: 'Timeline', defaults: ['V'] },
   { id: 'cut', label: 'Cut tool', group: 'Timeline', defaults: ['C'] },
   { id: 'pan', label: 'Hand tool', group: 'Timeline', defaults: ['H'] },
+  { id: 'comment', label: 'Comment tool', group: 'Timeline', defaults: ['Shift+M'], description: 'Click a clip to comment on that moment, or anywhere on the timeline.' },
   { id: 'add', label: 'New video', group: 'Timeline', defaults: ['N', 'P'] },
   { id: 'split', label: 'Split at playhead', group: 'Timeline', defaults: ['S'] },
   { id: 'duplicate', label: 'Duplicate selected clips', group: 'Timeline', defaults: ['Mod+D'] },

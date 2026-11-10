@@ -18,6 +18,7 @@ import { ProjectHistory } from './ProjectHistory';
 // removes old hashed chunks. Load archive support with the application.
 import { packProject, unpackProject } from './archive';
 import { freshId, migrateFades, migrateGraph, removeNodes, type StoryGraph, type StoryNode } from '../story-flow/model';
+import { keepComments } from '../story-flow/comments';
 import { collectLibrary } from './library';
 import { migrateClipMedia, assetPlacement } from './migrateClipMedia';
 import { inspectAsset, mediaKind, mediaFile, type LibraryFile } from './libraryFiles';
@@ -323,6 +324,8 @@ export class ProjectController {
     return { ...project, library: collectLibrary(project, this.storyDuration || undefined) };
   }
   private save(project: Project, record = true) {
+    // Every edit path that removes clips keeps their comments on the canvas.
+    if (project.storyFlow) project = { ...project, storyFlow: keepComments(this.state.project?.id === project.id ? this.state.project.storyFlow : undefined, project.storyFlow) };
     project = this.normalizeContent(project);
     const deletionChanged = JSON.stringify(project.deletedAssetIds ?? []) !== JSON.stringify(this.state.project?.deletedAssetIds ?? []);
     assets.setDeleted(project.deletedAssetIds);

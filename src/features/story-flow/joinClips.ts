@@ -1,6 +1,7 @@
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { isGenerating, playableResult, type Interstitial } from '../../../shared/interstitials';
 import { behaviors, conditionsFor } from './behaviors';
+import { isClipAnchor, mediaStart } from './comments';
 import { generatedBounds, type StoryGraph, type StoryNode } from './model';
 
 type JoinResult = { ok: false; reasons: string[] } | { ok: true; graph: StoryGraph; nodeId: string; count: number };
@@ -106,7 +107,15 @@ export function joinClips(graph: StoryGraph, items: Interstitial[], ids: string[
   const owner = graph.groups?.find(group => group.nodeIds.includes(first.id))
     ?? ordered.flatMap(node => graph.groups?.filter(group => group.nodeIds.includes(node.id)) ?? [])[0];
   const remap = (id: string) => selected.has(id) ? first.id : id;
-  return { ok: true, nodeId: first.id, count: selected.size, graph: { ...graph,
+  // Comments keep their moment: convert each clip's media frame into the shared
+  // file, then into the joined clip's frames.
+  const comments = graph.comments?.map(comment => {
+    const anchor = comment.anchor;
+    if (!isClipAnchor(anchor) || !selected.has(anchor.nodeId)) return comment;
+    const node = ordered.find(node => node.id === anchor.nodeId)!, file = ranges.get(node.id)!.inFrame + anchor.frame - mediaStart(node);
+    return { ...comment, anchor: { nodeId: first.id, frame: Math.max(0, keepGenerated ? file - start.bodyStart : file) } };
+  });
+  return { ok: true, nodeId: first.id, count: selected.size, graph: { ...graph, ...(comments ? { comments } : {}),
     entryId: remap(graph.entryId),
     nodes: graph.nodes.flatMap(node => node.id === first.id ? [merged] : selected.has(node.id) ? []
       : [{ ...node, referenceId: node.referenceId ? remap(node.referenceId) : undefined }]),

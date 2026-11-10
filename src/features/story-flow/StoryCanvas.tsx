@@ -1,7 +1,7 @@
 import { generationBusy } from '../../../shared/asset-generation';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Combine, Copy, Flag, Hand, GripVertical, ImageOff, LayoutTemplate, Maximize, Minus, Paintbrush, Palette, Plus, Scissors, SquareDashed, Trash2, Unplug, Upload } from 'lucide-react';
+import { Check, ChevronDown, Combine, Copy, Flag, Hand, GripVertical, ImageOff, LayoutTemplate, Maximize, MessageSquare, MessageSquarePlus, Minus, Paintbrush, Palette, Plus, Scissors, SquareDashed, Trash2, Unplug, Upload } from 'lucide-react';
 import { videoAssets } from '../../../shared/video-references';
 import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
 import { TIMELINE_FPS } from '../../../shared/constants';
@@ -22,7 +22,10 @@ import { useWorkspaceLocked } from '../../shared/panels/WorkspaceLock';
 import { useShortcuts } from '../../shared/shortcuts';
 import { useExclusiveMenu } from '../../shared/DropdownMenu';
 import { phaseLabel } from '../interstitials/status';
-import { autoLayout, CLIP_HEIGHT, connect, createNode, freshId, nodeDuration, nodeMediaLayout, nodeVisualBounds, PIXELS_PER_SECOND, reachableNodes, groupColors, type GroupBounds, type StoryNode, type StoryEdge } from './model';
+import { autoLayout, CLIP_HEIGHT, connect, createNode, freshId, nodeDuration, nodeMediaLayout, nodeVisualBounds, PIXELS_PER_SECOND, reachableNodes, groupColors, type CommentAnchor, type GroupBounds, type StoryComment, type StoryNode, type StoryEdge } from './model';
+import { clipAnchor, commentSceneFrame, commentSummary, isClipAnchor } from './comments';
+import CommentPopover from './CommentPopover';
+import './comments.css';
 import type { StoryEditor } from './useStoryEditor';
 import { builtInTemplates, instantiateTemplate, makePreset } from './templates';
 import { STORY_DRAG_TYPE, readLibraryDrag, type LibraryItem } from './libraryDrag';
@@ -72,8 +75,9 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     const frame=requestAnimationFrame(()=>editor.player.seekFlowScene(pending.id,pending.frame));return()=>cancelAnimationFrame(frame);
   },[flow]);
   const [cutTool,setCutTool]=useState(false),[cutPreview,setCutPreview]=useState<{id:string;frame:number}|null>(null);
+  const [commentTool,setCommentTool]=useState(false),[commentEditor,setCommentEditor]=useState<{id:string|null;anchor:CommentAnchor}|null>(null),[commentDrag,setCommentDrag]=useState<{id:string|null;anchor:CommentAnchor}|null>(null);
   const [groupTool,setGroupTool]=useState(false),[drawnGroup,setDrawnGroup]=useState<GroupBounds|null>(null),[framePreview,setFramePreview]=useState<{id:string;bounds:GroupBounds}|null>(null);
-  const [context,setContext]=useState<{id?:string;groupId?:string;edgeId?:string;pointId?:string;selectionIds?:string[];colors?:boolean;templates?:boolean;x:number;y:number;point:Point}|null>(null),menu=useRef<HTMLDivElement>(null);
+  const [context,setContext]=useState<{id?:string;groupId?:string;edgeId?:string;pointId?:string;selectionIds?:string[];colors?:boolean;templates?:boolean;commentAnchor?:CommentAnchor;x:number;y:number;point:Point}|null>(null),menu=useRef<HTMLDivElement>(null);
   const suppressClick=useRef(false),lastFocusRevision=useRef(editor.focusRevision);
   const [movePreview,setMovePreview]=useState<{ids:string[];groupId?:string;dx:number;dy:number}|null>(null);
   const [routeDrag,setRouteDrag]=useState<{edgeId:string;pointId:string;point:Point}|null>(null);
@@ -82,7 +86,10 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const movingInterstitial=!!movePreview&&!movePreview.groupId&&movePreview.ids.length===1&&graph.nodes.some(n=>n.id===movePreview.ids[0]&&n.kind!=='source');
   const dropConnection=insertingLibrary||movingInterstitial?graph.edges.find(e=>e.id===dropTarget):undefined;
   const project=editor.projects.getSnapshot().project,library=project?.library;
-  useEffect(()=>setDrawing(undefined),[project?.id]);
+  useEffect(()=>{setDrawing(undefined);setCommentEditor(null);},[project?.id]);
+  const comments=graph.comments??[];
+  // Undo or another edit can remove the comment being edited.
+  useEffect(()=>{if(commentEditor?.id&&!graph.comments?.some(c=>c.id===commentEditor.id))setCommentEditor(null);},[graph.comments,commentEditor?.id]);
   const templatePreview=useMemo(()=>{
     if(!libraryDrag||!('templateId' in libraryDrag))return;
     const template=graph.templates.find(t=>t.id===libraryDrag.templateId)??(builtInTemplates.some(t=>t.id===libraryDrag.templateId)?makePreset(libraryDrag.templateId):undefined);
@@ -150,8 +157,8 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     const anchor=dragPreview.find(n=>n.id===templatePreview?.selectedId)??dragPreview[0],view=cameraRef.current;
     return anchor?{x:point.x-(anchor.x+anchor.duration*PIXELS_PER_SECOND/2)*view.zoom,y:point.y-anchor.y*view.rowScale-CLIP_HEIGHT/2}:point;
   };
-  const chooseTool=(tool:'cut'|'group'|'pan'|null)=>{
-    gestureCancel.current?.();setCutTool(tool==='cut'&&!cutTool);setGroupTool(tool==='group'&&!groupTool);setPanTool(tool==='pan'&&!panTool);
+  const chooseTool=(tool:'cut'|'group'|'pan'|'comment'|null)=>{
+    gestureCancel.current?.();setCutTool(tool==='cut'&&!cutTool);setGroupTool(tool==='group'&&!groupTool);setPanTool(tool==='pan'&&!panTool);setCommentTool(tool==='comment'&&!commentTool);
     setCutPreview(null);setDrawnGroup(null);editor.setConnecting(null);
   };
   const fit=(targets:StoryNode[]=nodes,maxZoom=2,edges=graph.edges)=>{
@@ -243,9 +250,9 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       // Keep native button activation and keyboard navigation available.
       if(!event.ctrlKey&&!event.metaKey&&!event.altKey&&['Enter','Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.code)&&target.closest('button,a,summary,[role="button"],[role="separator"],[role="slider"]'))return;
       const actions:Partial<Record<typeof action,()=>void>>={fit:fitSelected,layout:cleanup,duplicate:editor.duplicate,group:editor.groupSelection,ungroup:editor.ungroup,
-        pan:()=>chooseTool('pan'),select:()=>chooseTool(null),
+        pan:()=>chooseTool('pan'),select:()=>chooseTool(null),comment:()=>chooseTool('comment'),
         add:()=>editor.add('simple'),split:()=>{if(editor.split()){setCutTool(false);setCutPreview(null);}},cut:()=>chooseTool('cut'),
-        delete:()=>{const point=target.closest<HTMLElement>('[data-reroute-id]');if(point){const edge=point.closest('[data-edge-id]')?.getAttribute('data-edge-id');if(edge)removeReroute(edge,point.dataset.rerouteId!);}else if(editor.selected.length||editor.selectedGroup||editor.selectedEdge)editor.remove();}};
+        delete:()=>{const pin=target.closest<HTMLElement>('[data-comment-id]');if(pin){editor.removeComment(pin.dataset.commentId!);scroll.current?.focus({preventScroll:true});return;}const point=target.closest<HTMLElement>('[data-reroute-id]');if(point){const edge=point.closest('[data-edge-id]')?.getAttribute('data-edge-id');if(edge)removeReroute(edge,point.dataset.rerouteId!);}else if(editor.selected.length||editor.selectedGroup||editor.selectedEdge)editor.remove();}};
       if(actions[action]){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)actions[action]();}
     };window.addEventListener('keydown',key,true);return()=>window.removeEventListener('keydown',key,true);
   },[editor,graph,collapsed,shortcuts.bindings]);
@@ -422,6 +429,10 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   };
   const beginAreaGesture=(event:React.PointerEvent<HTMLDivElement>)=>{
     if((event.target as Element).closest('.content-issues,.content-issues-popover'))return;
+    if(commentTool&&event.button===0&&!space.current.held&&!(event.target as Element).closest('[data-comment-id]')){
+      event.preventDefault();event.stopPropagation();suppressClick.current=true;setTimeout(()=>{suppressClick.current=false;},0);
+      setCommentTool(false);openCommentDraft(commentAnchorAt({x:event.clientX,y:event.clientY}));return;
+    }
     const pan=event.button===1||event.button===0&&(panTool||space.current.held);
     const blank=!(event.target as Element).closest('[data-node-id],[data-edge-id],[data-group-id],button,input,textarea,select');
     if(!pan&&!(event.button===0&&(blank||groupTool)))return;
@@ -507,6 +518,55 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     if('templateId' in item){const template=graph.templates.find(t=>t.id===item.templateId)??builtInTemplates.find(t=>t.id===item.templateId)?.id;if(template)editor.insertTemplate(template,connectionId??undefined,point,fromId);}
   };
   const contextAction=(action:()=>void)=>{action();setContext(null);scroll.current?.focus({preventScroll:true});};
+  /** Over a clip, a comment pins to that moment of its media; elsewhere it stays at that point of the timeline. */
+  const commentAnchorAt=(client:Point):CommentAnchor=>{
+    const clip=document.elementsFromPoint(client.x,client.y).map(element=>element.closest<HTMLElement>('.story-clip[data-node-id]')).find(Boolean);
+    const node=clip&&nodes.find(n=>n.id===clip.dataset.nodeId),scene=node&&flow.scenes.find(s=>s.id===node.id),strip=clip?.querySelector('.story-filmstrip');
+    if(node&&scene&&strip)return clipAnchor(node,Math.max(0,Math.min(sceneFrames(scene)-1,frameAt(node,client.x,strip.getBoundingClientRect()))));
+    return toWorld(localPoint(client),cameraRef.current);
+  };
+  const commentPlace=(anchor:CommentAnchor)=>{
+    if(!isClipAnchor(anchor)){const p=toScreen(anchor,camera);return {...p,label:'the timeline',location:'Timeline',outside:false};}
+    const node=nodes.find(n=>n.id===anchor.nodeId),scene=flow.scenes.find(s=>s.id===anchor.nodeId);if(!node||!scene)return;
+    // Trimmed-out moments stay attached; their pin waits at the nearest edge.
+    const frames=Math.max(1,Math.round(durations[node.id]*flow.fps)),frame=commentSceneFrame(node,anchor.frame),shown=Math.max(0,Math.min(frames-1,frame));
+    const time=formatTime(playheadTime(scene,shown,flow.fps,playheadTimeMode),true);
+    return {x:(node.x+shown/flow.fps*PIXELS_PER_SECOND)*zoom+camera.x,y:node.y*camera.rowScale+camera.y+CLIP_HEIGHT,outside:shown!==frame,
+      label:`${scene.label} at ${time}`,location:`${time} · ${scene.label}`};
+  };
+  const seekComment=(anchor:CommentAnchor)=>{
+    if(!isClipAnchor(anchor))return;
+    const node=graph.nodes.find(n=>n.id===anchor.nodeId),scene=flow.scenes.find(s=>s.id===anchor.nodeId);if(!node||!scene)return;
+    editor.player.pause();editor.player.seekFlowScene(node.id,Math.max(0,Math.min(sceneFrames(scene)-1,commentSceneFrame(node,anchor.frame))));
+  };
+  const openComment=(comment:StoryComment)=>{setCommentEditor({id:comment.id,anchor:comment.anchor});seekComment(comment.anchor);};
+  const openCommentDraft=(anchor:CommentAnchor)=>{setCommentEditor({id:null,anchor});seekComment(anchor);};
+  const commentPin=(id:string|null)=>scroll.current?.querySelector<HTMLElement>(`[data-comment-id="${CSS.escape(id??'new')}"]`)??null;
+  // Keyboard users return to the pin they edited, or to the canvas, as soon as it renders.
+  const commentFocus=useRef<string|null|undefined>(undefined);
+  useLayoutEffect(()=>{
+    const id=commentFocus.current,target=id===undefined?undefined:id?commentPin(id):scroll.current;
+    if(target){commentFocus.current=undefined;target.focus({preventScroll:true});}
+  });
+  const dragComment=(event:React.PointerEvent<HTMLButtonElement>,id:string|null,anchor:CommentAnchor)=>{
+    if(event.button!==0||panTool||space.current.held)return;
+    const originalCamera=cameraRef.current,bounds=scroll.current!.getBoundingClientRect();let next=anchor;
+    trackGesture(event,point=>{next=commentAnchorAt({x:point.x+bounds.left,y:point.y+bounds.top});setCommentDrag({id,anchor:next});},
+      moved=>{setCommentDrag(null);
+        if(!moved){const comment=comments.find(c=>c.id===id);if(comment)openComment(comment);return;}
+        if(id)editor.updateComment(id,{anchor:next});else setCommentEditor(current=>current&&{...current,anchor:next});
+        editor.setNotice(isClipAnchor(next)?'Comment pinned to this moment of the clip.':'Comment placed on the timeline.');},
+      ()=>{setCommentDrag(null);updateCamera(originalCamera);},true);
+  };
+  const nudgeComment=(event:React.KeyboardEvent<HTMLButtonElement>,id:string|null,anchor:CommentAnchor)=>{
+    if(!id||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
+    event.preventDefault();event.stopPropagation();
+    const dx=event.key==='ArrowLeft'?-1:event.key==='ArrowRight'?1:0,dy=event.key==='ArrowUp'?-1:event.key==='ArrowDown'?1:0;
+    if(!isClipAnchor(anchor)){const step=event.shiftKey?10:1;editor.updateComment(id,{anchor:{x:anchor.x+dx*step,y:anchor.y+dy*step}});return;}
+    const node=graph.nodes.find(n=>n.id===anchor.nodeId),scene=flow.scenes.find(s=>s.id===anchor.nodeId);if(!dx||!node||!scene)return;
+    const next=clipAnchor(node,Math.max(0,Math.min(sceneFrames(scene)-1,commentSceneFrame(node,anchor.frame)+dx*(event.shiftKey?flow.fps:1))));
+    editor.updateComment(id,{anchor:next});seekComment(next);
+  };
   const selectOrphaned=()=>{
     editor.setSelected(orphaned.map(node=>node.id));editor.setSelectedEdge(null);
     editor.jobs.select(orphaned.length===1?orphaned[0].interstitialId??null:null);
@@ -515,7 +575,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const joinSelected=()=>{chooseTool(null);setContext(null);setJoinError(editor.join());};
   const toggleCollapsed=()=>{
     if(workspaceLocked)return;
-    if(!collapsed){chooseTool(null);setContext(null);setTemplateName(null);setWire(null);setCutPreview(null);editor.setConnecting(null);hovering.current=false;space.current={held:false,used:false};setSpaceHeld(false);}
+    if(!collapsed){chooseTool(null);setContext(null);setTemplateName(null);setCommentEditor(null);setWire(null);setCutPreview(null);editor.setConnecting(null);hovering.current=false;space.current={held:false,used:false};setSpaceHeld(false);}
     onCollapsed(!collapsed);
   };
   const contextGroup=graph.groups?.find(g=>g.id===context?.groupId),contextMemberGroup=graph.groups?.find(g=>g.nodeIds.includes(context?.id??''));
@@ -524,7 +584,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const contextNode=graph.nodes.find(node=>node.id===context?.id);
   const canCutAtPlayhead=!!contextScene&&session?.sceneId===contextScene.id&&session.frame>0&&session.frame<sceneFrames(contextScene);
   const membersToAdd=(context?.selectionIds??[]).filter(id=>!contextGroup?.nodeIds.includes(id));
-  return <div ref={root} className={`story-canvas ${collapsed?'collapsed':''} ${wire||editor.connecting?'connecting':''} ${cutTool?'cut-tool':''} ${groupTool?'draw-group-tool':''} ${panTool||spaceHeld?'pan-tool':''} ${panning?'panning':''} ${dropTarget?'library-drag':''} ${libraryDrag?'dragging-library':''} ${insertingLibrary||movingInterstitial?'dragging-insert':''}`} style={{height:collapsed?'auto':height}}>
+  return <div ref={root} className={`story-canvas ${collapsed?'collapsed':''} ${wire||editor.connecting?'connecting':''} ${cutTool?'cut-tool':''} ${groupTool?'draw-group-tool':''} ${commentTool?'comment-tool':''} ${panTool||spaceHeld?'pan-tool':''} ${panning?'panning':''} ${dropTarget?'library-drag':''} ${libraryDrag?'dragging-library':''} ${insertingLibrary||movingInterstitial?'dragging-insert':''}`} style={{height:collapsed?'auto':height}}>
     {!collapsed&&<ResizeHandle orientation="horizontal" label="Resize story canvas" value={height} min={220} max={maxHeight} onChange={onHeight}/>}
     <div className="story-toolbar"><button className="story-collapse" disabled={workspaceLocked} aria-label={collapsed?'Expand timeline':'Collapse timeline'} aria-expanded={!collapsed} aria-controls={canvasId} title={workspaceLocked?'Unlock workspace in Window to collapse the timeline':collapsed?'Expand timeline':'Collapse timeline'} onClick={toggleCollapsed} onKeyDown={e=>{if(e.key===' ')e.stopPropagation();}}><ChevronDown size={14}/><span className="eyebrow">TIMELINE</span></button><span className="story-collapsed-summary">{nodes.length} {nodes.length===1?'clip':'clips'}</span>
       <button className="button small" title={shortcuts.title('layout')} aria-keyshortcuts={shortcuts.aria('layout')} onClick={cleanup}>Auto layout</button>
@@ -534,6 +594,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       <span id={`${canvasId}-join-help`} className="sr-only">When Join is unavailable, activate it to see all reasons.</span>
       <button className={`icon-button small ${cutTool?'active':''}`} title={shortcuts.title('cut')+'. Click a clip to split it.'} aria-label="Cut tool" aria-pressed={cutTool} onClick={()=>chooseTool('cut')}><Scissors size={14}/></button>
       <button className={`icon-button small ${groupTool?'active':''}`} title="Draw group · Drag a frame around clips or draw an empty group. Escape cancels." aria-label="Draw group tool" aria-pressed={groupTool} onClick={()=>chooseTool('group')}><SquareDashed size={14}/></button>
+      <button className={`icon-button small ${commentTool?'active':''}`} aria-label="Comment tool" aria-pressed={commentTool} title={shortcuts.title('comment')+'. Click a clip to comment on that moment, or anywhere on the timeline.'} onClick={()=>chooseTool('comment')}><MessageSquarePlus size={14}/></button>
       <button className={`icon-button small ${panTool?'active':''}`} aria-label="Pan tool" aria-pressed={panTool} title={shortcuts.title('pan')+'. Also pan with Space + drag or the middle mouse button.'} onClick={()=>chooseTool('pan')}><Hand size={14}/></button>
       <button className="icon-button small" aria-label="Zoom out story" onClick={()=>updateCamera(zoomAt(cameraRef.current,zoom/1.4,{x:size.width/2,y:size.height/2}))}><Minus size={14}/></button>
       <span className="story-zoom">{Math.round(zoom*100)}%</span>
@@ -542,11 +603,14 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       <button className={`icon-button small ${follow?'active':''}`} aria-label="Follow playhead" aria-pressed={follow} onClick={()=>setFollow(v=>!v)}><Maximize size={14}/></button>
     </div>
     <div id={canvasId} className="story-scroll" hidden={collapsed} ref={scroll} tabIndex={0} aria-label="Clip graph" data-zoom={zoom} onPointerEnter={()=>{hovering.current=true;}} onPointerLeave={()=>{hovering.current=false;}} style={{backgroundPosition:`${camera.x}px ${camera.y}px`,backgroundSize:`${gridX*4}px ${gridY*4}px, ${gridX}px ${gridY}px`}} onPointerDownCapture={beginAreaGesture} onFocusCapture={e=>{const id=(e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;if(id)reveal(id);}} onDrop={drop} onDragOver={dragOver} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node)){setFileDrag(false);setDropTarget(null);setDropPoint(null);}}} onContextMenu={e=>{
-      e.preventDefault();chooseTool(null);const clip=(e.target as Element).closest<HTMLElement>('[data-node-id]'),id=clip?.dataset.nodeId;
+      e.preventDefault();chooseTool(null);
+      const pin=(e.target as Element).closest<HTMLElement>('[data-comment-id]'),pinned=comments.find(c=>c.id===pin?.dataset.commentId);
+      if(pin){setContext(null);if(pinned)openComment(pinned);return;}
+      const clip=(e.target as Element).closest<HTMLElement>('[data-node-id]'),id=clip?.dataset.nodeId;
       const edgeId=(e.target as Element).closest('[data-edge-id]')?.getAttribute('data-edge-id')??undefined,pointId=(e.target as Element).closest('[data-reroute-id]')?.getAttribute('data-reroute-id')??undefined;
       if(edgeId){editor.setSelectedEdge(edgeId);editor.setSelected([]);}if(id&&(editor.selectedGroup||!editor.selected.includes(id)))editor.select(id,null);
       const point=localPoint({x:e.clientX,y:e.clientY}),groupId=!id&&!edgeId?((e.target as Element).closest<HTMLElement>('[data-group-id]')?.dataset.groupId??groupViews.find(g=>point.x>=g.left&&point.x<=g.left+g.width&&point.y>=g.top&&point.y<=g.top+g.height)?.group.id):undefined;
-      if(groupId)editor.selectGroup(groupId);setContext({id,groupId,edgeId,pointId,selectionIds:editor.selected,x:e.clientX,y:e.clientY,point:toWorld(localPoint({x:e.clientX,y:e.clientY}),cameraRef.current)});
+      if(groupId)editor.selectGroup(groupId);setContext({id,groupId,edgeId,pointId,selectionIds:editor.selected,commentAnchor:Number.isFinite(e.clientX)&&Number.isFinite(e.clientY)?commentAnchorAt({x:e.clientX,y:e.clientY}):undefined,x:e.clientX,y:e.clientY,point:toWorld(localPoint({x:e.clientX,y:e.clientY}),cameraRef.current)});
     }}>
       {!nodes.length&&!graph.groups?.length&&!fileDrag&&!groupTool&&<div className="story-empty"><Upload size={22}/><strong>Drop videos or images here</strong><span>Each file becomes a separate clip.</span><button className="button small" onClick={()=>videoInput.current?.click()}>Import videos or images</button></div>}
       {fileDrag&&dropPoint&&<div className="story-file-drop" style={{left:dropPoint.x,top:dropPoint.y}}><Upload size={14}/><span>Import clips here</span></div>}
@@ -668,13 +732,24 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
             {!reached.has(node.id)&&clipWidth>=20&&<span className="story-clip-caption" role="img" aria-label="Disconnected from story start" title="Disconnected from story start"><Unplug size={12} aria-hidden/></span>}
           </div>;
         })}
+        {[...comments.map(comment=>({id:comment.id as string|null,comment:comment as StoryComment|undefined,anchor:comment.anchor})),...(commentEditor&&!commentEditor.id?[{id:null,comment:undefined,anchor:commentEditor.anchor}]:[])].map(({id,comment,anchor})=>{
+          const dragging=!!commentDrag&&commentDrag.id===id,place=commentPlace(dragging?commentDrag.anchor:anchor);if(!place)return null;
+          const open=!!commentEditor&&commentEditor.id===id,summary=comment?commentSummary(comment):'New comment';
+          return <button key={id??'new'} type="button" data-comment-id={id??'new'} className={`story-comment-pin ${isClipAnchor(dragging?commentDrag.anchor:anchor)?'on-clip':'on-canvas'} ${comment?.resolved?'resolved':''} ${open?'open':''} ${place.outside?'outside':''} ${dragging?'dragging':''} ${id?'':'draft'}`}
+            style={{left:place.x,top:place.y}} aria-expanded={open} aria-haspopup="dialog"
+            aria-label={comment?`${comment.resolved?'Resolved comment':'Comment'} on ${place.label}: ${summary}`:`New comment on ${place.label}`}
+            title={`${summary}\n${place.label}${place.outside?' · trimmed out of the clip':''}\nClick to open · Drag to move · ${shortcuts.label('delete')} removes`}
+            onPointerDown={e=>dragComment(e,id,anchor)} onClick={e=>{if(e.detail===0&&comment)openComment(comment);}} onKeyDown={e=>nudgeComment(e,id,anchor)}>
+            {comment?.resolved?<Check size={11} aria-hidden/>:<MessageSquare size={11} aria-hidden/>}
+          </button>;
+        })}
         {dropConnection&&(()=>{const {middle}=geometry(dropConnection);return <div className="story-transition-drop-label" aria-hidden
           style={{left:Math.max(8,Math.min(middle.x-75,size.width-158)),top:Math.max(8,middle.y-49)}}><Plus size={13}/>Replace transition</div>;})()}
         {marquee&&<div className="story-marquee" style={{left:Math.min(marquee.start.x,marquee.end.x)*zoom+camera.x,top:Math.min(marquee.start.y,marquee.end.y)*camera.rowScale+camera.y,width:Math.abs(marquee.end.x-marquee.start.x)*zoom,height:Math.abs(marquee.end.y-marquee.start.y)*camera.rowScale}}/>}
       </div>
     </div>
     <input ref={videoInput} hidden multiple type="file" accept="video/*,image/*,.mkv,.mov,.webm,.mp4" aria-label="Import videos onto timeline" onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value='';void editor.importVideos(files);}}/>
-    <div className="story-status"><span role="status">{trimPreview?`Trim ${trimPreview.side} · ${nodeDuration(trimPreview.node,editor.items).toFixed(3)} s · Release to apply · Escape cancels`:dropTarget?(fileDrag?'Release to import clips here':libraryDrag&&'assetId' in libraryDrag?'Release to add a separate clip':dropTarget==='canvas'?'Release to place here':dropConnection?'Release to replace transition and connect both sides':'Release to attach to this clip'):libraryDrag?'Drag onto the timeline · Escape cancels':wire?'Drop onto a clip to connect · Escape cancels':editor.connecting?'Choose a destination clip · Escape cancels':groupTool?'Draw group · Drag a frame · Release to create · Esc cancels':panTool?`Hand tool · Drag anywhere to pan · ${shortcuts.title('select')}`:cutTool?`Cut tool · Click a filmstrip to split · ${shortcuts.title('select')}`:editor.notice||`Drag to select · Space + drag to pan · ${shortcuts.title('fit')} · Right-click for group actions`}</span><span>{graph.nodes.length} clips · Blue: start ref · Green: end ref</span></div>
+    <div className="story-status"><span role="status">{trimPreview?`Trim ${trimPreview.side} · ${nodeDuration(trimPreview.node,editor.items).toFixed(3)} s · Release to apply · Escape cancels`:dropTarget?(fileDrag?'Release to import clips here':libraryDrag&&'assetId' in libraryDrag?'Release to add a separate clip':dropTarget==='canvas'?'Release to place here':dropConnection?'Release to replace transition and connect both sides':'Release to attach to this clip'):libraryDrag?'Drag onto the timeline · Escape cancels':wire?'Drop onto a clip to connect · Escape cancels':editor.connecting?'Choose a destination clip · Escape cancels':commentDrag?`${isClipAnchor(commentDrag.anchor)?'Release to pin the comment to this moment':'Release to place the comment here'} · Escape cancels`:commentTool?`Comment tool · Click a clip to comment on that moment, or anywhere on the timeline · ${shortcuts.title('select')}`:groupTool?'Draw group · Drag a frame · Release to create · Esc cancels':panTool?`Hand tool · Drag anywhere to pan · ${shortcuts.title('select')}`:cutTool?`Cut tool · Click a filmstrip to split · ${shortcuts.title('select')}`:editor.notice||`Drag to select · Space + drag to pan · ${shortcuts.title('fit')} · Right-click for group actions`}</span><span>{graph.nodes.length} clips · Blue: start ref · Green: end ref</span></div>
     {context&&createPortal(<div ref={menu} className="story-context-menu" role="menu" aria-label={context.colors?(context.groupId?"Group color":"Clip color"):context.templates?"Add template":context.groupId?"Group actions":context.edgeId?"Connection actions":context.id?"Clip actions":"Timeline actions"} style={{left:context.x,top:context.y}} onKeyDown={e=>{
       if(e.key==='Escape'){e.preventDefault();setContext(null);scroll.current?.focus({preventScroll:true});}
       if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const buttons=Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')),index=buttons.indexOf(document.activeElement as HTMLButtonElement);buttons[e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}
@@ -705,6 +780,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       </button>)}
       <button role="menuitem" aria-haspopup="menu" onClick={()=>setContext({...context,colors:true})}><Palette size={14}/>Clip color</button><button role="menuitem" disabled={!canCutAtPlayhead} onClick={()=>contextAction(()=>editor.split(context.id))}><Scissors size={14}/>Cut at playhead <kbd>{shortcuts.label('split')}</kbd></button><button role="menuitem" onClick={()=>contextAction(editor.duplicate)}><Copy size={14}/>Duplicate <kbd>{shortcuts.label('duplicate')}</kbd></button><button role="menuitem" disabled={graph.entryId===context.id} onClick={()=>contextAction(()=>editor.setStartVideo(context.id!))}><Flag size={14}/>{graph.entryId===context.id?'Start video':'Set as start video'}</button><button role="menuitem" onClick={()=>{setContext(null);setTemplateName('My template');}}>Save as template</button><button role="menuitem" onClick={()=>contextAction(editor.remove)}><Trash2 size={14}/>Delete clip <kbd>{shortcuts.label('delete')}</kbd></button></>:<><button role="menuitem" onClick={()=>contextAction(()=>editor.add('simple',undefined,context.point))}>Add video</button><button role="menuitem" onClick={()=>contextAction(()=>editor.addMedia('image',context.point))}>Add image</button><button role="menuitem" onClick={()=>contextAction(()=>editor.addMedia('audio',context.point))}>Add audio</button></>}
       {!context.edgeId&&!context.colors&&<button role="menuitem" className="story-join" aria-disabled={!!editor.joinReasons.length} aria-describedby={`${canvasId}-join-help`} title={editor.joinReasons.length?'Join unavailable · Click to see all reasons':undefined} onClick={joinSelected}><Combine size={14}/>Join selected clips{editor.joinReasons.length>0&&<small>Why?</small>}</button>}
+      {!context.colors&&context.commentAnchor&&<button role="menuitem" onClick={()=>contextAction(()=>openCommentDraft(context.commentAnchor!))}><MessageSquarePlus size={14}/>{isClipAnchor(context.commentAnchor)?'Comment on this moment':'Add comment'}<kbd>{shortcuts.label('comment')}</kbd></button>}
       {!context.colors&&<button role="menuitem" aria-haspopup="menu" onClick={()=>setContext({...context,templates:true})}><LayoutTemplate size={14}/>Add template</button>}
       {!context.colors&&!context.id&&!context.edgeId&&!context.groupId&&<button role="menuitem" disabled={!orphaned.length} title="Select clips that cannot be reached from the start video" onClick={()=>contextAction(selectOrphaned)}>Select orphaned clips</button>}
       {!context.colors&&!context.edgeId&&!context.groupId&&<><div role="separator"/><button role="menuitem" disabled={!editor.selected.length} onClick={()=>contextAction(()=>editor.groupSelection())}>Group selection <kbd>{shortcuts.label('group')}</kbd></button>
@@ -712,6 +788,18 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
         <button role="menuitem" disabled={!graph.groups?.some(g=>g.nodeIds.some(id=>editor.selected.includes(id)))} onClick={()=>contextAction(()=>editor.ungroup())}>Ungroup selected clips <kbd>{shortcuts.label('ungroup')}</kbd></button></>}
       {!context.colors&&<><div role="separator"/><button role="menuitem" onClick={()=>contextAction(cleanup)}>Clean up layout <kbd>{shortcuts.label('layout')}</kbd></button><button role="menuitem" onClick={()=>contextAction(fitSelected)}>Fit <kbd>{shortcuts.label('fit')}</kbd></button></>}</>}</div>,document.fullscreenElement??document.body)}
     {templateName!==null&&<ModalBackdrop labelledBy="template-title" onCancel={()=>setTemplateName(null)} restoreFocus={()=>scroll.current?.focus({preventScroll:true})}><form className="project-card" onSubmit={e=>{e.preventDefault();editor.saveTemplate(templateName);setTemplateName(null);}}><h2 id="template-title">Save selected clips as a template</h2><p className="hint">Saves the group’s layout, clips, settings and internal connections. Imported clips reuse their footage; generated clips start as drafts.</p><label className="field">Template name<input autoFocus required maxLength={200} value={templateName} onChange={e=>setTemplateName(e.target.value)}/></label><div className="close-project-actions"><button type="button" className="button" onClick={()=>setTemplateName(null)}>Cancel</button><button className="button primary" type="submit">Save template</button></div></form></ModalBackdrop>}
+    {commentEditor&&(()=>{
+      const comment=commentEditor.id?comments.find(c=>c.id===commentEditor.id):undefined;if(commentEditor.id&&!comment)return null;
+      const anchor=comment?.anchor??commentEditor.anchor,place=commentPlace(anchor);
+      const restore=(id?:string)=>{commentFocus.current=id??null;};
+      let created:string|undefined;
+      return <CommentPopover key={commentEditor.id??'new'} comment={comment} location={place?.location??'Timeline'} pin={()=>commentPin(commentEditor.id)}
+        onSeek={isClipAnchor(anchor)?()=>seekComment(anchor):undefined}
+        onSave={text=>{if(comment)editor.updateComment(comment.id,{text});else created=editor.addComment(anchor,text);}}
+        onResolve={resolved=>{if(comment)editor.updateComment(comment.id,{resolved});}}
+        onDelete={()=>{if(!comment)return;editor.removeComment(comment.id);setCommentEditor(null);restore();}}
+        onClose={focus=>{setCommentEditor(null);if(focus)restore(comment?.id??created);}}/>;
+    })()}
     {drawing&&<ImageDrawingDialog key={drawing} assetId={drawing} projects={editor.projects} onSaved={asset=>editor.selectLibrary({type:'asset',id:asset.assetId})} onClose={()=>setDrawing(undefined)} restoreFocus={()=>scroll.current?.focus({preventScroll:true})}/>}
     {joinError&&<ModalBackdrop labelledBy="join-error-title" onCancel={()=>setJoinError(null)} restoreFocus={()=>scroll.current?.focus({preventScroll:true})}><section className="project-card story-join-dialog">
       <h2 id="join-error-title">Can’t join clips</h2><p className="hint">Resolve {joinError.length===1?'this issue':'these issues'} to join the selected clips.</p>
