@@ -15,8 +15,9 @@ for (const width of [1440, 390]) test(`analyzes the actual start/end windows for
   await page.setViewportSize({ width, height: 1000 });
   const option = page.getByRole('checkbox', { name: 'Analyze reference videos with AI' });
   await expect(option).not.toBeChecked(); await option.check();
-  const prompt = page.getByLabel('Video prompt');
+  const prompt = page.getByLabel('Video prompt'), enhancedField = page.getByLabel('Enhanced prompt', { exact: true });
   const enhanced = 'She waves and asks <d>[English] Ready?</d>.';
+  const edited = { prompt: 'She waves and brightly asks "Ready?"', enhancedPrompt: 'She waves and brightly asks <d>[English] Ready?</d>.' };
   let finish!: () => void, gate = new Promise<void>(resolve => { finish = resolve; });
   let analyses = 0, enhancements = 0;
   const descriptions = ['0–1.625s: She lowers her hand; music continues.', '0–1.625s: She waits with her hands at her waist.'];
@@ -37,8 +38,10 @@ for (const width of [1440, 390]) test(`analyzes the actual start/end windows for
     expect(body.referenceTiming).toEqual({ prefixFrames: 39, suffixFrames: 39 });
     expect(body.referenceDescriptions).toEqual(descriptions.map((description, index) => ({ side: index ? 'end' : 'start', frames: 39, description })));
     expect(body.referenceAudioMask.start).toBeDefined();
-    if (enhancements++) expect(body.editInstructions).toBe('Make the question brighter.');
-    await route.fulfill({ json: { prompt: enhanced, model: 'test' } });
+    if (!enhancements++) return route.fulfill({ json: { prompt: enhanced, model: 'test' } });
+    // Once an enhanced version exists, Edit with AI rewrites both versions together.
+    expect(body.editInstructions).toBe('Make the question brighter.'); expect(body.enhancedPrompt).toBe(enhanced);
+    await route.fulfill({ json: { ...edited, model: 'test' } });
   });
   const layout = () => page.locator('.interstitial-editor').evaluate(root => {
     const top = root.getBoundingClientRect().top;
@@ -52,7 +55,9 @@ for (const width of [1440, 390]) test(`analyzes the actual start/end windows for
   await expect(page.getByRole('button', { name: 'Analyzing…', exact: true })).toBeDisabled();
   expect(await layout()).toEqual(idle);
   await page.screenshot({ path: `test-results/reference-analysis-${width}-loading.png` });
-  finish(); await expect(prompt).toHaveValue(enhanced); expect(analyses).toBe(2); expect(await layout()).toEqual(idle);
+  // Enhancing fills the separate enhanced version and keeps the original draft.
+  finish(); await expect(enhancedField).toHaveValue(enhanced); await expect(prompt).toHaveValue('She waves and asks "Ready?"');
+  expect(analyses).toBe(2); expect(await layout()).toEqual(idle);
   gate = new Promise<void>(resolve => { finish = resolve; });
   await page.getByRole('button', { name: 'Edit with AI', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Edit prompt with AI' });
@@ -63,6 +68,7 @@ for (const width of [1440, 390]) test(`analyzes the actual start/end windows for
   await expect(dialog.getByRole('status')).toContainText('Analyzing reference videos');
   expect(await dialog.boundingBox()).toEqual(dialogBox); expect(await layout()).toEqual(idle);
   finish(); await expect(dialog).toHaveCount(0); expect(enhancements).toBe(2); expect(analyses).toBe(4);
+  await expect(prompt).toHaveValue(edited.prompt); await expect(enhancedField).toHaveValue(edited.enhancedPrompt);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   await saveAndReopen(page); await page.locator('.story-clip.type-simple .story-clip-title').click();
   await expect(option).toBeChecked();
@@ -71,6 +77,7 @@ for (const width of [1440, 390]) test(`analyzes the actual start/end windows for
 test('keeps the draft on analysis failure, cancellation and reference changes; skips disabled references', async ({ page }) => {
   const option = page.getByRole('checkbox', { name: 'Analyze reference videos with AI' }); await option.check();
   const prompt = page.getByLabel('Video prompt'), original = await prompt.inputValue();
+  const enhancedField = page.getByLabel('Enhanced prompt', { exact: true });
   const enhance = page.getByRole('button', { name: 'Enhance prompt', exact: true });
   let analyses = 0, enhancements = 0, finish!: () => void;
   let gate = new Promise<void>(resolve => { finish = resolve; });
@@ -99,7 +106,8 @@ test('keeps the draft on analysis failure, cancellation and reference changes; s
   await enhance.click(); await expect.poll(() => analyses, { timeout: 60000 }).toBe(3);
   await openGenerationTimeline(page); await page.getByRole('spinbutton', { name: 'start_range', exact: true }).fill('1.75'); await closeGenerationTimeline(page);
   await expect(enhance).toBeEnabled(); finish();
-  await expect(prompt).toHaveValue(original); expect(enhancements).toBe(0);
+  await expect(prompt).toHaveValue(original); await expect(enhancedField).toHaveValue(''); expect(enhancements).toBe(0);
   for (const side of ['start', 'end'] as const) await setVideoReference(page, side, false);
-  await enhance.click(); await expect(prompt).toHaveValue('A wave.'); expect(analyses).toBe(3);
+  // Enhancing fills the separate enhanced version and keeps the original draft.
+  await enhance.click(); await expect(enhancedField).toHaveValue('A wave.'); await expect(prompt).toHaveValue(original); expect(analyses).toBe(3);
 });
