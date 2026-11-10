@@ -1,5 +1,5 @@
 import { TIMELINE_FPS } from '../../../shared/constants.js';
-import { audioMaskColumns, inputMaskCurve, inputMaskStrength } from '../../../shared/generation-inputs.js';
+import { audioMaskColumns, inputMaskCurve, inputMaskStrength, referenceContent } from '../../../shared/generation-inputs.js';
 import type { BridgeInput, Workflow } from './workflow.js';
 import type { comfyBridgePlan } from '../../../shared/comfy.js';
 
@@ -21,10 +21,11 @@ export function replaceImageFrame(graph: Workflow, id: string, images: Link, ima
 
 export function timelineVideoMask(input: BridgeInput, plan: ReturnType<typeof comfyBridgePlan>) {
   const { prefixFrames: prefix, middleFrames: middle, suffixFrames: suffix, totalFrames: frames } = plan;
-  const ranges = input.timelineInputs ?? [];
-  const curve = inputMaskCurve(input.videoMaskCurve, prefix / TIMELINE_FPS, suffix / TIMELINE_FPS, input.videoMaskTransitionMs ?? 0, !!ranges.length);
+  // Reference picture and timeline videos are input; the rest of the generated section always regenerates.
+  const content = referenceContent(prefix, middle, suffix, input.timelineInputs ?? []);
+  const curve = inputMaskCurve(input.videoMaskCurve, prefix / TIMELINE_FPS, suffix / TIMELINE_FPS, input.videoMaskTransitionMs ?? 0);
   const preserved = input.keyframes?.filter(k => k.method === 'frame').map(k => k.frame) ?? [];
-  return Array.from({ length: frames }, (_, frame) => `${frame}:(${inputMaskStrength(curve, frame + .5, prefix, middle, suffix, ranges, preserved).toFixed(6)})`).join(',');
+  return Array.from({ length: frames }, (_, frame) => `${frame}:(${inputMaskStrength(curve, frame + .5, prefix, middle, suffix, content, preserved).toFixed(6)})`).join(',');
 }
 
 export function timelineAudio(graph: Workflow, input: BridgeInput, plan: ReturnType<typeof comfyBridgePlan>, video: Link, source: Link, vae: Link): Link {
@@ -34,11 +35,11 @@ export function timelineAudio(graph: Workflow, input: BridgeInput, plan: ReturnT
   const length = add('audio_mask_size', 'GetAudioLatentSize', { latent: fitted });
   let mask = add('audio_mask_base', 'SolidMask', { value: 1, width: length, height: 1 });
   const { prefixFrames: prefix, middleFrames: middle, suffixFrames: suffix, totalFrames: total } = plan;
-  // Added input sound is kept like a timeline video's audio track; it never freezes picture.
-  const ranges = [...input.timelineInputs ?? [], ...input.timelineAudioInputs ?? []];
-  const curve = inputMaskCurve(input.audioMaskCurve, prefix / TIMELINE_FPS, suffix / TIMELINE_FPS, input.audioMaskTransitionMs ?? 0, !!ranges.length);
+  // Only spans with input sound keep audio. Added sound never freezes picture.
+  const content = input.audioContent ?? referenceContent(prefix, middle, suffix, [...input.timelineInputs ?? [], ...input.timelineAudioInputs ?? []]);
+  const curve = inputMaskCurve(input.audioMaskCurve, prefix / TIMELINE_FPS, suffix / TIMELINE_FPS, input.audioMaskTransitionMs ?? 0);
   const spans: { start: number; length: number; strength: number }[] = [];
-  for (const [i, strength] of audioMaskColumns(curve, prefix, middle, suffix, ranges).entries()) {
+  for (const [i, strength] of audioMaskColumns(curve, prefix, middle, suffix, content).entries()) {
     const previous = spans.at(-1);
     if (previous?.strength === strength) previous.length++;
     else spans.push({ start: i, length: 1, strength });

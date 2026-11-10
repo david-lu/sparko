@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { AudioLines, DiamondPlus, Pencil, Trash2, Video, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { COMFY, TIMELINE_FPS } from '../../../shared/constants';
 import type { GenerationReference, InterstitialSettings } from '../../../shared/interstitials';
@@ -16,7 +16,10 @@ import { enabledImageReferences } from '../../../shared/image-references';
 import GenerationPlayer, { type GenerationPlayback } from './GenerationPlayer';
 import { createGenerationPreview, generationPreviewReducer, generationEndpointImages, generationInputAtFrame, previewFrames, previewKeyboardFrame, previewOutput } from './generation-preview';
 import TimelineVideoProperties from './TimelineVideoProperties';
-import { inputAudioMaskStrength, inputMaskCurve, inputMaskStrength, h3MaskGroups } from '../../../shared/generation-inputs';
+import { contentGaps, inputAudioMaskStrength, inputMaskCurve, inputMaskStrength, h3MaskGroups, referenceContent } from '../../../shared/generation-inputs';
+import type { MaskCurve } from '../../../shared/mask-curves';
+import { useAudioPresence } from './audio-presence';
+import { inputAudioAssetIds, inputAudioContent } from './input-content';
 import { validateTimelineVideos } from '../../../shared/video-references';
 import InterstitialTimeField from './InterstitialTimeField';
 import { useGenerationDrop } from './useGenerationDrop';
@@ -24,13 +27,13 @@ import { useTimelineScrub } from './useTimelineScrub';
 import { useTimelineZoom } from './useTimelineZoom';
 import GenerationWaveform, { type WaveformClip } from './GenerationWaveform';
 import { captureGenerationPromptFrame } from './generation-prompt-frame';
-import { AUDIO_TRACKS, audioInputRanges, audioLevel, freeAudioFrame, nextAudioTrackName, storedVolume, type AudioTrack, type AudioTrackClip } from '../../../shared/audio-tracks';
+import { AUDIO_TRACKS, audioLevel, freeAudioFrame, nextAudioTrackName, storedVolume, type AudioTrack, type AudioTrackClip } from '../../../shared/audio-tracks';
 import { AudioTrackLanes, AudioTrackProperties, TrackAudioPreview, VolumeRow, type SoundGesture } from './GenerationAudioTracks';
 
 type Selection = 'references' | 'frames' | 'videos' | 'sounds' | MaskChannel;
 type ImageTarget = { kind: 'keyframe'; id: string } | { kind: 'endpoint'; side: 'start' | 'end' };
 type Props = {
-  itemId: string; workspace?: boolean; generatedUrl?: string; generatedFrames?: number; upscaledUrl?: string; upscaledFrames?: number; item: InterstitialSettings; projects?: ProjectController; reference?: GenerationReference;
+  itemId: string; workspace?: boolean; /** Shown in the heading after the project name. */ clipName: string; generatedUrl?: string; generatedFrames?: number; upscaledUrl?: string; upscaledFrames?: number; item: InterstitialSettings; projects?: ProjectController; reference?: GenerationReference;
   /** Where the generated section starts in the rendered video, which also places sound over it. */
   generatedBodyFrame?: number;
   /** The generated clip's own playback level, when it is placed in a story. */
@@ -41,6 +44,8 @@ type Props = {
   onKeyframesChange: (update: (current: VideoKeyframe[]) => VideoKeyframe[]) => void;
   onPreviewPlay: () => void;
 };
+
+const noSubscribe = () => () => undefined, noProject = () => undefined;
 
 /** One full-render clock for reference footage, image guides and both regeneration masks. */
 export default function GenerationTimeline(props: Props) {
@@ -102,7 +107,8 @@ export default function GenerationTimeline(props: Props) {
   const maskButtons = useRef<Partial<Record<MaskChannel, HTMLButtonElement | null>>>({}), restoreMask = useRef<MaskChannel | null>(null);
   const previousSelection = useRef<Selection>('references');
   const container = useRef<HTMLDivElement>(null), frameLane = useRef<HTMLDivElement>(null), expandButton = useRef<HTMLButtonElement>(null);
-  const headingId = useId();
+  const projectState = useSyncExternalStore(projects?.subscribe ?? noSubscribe, projects?.getSnapshot ?? noProject);
+  const projectName = projectState && (projectState.project?.name || projectState.fileName || 'Untitled project');
   useLayoutEffect(() => {
     if (!expanded) return;
     container.current?.querySelector<HTMLElement>('.generation-timeline-heading')?.scrollIntoView({ block: 'nearest' });
@@ -123,14 +129,20 @@ export default function GenerationTimeline(props: Props) {
   const library = projects?.getSnapshot().project?.library ?? [];
   const nameFor = (assetId?: string) => library.find(asset => asset.assetId === assetId)?.name;
   const selected = keyframes.find(keyframe => keyframe.id === selectedId) ?? keyframes[0];
-  // Added input sound keeps input audio like a timeline video does, but never freezes picture.
-  const audioRanges = [...ranges, ...audioInputRanges(item.inputAudioTracks, prefixFrames, middleFrames)];
-  const maskRanges = (channel: MaskChannel) => channel === 'video' ? ranges : audioRanges;
+  // Masks keep only what the input holds: reference picture and timeline videos for video;
+  // reference, video and added sound where it is audible for audio. Everything else regenerates.
+  const plan = { prefixFrames, middleFrames, suffixFrames };
+  const hasAudio = useAudioPresence(inputAudioAssetIds(item, reference, plan));
+  const inputContent: Record<MaskChannel, ReturnType<typeof referenceContent>> = {
+    video: referenceContent(prefixFrames, middleFrames, suffixFrames, ranges), audio: inputAudioContent(item, reference, plan, hasAudio) };
   /** Audio seams between references and the generated section always regenerate, as H3 receives them. */
-  const maskAt = (channel: MaskChannel, frame: number) => channel === 'video'
-    ? inputMaskStrength(curves.video, frame, prefixFrames, middleFrames, suffixFrames, ranges, preservedFrames)
-    : inputAudioMaskStrength(curves.audio, frame, prefixFrames, middleFrames, suffixFrames, audioRanges);
-  const savedCurves = { video: inputMaskCurve(item.videoMaskCurve, before, after, videoMs, !!ranges.length), audio: inputMaskCurve(item.audioMaskCurve, before, after, audioMs, !!audioRanges.length) };
+  // Drawing samples the very end of the clock; H3 never sees a frame past the last input frame.
+  const strengthAt = (channel: MaskChannel, curve: MaskCurve, value: number, frame = Math.min(value, inputFrames - 1e-6)) => channel === 'video'
+    ? inputMaskStrength(curve, frame, prefixFrames, middleFrames, suffixFrames, inputContent.video, preservedFrames)
+    : inputAudioMaskStrength(curve, frame, prefixFrames, middleFrames, suffixFrames, inputContent.audio);
+  const maskAt = (channel: MaskChannel, frame: number) => strengthAt(channel, curves[channel], frame);
+  const noInput = (channel: MaskChannel) => contentGaps(inputContent[channel], inputFrames).map(gap => ({ start: gap.frame / TIMELINE_FPS, end: (gap.frame + gap.frames) / TIMELINE_FPS }));
+  const savedCurves = { video: inputMaskCurve(item.videoMaskCurve, before, after, videoMs), audio: inputMaskCurve(item.audioMaskCurve, before, after, audioMs) };
   const curves = maskPreview ?? savedCurves;
   const cursor = Math.max(0, Math.min(totalFrames - 1, cursorFrame));
   const percent = (frame: number) => `${frame / totalFrames * 100}%`;
@@ -143,13 +155,15 @@ export default function GenerationTimeline(props: Props) {
     choose(channel);
   };
   const finishMask = () => { container.current?.focus({ preventScroll: true }); choose(previousSelection.current); requestAnimationFrame(() => restoreMask.current && maskButtons.current[restoreMask.current]?.focus({ preventScroll: true })); };
-  const close = () => {
-    if (isMask) { finishMask(); return; }
+  /** Leaves the timeline for the story, discarding an open mask draft. */
+  const leave = () => {
+    if (isMask) choose(previousSelection.current);
     // The overview remains mounted while editing. Restore focus now; a queued
     // callback can steal the user's next story action after this view unmounts.
     (expandButton.current ?? document.querySelector<HTMLButtonElement>('.generation-timeline-summary'))?.focus({ preventScroll: true });
     setInline(false); workspace?.close(); setMenu(undefined); setCluster(undefined);
   };
+  const close = () => { if (isMask) finishMask(); else leave(); };
   const setSoundTracks = (tracks: AudioTrack[]) => onChange({ [soundField]: tracks });
   const selectSound = (trackId: string, soundId?: string) => {
     choose('sounds'); setSoundSelection({ trackId, soundId }); setNotice('');
@@ -290,7 +304,7 @@ export default function GenerationTimeline(props: Props) {
     sound: { tracks: soundTracks, body: soundBody, onChange: setSoundTracks, onSelect: (trackId, soundId) => { choose('sounds'); setSoundSelection({ trackId, soundId }); }, onFrame: setCursorFrame },
     onSelect: (type, id) => { choose(type === 'image' ? 'frames' : 'videos'); if (type === 'image') setSelectedId(id); else setVideoId(id); } });
   let videoError = ''; try { const active = enabledImageReferences(item); validateTimelineVideos(videos, middleFrames); validateVideoKeyframes(keyframes, middleFrames, active.startImageIndex !== undefined, active.endImageIndex !== undefined); } catch (error) { videoError = (error as Error).message; }
-  const content = <div className="generation-timeline-editor" data-project-edit data-workspace={expanded} data-mask={isMask} role="region" aria-labelledby={headingId} ref={container} tabIndex={-1}
+  const content = <div className="generation-timeline-editor" data-project-edit data-workspace={expanded} data-mask={isMask} role="region" aria-label="Generation timeline" ref={container} tabIndex={-1}
     onKeyDown={event => {
       if (event.target instanceof Element && event.target.closest('dialog,[popover]')) return;
       // Timeline shortcuts never operate on the hidden story or submit a render.
@@ -306,7 +320,14 @@ export default function GenerationTimeline(props: Props) {
       if (event.key === 'Escape' && drag.current) { event.preventDefault(); event.stopPropagation(); setCursorFrame(prefixFrames + drag.current.frame); drag.current = null; imageClick.current = true; setDragFrame(undefined); }
       if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); close(); }
     }}>
-    <header className="generation-timeline-heading"><div><h2 id={headingId}>Generation timeline</h2><span>Full video · {timelineSeconds(totalFrames)}s · 24 fps</span></div>
+    <header className="generation-timeline-heading"><div>
+      <nav className="generation-breadcrumb" aria-label="Breadcrumb"><ol>
+        {projectName && <li><button type="button" className="generation-crumb" title={projectName} onClick={leave}>{projectName}</button></li>}
+        <li>{isMask ? <button type="button" className="generation-crumb" title={props.clipName} onClick={finishMask}>{props.clipName}</button>
+          : <span aria-current="page" title={props.clipName}>{props.clipName}</span>}</li>
+        {isMask && <li><span aria-current="page">{selection === 'video' ? 'Video' : 'Audio'} mask</span></li>}
+      </ol></nav>
+      <span>Full video · {timelineSeconds(totalFrames)}s · 24 fps</span></div>
       <button type="button" className="text-button generation-return" aria-label={isMask ? 'Cancel mask edits' : 'Close generation timeline'} onClick={close}>{isMask ? 'Cancel mask' : 'Back to timeline'}<X size={14}/></button>
     </header>
     <div className="generation-editor-workspace"><GenerationPlayer ref={playback} preview={preview} onAction={dispatchPreview} active={!isMask} input={previewInput} onPlay={onPreviewPlay} outputVolume={props.outputVolume}/>
@@ -545,7 +566,8 @@ export default function GenerationTimeline(props: Props) {
     </div>
     <div className="generation-drop-status" role="status" title={drop.preview?.error || drop.soundPreview?.error || drop.message}>{drop.busy ? 'Adding media…' : drop.preview?.error || drop.soundPreview?.error || drop.message || (drop.preview ? 'Release to add reference' : drop.soundPreview ? drop.soundPreview.trackId ? 'Release to add sound to this track' : 'Release to add sound on a new audio track' : 'Drag images, videos or audio from Library onto the timeline')}</div>
     {isMask && <div className="generation-mask-editor"><MaskCurvePanel key={`${selection}:${prefixFrames}:${middleFrames}:${suffixFrames}`} before={before} after={after} duration={duration} videoMs={videoMs} audioMs={audioMs}
-      active={selection} initial={savedCurves} onPreview={setMaskPreview} onChange={onChange} onClose={finishMask} allowBody={!!maskRanges(selection as MaskChannel).length}
+      active={selection} initial={savedCurves} onPreview={setMaskPreview} onChange={onChange} onClose={finishMask}
+      noInput={noInput(selection as MaskChannel)} strengthAt={(curve, time) => strengthAt(selection as MaskChannel, curve, time * TIMELINE_FPS)}
       boundaries={maskVideoBoundaries(reference, before, duration, after)} imageKeyframes={keyframes.filter(k => k.enabled).map(k => ({ id: k.id, name: k.image?.name ?? 'Image', time: (prefixFrames + k.frame) / TIMELINE_FPS }))}/></div>}
     {menu && <ImageKeyframeMenu x={menu.x} y={menu.y} enabled={menuKeyframe?.enabled} deleteLabel={menu.target.kind === 'keyframe' ? 'Delete keyframe' : `Remove ${item.method === 'comfy-loop' ? 'loop' : menu.target.side} image`}
       onClose={() => setMenu(undefined)} restoreFocus={() => menu.trigger.focus({ preventScroll: true })}

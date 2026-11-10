@@ -45,7 +45,8 @@ export async function openVideo(page: Page) {
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^New project/ })).toBeEnabled();
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.locator('.story-clip')).toHaveCount(1);
+  // With the 24 fps import preference on, the clip appears only after the video is converted.
+  await expect(page.locator('.story-clip')).toHaveCount(1, { timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeEnabled();
 }
 

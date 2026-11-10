@@ -3,7 +3,7 @@ import { audibleClips, audioInputRanges, audioTracksSchema, freeAudioFrame, next
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
 import { comfyBridgePlan } from '../../shared/comfy';
 import { COMFY, TIMELINE_FPS } from '../../shared/constants';
-import { inputAudioMaskStrength, inputMaskCurve } from '../../shared/generation-inputs';
+import { inputAudioMaskStrength, inputMaskCurve, referenceContent } from '../../shared/generation-inputs';
 import { hasUnsubmittedChanges, interstitialSettings, type Interstitial, type InterstitialResult } from '../../shared/interstitials';
 import { packProject, unpackProject } from '../../src/features/project/archive';
 import { assetIds, emptyAnalysis, type Project } from '../../src/features/project/types';
@@ -88,8 +88,9 @@ describe('generation audio tracks', () => {
     // Without a reference there is no seam to regenerate.
     const graph = bridgeWorkflow('input', { ...base, mode: 'custom', before: 0, after: 0, timelineAudioInputs: [{ frame: 0, frames: 48 }] }, 1);
     expect(Object.keys(graph).filter(key => key.startsWith('audio_timeline_mask_')).map(key => graph[key].inputs.x)).toContain(0);
-    expect(inputAudioMaskStrength(inputMaskCurve(undefined, 1, 1, 0, true), plan.prefixFrames, plan.prefixFrames, plan.middleFrames, plan.suffixFrames, [{ frame: 0, frames: 48 }])).toBe(1);
-    expect(inputAudioMaskStrength(inputMaskCurve(undefined, 1, 1, 0, true), plan.prefixFrames + 4, plan.prefixFrames, plan.middleFrames, plan.suffixFrames, [{ frame: 0, frames: 48 }])).toBe(0);
+    const content = referenceContent(plan.prefixFrames, plan.middleFrames, plan.suffixFrames, [{ frame: 0, frames: 48 }]);
+    expect(inputAudioMaskStrength(inputMaskCurve(undefined, 1, 1, 0), plan.prefixFrames, plan.prefixFrames, plan.middleFrames, plan.suffixFrames, content)).toBe(1);
+    expect(inputAudioMaskStrength(inputMaskCurve(undefined, 1, 1, 0), plan.prefixFrames + 4, plan.prefixFrames, plan.middleFrames, plan.suffixFrames, content)).toBe(0);
   });
   it('treats input sound as a generation change and sound over the result as playback only', () => {
     const submitted = interstitialSettings(settings);

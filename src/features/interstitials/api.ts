@@ -7,7 +7,9 @@ import { activeVideoKeyframes, validateVideoKeyframes } from '../../../shared/vi
 import { chooseGenerationSeed } from '../../../shared/generation-seed';
 import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
 import type { GenerationJob } from '../../../shared/contracts';
-import { clipMaskInjection, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
+import { clipMaskInjection, validateMaskTransitionMs, type GenerationReference, type Interstitial } from '../../../shared/interstitials';
+import { audioPresence, loadAudioPresence } from './audio-presence';
+import { inputAudioAssetIds, inputAudioContent } from './input-content';
 import { comfyDimensions, comfyReferenceRange } from '../../../shared/comfy';
 import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
@@ -19,8 +21,9 @@ import { validateH3PromptLength } from '../../../shared/h3-prompt';
 
 export const hasNoVideoInput = (item: Interstitial) => item.useInputReference === false && item.useOutputReference === false;
 
+/** `reference` is the story footage the references come from; it decides which reference spans carry sound. */
 export async function generateInterstitial(item: Interstitial, engine: Pick<MediaEngine, 'exportMp4'> | null, info: MediaInfo | null, signal: AbortSignal,
-  onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void): Promise<GenerationJob> {
+  onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void, reference?: GenerationReference): Promise<GenerationJob> {
   const selectionError = promptSelectionError(item);
   if (selectionError) throw new Error(selectionError);
   item = enabledImageReferences({ ...item, prompt: generationPrompt(item) });
@@ -71,12 +74,15 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   let clip = range.plan.prefixFrames || range.plan.suffixFrames ? await engine!.exportMp4(range, { frame: { ...dimensions, fit: 'cover' }, frameRate: INTERSTITIAL.referenceFps, audioLevels,
     quality: 'high', signal, onProgress: value => onProgress('preparing', value) }) : undefined;
   if (fullInput) clip = await prepareTimelineInput(clip, item, range.plan, dimensions, signal, value => onProgress('preparing', value));
+  await Promise.all(inputAudioAssetIds(item, reference, range.plan).map(loadAudioPresence)); signal.throwIfAborted();
+  const audioContent = inputAudioContent(item, reference, range.plan, audioPresence);
   if (clip && clip.size > INTERSTITIAL.maxReferenceBytes) throw new Error('The reference clip exceeds 50 MB. Shorten the reference ranges.');
   signal.throwIfAborted();
   const body = new FormData();
   body.set('seed', String(seed));
   if (fullInput) { body.set('fullInput', 'true'); body.set('timelineInputs', JSON.stringify(timelineVideos.map(v => ({ frame: v.frame, frames: v.video!.outFrame - v.video!.inFrame })))); }
   if (audioInputs.length) body.set('timelineAudioInputs', JSON.stringify(audioInputs));
+  body.set('audioContent', JSON.stringify(audioContent));
   if (item.requestOrigin) body.set('clipOrigin', JSON.stringify(item.requestOrigin));
   if (images.length) body.set('imageReferences', JSON.stringify(images));
   if (keyframes.length) {

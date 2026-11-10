@@ -63,7 +63,7 @@ describe('call-response generation sequence', () => {
     await controller.generate(ids[1], media, info);
     expect(item(1).phase).toBe('ready');
     expect(item(1).result?.reference).toMatchObject({ mode: 'loop', before: { sceneId: source.id }, after: { sceneId: source.id } });
-    expect(generateInterstitial).toHaveBeenCalledWith(expect.objectContaining({ useInputReference: true, useOutputReference: true, method: 'comfy-loop' }), expect.anything(), expect.anything(), expect.anything(), expect.anything());
+    expect(generateInterstitial).toHaveBeenCalledWith(expect.objectContaining({ useInputReference: true, useOutputReference: true, method: 'comfy-loop' }), expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.objectContaining({ mode: 'loop' }));
     expect(finishLoop).toHaveBeenCalledOnce();
   });
   it('waits for each result to be saved and inspected, then uses it for the next reference', async () => {

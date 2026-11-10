@@ -1,18 +1,18 @@
 import { replaceImageFrame, timelineAudio, timelineVideoMask } from './timeline-input.js';
-import { validateInputRanges, type TimelineInputRange } from '../../../shared/generation-inputs.js';
+import { contentGaps, validateContentRanges, validateInputRanges, type TimelineInputRange } from '../../../shared/generation-inputs.js';
 import { COMFY, COMFY_MODELS, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants.js';
 import { normalizeH3Prompt, validateH3PromptLength } from '../../../shared/h3-prompt.js';
 import { comfyBridgePlan, validateComfyResolution, type ComfyMode } from '../../../shared/comfy.js';
 import { validateMaskTransitionMs, type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { audioCurveSpans, videoCurvePoints, videoTransitionPoints } from './mask-transition.js';
-import { maskCurveSchema, type MaskCurve } from '../../../shared/mask-curves.js';
+import { defaultMaskCurve, maskCurveSchema, type MaskCurve } from '../../../shared/mask-curves.js';
 import { isLoraFilename, loraStrengthSchema, LORA_STRENGTH } from '../../../shared/loras.js';
 import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
 import { CLIP_METADATA_TAG, serializeClipMetadata, type ClipOrigin } from '../../../shared/clip-metadata.js';
 import { MAX_VIDEO_KEYFRAMES, validateVideoKeyframeInputs, type VideoKeyframeInput } from '../../../shared/video-keyframes.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown>; _meta?: Record<string, unknown> }>;
-export type BridgeInput = { fullInput?: boolean; timelineInputs?: TimelineInputRange[]; /** Spans of added input sound; their audio is kept like a timeline video's. */ timelineAudioInputs?: TimelineInputRange[]; keyframes?: VideoKeyframeInput[]; seed?: number; clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
+export type BridgeInput = { fullInput?: boolean; timelineInputs?: TimelineInputRange[]; /** Spans of added input sound; their audio is kept like a timeline video's. */ timelineAudioInputs?: TimelineInputRange[]; /** Full-clock spans where the input has audible sound; elsewhere audio always regenerates. Absent keeps both references' sound. */ audioContent?: TimelineInputRange[]; keyframes?: VideoKeyframeInput[]; seed?: number; clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Separately encoded references stay frozen outside their soft transitions.
@@ -27,6 +27,7 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   const { prefixFrames, suffixFrames, totalFrames, insertion } = plan;
   validateInputRanges(input.timelineInputs ?? [], plan.middleFrames);
   validateInputRanges(input.timelineAudioInputs ?? [], plan.middleFrames, true);
+  if (input.audioContent) validateContentRanges(input.audioContent, totalFrames);
   if ((input.timelineInputs?.length || input.timelineAudioInputs?.length || input.keyframes?.some(k => k.method === 'frame')) && !input.fullInput) throw new Error('Prepare the complete timeline input before generating.');
   if (input.fullInput && !assetId) throw new Error('Timeline input video is missing.');
   const imageLoop = input.mode === 'loop' && !prefixFrames && !suffixFrames;
@@ -125,10 +126,14 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
     const preserved = add('audio_mask_base', 'SolidMask', { value: 0, width: audioLength, height: 1 });
     // Without an ending reference the white region extends through any padding.
     let audioMask = preserved;
-    if (input.audioMaskCurve) {
+    // Silent reference spans (held loop frames, stills, muted footage) have no sound to keep.
+    const silentReference = !!input.audioContent && contentGaps(input.audioContent, totalFrames)
+      .some(gap => gap.frame < prefixFrames || gap.frame + gap.frames > totalFrames - suffixFrames);
+    const audioCurve = input.audioMaskCurve ?? (silentReference ? defaultMaskCurve(insertion.start, suffixFrames / TIMELINE_FPS, audioTransitionMs) : undefined);
+    if (audioCurve) {
       // Reference spans are at most 320 audio columns. Constant regions share
       // nodes; the blank body is one white span regardless of clip duration.
-      audioCurveSpans(input.audioMaskCurve, prefixFrames, suffixFrames, totalFrames).forEach((span, index) => {
+      audioCurveSpans(audioCurve, prefixFrames, suffixFrames, totalFrames, input.audioContent).forEach((span, index) => {
         const column = add(`audio_curve_value_${index}`, 'SolidMask', { value: span.strength, width: span.length ?? audioLength, height: 1 });
         audioMask = add(`audio_curve_${index}`, 'MaskComposite', { destination: audioMask, source: column, x: span.start, y: 0, operation: 'add' });
       });

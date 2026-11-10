@@ -35,6 +35,9 @@
 .mask-video-boundary line{stroke:#aaa59c;stroke-width:1;vector-effect:non-scaling-stroke}
 .mask-video-boundary path{fill:#aaa59c}
 .mask-curve-line{fill:none;stroke:#d2cfca;stroke-width:1.7;vector-effect:non-scaling-stroke;pointer-events:none}
+.mask-curve-raw{fill:none;stroke:#d2cfca;stroke-opacity:.5;stroke-width:1.2;stroke-dasharray:4 4;vector-effect:non-scaling-stroke;pointer-events:none}
+.mask-no-input{stroke:none;pointer-events:none}
+.mask-no-input-hatch{stroke:#d2cfca;stroke-opacity:.14;stroke-width:2}
 .mask-curve-hit{fill:none;stroke:transparent;stroke-width:12;vector-effect:non-scaling-stroke;pointer-events:stroke;cursor:copy}
 .mask-axis-label{fill:#92908b;font:10px var(--mono);pointer-events:none}
 .mask-region-label{fill:#9f9b94;font:9px var(--sans, sans-serif);letter-spacing:.12em;pointer-events:none}
