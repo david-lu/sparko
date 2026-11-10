@@ -6,7 +6,7 @@ import type { comfyBridgePlan } from '../../../shared/comfy';
 import { renderComposition } from '../../media/CompositionRenderer';
 import type { TimelineSegment } from '../../media/TimelineComposition';
 import { assets } from '../project/assets';
-import type { AudioLayer } from '../project/audioLayers';
+import type { AudioLayer } from '../../media/CompositionAudioLayers';
 import { audibleClips } from '../../../shared/audio-tracks';
 
 /** A full-clock input movie: connected references, inserted videos, and silent black gaps.

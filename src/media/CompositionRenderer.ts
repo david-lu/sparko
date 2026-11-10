@@ -8,13 +8,13 @@ import { CompositionAudioWriter } from './CompositionAudioWriter';
 import { generatedClipFit, type ExportFrame } from './videoFraming';
 import { audioVolume, scaleAudioSample } from './audioVolume';
 import { loadStillImage, stillCanvas } from './stillImage';
-import { CompositionAudioLayers } from './CompositionAudioLayers';
+import { CompositionAudioLayers, type AudioLayer } from './CompositionAudioLayers';
 
 type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; maxDimension?: number; frame?: ExportFrame;
   beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
 
 /** Encodes one continuous frame/sample clock, including across different source assets. */
-export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & Partial<Pick<TimelineComposition, 'audioLayers'>> & { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean }, output: Output, options: Options) {
+export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & { audioLayers?: AudioLayer[]; crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean }, output: Output, options: Options) {
   await ensureAac();
   options.signal.throwIfAborted();
   const scale = Math.min(1, (options.preview ? 720 : options.maxDimension ? Infinity : 1080) / composition.info.height,

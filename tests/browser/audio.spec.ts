@@ -124,7 +124,7 @@ async function prepareAudio(page: Page) {
   });
 }
 
-test('project audio layers mix in rendered output with offsets, trims, volume and export-range seeks', async ({ page }) => {
+test('added sounds mix in rendered output with offsets, trims, volume and export-range seeks', async ({ page }) => {
   await prepareAudio(page);
   const results = await page.evaluate(async () => {
     const { ALL_FORMATS, AudioSampleSink, BlobSource, BufferTarget, Input, Mp4OutputFormat, Output } = await import('/node_modules/.vite/deps/mediabunny.js' as string);
@@ -162,55 +162,6 @@ test('project audio layers mix in rendered output with offsets, trims, volume an
     expect(result.first).toBeCloseTo(.1, 2); expect(result.second).toBeCloseTo(.05, 2); expect(result.afterCut).toBeCloseTo(.05, 2);
     expect(result.muted).toBeLessThan(.002); expect(result.trimmed).toBeLessThan(.002); expect(result.ended).toBeLessThan(.002);
   }
-});
-
-test('project layers remain audible together across shots and follow seek, speed, mute, pause and end', async ({ page }) => {
-  await prepareAudio(page);
-  await page.evaluate(async () => {
-    const { CanvasFlowPlayback } = await import('/src/features/call-response/CanvasFlowPlayback.ts' as string);
-    const { runtimeFlow, edge } = await import('/src/features/story-flow/model.ts' as string);
-    const { assets } = await import('/src/features/project/assets.ts' as string);
-    const { clips } = (window as any).audioFixture;
-    const media: { id: string; url: string }[] = [];
-    for (const clip of clips.slice(0, 3)) { const asset = await assets.save(clip.blob, 'Audio'); const opened = await assets.open(asset.id); media.push({ ...asset, url: opened.url }); }
-    const nodes = ['one', 'two', 'three'].map((id, index) => ({ id, name: id, kind: 'source', x: index * 100, y: 0, loopCount: 0, volume: 0, source: { assetId: media[1].id, inFrame: 0, outFrame: 48 } }));
-    const graph = { version: 1, entryId: 'one', nodes, edges: [edge('one', 'two'), edge('two', 'three')], templates: [] };
-    const flow = runtimeFlow(graph, [], media[1].id, 7);
-    flow.audioLayers = [
-      { id: 'music', name: 'Music', assetId: media[1].id, startFrame: 0, inFrame: 0, outFrame: 144, volume: .5, muted: false },
-      { id: 'effect', name: 'Effect', assetId: media[0].id, startFrame: 48, inFrame: 0, outFrame: 24, volume: .25, muted: false },
-    ];
-    const video = document.createElement('video'); document.body.append(video);
-    let ready = false, error = '';
-    const playback = new CanvasFlowPlayback(flow, video, { id: media[1].id, assetId: media[1].id, name: 'Video', url: media[1].url }, (_session: any, buffering: boolean, failure?: string) => { ready = !buffering; error = failure ?? ''; }, { width: 160, height: 90, duration: 7, fps: 24, hasAudio: true, codec: 'avc' });
-    const audio = (playback as any).decks.audio, analyser = audio.context.createAnalyser(); analyser.fftSize = 8192;
-    const createGain = audio.context.createGain.bind(audio.context);
-    audio.context.createGain = () => { const gain = createGain(); gain.connect(analyser); return gain; };
-    const amplitude = (frequency: number) => {
-      const data = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(data); let sin = 0, cos = 0;
-      for (let i = 0; i < data.length; i++) { sin += data[i] * Math.sin(i / audio.context.sampleRate * 2 * Math.PI * frequency); cos += data[i] * Math.cos(i / audio.context.sampleRate * 2 * Math.PI * frequency); }
-      return 2 * Math.hypot(sin, cos) / data.length;
-    };
-    (window as any).layerPlayback = { playback, flow, amplitude, ready: () => ready, error: () => error, voices: () => [...audio.voices.keys()] };
-    playback.seekScene('one', 36, true);
-  });
-  await expect.poll(() => page.evaluate(() => (window as any).layerPlayback.playback.session.sceneId)).toBe('two');
-  // The analyser downmixes stereo to mono; each fixture puts a different tone in each channel.
-  await expect.poll(() => page.evaluate(() => (window as any).layerPlayback.amplitude(880)), { intervals: [30, 50, 100] }).toBeGreaterThan(.035);
-  await expect.poll(() => page.evaluate(() => (window as any).layerPlayback.amplitude(440)), { intervals: [30, 50, 100] }).toBeGreaterThan(.017);
-  await expect.poll(() => page.evaluate(() => (window as any).layerPlayback.playback.session.elapsedFrames), { intervals: [100] }).toBeGreaterThan(76);
-  expect(await page.evaluate(() => (window as any).layerPlayback.amplitude(440))).toBeLessThan(.005);
-  expect(await page.evaluate(() => (window as any).layerPlayback.amplitude(880))).toBeGreaterThan(.035);
-  await page.evaluate(() => { const t = (window as any).layerPlayback; t.playback.pause(); });
-  await expect.poll(() => page.evaluate(() => (window as any).layerPlayback.amplitude(880))).toBeLessThan(.002);
-  await page.evaluate(() => { const t = (window as any).layerPlayback; t.playback.seekScene('two', 6); t.playback.setSettings({ volume: 1, muted: false, speed: 2 }); t.playback.play(); });
-  await expect.poll(() => page.evaluate(() => (window as any).layerPlayback.amplitude(1760)), { intervals: [30, 50, 100] }).toBeGreaterThan(.035);
-  await page.evaluate(() => { const t = (window as any).layerPlayback; t.playback.setFlow({ ...t.flow, audioLayers: t.flow.audioLayers.map((layer: any) => ({ ...layer, muted: true })) }); });
-  await expect.poll(() => page.evaluate(() => (window as any).layerPlayback.amplitude(1760))).toBeLessThan(.002);
-  await page.evaluate(() => { const t = (window as any).layerPlayback; t.playback.setFlow(t.flow); t.playback.setSettings({ volume: 1, muted: true, speed: 1 }); t.playback.seekScene('two', 6, true); });
-  await expect.poll(() => page.evaluate(() => (window as any).layerPlayback.amplitude(880))).toBeLessThan(.002);
-  expect(await page.evaluate(() => (window as any).layerPlayback.error())).toBe('');
-  await page.evaluate(() => (window as any).layerPlayback.playback.dispose());
 });
 
 test('composition exports and preview renders preserve audio across mixed rates, channels and silent clips', async ({ page }) => {

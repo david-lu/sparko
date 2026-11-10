@@ -15,7 +15,7 @@ import { maskCurveSchema } from '../../../shared/mask-curves';
 import { videoReferenceSettings } from '../../../shared/video-references';
 import { assetGenerationSchema, assetSettingsSchema } from '../../../shared/asset-generation';
 import { videoKeyframesSchema } from '../../../shared/video-keyframes';
-import { audioLayersSchema } from './audioLayers';
+import { legacyAudioLayersSchema, withoutAudioLayers } from './legacyAudioLayers';
 import { audioTracksSchema, type AudioTrack } from '../../../shared/audio-tracks';
 
 const MAX_BYTES = 8 * 1024 ** 3;
@@ -68,7 +68,8 @@ const projectSchema = z.object({
   callResponse: callResponseSchema.optional(),
   callResponses: z.array(callResponseSchema).max(100).optional(),
   storyFlow: storyGraphSchema.optional(),
-  audioLayers: audioLayersSchema.optional(),
+  /** Read only so older files keep their layer audio in Library. */
+  audioLayers: legacyAudioLayersSchema.optional(),
   libraryFolders: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(1000), parentId: z.uuid().optional() })).max(2000)
     .refine(folders => new Set(folders.map(f => f.id)).size === folders.length && folders.every(folder => {
       const seen = new Set([folder.id]); let parent = folder.parentId;
@@ -124,8 +125,9 @@ const hasAudioTracks = (project: Project) => [...project.interstitials.flatMap(i
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
   assets = assets.filter(asset => !project.deletedAssetIds?.includes(asset.id));
   const supplied = new Set(assets.map(asset => asset.id));
-  const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.storyFlow?.comments?.length ? 8 : hasAudioTracks(project) ? 7 : project.audioLayers?.length ? 6 : project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
+  const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.storyFlow?.comments?.length ? 8 : hasAudioTracks(project) ? 7 : project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
     ...project,
+    audioLayers: undefined,
     assetAliases: project.assetAliases ? Object.fromEntries(Object.entries(project.assetAliases).filter(([, id]) => supplied.has(id))) : undefined,
     interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
       generationSettings: item.generationSettings ? interstitialSettings(item.generationSettings) : undefined,
@@ -170,7 +172,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     if (![1, 2, 3, 4, 5, 6, 7, 8].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
     const parsed = manifestSchema.safeParse(raw);
     if (!parsed.success) throw new Error(`Invalid project metadata: ${parsed.error.issues[0].message}`);
-    const { project, assets: descriptions } = parsed.data;
+    const { assets: descriptions } = parsed.data, project = withoutAudioLayers(parsed.data.project);
     const ids = new Set(descriptions.map(asset => asset.id));
     if (ids.size !== descriptions.length || entries.length !== descriptions.length + 1 || assetIds(project).some(id => !ids.has(id))) throw new Error('The project has missing or duplicate assets.');
     const total = descriptions.reduce((sum, asset) => sum + asset.size, 0);
@@ -214,7 +216,6 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     return { project: {
       ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(), assetAliases,
       deletedAssetIds: project.deletedAssetIds?.map(id => remap.get(id)!),
-      audioLayers: project.audioLayers?.map(layer => ({ ...layer, assetId: remap.get(layer.assetId)! })),
       library: project.library?.map(item => ({ ...item, generation:item.generation?.provider==='comfy'?{...item.generation,result:remapResult(item.generation.result),settings:item.generation.settings?remapSettings(item.generation.settings):undefined}:item.generation?{...item.generation,settings:remapAssetSettings(item.generation.settings)}:undefined, assetId: remap.get(item.assetId)!, originalAssetId: item.originalAssetId ? remap.get(item.originalAssetId)! : undefined })),
       assetGenerations:project.assetGenerations?.map(remapGeneration),
       clipGenerations: project.clipGenerations?.map(g => ({ ...g, settings: remapAssetSettings(g.settings), submitted: g.submitted ? remapAssetSettings(g.submitted) : undefined,
