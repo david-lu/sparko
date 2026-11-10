@@ -44,7 +44,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   const shortcuts=useShortcuts();
   const { graph, items } = editor;
   useAssetAvailability([]);
-  if(editor.clipDrag)return <ProjectInspector key={editor.projects.getSnapshot().project?.id} editor={editor}/>;
+  if(editor.clipDrag)return <ProjectInspector key={editor.projects.getSnapshot().project?.id} editor={editor} status={status}/>;
   if (editor.librarySelections.length > 1) return <AssetSelectionInspector editor={editor}/>;
   if (editor.librarySelection?.type === 'asset' || editor.librarySelection?.type === 'generation') return <AssetInspector editor={editor} status={status}/>;
   if (editor.librarySelection?.type === 'job') {
@@ -61,7 +61,7 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
   const node = graph.nodes.find(n => n.id === editor.selectedId), connection = graph.edges.find(e => e.id === editor.selectedEdge);
   if (connection) return <ConnectionInspector editor={editor} connection={connection} info={info} />;
   if (editor.selectedGroup) return <GroupInspector key={editor.selectedGroup.id} editor={editor} group={editor.selectedGroup} />;
-  if (!node) return <ProjectInspector key={editor.projects.getSnapshot().project?.id} editor={editor}/>;
+  if (!node) return <ProjectInspector key={editor.projects.getSnapshot().project?.id} editor={editor} status={status}/>;
   const savedItem = items.find(i => i.id === node.interstitialId), item = savedItem && storyGenerationItem(savedItem, node);
   const duration = nodeDuration(node, items), behavior=behaviors(node), conditions=conditionsFor(graph,node), voice=node.conditionInput==='voice';
   const maxLoopFade = Math.floor(duration * TIMELINE_FPS / 2) / TIMELINE_FPS;

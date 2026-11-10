@@ -61,13 +61,17 @@ describe('fal media generations', () => {
     expect(() => falPayload(settings, images)).toThrow('Comfy H3');
     expect(ASSET_MODELS.some(model => model.kind === 'video')).toBe(false);
     expect(() => newAssetGeneration('video')).toThrow('Comfy H3');
-    settings.model = 'sound-effects'; settings.references = [];
-    expect(falPayload(settings, [])).toMatchObject({ input: { text: 'A sunset', duration_seconds: 5 } });
-    settings.model = 'stable-audio-2.5';
-    expect(falPayload(settings, []).input).toHaveProperty('seconds_total', 5);
-    settings.references = [{ assetId: crypto.randomUUID(), name: 'sound', kind: 'audio' }];
-    expect(falPayload(settings, [{ kind: 'audio', data: 'audio' }])).toMatchObject({ endpoint: 'fal-ai/stable-audio-25/audio-to-audio', input: { audio_url: 'audio', total_seconds: 5 } });
-    settings.duration = 5.5; expect(validateAssetSettings(settings)).toContain('whole number');
+  });
+  it('retires fal audio: Stable Audio and fal sound effects cannot be submitted and ElevenLabs audio never goes to fal', () => {
+    const settings = { ...newAssetGeneration('audio').settings, prompt: 'Rain on a tin roof' };
+    expect(ASSET_MODELS.filter(model => model.kind === 'audio').map(model => model.provider)).toEqual(['elevenlabs', 'elevenlabs', 'elevenlabs']);
+    for (const model of ['stable-audio-2.5', 'sound-effects']) {
+      expect(validateAssetSettings({ ...settings, model })).toContain('no longer available');
+      expect(() => falPayload({ ...settings, model }, [])).toThrow('no longer available');
+    }
+    expect(() => falPayload({ ...settings, model: 'elevenlabs-sound-effects' }, [])).toThrow('not generated through fal');
+    // Saved jobs keep polling their original fal queue.
+    expect(falRequestPath('stable-audio-2.5', 'request_123')).toBe('fal-ai/stable-audio-25/requests/request_123');
   });
   it('polls the app queue path and normalizes string and object media outputs', () => {
     expect(falRequestPath('kling-video', 'request_123')).toBe('fal-ai/kling-video/requests/request_123');

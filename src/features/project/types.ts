@@ -2,6 +2,7 @@ import { referenceClips } from '../../../shared/reference-clips';
 import { videoAssets } from '../../../shared/video-references';
 import { audioTrackAssetIds } from '../../../shared/audio-tracks';
 import type { ProjectLora } from '../../../shared/loras';
+import type { ProjectCharacter } from '../../../shared/characters';
 import type { CaptionResult, Provider, Slice } from '../../../shared/contracts';
 import type { Interstitial, InterstitialSettings, InterstitialResult } from '../../../shared/interstitials';
 import type { CallResponseFlow } from '../call-response/model';
@@ -10,6 +11,7 @@ import type { AssetGeneration, AssetSettings } from '../../../shared/asset-gener
 
 export type Asset = { id: string; name: string; blob: Blob };
 export type MediaGeneration = { provider: 'comfy'; settings?: InterstitialSettings; result: InterstitialResult }
+  // 'fal' tags every Library generation recipe, including ElevenLabs audio; settings.model names the actual provider.
   | { provider: 'fal'; settings: AssetSettings; createdAt: number };
 export type LibraryAsset = { assetId: string; originalAssetId?: string; normalizedFps?: number; name: string; kind: 'video' | 'generated' | 'image' | 'audio'; folderId?: string; generationId?: string; generation?: MediaGeneration; width?: number; height?: number; duration?: number; inFrame?: number; outFrame?: number;
   /** Read only when migrating projects created before clip-owned playback settings. */
@@ -37,6 +39,8 @@ export type Project = {
   loras?: ProjectLora[];
   /** Raw text as typed; applied to every prompt enhancement and AI edit in the project. */
   promptInstructions?: string;
+  /** Cast for generated dialogue: names, how they sound and their ElevenLabs voices. */
+  characters?: ProjectCharacter[];
   subtitle: { name: string; assetId: string } | null;
   analysis: AnalysisState;
 };

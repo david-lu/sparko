@@ -17,6 +17,6 @@ export default defineConfig({
     // Tests own their server and mock providers; never inherit live account credentials.
     // A pulled Vercel environment must not turn the local entry point into a hosted server.
     env: { PORT: '3100', VERCEL: '1', SPARKO_TEST_MODE: '1', APP_PASSWORD: '', COMFY_CLOUD_API_KEY: '', COMFY_API_KEY: '', OPENAI_API_KEY: '',
-      GEMINI_KEY: '', GEMINI_API_KEY: '', FAL_KEY: '', BLOB_READ_WRITE_TOKEN: '', DEFAULT_VIDEO_URL: '', DEFAULT_PROJECT_URL: '' },
+      GEMINI_KEY: '', GEMINI_API_KEY: '', FAL_KEY: '', ELEVENLABS_API_KEY: '', BLOB_READ_WRITE_TOKEN: '', DEFAULT_VIDEO_URL: '', DEFAULT_PROJECT_URL: '' },
   },
 });

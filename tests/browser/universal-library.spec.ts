@@ -149,17 +149,32 @@ test('folders import media without creating timeline clips and Start/End video t
 
 });
 
-test('audio generation saves a playable output and exposes the supported audio models', async ({ page }) => {
-  await falStatus(page); await openVideo(page);
-  await page.route('**/api/library-generations', route => route.fulfill({ json: { requestId: 'request_123' } }));
-  await page.route('**/api/library-generations/*/request_123', route => route.fulfill({ json: { phase: 'ready', count: 1 } }));
-  await page.route('**/api/library-generations/stable-audio-2.5/request_123/content/0', route => route.fulfill({ contentType: 'audio/wav', path: 'tests/fixtures/voice-answer.wav' }));
-  await create(page, 'Audio'); await page.getByLabel('Generation model', { exact: true }).selectOption('stable-audio-2.5');
-  await page.getByLabel('Generation prompt', { exact: true }).fill('Gentle ambient music');
+test('audio generation uses ElevenLabs music, sound effects and dialogue models and saves a playable output', async ({ page }) => {
+  await page.route('**/api/status', async route => { const response = await route.fetch(), body = await response.json(); await route.fulfill({ json: { ...body, providers: { ...body.providers, elevenlabs: true } } }); });
+  await openVideo(page);
+  const requests: any[] = [];
+  await page.route('**/api/elevenlabs/audio', route => { requests.push(route.request().postDataJSON()); return route.fulfill({ contentType: 'audio/wav', path: 'tests/fixtures/voice-answer.wav' }); });
+  await create(page, 'Audio');
+  const model = page.getByLabel('Generation model', { exact: true });
+  expect(await model.locator('option').allTextContents()).toEqual(['Dialogue · ElevenLabs v4', 'Music · Eleven Music v2.5', 'Sound effects · ElevenLabs v3']);
+  await model.selectOption('elevenlabs-sound-effects');
+  await expect(page.getByLabel('Automatic duration', { exact: true })).toBeChecked();
+  await expect(page.getByLabel('Generation duration', { exact: true })).toBeDisabled();
+  await page.getByLabel('Seamless loop', { exact: true }).check();
+  await model.selectOption('elevenlabs-music');
+  await page.getByLabel('Generation prompt', { exact: true }).fill('Gentle ambient music, 70 BPM, D major');
+  await page.getByLabel('Automatic duration', { exact: true }).uncheck();
   await page.getByLabel('Generation duration', { exact: true }).fill('30');
+  await page.getByLabel('Instrumental only', { exact: true }).check();
   await page.getByRole('button', { name: 'Generate audio', exact: true }).click();
   await expect(page.locator('.story-clip.selected [aria-label="Audio clip"]')).toBeVisible();
   await expect.poll(async () => (await readProject(page)).clipGenerations.filter((g: any) => g.phase === 'ready').length).toBe(1);
+  expect(requests[0].settings).toMatchObject({ model: 'elevenlabs-music', prompt: 'Gentle ambient music, 70 BPM, D major', duration: 30, autoDuration: false, instrumental: true });
+});
+
+test('a new image generation clip starts as a one-second placeholder', async ({ page }) => {
+  await openVideo(page); await create(page, 'Image');
+  await expect.poll(async () => (await readProject(page)).storyFlow.nodes.find((n: any) => n.mediaKind === 'image' && n.generationId)?.duration).toBe(1);
 });
 
 test('all panels can float, dock, maximize, and reset without changing the default workspace', async ({ page }) => {

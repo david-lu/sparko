@@ -1,5 +1,6 @@
 import { H3_MODEL_ID, projectLoraAddress, projectLoraStrength, saveProjectLora, type ProjectLora } from '../../../shared/loras';
 import { PROMPT_INSTRUCTIONS_MAX_LENGTH } from '../../../shared/prompt-instructions';
+import { projectCharactersSchema, type ProjectCharacter } from '../../../shared/characters';
 import { generationModel } from '../../../shared/generation-models';
 import type { MediaInfo, MediaSource } from '../../media/media';
 import { MediaEngine } from '../../media/MediaEngine';
@@ -23,7 +24,7 @@ import { collectLibrary } from './library';
 import { migrateClipMedia, assetPlacement } from './migrateClipMedia';
 import { inspectAsset, mediaKind, mediaFile, type LibraryFile } from './libraryFiles';
 import type { LibraryAsset, LibraryFolder } from './types';
-import type { AssetGeneration } from '../../../shared/asset-generation';
+import { interruptedGeneration, type AssetGeneration } from '../../../shared/asset-generation';
 import { readClipMetadata } from '../../media/clipMetadata';
 import { resolveClipReferences, restoreClip } from '../interstitials/clipMetadata';
 import { projectContent } from './projectContent';
@@ -256,6 +257,13 @@ export class ProjectController {
     const project = this.state.project, promptInstructions = value.slice(0, PROMPT_INSTRUCTIONS_MAX_LENGTH) || undefined;
     if (project && project.promptInstructions !== promptInstructions) this.save({ ...project, promptInstructions, updatedAt: Date.now() });
   }
+  /** Replaces the cast as one undoable edit; invalid lists are rejected, not trimmed. */
+  setCharacters(characters: ProjectCharacter[]) {
+    const project = this.state.project; if (!project) return;
+    const next = characters.length ? projectCharactersSchema.parse(characters) : undefined;
+    if (JSON.stringify(next) === JSON.stringify(project.characters)) return;
+    this.endHistoryGroup(); this.save({ ...project, characters: next, updatedAt: Date.now() }); this.endHistoryGroup();
+  }
   async importAssets(entries: LibraryFile[], folderId?: string, onProgress?: (message: string) => void) {
     const initial = this.state.project;
     if (!initial || !entries.length) return [];
@@ -391,7 +399,7 @@ export class ProjectController {
       if (!flow.interstitial) grouped.interstitial.time = project.interstitials.find(item => grouped.scenes.some(scene => scene.interstitialId === item.id))?.time ?? grouped.interstitial.time;
       return grouped;
     }));
-    project = { ...project, clipGenerations: project.clipGenerations?.map(g => g.phase === 'preparing' ? { ...g, phase: 'draft' as const } : g), interstitials: project.interstitials.map(item => {
+    project = { ...project, clipGenerations: project.clipGenerations?.map(g => interruptedGeneration(g) ? { ...g, phase: 'draft' as const } : g), interstitials: project.interstitials.map(item => {
       const rename = renamedClips.get(item.id);
       return rename && item.label === rename.before ? { ...item, label: rename.after } : item;
     }) };
@@ -399,7 +407,7 @@ export class ProjectController {
     ({ project, pendingAssets } = await this.prepareGraphSources(project,pendingAssets,signal));
     await this.prepareGenerated(project, pendingAssets, signal);
     project = { ...project, library: collectLibrary(project) };
-    project = { ...project, clipGenerations: project.clipGenerations?.map(g => g.phase === 'preparing' ? { ...g, phase: 'draft' as const } : g), interstitials: project.interstitials.map(item => ({ ...item, groupId: projectFlows(project).find(flow => flow.scenes.some(scene => scene.interstitialId === item.id))?.interstitial.id, phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase })) };
+    project = { ...project, clipGenerations: project.clipGenerations?.map(g => interruptedGeneration(g) ? { ...g, phase: 'draft' as const } : g), interstitials: project.interstitials.map(item => ({ ...item, groupId: projectFlows(project).find(flow => flow.scenes.some(scene => scene.interstitialId === item.id))?.interstitial.id, phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase })) };
     this.update({ message: 'Saving prepared project', progress: null });
     await this.writes;
     await writeProject(project, pendingAssets, true, signal);
@@ -705,7 +713,7 @@ export class ProjectController {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
           ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, storyFlow: target.storyFlow, library: target.library, libraryFolders: target.libraryFolders, deletedAssetIds: target.deletedAssetIds,
-            loras: target.loras, promptInstructions: target.promptInstructions, clipGenerations: target.clipGenerations?.map(g => {
+            loras: target.loras, promptInstructions: target.promptInstructions, characters: target.characters, clipGenerations: target.clipGenerations?.map(g => {
               const cached=this.generationStates.get(g.id),versions=[...new Map([...cached?.versions??[],...g.versions].map(v=>[v.assetId,v])).values()].filter(v=>target.library?.some(a=>a.assetId===v.assetId));
               const pinned=target.storyFlow?.nodes.find(n=>n.generationId===g.id)?.source?.assetId;
               return {phase:'draft' as const,...cached,...g,versions,selectedAssetId:versions.some(v=>v.assetId===pinned)?pinned:undefined};

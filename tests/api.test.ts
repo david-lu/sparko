@@ -12,7 +12,7 @@ const providers: Providers = {
   gemini: vi.fn(),
   voice: vi.fn<Providers['voice']>(async (provider, input) => ({ transcript: 'My spoken answer', response: 'Answer received.', provider, model: `test-${provider}`, context: input.context })),
   voiceChoice: vi.fn<Providers['voiceChoice']>(async input => ({ answerId: input.context.conditions[0].id, probability: 0.9, model: 'test-hume' })),
-  enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(),
+  enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(), enhanceAudioPrompt: vi.fn(), enhanceVoiceDescription: vi.fn(),
 };
 let app: Express;
 beforeAll(async () => { app = await createApp({ providers }); app.use(errorHandler); });
@@ -20,7 +20,7 @@ const post = (url: string) => request(app).post(url).set('x-sparko-request', '1'
 describe('server API boundaries', () => {
   it('reports configuration without exposing secrets', async () => {
     const result = await request(app).get('/api/status').expect(200);
-    expect(result.body.providers).toEqual({ openai: true, gemini: true, comfy: false, hume: true, fal: false });
+    expect(result.body.providers).toEqual({ openai: true, gemini: true, comfy: false, hume: true, fal: false, elevenlabs: false });
     expect(result.body.defaultVideo.name).toBe('sample.mp4');
     expect(result.body.defaultVideo.url).toBe('/media/sample.mp4');
     expect(result.text).not.toMatch(/sk-|COMFY_CLOUD_API_KEY|OPENAI_API_KEY|GEMINI_KEY|HUME_API_KEY/);

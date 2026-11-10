@@ -1,5 +1,7 @@
 import ProjectLoras from '../project/ProjectLoras';
 import ProjectPromptInstructions from '../project/ProjectPromptInstructions';
+import ProjectCharacters from '../project/ProjectCharacters';
+import type { AppStatus } from '../../../shared/contracts';
 import { Flag, LocateFixed, Video } from 'lucide-react';
 import { useState } from 'react';
 import { TIMELINE_FPS } from '../../../shared/constants';
@@ -10,7 +12,7 @@ import { readLibraryDrag, STORY_DRAG_TYPE } from './libraryDrag';
 import type { StoryEditor } from './useStoryEditor';
 import './project-inspector.css';
 
-export default function ProjectInspector({editor}:{editor:StoryEditor}) {
+export default function ProjectInspector({editor,status}:{editor:StoryEditor;status:AppStatus|null}) {
   const [dragging,setDragging]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const project=editor.projects.getSnapshot().project,graph=editor.graph;
   if(!project||!graph)return null;
@@ -46,6 +48,7 @@ export default function ProjectInspector({editor}:{editor:StoryEditor}) {
     <button type="button" className="button project-entry-reveal" disabled={!start||busy} onClick={()=>start&&editor.selectNew(start.id)}><LocateFixed size={13}/>Show in timeline</button>
     <ProjectLoras key={`${project.id}:${editor.projects.getSnapshot().activationRevision}`} projects={editor.projects}/>
     <ProjectPromptInstructions projects={editor.projects}/>
+    <ProjectCharacters projects={editor.projects} status={status}/>
     <dl className="project-inspector-summary"><div><dt>Videos</dt><dd>{graph.nodes.length}</dd></div><div><dt>Frame rate</dt><dd>{TIMELINE_FPS} fps</dd></div></dl>
   </section>;
 }
