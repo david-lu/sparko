@@ -2,6 +2,7 @@ import { playableResult, type Interstitial, type InterstitialResult } from '../.
 import type { MediaInfo, MediaSource } from './media';
 import { assets } from '../features/project/assets';
 import { INTERSTITIAL_CROSSFADE_FRAMES, TIMELINE_FPS } from '../../shared/constants';
+import type { AudioLayer } from '../features/project/audioLayers';
 
 export type TimelineSegment = {
   id: string; kind: 'source' | 'interstitial'; label: string; source: MediaSource;
@@ -23,7 +24,9 @@ export class TimelineComposition {
   readonly crossfade: boolean;
   readonly crossfadeFrames: number;
   readonly matchFraming: boolean;
-  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean } = {}) {
+  readonly audioLayers: AudioLayer[];
+  constructor(readonly source: MediaSource, readonly info: MediaInfo, items: Interstitial[], options: { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean; audioLayers?: AudioLayer[] } = {}) {
+    this.audioLayers = options.audioLayers ?? [];
     this.crossfade = options.crossfade ?? true;
     this.crossfadeFrames = options.crossfadeFrames ?? INTERSTITIAL_CROSSFADE_FRAMES;
     this.matchFraming = options.matchFraming ?? false;

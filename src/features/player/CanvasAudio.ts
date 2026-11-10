@@ -65,7 +65,7 @@ export class CanvasAudio {
     }
     music.gain!.gain.setTargetAtTime(volume, now, .035);
   }
-  render(key: string, decoder: FrameDecoder, time: number, gain: number, gainRate: number, volume: number, speed: number) {
+  render(key: string, decoder: FrameDecoder, time: number, gain: number, gainRate: number, volume: number, speed: number, endTime = Infinity) {
     const now = this.context.currentTime;
     let voice = this.voices.get(key);
     if (voice && (voice.speed !== speed || Math.abs(voice.media + (now - voice.clock) * speed - time) > .08)) { this.stop(key); voice = undefined; }
@@ -77,7 +77,7 @@ export class CanvasAudio {
     voice.gain.gain.setValueAtTime(volume * gain, now);
     voice.gain.gain.linearRampToValueAtTime(volume * Math.max(0, Math.min(1, gain + gainRate * speed * .04)), now + .04);
     for (const sample of decoder.audio) {
-      const end = sample.timestamp + sample.duration;
+      const end = Math.min(endTime, sample.timestamp + sample.duration);
       const from = Math.max(sample.timestamp, voice.scheduled, time);
       if (end <= from + 1e-7 || from > time + .25 * speed) continue;
       const source = this.context.createBufferSource(); source.buffer = sample.buffer; source.playbackRate.value = speed;

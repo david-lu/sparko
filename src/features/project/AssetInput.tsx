@@ -58,7 +58,7 @@ export default function AssetInput({ projects, value, kinds, onChange, label = '
     } catch (e) { if (!task.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to add reference.'); return false; }
     finally { if (!task.signal.aborted) { operation.current = null; setBusy(false); } }
   };
-  const dropLabel = multiple ? `Drag ${kinds.length === 1 ? kinds[0] + 's' : 'assets'} from Library` : `Drag ${kinds[0]} from Library`;
+  const dropLabel = multiple ? `Drag ${kinds.length === 1 ? kinds[0] === 'audio' ? 'audio files' : kinds[0] + 's' : 'assets'} from Library` : `Drag ${kinds[0]} from Library`;
   return <div className={`asset-input ${dragging ? 'is-dragging' : ''}`} role="group" aria-label={label} aria-busy={busy}
     onDragOver={e => { if (e.dataTransfer.types.includes(STORY_DRAG_TYPE) || e.dataTransfer.types.includes(LIBRARY_MOVE_TYPE) || e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = busy ? 'none' : 'copy'; if (!busy) setDragging(true); } }}
     onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}

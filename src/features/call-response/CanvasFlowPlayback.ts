@@ -8,6 +8,7 @@ import { flowTransition } from './transitions';
 import { sceneMediaRange } from '../story-flow/mediaRange';
 import type { FadeChannel } from '../story-flow/model';
 import idleMusicUrl from '../../../assets/working-something-out-loop.wav?url';
+import { playbackAudioLayers } from '../player/audioLayers';
 
 /** Scene playback through the shared Mediabunny/GPU renderer and audio clock. */
 export class CanvasFlowPlayback {
@@ -145,7 +146,8 @@ export class CanvasFlowPlayback {
     try {
       const layers = this.layers();
       this.buffering = !this.decks.render(layers, this.session.playing, this.settings,
-        layers.reduce((gain, layer) => gain + (layer.musicGain ?? 0), 0));
+        layers.reduce((gain, layer) => gain + (layer.musicGain ?? 0), 0),
+        playbackAudioLayers(this.flow.audioLayers, (this.session.elapsedFrames + this.remainder) / this.flow.fps));
       if (!this.session.finished) {
         const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame, this.crossfade);
         if (!next.finished) {
@@ -185,7 +187,7 @@ export class CanvasFlowPlayback {
     this.matchFraming = value; this.decks.setMatchFraming(value); this.render();
   }
   play() {
-    if (this.session.finished) this.session = startSession(this.flow, true);
+    if (this.session.finished) { this.session = startSession(this.flow, true); this.remainder = 0; }
     else this.session = { ...this.session, playing: true };
     this.decks.elapsed(); this.render();
   }
@@ -198,9 +200,11 @@ export class CanvasFlowPlayback {
   }
   seekScene(id: SceneId, frame = 0, playing = false, preserveRoute = false) {
     const scene = getScene(this.flow, id);
+    const targetFrame = Math.max(0, Math.min(sceneFrames(scene) - 1, Math.round(frame)));
     const route = preserveRoute ? { traversedEdgeIds: this.session.traversedEdgeIds,
       outcome: scene.clip.kind === 'idle' ? null : this.session.outcome } : {};
-    this.session = { ...previewScene(this.flow, id), ...route, frame: Math.max(0, Math.min(sceneFrames(scene) - 1, Math.round(frame))), playing };
+    this.session = { ...previewScene(this.flow, id), ...route, frame: targetFrame,
+      elapsedFrames: (flowLayout(this.flow).starts[id] ?? 0) + targetFrame, playing };
     this.remainder = 0; this.buffering = true; this.decks.pause(); this.render();
   }
   seek(time: number) {

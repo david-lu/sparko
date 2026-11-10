@@ -8,7 +8,7 @@ import { TIMELINE_FPS } from '../../../shared/constants';
 import { isGenerating, playableResult } from '../../../shared/interstitials';
 import { formatTime } from '../../../shared/contracts';
 import type { CallResponseFlow, PlaybackSession } from '../call-response/model';
-import { sceneFrames } from '../call-response/model';
+import { sceneFrames, flowLayout } from '../call-response/model';
 import { assets } from '../project/assets';
 import ImageDrawingDialog from '../project/ImageDrawingDialog';
 import { useAssetAvailability } from '../project/useAssetAvailability';
@@ -40,6 +40,7 @@ import { behaviors, outputPorts, outputOffset, type OutputPort } from './behavio
 import { clipColors, clipColorName, type ClipColor } from './clipColors';
 import ClipTypeIcon from './ClipTypeIcon';
 import './styles.css';
+import AudioLayers from '../project/AudioLayersEditor';
 import './groups.css';
 
 export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeight,collapsed,onCollapsed,pinchZoomSensitivity,playheadTimeMode,sourceDuration}:{editor:StoryEditor;flow:CallResponseFlow;session:PlaybackSession|null;height:number;maxHeight:number;onHeight:(height:number)=>void;collapsed:boolean;onCollapsed:(collapsed:boolean)=>void;pinchZoomSensitivity:number;playheadTimeMode:PlayheadTimeMode;sourceDuration?:number}) {
@@ -526,6 +527,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     {!collapsed&&<ResizeHandle orientation="horizontal" label="Resize story canvas" value={height} min={220} max={maxHeight} onChange={onHeight}/>}
     <div className="story-toolbar"><button className="story-collapse" disabled={workspaceLocked} aria-label={collapsed?'Expand timeline':'Collapse timeline'} aria-expanded={!collapsed} aria-controls={canvasId} title={workspaceLocked?'Unlock workspace in Window to collapse the timeline':collapsed?'Expand timeline':'Collapse timeline'} onClick={toggleCollapsed} onKeyDown={e=>{if(e.key===' ')e.stopPropagation();}}><ChevronDown size={14}/><span className="eyebrow">TIMELINE</span></button><span className="story-collapsed-summary">{nodes.length} {nodes.length===1?'clip':'clips'}</span>
       <button className="button small" title={shortcuts.title('layout')} aria-keyshortcuts={shortcuts.aria('layout')} onClick={cleanup}>Auto layout</button>
+      <AudioLayers projects={editor.projects} player={editor.player} duration={flowLayout(flow).totalFrames / flow.fps}/>
       <div className="story-toolbar-spacer"/><button className="icon-button small" title={shortcuts.title('duplicate')} aria-label="Duplicate selected clips" disabled={!editor.selected.length&&!editor.selectedGroup} onClick={editor.duplicate}><Copy size={14}/></button>
       <button className="icon-button small story-join" title={editor.joinReasons.length?'Join unavailable · Click to see all reasons':'Join selected clips · Same source, connected in graph order'} aria-label="Join selected clips" aria-disabled={!!editor.joinReasons.length} aria-describedby={`${canvasId}-join-help`} onClick={joinSelected}><Combine size={14}/></button>
       <span id={`${canvasId}-join-help`} className="sr-only">When Join is unavailable, activate it to see all reasons.</span>

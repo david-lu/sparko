@@ -7,6 +7,7 @@ export type AssetUse = { owner: string; role: string };
 export function assetUsage(project: Project, ids: string[]): AssetUse[] {
   const wanted = new Set(ids), uses: AssetUse[] = [];
   const add = (id: string | undefined, owner: string, role: string) => { if (id && wanted.has(id) && !uses.some(u => u.owner === owner && u.role === role)) uses.push({ owner, role }); };
+  for (const layer of project.audioLayers ?? []) add(layer.assetId, layer.name, 'Project audio layer');
   for (const node of project.storyFlow?.nodes ?? []) { add(node.source?.assetId, node.name, 'Timeline footage'); add(node.source?.originalAssetId, node.name, 'Original timeline footage'); }
   for (const item of project.interstitials) {
     const node = project.storyFlow?.nodes.find(n => n.interstitialId === item.id), owner = node?.name ?? item.label;
