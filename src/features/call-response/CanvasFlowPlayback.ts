@@ -10,6 +10,7 @@ import { sceneMediaRange } from '../story-flow/mediaRange';
 import type { FadeChannel } from '../story-flow/model';
 import idleMusicUrl from '../../../assets/working-something-out-loop.wav?url';
 import { playbackAudioLayers } from '../player/audioLayers';
+import { clipAudioLayers } from '../player/clipAudioTracks';
 
 /** Scene playback through the shared Mediabunny/GPU renderer and audio clock. */
 export class CanvasFlowPlayback {
@@ -149,7 +150,7 @@ export class CanvasFlowPlayback {
       const layers = this.layers();
       this.buffering = !this.decks.render(layers, this.session.playing, this.settings,
         layers.reduce((gain, layer) => gain + (layer.musicGain ?? 0), 0),
-        playbackAudioLayers(this.flow.audioLayers, (this.session.elapsedFrames + this.remainder) / this.flow.fps));
+        [...playbackAudioLayers(this.flow.audioLayers, (this.session.elapsedFrames + this.remainder) / this.flow.fps), ...clipAudioLayers(layers, this.flow.clipAudio)]);
       if (!this.session.finished) {
         const next = advanceSession(this.flow, { ...this.session, playing: true }, sceneFrames(getScene(this.flow, this.session.sceneId)) - this.session.frame, this.crossfade);
         if (!next.finished) {

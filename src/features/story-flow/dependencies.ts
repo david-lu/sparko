@@ -49,6 +49,10 @@ export function storyDependency(graph: StoryGraph, items: Interstitial[], assetI
     const error = video.video ? assetError(video.video.assetId) : 'Choose a video for this timeline clip.';
     if (error) issues.push({ key: `timeline-video:${video.id}`, title: video.video?.name ?? 'Timeline video', message: error });
   }
+  for (const track of item.inputAudioTracks ?? []) if (!track.muted) for (const clip of track.clips) {
+    const error = assetError(clip.assetId);
+    if (error) issues.push({ key: `input-sound:${clip.id}`, title: `${track.name} · ${clip.name}`, message: error });
+  }
   for (const side of ['input', 'output'] as const) {
     if (loop && side === 'output') continue;
     if (!(side === 'input' ? item.useInputReference : item.useOutputReference)) continue;

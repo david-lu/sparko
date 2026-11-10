@@ -6,6 +6,7 @@ import { videoAssetReferenceSchema, videoReferenceSettings } from '../../../shar
 import { INTERSTITIAL } from '../../../shared/constants';
 import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
 import { maskCurveSchema } from '../../../shared/mask-curves';
+import { audioTracksSchema } from '../../../shared/audio-tracks';
 import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
 import { clipMaskInjection, referenceTypes, generationMethods, interstitialSettings, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, upscalePhases, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings, type UpscaledResult, type UpscaleJob } from '../../../shared/interstitials';
 
@@ -23,7 +24,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
   if (method !== undefined && method !== 'fal' && !generationMethods.includes(method as InterstitialSettings['method'] & string)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
-  return interstitialSettings({ ...settings, ...readPromptVersions(settings), timelineVideos: videoReferenceSettings.timelineVideos.safeParse(settings.timelineVideos).data, keyframes: videoKeyframesSchema.safeParse(settings.keyframes).data, startVideoAssets: videoReferenceSettings.startVideoAssets.safeParse(settings.startVideoAssets).data, endVideoAssets: videoReferenceSettings.endVideoAssets.safeParse(settings.endVideoAssets).data, seed: generationSeedSchema.safeParse(settings.seed).data, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
+  return interstitialSettings({ ...settings, ...readPromptVersions(settings), timelineVideos: videoReferenceSettings.timelineVideos.safeParse(settings.timelineVideos).data, keyframes: videoKeyframesSchema.safeParse(settings.keyframes).data, ...audioTrackSettings(settings), startVideoAssets: videoReferenceSettings.startVideoAssets.safeParse(settings.startVideoAssets).data, endVideoAssets: videoReferenceSettings.endVideoAssets.safeParse(settings.endVideoAssets).data, seed: generationSeedSchema.safeParse(settings.seed).data, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
 }
 
 function readResult(value: unknown): InterstitialResult | undefined {
@@ -66,7 +67,7 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         lora: loraAddressSchema.nullable().safeParse(item.lora).data, loraInstructions: loraInstructionsSchema.safeParse(item.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(item.loraStrength).data,
         seed: generationSeedSchema.safeParse(item.seed).data,
         turbo: typeof item.turbo === 'boolean' ? item.turbo : undefined,
-        timelineVideos: videoReferenceSettings.timelineVideos.safeParse(item.timelineVideos).data, keyframes: videoKeyframesSchema.safeParse(item.keyframes).data,
+        timelineVideos: videoReferenceSettings.timelineVideos.safeParse(item.timelineVideos).data, keyframes: videoKeyframesSchema.safeParse(item.keyframes).data, ...audioTrackSettings(item),
         analyzeReferences: typeof item.analyzeReferences === 'boolean' ? item.analyzeReferences : undefined,
         continuity: typeof item.continuity === 'string' ? item.continuity : undefined, dialogue: typeof item.dialogue === 'string' ? item.dialogue : undefined, loopAudio: typeof item.loopAudio === 'boolean' ? item.loopAudio : undefined,
         useStartVideoAsset: typeof item.useStartVideoAsset === 'boolean' ? item.useStartVideoAsset : undefined,
@@ -117,6 +118,11 @@ export function saveInterstitials(sourceId: string, items: Interstitial[]) {
   catch { return false; }
 }
 
+function audioTrackSettings(value: { inputAudioTracks?: unknown; generatedAudioTracks?: unknown; startReferenceVolume?: unknown; endReferenceVolume?: unknown }) {
+  const level = (volume: unknown) => typeof volume === 'number' && Number.isFinite(volume) && volume >= 0 && volume <= 1 ? volume : undefined;
+  return { inputAudioTracks: audioTracksSchema.safeParse(value.inputAudioTracks).data, generatedAudioTracks: audioTracksSchema.safeParse(value.generatedAudioTracks).data,
+    startReferenceVolume: level(value.startReferenceVolume), endReferenceVolume: level(value.endReferenceVolume) };
+}
 function readPromptVersions(value: Record<string, unknown>) {
   return { enhancedPrompt: enhancedPromptSettings.enhancedPrompt.safeParse(value.enhancedPrompt).data,
     enhancedPromptStale: enhancedPromptSettings.enhancedPromptStale.safeParse(value.enhancedPromptStale).data,

@@ -1,5 +1,5 @@
-import { COMFY, TIMELINE_FPS } from '../../../shared/constants.js';
-import { inputMaskCurve, inputMaskStrength } from '../../../shared/generation-inputs.js';
+import { TIMELINE_FPS } from '../../../shared/constants.js';
+import { audioMaskColumns, inputMaskCurve, inputMaskStrength } from '../../../shared/generation-inputs.js';
 import type { BridgeInput, Workflow } from './workflow.js';
 import type { comfyBridgePlan } from '../../../shared/comfy.js';
 
@@ -34,14 +34,11 @@ export function timelineAudio(graph: Workflow, input: BridgeInput, plan: ReturnT
   const length = add('audio_mask_size', 'GetAudioLatentSize', { latent: fitted });
   let mask = add('audio_mask_base', 'SolidMask', { value: 1, width: length, height: 1 });
   const { prefixFrames: prefix, middleFrames: middle, suffixFrames: suffix, totalFrames: total } = plan;
-  const ranges = input.timelineInputs ?? [];
+  // Added input sound is kept like a timeline video's audio track; it never freezes picture.
+  const ranges = [...input.timelineInputs ?? [], ...input.timelineAudioInputs ?? []];
   const curve = inputMaskCurve(input.audioMaskCurve, prefix / TIMELINE_FPS, suffix / TIMELINE_FPS, input.audioMaskTransitionMs ?? 0, !!ranges.length);
-  const count = Math.floor(total / TIMELINE_FPS * COMFY.audioLatentsPerSecond);
   const spans: { start: number; length: number; strength: number }[] = [];
-  for (let i = 0; i < count; i++) {
-    // Any audio column straddling a blank region must generate completely.
-    const a = i / COMFY.audioLatentsPerSecond * TIMELINE_FPS, b = (i + 1) / COMFY.audioLatentsPerSecond * TIMELINE_FPS - 1e-6;
-    const strength = Number(Math.max(inputMaskStrength(curve, a, prefix, middle, suffix, ranges), inputMaskStrength(curve, b, prefix, middle, suffix, ranges)).toFixed(6));
+  for (const [i, strength] of audioMaskColumns(curve, prefix, middle, suffix, ranges).entries()) {
     const previous = spans.at(-1);
     if (previous?.strength === strength) previous.length++;
     else spans.push({ start: i, length: 1, strength });

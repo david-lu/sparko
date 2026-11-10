@@ -19,6 +19,10 @@ export function projectContent(project: Project, target: 'file' | 'browser' = 'f
         imageReferences: item.imageReferences?.length ? item.imageReferences : undefined,
         keyframes: item.keyframes?.length ? item.keyframes : undefined,
         timelineVideos: item.timelineVideos?.length ? item.timelineVideos : undefined,
+        inputAudioTracks: item.inputAudioTracks?.length ? item.inputAudioTracks : undefined,
+        generatedAudioTracks: item.generatedAudioTracks?.length ? item.generatedAudioTracks : undefined,
+        // Full volume is the absent default; undo restores it explicitly.
+        startReferenceVolume: interstitialSettings(item).startReferenceVolume, endReferenceVolume: interstitialSettings(item).endReferenceVolume,
         generationSettings: item.generationSettings && interstitialSettings(item.generationSettings),
         progress: undefined, progressDetails: undefined, queuePosition: undefined,
         upscale: item.upscale && { ...item.upscale, progress: undefined, progressDetails: undefined, queuePosition: undefined },

@@ -1,4 +1,4 @@
-import { timelineInputRangesSchema, validateInputRanges } from '../../../shared/generation-inputs.js';
+import { timelineAudioRangesSchema, timelineInputRangesSchema, validateInputRanges } from '../../../shared/generation-inputs.js';
 import { MAX_VIDEO_KEYFRAMES, videoKeyframeInputsSchema, validateVideoKeyframeInputs } from '../../../shared/video-keyframes.js';
 import { upscaleWorkflow } from './workflow.js';
 import { generationSeedSchema } from '../../../shared/generation-seed.js';
@@ -35,6 +35,7 @@ const maskCurve = z.preprocess(value => {
 const schema = z.object({
   fullInput: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
   timelineInputs: z.preprocess(value => { if (typeof value !== 'string' || value.length > 10000) return value; try { return JSON.parse(value); } catch { return value; } }, timelineInputRangesSchema.optional()),
+  timelineAudioInputs: z.preprocess(value => { if (typeof value !== 'string' || value.length > 20000) return value; try { return JSON.parse(value); } catch { return value; } }, timelineAudioRangesSchema.optional()),
   keyframes: z.preprocess(value => {
     if (typeof value !== 'string' || value.length > 10000) return value;
     try { return JSON.parse(value); } catch { return value; }
@@ -101,7 +102,8 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     try { plan = comfyBridgePlan(settings.before, settings.after, settings.duration, settings.mode); validateComfyResolution(plan,settings.resolution);
       const imageLoop = settings.mode === 'loop' && !plan.prefixFrames && !plan.suffixFrames && (settings.startImageIndex !== undefined || settings.endImageIndex !== undefined || settings.loopImageGuide !== false && images.length > 0);
       validateInputRanges(settings.timelineInputs ?? [], plan.middleFrames);
-      if ((settings.timelineInputs?.length || settings.keyframes?.some(k => k.method === 'frame')) && !settings.fullInput) throw new Error('Prepare the complete timeline input before generating.');
+      validateInputRanges(settings.timelineAudioInputs ?? [], plan.middleFrames, true);
+      if ((settings.timelineInputs?.length || settings.timelineAudioInputs?.length || settings.keyframes?.some(k => k.method === 'frame')) && !settings.fullInput) throw new Error('Prepare the complete timeline input before generating.');
       validateVideoKeyframeInputs(settings.keyframes ?? [], plan.middleFrames, keyframeImages.length, imageLoop || settings.startImageIndex !== undefined, imageLoop || settings.endImageIndex !== undefined);
     }
     catch (error) { throw new HttpError(400, (error as Error).message); }

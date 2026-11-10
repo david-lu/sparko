@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { TIMELINE_FPS } from '../../../shared/constants';
+import { audioLevel } from '../../../shared/audio-tracks';
 import { assets } from '../project/assets';
 import { useAssetAvailability } from '../project/useAssetAvailability';
 import { previewFrames, previewOutput, type GenerationPreviewState, type GenerationPreviewAction, type InputPreview, type PreviewMode } from './generation-preview';
@@ -12,9 +13,10 @@ const modes: { value: PreviewMode; label: string; unavailable: string }[] = [
   { value: 'upscaled', label: 'Upscaled', unavailable: 'Upscale the generated video to 2K to preview it here' },
 ];
 /** All views share a playhead. Loading and missing inputs stay inside the player. */
-export default function GenerationPlayer({ preview, input, onAction, onPlay, active, ref }: {
+export default function GenerationPlayer({ preview, input, onAction, onPlay, active, outputVolume = 1, ref }: {
   preview: GenerationPreviewState; input?: InputPreview; onAction: (action: GenerationPreviewAction) => void; onPlay: () => void;
-  active: boolean; ref?: Ref<GenerationPlayback>;
+  /** The generated clip's playback level, which also applies to its 2K video. */
+  active: boolean; outputVolume?: number; ref?: Ref<GenerationPlayback>;
 }) {
   const { frame: currentFrame, mode, playing } = preview, length = previewFrames(preview), output = previewOutput(preview), rendered = mode !== 'input';
   const [mediaState, setMediaState] = useState<{ url: string; loaded?: boolean; error?: string }>();
@@ -37,7 +39,8 @@ export default function GenerationPlayer({ preview, input, onAction, onPlay, act
   useEffect(() => { if (!active) pause(); }, [active]);
   useEffect(() => { const media = video.current; return () => media?.pause(); }, [url, image]);
   useEffect(() => {
-    const otherPlayback = (event: Event) => { if (event.target instanceof HTMLMediaElement && event.target !== video.current) pause(); };
+    // Audio tracks play alongside the preview and must not stop it.
+    const otherPlayback = (event: Event) => { if (event.target instanceof HTMLMediaElement && event.target !== video.current && !('generationSound' in event.target.dataset)) pause(); };
     document.addEventListener('play', otherPlayback, true);
     return () => document.removeEventListener('play', otherPlayback, true);
   }, []);
@@ -46,6 +49,8 @@ export default function GenerationPlayer({ preview, input, onAction, onPlay, act
     if (rendered && url && media && media.readyState >= 1 && Number.isFinite(media.duration))
       onAction({ type: 'metadata', url, frames: Math.max(1, Math.round(media.duration * TIMELINE_FPS)) });
   }, [mode, url, loaded]);
+  const volume = audioLevel(rendered ? outputVolume : input?.volume);
+  useEffect(() => { if (video.current) video.current.volume = volume; }, [volume, url, loaded]);
   useEffect(() => {
     const media = video.current;
     if (!media || media.readyState < 1) return;

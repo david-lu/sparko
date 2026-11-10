@@ -5,10 +5,12 @@ import type { TimelineVideo } from '../../../shared/video-references';
 import type { ProjectController } from '../project/ProjectController';
 import AssetInput from '../project/AssetInput';
 import { timelineSeconds } from './generation-timeline';
+import { VolumeRow } from './GenerationAudioTracks';
+import { audioLevel } from '../../../shared/audio-tracks';
 
-export default function TimelineVideoProperties({ value, prefixFrames, middleFrames, projects, onChange, onDelete, onPreviewPlay }: {
+export default function TimelineVideoProperties({ value, prefixFrames, middleFrames, projects, onChange, onVolume, onDelete, onPreviewPlay }: {
   value: TimelineVideo; prefixFrames: number; middleFrames: number; projects: ProjectController;
-  onChange: (patch: Partial<TimelineVideo>) => void; onDelete: () => void; onPreviewPlay: () => void;
+  onChange: (patch: Partial<TimelineVideo>) => void; onVolume: (volume: number) => void; onDelete: () => void; onPreviewPlay: () => void;
 }) {
   const video = value.video;
   const current = useRef({ value, middleFrames, onChange }); current.current = { value, middleFrames, onChange };
@@ -35,6 +37,7 @@ export default function TimelineVideoProperties({ value, prefixFrames, middleFra
         if (Number.isFinite(frame)) onChange({ video: { ...video, [field]: field === 'inFrame' ? Math.max(0, video.outFrame - available, Math.min(video.outFrame - 1, frame)) : Math.max(video.inFrame + 1, Math.min(sourceFrames, video.inFrame + available, frame)) } });
       }}/></label>)}
     </div>
+    {video && <VolumeRow label="Video audio" volume={audioLevel(value.volume)} onBoundary={() => projects.endHistoryGroup()} onChange={onVolume}/>}
     <div className="generation-property-actions"><label><input type="checkbox" checked={value.enabled} onChange={event => onChange({ enabled: event.target.checked })}/>Enabled</label>
       <button type="button" className="text-button" onClick={onDelete}><Trash2 size={14}/>Delete video</button></div>
   </div>;

@@ -1,10 +1,11 @@
 import { generationPrompt, promptSelectionError } from '../../../shared/prompt-versions';
 import { prepareTimelineInput } from './prepare-timeline-input';
 import { validateTimelineVideos } from '../../../shared/video-references';
+import { audibleClips, audioInputRanges, audioLevel } from '../../../shared/audio-tracks';
 import { enabledImageReferences } from '../../../shared/image-references';
 import { activeVideoKeyframes, validateVideoKeyframes } from '../../../shared/video-keyframes';
 import { chooseGenerationSeed } from '../../../shared/generation-seed';
-import { INTERSTITIAL, MASK_TRANSITION } from '../../../shared/constants';
+import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
 import type { GenerationJob } from '../../../shared/contracts';
 import { clipMaskInjection, validateMaskTransitionMs, type Interstitial } from '../../../shared/interstitials';
 import { comfyDimensions, comfyReferenceRange } from '../../../shared/comfy';
@@ -41,7 +42,9 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   }
   const range = comfyReferenceRange(item, info?.duration ?? item.duration);
   const timelineVideos = validateTimelineVideos(item.timelineVideos, range.plan.middleFrames);
-  const fullInput = !!timelineVideos.length || !!item.keyframes?.some(k => k.enabled && k.method === 'frame');
+  const inputSound = audibleClips(item.inputAudioTracks, range.plan.prefixFrames, range.plan.totalFrames);
+  const audioInputs = audioInputRanges(item.inputAudioTracks, range.plan.prefixFrames, range.plan.middleFrames);
+  const fullInput = !!timelineVideos.length || !!inputSound.length || !!item.keyframes?.some(k => k.enabled && k.method === 'frame');
   const keyframes = activeVideoKeyframes(item.keyframes);
   validateVideoKeyframes(item.keyframes, range.plan.middleFrames, startImageIndex !== undefined, endImageIndex !== undefined || item.method === 'comfy-loop' && startImageIndex !== undefined);
   if (keyframes.some(keyframe => keyframe.method !== 'frame') || startImageIndex !== undefined || endImageIndex !== undefined) query.set('imageGuides', 'true');
@@ -64,7 +67,8 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   signal.throwIfAborted();
   const dimensions = comfyDimensions(canvas.width, canvas.height, item.resolution);
   // Crop directly to H3's exact canvas so its loader does not apply a second framing transform.
-  let clip = range.plan.prefixFrames || range.plan.suffixFrames ? await engine!.exportMp4(range, { frame: { ...dimensions, fit: 'cover' }, frameRate: INTERSTITIAL.referenceFps,
+  const audioLevels = { split: range.plan.prefixFrames / TIMELINE_FPS, before: audioLevel(item.startReferenceVolume), after: audioLevel(item.endReferenceVolume) };
+  let clip = range.plan.prefixFrames || range.plan.suffixFrames ? await engine!.exportMp4(range, { frame: { ...dimensions, fit: 'cover' }, frameRate: INTERSTITIAL.referenceFps, audioLevels,
     quality: 'high', signal, onProgress: value => onProgress('preparing', value) }) : undefined;
   if (fullInput) clip = await prepareTimelineInput(clip, item, range.plan, dimensions, signal, value => onProgress('preparing', value));
   if (clip && clip.size > INTERSTITIAL.maxReferenceBytes) throw new Error('The reference clip exceeds 50 MB. Shorten the reference ranges.');
@@ -72,6 +76,7 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   const body = new FormData();
   body.set('seed', String(seed));
   if (fullInput) { body.set('fullInput', 'true'); body.set('timelineInputs', JSON.stringify(timelineVideos.map(v => ({ frame: v.frame, frames: v.video!.outFrame - v.video!.inFrame })))); }
+  if (audioInputs.length) body.set('timelineAudioInputs', JSON.stringify(audioInputs));
   if (item.requestOrigin) body.set('clipOrigin', JSON.stringify(item.requestOrigin));
   if (images.length) body.set('imageReferences', JSON.stringify(images));
   if (keyframes.length) {

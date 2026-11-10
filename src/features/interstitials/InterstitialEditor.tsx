@@ -32,6 +32,7 @@ import { hasNoVideoInput } from './api';
 import { maskCurveSchema } from '../../../shared/mask-curves';
 import type { ProjectController } from '../project/ProjectController';
 import type { PromptFramePlayer } from '../player/promptFrame';
+import { audioTrackAssetIds } from '../../../shared/audio-tracks';
 
 export type InterstitialEditorProps = {
   selected: Interstitial; controller: InterstitialController; engine: MediaEngine | null; info: MediaInfo | null;
@@ -46,7 +47,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
   const promptId = useId(), analysisId = useId();
   const dependency = controller.dependency(selected.id);
   const kind = controller.clipKind(selected.id);
-  useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId), ...(selected.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...(selected.keyframes ?? []).flatMap(k => k.image ? [k.image.assetId] : [])]);
+  useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId), ...(selected.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...(selected.keyframes ?? []).flatMap(k => k.image ? [k.image.assetId] : []), ...audioTrackAssetIds(selected.inputAudioTracks), ...audioTrackAssetIds(selected.generatedAudioTracks)]);
   const { enhancing, analyzing, enhance, cancel } = useVideoPromptEnhancement({ selected, controller, engine, info, status, projects, player });
   const [addingImages, setAddingImages] = useState(false);
   useEffect(() => { setAddingImages(false); }, [selected.id, controller]);

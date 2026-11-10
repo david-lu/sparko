@@ -1,5 +1,6 @@
 import { videoAssets } from '../../../shared/video-references';
 import { referenceClips } from '../../../shared/reference-clips';
+import { audioTrackAssetIds } from '../../../shared/audio-tracks';
 import type { Project } from './types';
 
 export type AssetUse = { owner: string; role: string };
@@ -14,6 +15,8 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     for (const [settings, prefix] of [[item, ''], [item.generationSettings, 'Submitted ']] as const) {
       for (const clip of settings?.timelineVideos ?? []) add(clip.video?.assetId, owner, `${prefix}timeline video`);
       for (const keyframe of settings?.keyframes ?? []) add(keyframe.image?.assetId, owner, `${prefix}keyframe image`);
+      for (const track of settings?.inputAudioTracks ?? []) for (const clip of track.clips) add(clip.assetId, owner, `${prefix}input sound`);
+      for (const track of settings?.generatedAudioTracks ?? []) for (const clip of track.clips) add(clip.assetId, owner, `${prefix}sound over generated video`);
       for (const ref of settings?.imageReferences ?? []) add(ref.assetId, owner, `${prefix}image input`);
       for (const side of ['start', 'end'] as const) for (const ref of videoAssets(settings ?? {}, side)) add(ref.assetId, owner, `${prefix}${side} video input`);
     }
@@ -42,6 +45,7 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     } else {
       for (const video of asset.generation.settings?.timelineVideos ?? []) add(video.video?.assetId, asset.name, 'Saved timeline video');
       for (const keyframe of asset.generation.settings?.keyframes ?? []) add(keyframe.image?.assetId, asset.name, 'Saved keyframe image');
+      for (const id of audioTrackAssetIds(asset.generation.settings?.inputAudioTracks)) add(id, asset.name, 'Saved input sound');
       for (const ref of asset.generation.settings?.imageReferences ?? []) add(ref.assetId, asset.name, 'Saved image input');
       for (const side of ['start', 'end'] as const) for (const ref of videoAssets(asset.generation.settings ?? {}, side)) add(ref.assetId, asset.name, `Saved ${side} video input`);
       for (const side of ['before', 'after'] as const) for (const ref of referenceClips(asset.generation.result.reference, side)) add(ref.assetId, asset.name, 'Saved video reference');
@@ -53,6 +57,7 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     for (const settings of Object.values(template.settings)) {
       for (const video of settings.timelineVideos ?? []) add(video.video?.assetId, template.name, 'Template timeline video');
       for (const keyframe of settings.keyframes ?? []) add(keyframe.image?.assetId, template.name, 'Template keyframe image');
+      for (const id of [...audioTrackAssetIds(settings.inputAudioTracks), ...audioTrackAssetIds(settings.generatedAudioTracks)]) add(id, template.name, 'Template sound');
       for (const ref of settings.imageReferences ?? []) add(ref.assetId, template.name, 'Template image input');
       for (const side of ['start', 'end'] as const) for (const ref of videoAssets(settings, side)) add(ref.assetId, template.name, `Template ${side} input`);
     }
