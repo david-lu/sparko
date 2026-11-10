@@ -12,7 +12,7 @@ import { CLIP_METADATA_TAG, serializeClipMetadata, type ClipOrigin } from '../..
 import { MAX_VIDEO_KEYFRAMES, validateVideoKeyframeInputs, type VideoKeyframeInput } from '../../../shared/video-keyframes.js';
 
 export type Workflow = Record<string, { class_type: string; inputs: Record<string, unknown>; _meta?: Record<string, unknown> }>;
-export type BridgeInput = { fullInput?: boolean; timelineInputs?: TimelineInputRange[]; keyframes?: VideoKeyframeInput[]; seed?: number; clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
+export type BridgeInput = { fullInput?: boolean; timelineInputs?: TimelineInputRange[]; /** Spans of added input sound; their audio is kept like a timeline video's. */ timelineAudioInputs?: TimelineInputRange[]; keyframes?: VideoKeyframeInput[]; seed?: number; clipOrigin?: ClipOrigin; lora?: string | null; loraStrength?: number; turbo?: boolean; before: number; after: number; duration: number; prompt: string; width: number; height: number; hasAudio: boolean; mode?: ComfyMode; maskInjection?: MaskInjection; audioMaskTransitionMs?: number; videoMaskTransitionMs?: number; audioMaskCurve?: MaskCurve; videoMaskCurve?: MaskCurve; interpolateMiddle?: boolean; resolution?: GenerationResolution; startImageIndex?: number; endImageIndex?: number; loopImageGuide?: boolean };
 
 /** Native H3 AV masking, assembled from nodes available on managed Comfy Cloud.
  * Separately encoded references stay frozen outside their soft transitions.
@@ -26,7 +26,8 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   validateComfyResolution(plan,input.resolution);
   const { prefixFrames, suffixFrames, totalFrames, insertion } = plan;
   validateInputRanges(input.timelineInputs ?? [], plan.middleFrames);
-  if ((input.timelineInputs?.length || input.keyframes?.some(k => k.method === 'frame')) && !input.fullInput) throw new Error('Prepare the complete timeline input before generating.');
+  validateInputRanges(input.timelineAudioInputs ?? [], plan.middleFrames, true);
+  if ((input.timelineInputs?.length || input.timelineAudioInputs?.length || input.keyframes?.some(k => k.method === 'frame')) && !input.fullInput) throw new Error('Prepare the complete timeline input before generating.');
   if (input.fullInput && !assetId) throw new Error('Timeline input video is missing.');
   const imageLoop = input.mode === 'loop' && !prefixFrames && !suffixFrames;
   const startImageIndex = input.startImageIndex ?? (imageLoop ? input.endImageIndex ?? (input.loopImageGuide !== false && imageAssetIds.length ? 0 : undefined) : undefined);

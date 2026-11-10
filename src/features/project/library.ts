@@ -38,6 +38,7 @@ export function collectLibrary(project: Project, sourceDuration?: number): Libra
     generation: { provider: 'fal', settings: version.settings, createdAt: version.createdAt } });
   for (const item of project.interstitials) for (const clip of item.timelineVideos ?? []) if (clip.video) add({ assetId: clip.video.assetId, name: clip.video.name, kind: 'video' });
   for (const item of project.interstitials) for (const keyframe of item.keyframes ?? []) if (keyframe.image) add({ ...keyframe.image, kind: 'image' });
+  for (const item of project.interstitials) for (const track of [...item.inputAudioTracks ?? [], ...item.generatedAudioTracks ?? []]) for (const clip of track.clips) add({ assetId: clip.assetId, name: clip.name, kind: 'audio' });
   for (const item of project.interstitials) for (const ref of item.imageReferences ?? []) add({ assetId: ref.assetId, name: ref.name, kind: 'image' });
   return [...entries.values()];
 }

@@ -7,7 +7,9 @@ export type ProjectEdit = Pick<Project, 'callResponse' | 'callResponses' | 'stor
 type Entry = { before: ProjectEdit; after: ProjectEdit; label: string; key?: string; time: number };
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export function projectEdit(project: Project): ProjectEdit {
-  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [], keyframes: item.keyframes ?? [], timelineVideos: item.timelineVideos ?? [] })),
+  // Restoring spreads an edit over the live item, so optional inputs need explicit empty values.
+  return { interstitials: project.interstitials.map(({ id, label, time, kind, groupId, ...item }) => ({ id, label, time, kind, groupId, ...interstitialSettings(item), imageReferences: item.imageReferences ?? [], keyframes: item.keyframes ?? [], timelineVideos: item.timelineVideos ?? [],
+    inputAudioTracks: item.inputAudioTracks ?? [], generatedAudioTracks: item.generatedAudioTracks ?? [], startReferenceVolume: item.startReferenceVolume ?? 1, endReferenceVolume: item.endReferenceVolume ?? 1 })),
     callResponse: project.callResponse, callResponses: project.callResponses, storyFlow: project.storyFlow, library: project.library, libraryFolders: project.libraryFolders, deletedAssetIds: project.deletedAssetIds,
     audioLayers: project.audioLayers, loras: project.loras, promptInstructions: project.promptInstructions, clipGenerations: project.clipGenerations?.map(({id,name,kind,folderId,settings,versions,selectedAssetId}) => ({id,name,kind,folderId,settings,versions,selectedAssetId})), subtitle: project.subtitle, crossfadeFrames: project.crossfadeFrames };
 }
@@ -69,7 +71,12 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
   const changed = after.interstitials.flatMap(item => Object.keys(item).filter(key => !same(item[key as keyof InterstitialEdit], previous.get(item.id)?.[key as keyof InterstitialEdit])).map(key => ({ id: item.id, key })));
   if (changed.some(change => change.key === 'time')) return { label: 'Move video' };
   const field = changed[0]?.key;
-  const labels: Record<string, string> = { label: 'Rename video', prompt: 'Edit prompt', duration: 'Change duration', audioMaskTransitionMs: 'Change audio mask transition', videoMaskTransitionMs: 'Change video mask transition', start_range: 'Change start range', end_range: 'Change end range', method: 'Change generation method', enable_prompt_expansion: 'Change prompt expansion', loopAudio: 'Toggle Idle audio' };
+  // A volume drag is one undo step, even when the level lives inside a list of videos or sounds.
+  const withoutVolume = (value: unknown) => JSON.stringify(value, (key, value) => key === 'volume' ? undefined : value);
+  if (field && changed.every(change => change.key === field) && (['startReferenceVolume', 'endReferenceVolume'].includes(field) || ['timelineVideos', 'inputAudioTracks', 'generatedAudioTracks'].includes(field)
+    && changed.every(change => withoutVolume(after.interstitials.find(item => item.id === change.id)?.[field as keyof InterstitialEdit]) === withoutVolume(previous.get(change.id)?.[field as keyof InterstitialEdit]))))
+    return { label: 'Change volume', key: changed.map(change => `${change.id}:${change.key}:volume`).sort().join('|') };
+  const labels: Record<string, string> = { label: 'Rename video', prompt: 'Edit prompt', duration: 'Change duration', audioMaskTransitionMs: 'Change audio mask transition', videoMaskTransitionMs: 'Change video mask transition', start_range: 'Change start range', end_range: 'Change end range', method: 'Change generation method', enable_prompt_expansion: 'Change prompt expansion', loopAudio: 'Toggle Idle audio', inputAudioTracks: 'Edit input audio tracks', generatedAudioTracks: 'Edit generated audio tracks' };
   return { label: labels[field] ?? 'Edit video',
     key: ['prompt', 'duration', 'audioMaskTransitionMs', 'videoMaskTransitionMs', 'start_range', 'end_range'].includes(field) && changed.every(change => change.key === field)
       ? changed.map(change => `${change.id}:${change.key}`).sort().join('|') : undefined };

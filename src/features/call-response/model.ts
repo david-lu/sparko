@@ -53,6 +53,8 @@ export type FlowEdge = {
 export type CallResponseFlow = {
   /** Project-wide soundtrack layers, supplied at runtime. */
   audioLayers?: import('../project/audioLayers').AudioLayer[];
+  /** Sound over generated videos, keyed by asset and supplied at runtime. */
+  clipAudio?: import('../player/clipAudioTracks').ClipAudio;
   storyGraph?: boolean;
   storyInteractions?: Record<string, CallResponseFlow['interaction']>;
   version: 2;

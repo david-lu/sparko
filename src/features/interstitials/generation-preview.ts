@@ -2,7 +2,8 @@ import type { InterstitialSettings } from '../../../shared/interstitials';
 import type { GenerationSegment } from './generation-timeline';
 
 export type PreviewMode = 'input' | 'generated' | 'upscaled';
-export type InputPreview = { assetId: string; kind?: 'image' | 'audio'; sourceFrame: number; label: string; held?: boolean };
+/** `volume` is the input's audio level, as the model receives it. */
+export type InputPreview = { assetId: string; kind?: 'image' | 'audio'; sourceFrame: number; label: string; held?: boolean; volume?: number };
 type GeneratedPreview = { url: string; frames: number; estimate: number };
 export type GenerationPreviewState = {
   mode: PreviewMode; frame: number; playing: boolean; inputFrames: number; generated?: GeneratedPreview;
@@ -104,8 +105,8 @@ export function generationInputAtFrame(item: InterstitialSettings, segments: Gen
     return { assetId: image.assetId, kind: 'image', sourceFrame: 0, label: image.name };
   }
   const video = inMiddle && item.timelineVideos?.find(v => v.enabled && v.video && middleFrame >= v.frame && middleFrame < v.frame + v.video.outFrame - v.video.inFrame);
-  if (video && video.video) return { assetId: video.video.assetId, sourceFrame: video.video.inFrame + middleFrame - video.frame, label: video.video.name };
+  if (video && video.video) return { assetId: video.video.assetId, sourceFrame: video.video.inFrame + middleFrame - video.frame, label: video.video.name, volume: video.volume };
   const segment = segments.find(s => frame >= s.startFrame && frame < s.endFrame);
   if (segment?.clip) return { assetId: segment.clip.assetId, kind: segment.clip.kind, sourceFrame: segment.clip.inFrame + (segment.held || segment.clip.kind === 'image' ? 0 : frame - segment.startFrame),
-    label: nameFor(segment.clip.assetId) ?? 'Reference', held: segment.held };
+    label: nameFor(segment.clip.assetId) ?? 'Reference', held: segment.held, volume: segment.side === 'start' ? item.startReferenceVolume : item.endReferenceVolume };
 }

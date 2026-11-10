@@ -1,6 +1,6 @@
 import {
   ALL_FORMATS, BlobSource, BufferTarget, CanvasSink, Conversion, Input,
-  Mp4OutputFormat, Output, Quality, UrlSource, WavOutputFormat, canEncodeAudio, type OutputFormat, type QualityLevel,
+  Mp4OutputFormat, Output, Quality, UrlSource, WavOutputFormat, canEncodeAudio, type AudioSample, type OutputFormat, type QualityLevel,
 } from 'mediabunny';
 import { validateSlice, type Slice } from '../../shared/contracts';
 import type { ExportFrame } from './videoFraming';
@@ -142,10 +142,12 @@ async function runConversion(input: Input, output: Output<OutputFormat, BufferTa
 }
 
 /** Export an arbitrary range to H.264/AAC MP4. Deliberately has no download or editing UI. */
-export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { frame?: ExportFrame; maxHeight?: number; maxDimension?: number; frameRate?: number; quality?: QualityLevel } = {}): Promise<Blob> {
+/** Audio levels for a reference export: `before` until `split` seconds into the export, `after` from then on. */
+export type ReferenceAudioLevels = { split: number; before: number; after: number };
+export async function exportMp4(source: MediaSource, slice: Slice, options: TaskOptions & { frame?: ExportFrame; maxHeight?: number; maxDimension?: number; frameRate?: number; quality?: QualityLevel; audioLevels?: ReferenceAudioLevels } = {}): Promise<Blob> {
   options.signal?.throwIfAborted();
   await ensureAac();
-  const input = openInput(source);
+  const input = openInput(source), levels = options.audioLevels && (options.audioLevels.before < 1 || options.audioLevels.after < 1) ? options.audioLevels : undefined;
   try {
     validateSlice(slice, await input.computeDuration());
     const track = await input.getPrimaryVideoTrack();
@@ -160,7 +162,12 @@ export async function exportMp4(source: MediaSource, slice: Slice, options: Task
       input, output, tracks: 'primary', trim: slice,
       // Re-encode to honor arbitrary boundaries instead of expanding to nearby keyframes.
       video: { codec: 'avc', forceTranscode: true, frameRate: options.frameRate, ...(options.quality ? { quality: new Quality(options.quality) } : {}), ...scaleDimension },
-      audio: { codec: 'aac', forceTranscode: true },
+      audio: { codec: 'aac', forceTranscode: true, ...(levels ? {
+        // Samples arrive trimmed, on the export's own clock.
+        process: (sample: AudioSample) => {
+          const gain = sample.timestamp + sample.duration / 2 < levels.split ? levels.before : levels.after;
+          return gain === 1 ? sample : scaleAudioSample(sample, gain);
+        } } : {}) },
     });
     return await runConversion(input, output, conversion, options);
   } finally { input.dispose(); }

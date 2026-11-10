@@ -174,3 +174,47 @@
 .generation-waveform-clip svg{display:block;width:100%;height:48px;color:#91bca8}
 .generation-waveform-clip path{fill:none;stroke:currentColor;stroke-width:1}
 .generation-waveform-clip>span{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:9px;white-space:nowrap}
+
+/* Audio tracks: input sound the model hears, or sound over the generated video. */
+.generation-track-lane{position:relative;height:40px;border-bottom:1px solid var(--line);overflow:hidden;touch-action:none;cursor:crosshair}
+.generation-track-lane:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
+.generation-track-lane[data-selected=true]{background:#91bca80d}
+.generation-track-lane[data-drop=true]{background:#e9c49612}
+.generation-track-lane[data-muted=true] .generation-track-sound,.generation-track-lane[data-muted=true] .generation-waveform-clip{opacity:.4}
+.generation-track-lane .generation-waveform-clip{top:12px;height:26px;background:#22302a;border-radius:3px}
+.generation-track-lane .generation-waveform-clip svg{height:26px}
+.generation-track-sound{position:absolute;top:12px;height:26px;min-width:4px;padding:0;border:1px solid #6f9c88;border-radius:3px;background:transparent;color:var(--text);display:flex;align-items:flex-end;overflow:hidden;cursor:ew-resize;touch-action:none;user-select:none}
+.generation-track-sound:hover{background:#ffffff0a}
+.generation-track-sound span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;padding:1px 4px;background:#191918b8;pointer-events:none}
+.generation-track-sound[data-selected=true]{outline:2px solid var(--accent);outline-offset:-2px}
+.generation-track-sound[data-silent=true]{border-style:dashed;opacity:.55}
+.generation-empty-track{position:absolute;inset:12px 0 0;display:grid;place-items:center;color:var(--muted);font-size:10px;pointer-events:none;white-space:nowrap}
+.generation-sound-drop{position:absolute;top:12px;height:26px;min-width:3px;border:2px dashed var(--accent);border-radius:3px;background:#4d463bcf;pointer-events:none;overflow:hidden;box-sizing:border-box}
+.generation-sound-drop>span{position:absolute;inset:auto 0 0;padding:1px 3px;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#000a}
+.generation-timeline-tracks:has(.generation-sound-drop) .generation-empty-track{visibility:hidden}
+.generation-sound-properties{display:flex;flex-direction:column;gap:10px;min-width:0}
+.generation-sound-properties>.hint{margin:0;font-size:11px;line-height:1.45}
+.generation-sound-properties .generation-property-actions{margin-top:0}
+.generation-sound-name{display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--muted);min-width:0}
+.generation-sound-name input{min-width:0;width:100%;box-sizing:border-box}
+.generation-sound-card{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid #ffffff20;border-radius:5px;background:#ffffff03;min-width:0}
+.generation-sound-card>strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.generation-sound-add{display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--muted);min-width:0}
+.generation-drop-preview.sound{top:auto;bottom:2px;height:26px}
+/* One audio level per row: mute, name and readout, then a full-width slider. */
+.generation-volume-row{display:grid;grid-template-columns:auto minmax(0,1fr) 38px;grid-template-rows:20px 22px;align-items:center;column-gap:6px;min-width:0}
+.generation-volume-row>button{grid-row:1/3;width:28px;height:28px;min-width:28px;padding:0;display:grid;place-items:center}
+.generation-volume-row>span{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.generation-volume-row>output{font:10px var(--mono);text-align:right;color:var(--accent);font-variant-numeric:tabular-nums}
+.generation-volume-row>input{grid-column:2/4;width:100%;min-width:0;height:20px;margin:0;padding:0;accent-color:var(--accent);cursor:pointer}
+.generation-volume-row>input:disabled{cursor:default}
+.generation-volume-row:has(input:disabled){opacity:.45}
+.generation-volume-row[data-muted=true]>span,.generation-volume-row[data-muted=true]>output{color:var(--muted)}
+/* Same disclosure as Image references, without sharing its selectors. */
+.generation-audio-mix{margin-top:12px}
+.generation-audio-mix>summary{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;min-height:38px;list-style:none}
+.generation-audio-mix>summary::-webkit-details-marker{display:none}
+.generation-audio-mix>summary::before{content:'▸';color:var(--muted)}.generation-audio-mix[open]>summary::before{content:'▾'}
+.generation-audio-mix>summary small{margin-left:auto;color:var(--muted)}
+.generation-audio-mix>.generation-volume-row{padding:3px 0}
+.generation-audio-mix>.generation-volume-row:last-child{margin-bottom:10px}

@@ -13,9 +13,11 @@ import InterstitialTimeField from './InterstitialTimeField';
 
 const ignoreBusy = () => {};
 /** Generation inputs and transport have no dependency on the story player or prompt editor. */
-export default function GenerationTimelineEditor({ selected, controller, info, projects, minDuration, workspace = false, onPreviewPlay, onImagesBusyChange = ignoreBusy }: {
+export default function GenerationTimelineEditor({ selected, controller, info, projects, minDuration, workspace = false, onPreviewPlay, onImagesBusyChange = ignoreBusy, outputVolume, onOutputVolume }: {
   selected: Interstitial; controller: InterstitialController; info: MediaInfo | null; projects?: ProjectController;
   minDuration: number; workspace?: boolean; onPreviewPlay: () => void; onImagesBusyChange?: (busy: boolean) => void;
+  /** The story clip's playback level for the generated video, when the clip is in a story. */
+  outputVolume?: number; onOutputVolume?: (volume: number) => void;
 }) {
   const dependency = controller.dependency(selected.id), method = normalizeGenerationMethod(selected.method), currentResult = playableResult(selected);
   const resultId = currentResult?.fullAssetId ?? currentResult?.assetId, upscaled = currentResult?.upscaled;
@@ -44,6 +46,8 @@ export default function GenerationTimelineEditor({ selected, controller, info, p
 
   return <GenerationTimeline key={selected.id} itemId={selected.id} workspace={workspace} generatedUrl={fullVideoUrl} generatedFrames={currentResult ? Math.round((currentResult.fullRange?.totalDuration ?? currentResult.totalDuration) * TIMELINE_FPS) : undefined}
         upscaledUrl={upscaledUrl} upscaledFrames={upscaled ? Math.round(upscaled.totalDuration * TIMELINE_FPS) : undefined} item={selected} projects={projects} reference={dependency?.reference}
+        generatedBodyFrame={currentResult ? Math.round((currentResult.fullRange?.start ?? currentResult.start) * TIMELINE_FPS) : undefined}
+        outputVolume={outputVolume} onOutputVolume={onOutputVolume}
         prefixFrames={comfyPlan?.prefixFrames ?? (selected.useInputReference === false ? 0 : Math.round(selected.start_range * TIMELINE_FPS))}
         middleFrames={comfyPlan?.middleFrames ?? Math.round(selected.duration * TIMELINE_FPS)}
         suffixFrames={comfyPlan?.suffixFrames ?? (method === 'comfy-extend' || selected.useOutputReference === false ? 0 : Math.round(selected.end_range * TIMELINE_FPS))}

@@ -51,7 +51,9 @@ export async function generationSource<T extends Pick<Interstitial, 'time' | 'st
   }
   const engine: Pick<MediaEngine, 'exportMp4'> = { exportMp4: async (slice, options = {}) => {
     const target = new BufferTarget(), output = new Output({ target, format: new Mp4OutputFormat({ fastStart: 'in-memory' }) });
-    await renderComposition({ info: referenceInfo, fps: TIMELINE_FPS, segments, crossfade: false }, output,
+    // Each side of the story reference has its own level; segments are already split by side.
+    const levels = options.audioLevels, leveled = levels ? segments.map(segment => ({ ...segment, source: { ...segment.source, volume: segment.id.startsWith('before:') ? levels.before : levels.after } })) : segments;
+    await renderComposition({ info: referenceInfo, fps: TIMELINE_FPS, segments: leveled, crossfade: false }, output,
       { ...slice, signal, frame: options.frame ?? { ...dimensions, fit: 'cover' }, onProgress: options.onProgress });
     return new Blob([target.buffer!], { type: 'video/mp4' });
   } };

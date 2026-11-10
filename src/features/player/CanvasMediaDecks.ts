@@ -9,7 +9,7 @@ export type PlaybackClip = { key: string; source: MediaSource; sourceFootage: bo
   audio?: { key: string; source: MediaSource; time: number } };
 export type PlaybackLayer = PlaybackClip & { opacity: number; gain: number; gainRate?: number; musicGain?: number };
 export type PlaybackSettings = { volume: number; muted: boolean; speed: number };
-export type PlaybackAudioLayer = { key: string; source: MediaSource; time: number; end: number };
+export type PlaybackAudioLayer = { key: string; source: MediaSource; time: number; end: number; gain?: number; gainRate?: number };
 type Deck = { decoder: FrameDecoder; source: string; used: number };
 
 /** Mediabunny decoders feeding one GPU canvas and one audio clock. No preview encoding. */
@@ -96,7 +96,7 @@ export class CanvasMediaDecks {
     }
     this.audio.retain(playing ? new Set([...assigned.filter(({ layer }) => !layer.still && !layer.muted).map(({ audioKey }) => audioKey), ...extraAudio.map(({ layer }) => layer.key)]) : new Set());
     for (const { layer, decoder } of extraAudio) if (playing) {
-      this.audio.render(layer.key, decoder, layer.time, 1, 0, settings.muted ? 0 : settings.volume * audioVolume(layer.source.volume), settings.speed, layer.end);
+      this.audio.render(layer.key, decoder, layer.time, layer.gain ?? 1, layer.gainRate ?? 0, settings.muted ? 0 : settings.volume * audioVolume(layer.source.volume), settings.speed, layer.end);
     }
     for (const { layer, audioDecoder, audioKey, audioTime } of assigned) if (playing && !layer.still && !layer.muted) {
       this.audio.render(audioKey, audioDecoder, audioTime, layer.gain, layer.gainRate ?? 0,

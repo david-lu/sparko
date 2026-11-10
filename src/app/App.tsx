@@ -15,6 +15,10 @@ import InterstitialPanel from '../features/interstitials/InterstitialPanel';
 import { InterstitialController } from '../features/interstitials/InterstitialController';
 import { ProjectController } from '../features/project/ProjectController';
 import { TimelineComposition } from '../media/TimelineComposition';
+import { generatedClipAudio } from '../features/player/clipAudioTracks';
+import { audioTrackAssetIds } from '../../shared/audio-tracks';
+import { useAssetAvailability } from '../features/project/useAssetAvailability';
+import { audioVolume } from '../media/audioVolume';
 import ResizeHandle from '../shared/ResizeHandle';
 import { MediaEngine } from '../media/MediaEngine';
 import { VideoPlayerController } from '../features/player/VideoPlayerController';
@@ -79,6 +83,7 @@ export default function App() {
   const generationWorkspace = useMemo(() => createGenerationWorkspace(id => { controller.pause(); setGenerationId(id); }, () => setGenerationId(null)), [controller]);
   const storyGraph=projectState.project?.storyFlow;
   const generationItem = interstitialState.items.find(item => item.id === generationId);
+  const generationNode = generationItem && storyGraph?.nodes.find(node => node.interstitialId === generationItem.id);
   useEffect(() => { if (generationId && !generationItem) setGenerationId(null); }, [generationId, generationItem]);
   const storyEditor=useStoryEditor(storyGraph,interstitialState.items,projects,interstitials,controller);
   const crossfadeFrames = projectState.project?.crossfadeFrames ?? INTERSTITIAL_CROSSFADE_FRAMES;
@@ -153,11 +158,12 @@ export default function App() {
   const fileMenu = useRef<HTMLDetailsElement>(null);
   const savePending = useRef(false);
   const sourceVersion = useRef(0);
-  const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item) })));
+  const readyKey = JSON.stringify(interstitialState.items.map(item => ({ id: item.id, kind: item.kind, groupId: item.groupId, label: item.label, time: item.time, duration: !playableResult(item) ? item.duration : undefined, result: playableResult(item), sound: item.generatedAudioTracks })));
+  useAssetAvailability(interstitialState.items.flatMap(item => audioTrackAssetIds(item.generatedAudioTracks)));
   useEffect(()=>{if(info&&projectState.source)projects.initializeStoryFlow(info.duration);},[info,projectState.source,projects]);
   const flow = useMemo(() => {
     const flow = storyGraph ? runtimeFlow(storyGraph,interstitialState.items,source.assetId??'',info?.duration??0) : info&&source.assetId?composeFlows(savedFlows, interstitialState.items, source.assetId, info.duration):undefined;
-    return flow ? { ...flow, audioLayers: projectState.project?.audioLayers } : flow;
+    return flow ? { ...flow, audioLayers: projectState.project?.audioLayers, clipAudio: generatedClipAudio(interstitialState.items) } : flow;
   }, [storyGraph,savedFlows, readyKey, info, source.assetId, projectState.project?.audioLayers]);
   const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, crossfadeFrames, matchFraming, audioLayers: projectState.project?.audioLayers }) : null, [source, info, readyKey, crossfade, crossfadeFrames, matchFraming, projectState.project?.audioLayers]);
   useEffect(() => { if (!projectState.source) return; if (flow && info) controller.setFlow(flow, info, matchFraming, crossfade, crossfadeFrames); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming, crossfade, crossfadeFrames, projectState.source]);
@@ -410,8 +416,9 @@ export default function App() {
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
       <WorkspaceLockContext.Provider value={workspace.locked}>{workspace.freeDock && !preview && storyGraph && !generationItem ? <DockWorkspace locked={workspace.locked} items={{viewer: playerElement, timeline: storyCanvasElement, library: <StoryLibrary editor={storyEditor}/>, create: <StoryAddClips editor={storyEditor}/>, inspector: <StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>}}/> : <div className="workspace-grid" data-generation-editing={!!generationItem && !preview} inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
         <Activity mode={generationItem && !preview ? 'hidden' : 'visible'}>{playerElement}</Activity>
-        {generationItem && !preview && <GenerationTimelineEditor key={generationItem.id} workspace selected={storyGenerationItem(generationItem, storyGraph?.nodes.find(node => node.interstitialId === generationItem.id))}
-          controller={interstitials} info={info} projects={projects} minDuration={minimumDuration('comfy-loop')} onPreviewPlay={() => controller.pause()}/>}
+        {generationItem && !preview && <GenerationTimelineEditor key={generationItem.id} workspace selected={storyGenerationItem(generationItem, generationNode)}
+          controller={interstitials} info={info} projects={projects} minDuration={minimumDuration('comfy-loop')} onPreviewPlay={() => controller.pause()}
+          outputVolume={generationNode?.volume} onOutputVolume={generationNode ? volume => storyEditor.patch(generationNode.id, { volume: audioVolume(volume) }) : undefined}/>}
       </section><Activity mode={preview ? 'hidden' : 'visible'}><ResizeHandle orientation="vertical" label="Resize side panel" value={actualSideWidth} min={220} max={maxSideWidth} onChange={setSideWidth} /><aside className="sidebar" aria-label="Workspace panels">
         {storyGraph?<WorkspacePanels workspace={workspace} inspectorRevision={storyEditor.inspectorRevision} library={<StoryLibrary editor={storyEditor}/>} create={<StoryAddClips editor={storyEditor}/>} inspector={<StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>} narrow={viewport.width<=660} onColumns={onPanelColumns} onReset={resetWorkspace}/>:<>{panelTimeline && !parentPanelOpen && <CallResponseControls flow={panelTimeline.flow} selectedSceneId={panelTimeline.selectedSceneId} selectedEdgeId={panelTimeline.selectedEdgeId} onChange={value => projects.updateCallResponse(value)} onSelectEdge={panelTimeline.onSelectEdge} />}
         <InterstitialPanel player={controller} projects={projects} items={interstitialState.items} selectedId={interstitialState.selectedId} controller={interstitials}

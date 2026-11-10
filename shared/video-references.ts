@@ -8,6 +8,8 @@ export type VideoAssetReference = z.infer<typeof videoAssetReferenceSchema>;
 export const timelineVideosSchema = z.array(z.object({
   id: z.string().min(1).max(200), frame: z.number().int().min(0).max(COMFY.maxFrames - 1),
   video: videoAssetReferenceSchema.optional(), enabled: z.boolean(),
+  /** Level of this video's audio in the input. Absent is full volume. */
+  volume: z.number().finite().min(0).max(1).optional(),
 })).max(16).refine(values => new Set(values.map(value => value.id)).size === values.length, 'Video IDs must be unique.');
 export type TimelineVideo = z.infer<typeof timelineVideosSchema>[number];
 export function validateTimelineVideos(values: TimelineVideo[] = [], frames: number) {

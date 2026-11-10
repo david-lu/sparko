@@ -2,10 +2,13 @@ import { z } from 'zod';
 import { COMFY, TIMELINE_FPS } from './constants.js';
 import { defaultMaskCurve, maskStrength, type MaskCurve } from './mask-curves.js';
 
-export const timelineInputRangesSchema = z.array(z.object({
+const inputRange = z.object({
   frame: z.number().int().nonnegative().max(COMFY.maxFrames - 1),
   frames: z.number().int().positive().max(COMFY.maxFrames),
-})).max(16);
+});
+export const timelineInputRangesSchema = z.array(inputRange).max(16);
+/** Merged spans of added input sound. They keep input audio, never input video. */
+export const timelineAudioRangesSchema = z.array(inputRange).max(512);
 export type TimelineInputRange = z.infer<typeof timelineInputRangesSchema>[number];
 /** Native H3 temporal mask cells, on the full render clock. */
 export function h3MaskGroups(frames: number) {
@@ -16,10 +19,10 @@ export function h3MaskGroups(frames: number) {
   }
   return groups;
 }
-export function validateInputRanges(ranges: TimelineInputRange[], frames: number) {
+export function validateInputRanges(ranges: TimelineInputRange[], frames: number, audio = false) {
   let end = 0;
-  for (const range of [...timelineInputRangesSchema.parse(ranges)].sort((a, b) => a.frame - b.frame)) {
-    if (range.frame < end || range.frame + range.frames > frames) throw new Error('Timeline videos must fit inside the generated section without overlapping.');
+  for (const range of [...(audio ? timelineAudioRangesSchema : timelineInputRangesSchema).parse(ranges)].sort((a, b) => a.frame - b.frame)) {
+    if (range.frame < end || range.frame + range.frames > frames) throw new Error(`${audio ? 'Input audio spans' : 'Timeline videos'} must fit inside the generated section without overlapping.`);
     end = range.frame + range.frames;
   }
 }
@@ -34,4 +37,27 @@ export function inputMaskStrength(curve: MaskCurve, frame: number, prefix: numbe
   if (preservedFrames.includes(Math.floor(bodyFrame + 1e-6))) return 0;
   if (bodyFrame >= 0 && bodyFrame < middle && !ranges.some(range => bodyFrame >= range.frame && bodyFrame < range.frame + range.frames)) return 1;
   return maskStrength(curve, frame / TIMELINE_FPS, prefix / TIMELINE_FPS, middle / TIMELINE_FPS, suffix / TIMELINE_FPS);
+}
+
+/** One H3 audio latent column, as [start, end] frames on the full render clock. */
+const audioColumn = (index: number) => [index / COMFY.audioLatentsPerSecond * TIMELINE_FPS, (index + 1) / COMFY.audioLatentsPerSecond * TIMELINE_FPS];
+/** Columns touching a seam between a reference and the generated section always regenerate,
+ * even where added sound or a timeline video keeps the audio beside it. Rounds outward. */
+export function audioSeamColumn(index: number, prefix: number, middle: number, suffix: number) {
+  const [a, b] = audioColumn(index), end = prefix + middle;
+  return prefix > 0 && a <= prefix && prefix <= b || suffix > 0 && a <= end && end <= b;
+}
+/** The audio mask H3 receives, one strength per audio latent column. */
+export function audioMaskColumns(curve: MaskCurve, prefix: number, middle: number, suffix: number, ranges: TimelineInputRange[]) {
+  return Array.from({ length: Math.floor((prefix + middle + suffix) / TIMELINE_FPS * COMFY.audioLatentsPerSecond) }, (_, index) => {
+    if (audioSeamColumn(index, prefix, middle, suffix)) return 1;
+    // Any column straddling a blank region must generate completely.
+    const [a, b] = audioColumn(index);
+    return Number(Math.max(inputMaskStrength(curve, a, prefix, middle, suffix, ranges), inputMaskStrength(curve, b - 1e-6, prefix, middle, suffix, ranges)).toFixed(6));
+  });
+}
+/** The audio mask as drawn on the generation timeline, including regenerated seams. */
+export function inputAudioMaskStrength(curve: MaskCurve, frame: number, prefix: number, middle: number, suffix: number, ranges: TimelineInputRange[]) {
+  return audioSeamColumn(Math.floor(frame / TIMELINE_FPS * COMFY.audioLatentsPerSecond), prefix, middle, suffix) ? 1
+    : inputMaskStrength(curve, frame, prefix, middle, suffix, ranges);
 }
