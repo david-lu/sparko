@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { test, expect, openVideo, readProject, saveAndReopen, type Page } from './fixtures';
 
 const fixture = 'tests/fixtures/interstitial-reference.mp4';
+// Waits that finish only when a real encode does. CI runners vary a lot in encode speed.
+const encoding = { timeout: 30_000 };
 const setting = 'Convert imported videos to 24 fps';
 async function preferences(page: Page) {
   await page.locator('.playback-options>summary').click();
@@ -52,7 +54,7 @@ for (const width of [1440, 390]) test(`dimension conversion creates a resized co
   await dialog.getByLabel('Width (px)', { exact: true }).fill('320');
   await dialog.getByLabel('Fit', { exact: true }).selectOption('cover');
   await dialog.screenshot({ path: `test-results/convert-dimensions-${width}.png` });
-  await create.click(); await expect(dialog).toHaveCount(0, { timeout: 30_000 });
+  await create.click(); await expect(dialog).toHaveCount(0, encoding);
   await expect(page.getByLabel('Media dimensions', { exact: true })).toHaveText('320 × 180');
   const after = await readProject(page), copy = after.library.find((a: any) => a.assetId !== before.source.assetId);
   expect(copy).toMatchObject({ width: 320, height: 180, normalizedFps: original.fps, originalAssetId: before.source.assetId });
@@ -90,7 +92,7 @@ for (const [width, fps] of [[1440, 29.97], [390, 30]]) test(`explicit FPS conver
   await dialog.screenshot({ path: `test-results/convert-fps-busy-${width}.png` });
   expect(await readProject(page)).toEqual(before);
   await page.evaluate(() => (window as any).releaseImportConversion());
-  await expect(dialog).toHaveCount(0);
+  await expect(dialog).toHaveCount(0, encoding);
   await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText(`${fps} fps`);
   const converted = await readProject(page), copy = converted.library.find((a: any) => a.assetId !== before.source.assetId);
   expect(copy).toMatchObject({ name: `interstitial-reference.${fps}fps.mp4`, normalizedFps: fps, originalAssetId: before.source.assetId });
@@ -145,7 +147,7 @@ test('explicit conversion can be cancelled or retried after failure without a pa
   expect(await positions()).toEqual(idle); expect(await readProject(page)).toEqual(before);
   await dialog.screenshot({ path: 'test-results/convert-fps-error-390.png' });
   await dialog.getByRole('button', { name: 'Create copy', exact: true }).click();
-  await expect(dialog).toHaveCount(0); await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('24 fps');
+  await expect(dialog).toHaveCount(0, encoding); await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('24 fps');
   expect((await readProject(page)).library).toHaveLength(2);
 });
 
@@ -174,7 +176,7 @@ for (const width of [1440, 390]) test(`import preference normalizes timeline and
   expect(await bounds()).toEqual(beforeImport);
   await expect.poll(() => page.evaluate(() => !!(window as any).releaseImportConversion)).toBe(true);
   await page.evaluate(() => (window as any).releaseImportConversion());
-  await expect(page.locator('.story-clip')).toHaveCount(2);
+  await expect(page.locator('.story-clip')).toHaveCount(2, encoding);
   await expect(page.locator('.project-status')).toHaveCount(0);
   expect(await bounds()).toEqual(beforeImport);
   await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('24 fps');
@@ -189,7 +191,7 @@ for (const width of [1440, 390]) test(`import preference normalizes timeline and
   expect(project.library.find((a: any) => a.assetId === node.source.assetId).normalizedFps).toBe(24);
 
   await page.getByLabel('Import library assets', { exact: true }).setInputFiles({ name: 'Library24.mp4', mimeType: 'video/mp4', buffer: await readFile(fixture) });
-  await expect(page.getByRole('button', { name: 'Library asset Library24.mp4', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Library asset Library24.mp4', exact: true })).toBeVisible(encoding);
   await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('24 fps');
   const imported = (await readProject(page)).library.find((a: any) => a.name === 'Library24.mp4');
   expect(imported.normalizedFps).toBe(24); expect((await rate(page, imported.originalAssetId)).fps).toBe(25);
