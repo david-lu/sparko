@@ -1,7 +1,7 @@
 import { generationBusy } from '../../../shared/asset-generation';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Combine, Copy, Flag, Hand, GripVertical, ImageOff, LayoutTemplate, Maximize, MessageSquare, MessageSquarePlus, Minus, Paintbrush, Palette, Plus, Scissors, SquareDashed, Trash2, Unplug, Upload } from 'lucide-react';
+import { Check, ChevronDown, Combine, Copy, Flag, Hand, GripVertical, ImageOff, LayoutTemplate, Maximize, MessageSquare, MessageSquarePlus, Minus, Paintbrush, Palette, Plus, Scissors, Trash2, Unplug, Upload } from 'lucide-react';
 import { videoAssets } from '../../../shared/video-references';
 import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
 import { TIMELINE_FPS } from '../../../shared/constants';
@@ -80,7 +80,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const [cutTool,setCutTool]=useState(false),[cutPreview,setCutPreview]=useState<{id:string;frame:number}|null>(null);
   const [commentTool,setCommentTool]=useState(false),[commentEditor,setCommentEditor]=useState<{id:string|null;anchor:CommentAnchor;color?:ClipColor}|null>(null),[commentDrag,setCommentDrag]=useState<{id:string|null;anchor:CommentAnchor}|null>(null);
   const [commentGhost,setCommentGhost]=useState<CommentAnchor|null>(null),lastPointer=useRef<Point|null>(null);
-  const [groupTool,setGroupTool]=useState(false),[drawnGroup,setDrawnGroup]=useState<GroupBounds|null>(null),[framePreview,setFramePreview]=useState<{id:string;bounds:GroupBounds}|null>(null);
+  const [framePreview,setFramePreview]=useState<{id:string;bounds:GroupBounds}|null>(null);
   const [context,setContext]=useState<{id?:string;groupId?:string;edgeId?:string;pointId?:string;selectionIds?:string[];colors?:boolean;templates?:boolean;commentAnchor?:CommentAnchor;x:number;y:number;point:Point}|null>(null),menu=useRef<HTMLDivElement>(null);
   const suppressClick=useRef(false),lastFocusRevision=useRef(editor.focusRevision);
   const [movePreview,setMovePreview]=useState<{ids:string[];groupId?:string;dx:number;dy:number}|null>(null);
@@ -161,11 +161,11 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     const anchor=dragPreview.find(n=>n.id===templatePreview?.selectedId)??dragPreview[0],view=cameraRef.current;
     return anchor?{x:point.x-(anchor.x+anchor.duration*PIXELS_PER_SECOND/2)*view.zoom,y:point.y-anchor.y*view.rowScale-CLIP_HEIGHT/2}:point;
   };
-  const chooseTool=(tool:'cut'|'group'|'pan'|'comment'|null)=>{
-    gestureCancel.current?.();setCutTool(tool==='cut'&&!cutTool);setGroupTool(tool==='group'&&!groupTool);setPanTool(tool==='pan'&&!panTool);setCommentTool(tool==='comment'&&!commentTool);
+  const chooseTool=(tool:'cut'|'pan'|'comment'|null)=>{
+    gestureCancel.current?.();setCutTool(tool==='cut'&&!cutTool);setPanTool(tool==='pan'&&!panTool);setCommentTool(tool==='comment'&&!commentTool);
     // Show where a comment would land straight away when the pointer is already over the timeline.
     setCommentGhost(tool==='comment'&&!commentTool&&hovering.current&&lastPointer.current?commentAnchorAt(lastPointer.current):null);
-    setCutPreview(null);setDrawnGroup(null);editor.setConnecting(null);
+    setCutPreview(null);editor.setConnecting(null);
   };
   const fit=(targets:StoryNode[]=nodes,maxZoom=2,edges=graph.edges)=>{
     if(!scroll.current?.clientWidth||!scroll.current.clientHeight)return;
@@ -323,7 +323,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     editor.setNotice('Clip trimmed. Drag either edge to adjust it; Undo restores the previous range.');
   };
   const dragTrim=(event:React.PointerEvent<HTMLButtonElement>,node:StoryNode,side:TrimSide)=>{
-    if(event.button!==0||panTool||space.current.held||cutTool||groupTool)return;
+    if(event.button!==0||panTool||space.current.held||cutTool)return;
     editor.player.pause();editor.select(node.id,null);event.currentTarget.focus({preventScroll:true});
     const originalCamera=cameraRef.current,origin=toWorld(localPoint({x:event.clientX,y:event.clientY}),originalCamera);
     const duration=trimSourceDuration(node),range=clipTrimRange(node,editor.items,duration),initial=side==='start'?range.inFrame:range.outFrame;
@@ -441,22 +441,13 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     }
     const pan=event.button===1||event.button===0&&(panTool||space.current.held);
     const blank=!(event.target as Element).closest('[data-node-id],[data-edge-id],[data-group-id],button,input,textarea,select');
-    if(!pan&&!(event.button===0&&(blank||groupTool)))return;
+    if(!pan&&!(event.button===0&&blank))return;
     event.currentTarget.focus({preventScroll:true});setContext(null);
     const start=localPoint({x:event.clientX,y:event.clientY}),originalCamera=cameraRef.current,originalSelection=editor.selected;
     if(pan){
       space.current.used=true;setPanning(true);
       trackGesture(event,point=>updateCamera({...originalCamera,x:originalCamera.x+point.x-start.x,y:originalCamera.y+point.y-start.y}),
         moved=>{setPanning(false);if(!moved&&blank){editor.setSelected([]);editor.setSelectedEdge(null);editor.setConnecting(null);editor.jobs.select(null);}},()=>{setPanning(false);updateCamera(originalCamera);});return;
-    }
-    if(groupTool){
-      const origin=toWorld(start,originalCamera);let bounds:GroupBounds={...origin,width:0,height:0};
-      const finish=()=>{setDrawnGroup(null);setGroupTool(false);};
-      trackGesture(event,point=>{const end=toWorld(point,cameraRef.current);bounds={x:Math.min(origin.x,end.x),y:Math.min(origin.y,end.y),width:Math.abs(end.x-origin.x),height:Math.abs(end.y-origin.y)};setDrawnGroup(bounds);},
-        moved=>{finish();if(!moved||bounds.width*cameraRef.current.zoom<32||bounds.height*cameraRef.current.rowScale<32)return;
-          const ids=graph.nodes.filter(n=>clipLeft(n)>=bounds.x&&clipRight(n)<=bounds.x+bounds.width&&n.y>=bounds.y&&n.y+CLIP_HEIGHT/cameraRef.current.rowScale<=bounds.y+bounds.height).map(n=>n.id);
-          editor.createGroup(ids,{...bounds,width:Math.max(bounds.width,96/cameraRef.current.zoom),height:Math.max(bounds.height,64/cameraRef.current.rowScale)});
-        },()=>{finish();updateCamera(originalCamera);},true);return;
     }
     const origin=toWorld(start,originalCamera),additive=event.shiftKey,toggle=event.ctrlKey||event.metaKey;
     editor.setSelectedEdge(null);editor.setConnecting(null);
@@ -478,7 +469,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       :frame+(event.key==='ArrowLeft'?-1:1)*(event.shiftKey?flow.fps:1));
   };
   const dragPlayhead=(event:React.PointerEvent<HTMLSpanElement>,node:StoryNode)=>{
-    if(event.button!==0||panTool||space.current.held||groupTool)return;
+    if(event.button!==0||panTool||space.current.held)return;
     editor.player.pause();editor.select(node.id,null);event.currentTarget.focus({preventScroll:true});
     const current=editor.player.getSnapshot().flow,scene=flow.scenes.find(s=>s.id===node.id)!;
     const initial=current?.sceneId===node.id?current.frame:0;
@@ -600,7 +591,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const contextNode=graph.nodes.find(node=>node.id===context?.id);
   const canCutAtPlayhead=!!contextScene&&session?.sceneId===contextScene.id&&session.frame>0&&session.frame<sceneFrames(contextScene);
   const membersToAdd=(context?.selectionIds??[]).filter(id=>!contextGroup?.nodeIds.includes(id));
-  return <div ref={root} className={`story-canvas ${collapsed?'collapsed':''} ${wire||editor.connecting?'connecting':''} ${cutTool?'cut-tool':''} ${groupTool?'draw-group-tool':''} ${commentTool?'comment-tool':''} ${panTool||spaceHeld?'pan-tool':''} ${panning?'panning':''} ${dropTarget?'library-drag':''} ${libraryDrag?'dragging-library':''} ${insertingLibrary||movingInterstitial?'dragging-insert':''}`} style={{height:collapsed?'auto':height}}>
+  return <div ref={root} className={`story-canvas ${collapsed?'collapsed':''} ${wire||editor.connecting?'connecting':''} ${cutTool?'cut-tool':''} ${commentTool?'comment-tool':''} ${panTool||spaceHeld?'pan-tool':''} ${panning?'panning':''} ${dropTarget?'library-drag':''} ${libraryDrag?'dragging-library':''} ${insertingLibrary||movingInterstitial?'dragging-insert':''}`} style={{height:collapsed?'auto':height}}>
     {!collapsed&&<ResizeHandle orientation="horizontal" label="Resize story canvas" value={height} min={220} max={maxHeight} onChange={onHeight}/>}
     <div className="story-toolbar"><button className="story-collapse" disabled={workspaceLocked} aria-label={collapsed?'Expand timeline':'Collapse timeline'} aria-expanded={!collapsed} aria-controls={canvasId} title={workspaceLocked?'Unlock workspace in Window to collapse the timeline':collapsed?'Expand timeline':'Collapse timeline'} onClick={toggleCollapsed} onKeyDown={e=>{if(e.key===' ')e.stopPropagation();}}><ChevronDown size={14}/><span className="eyebrow">TIMELINE</span></button><span className="story-collapsed-summary">{nodes.length} {nodes.length===1?'clip':'clips'}</span>
       <button className="button small" title={shortcuts.title('layout')} aria-keyshortcuts={shortcuts.aria('layout')} onClick={cleanup}>Auto layout</button>
@@ -608,7 +599,6 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       <button className="icon-button small story-join" title={editor.joinReasons.length?'Join unavailable · Click to see all reasons':'Join selected clips · Same source, connected in graph order'} aria-label="Join selected clips" aria-disabled={!!editor.joinReasons.length} aria-describedby={`${canvasId}-join-help`} onClick={joinSelected}><Combine size={14}/></button>
       <span id={`${canvasId}-join-help`} className="sr-only">When Join is unavailable, activate it to see all reasons.</span>
       <button className={`icon-button small ${cutTool?'active':''}`} title={shortcuts.title('cut')+'. Click a clip to split it.'} aria-label="Cut tool" aria-pressed={cutTool} onClick={()=>chooseTool('cut')}><Scissors size={14}/></button>
-      <button className={`icon-button small ${groupTool?'active':''}`} title="Draw group · Drag a frame around clips or draw an empty group. Escape cancels." aria-label="Draw group tool" aria-pressed={groupTool} onClick={()=>chooseTool('group')}><SquareDashed size={14}/></button>
       <button className={`icon-button small ${commentTool?'active':''}`} aria-label="Comment tool" aria-pressed={commentTool} title={shortcuts.title('comment')+'. Click a clip to comment on that moment, or anywhere on the timeline.'} onClick={()=>chooseTool('comment')}><MessageSquarePlus size={14}/></button>
       <button className={`icon-button small ${panTool?'active':''}`} aria-label="Pan tool" aria-pressed={panTool} title={shortcuts.title('pan')+'. Also pan with Space + drag or the middle mouse button.'} onClick={()=>chooseTool('pan')}><Hand size={14}/></button>
       <button className="icon-button small" aria-label="Zoom out story" onClick={()=>updateCamera(zoomAt(cameraRef.current,zoom/1.4,{x:size.width/2,y:size.height/2}))}><Minus size={14}/></button>
@@ -629,7 +619,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       const point=localPoint({x:e.clientX,y:e.clientY}),groupId=!id&&!edgeId?((e.target as Element).closest<HTMLElement>('[data-group-id]')?.dataset.groupId??groupViews.find(g=>point.x>=g.left&&point.x<=g.left+g.width&&point.y>=g.top&&point.y<=g.top+g.height)?.group.id):undefined;
       if(groupId)editor.selectGroup(groupId);setContext({id,groupId,edgeId,pointId,selectionIds:editor.selected,commentAnchor:Number.isFinite(e.clientX)&&Number.isFinite(e.clientY)?commentAnchorAt({x:e.clientX,y:e.clientY}):undefined,x:e.clientX,y:e.clientY,point:toWorld(localPoint({x:e.clientX,y:e.clientY}),cameraRef.current)});
     }}>
-      {!nodes.length&&!graph.groups?.length&&!fileDrag&&!groupTool&&<div className="story-empty"><Upload size={22}/><strong>Drop videos or images here</strong><span>Each file becomes a separate clip.</span><button className="button small" onClick={()=>videoInput.current?.click()}>Import videos or images</button></div>}
+      {!nodes.length&&!graph.groups?.length&&!fileDrag&&<div className="story-empty"><Upload size={22}/><strong>Drop videos or images here</strong><span>Each file becomes a separate clip.</span><button className="button small" onClick={()=>videoInput.current?.click()}>Import videos or images</button></div>}
       {fileDrag&&dropPoint&&<div className="story-file-drop" style={{left:dropPoint.x,top:dropPoint.y}}><Upload size={14}/><span>Import clips here</span></div>}
       <div className="story-world">
         {groupViews.map(({group,left,top,width,height})=><div key={group.id} data-group-id={group.id} className={`story-group ${editor.selectedGroup?.id===group.id?'selected':''}`}
@@ -645,7 +635,6 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
               editor.patchGroup(group.id,{bounds:{...p,width:Math.max(96,width+(e.key==='ArrowLeft'?-step:e.key==='ArrowRight'?step:0))/zoom,height:Math.max(64,height+(e.key==='ArrowUp'?-step:e.key==='ArrowDown'?step:0))/camera.rowScale}});}}/>}
         </div>)}
         {previewFrame&&previewGroup&&<div className="story-group-preview" aria-hidden style={{...previewFrame,'--group-color':groupColors[previewGroup.color]} as React.CSSProperties}><div className="story-group-header"><GripVertical size={13}/><span>{previewGroup.name}</span><small>{previewGroup.nodeIds.length} clips</small></div></div>}
-        {drawnGroup&&<div className="story-group-drawing" aria-hidden style={{left:drawnGroup.x*zoom+camera.x,top:drawnGroup.y*camera.rowScale+camera.y,width:drawnGroup.width*zoom,height:drawnGroup.height*camera.rowScale}}><span>New group</span></div>}
         {dropPoint&&dragPreview.map(n=><div key={n.id} className={`story-drop-preview type-${n.kind}`} aria-hidden style={{left:dropPoint.x+n.x*zoom,top:dropPoint.y+n.y*camera.rowScale,width:n.duration*PIXELS_PER_SECOND*zoom,height:CLIP_HEIGHT,'--clip-color':clipColors[n.color??'gray']} as React.CSSProperties}><div className="story-clip-title"><span>{n.name}</span><small>{n.duration.toFixed(1)}s</small></div><div className="story-drop-filmstrip"/></div>)}
         <svg className="story-edges" width={size.width} height={size.height} aria-label="Clip connections"><defs><linearGradient id="story-fade-ramp"><stop offset="0" stopColor="currentColor" stopOpacity=".15"/><stop offset="1" stopColor="currentColor"/></linearGradient><marker id="story-arrow" markerWidth={Math.max(3,Math.min(7,zoom*10))} markerHeight={Math.max(3,Math.min(7,zoom*10))} viewBox="0 0 7 7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7Z" fill="currentColor"/></marker><marker id="story-arrow-mismatch" markerWidth={Math.max(3,Math.min(7,zoom*10))} markerHeight={Math.max(3,Math.min(7,zoom*10))} viewBox="0 0 7 7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7Z" fill="#f17c76"/></marker></defs>
         {wire&&position(wire.anchor)&&(()=>{const node=position(wire.anchor),anchor=wire.reverse?inputPoint(node):outputPoint(node,wire.edgeId,wire.conditionId);return <path className="story-edge-line story-wire" d={wire.reverse?linkGeometry(wire,anchor).path:linkGeometry(anchor,wire).path}/>;})()}
@@ -725,7 +714,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
               {cutTool&&<span className="story-cut-surface" onPointerMove={e=>{const bounds=e.currentTarget.getBoundingClientRect();setCutPreview({id:node.id,frame:Math.max(0,Math.min(sceneFrames(scene),frameAt(node,e.clientX,bounds)))});}} onPointerLeave={()=>setCutPreview(null)}/>}
               {cutTool&&cutPreview?.id===node.id&&<span className="story-cut-preview" style={{left:`${(layout.before+cutPreview.frame/flow.fps)/layout.total*100}%`}}/>}
             </div>
-            {selected&&!panTool&&!spaceHeld&&!cutTool&&!groupTool&&(['start','end'] as const).map(side=><button key={side} type="button" role="slider" className={`story-trim-handle ${side} ${scene.generated&&(side==='start'?layout.before:layout.after)>0?'reference':''}`}
+            {selected&&!panTool&&!spaceHeld&&!cutTool&&(['start','end'] as const).map(side=><button key={side} type="button" role="slider" className={`story-trim-handle ${side} ${scene.generated&&(side==='start'?layout.before:layout.after)>0?'reference':''}`}
               data-active={trimPreview?.node.id===node.id&&trimPreview.side===side||undefined}
               style={{left:`${(layout.before+(side==='end'?layout.body:0))/layout.total*100}%`}} aria-label={`Trim ${side} of ${scene.label}`}
               aria-orientation="horizontal" aria-valuemin={imageClip?1/flow.fps:side==='start'?0:(range.inFrame+1)/flow.fps} aria-valuemax={imageClip?undefined:Number.isFinite(range.totalFrames) || side==='start' ? (side==='start'?range.outFrame-1:range.totalFrames)/flow.fps : undefined}
@@ -786,7 +775,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     </div>
     <input ref={videoInput} hidden multiple type="file" accept="video/*,image/*,.mkv,.mov,.webm,.mp4" aria-label="Import videos onto timeline" onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value='';void editor.importVideos(files);}}/>
     <div className="story-status"><span role="status">{trimPreview?`Trim ${trimPreview.side} · ${nodeDuration(trimPreview.node,editor.items).toFixed(3)} s · Release to apply · Escape cancels`:dropTarget?(fileDrag?'Release to import clips here':libraryDrag&&'assetId' in libraryDrag?'Release to add a separate clip':dropTarget==='canvas'?'Release to place here':dropConnection?'Release to replace transition and connect both sides':'Release to attach to this clip'):libraryDrag?'Drag onto the timeline · Escape cancels':wire?'Drop onto a clip to connect · Escape cancels':editor.connecting?'Choose a destination clip · Escape cancels':commentDrag?`${isClipAnchor(commentDrag.anchor)?`Release to pin the comment at ${commentPlace(commentDrag.anchor)?.time??'this moment'}`:'Release to place the comment here'}${atPlayhead(commentDrag.anchor)?' · Snapped to playhead':''} · Escape cancels`
-      :commentTool?commentGhost&&isClipAnchor(commentGhost)?`Click to comment on ${commentPlace(commentGhost)?.label??'this clip'}${atPlayhead(commentGhost)?' · Snapped to playhead':''} · ${shortcuts.title('select')}`:`Comment tool · Click a clip to comment on that moment, or anywhere on the timeline · ${shortcuts.title('select')}`:groupTool?'Draw group · Drag a frame · Release to create · Esc cancels':panTool?`Hand tool · Drag anywhere to pan · ${shortcuts.title('select')}`:cutTool?`Cut tool · Click a filmstrip to split · ${shortcuts.title('select')}`:editor.notice||`Drag to select · Space + drag to pan · ${shortcuts.title('fit')} · Right-click for group actions`}</span><span>{graph.nodes.length} clips · Blue: start ref · Green: end ref</span></div>
+      :commentTool?commentGhost&&isClipAnchor(commentGhost)?`Click to comment on ${commentPlace(commentGhost)?.label??'this clip'}${atPlayhead(commentGhost)?' · Snapped to playhead':''} · ${shortcuts.title('select')}`:`Comment tool · Click a clip to comment on that moment, or anywhere on the timeline · ${shortcuts.title('select')}`:panTool?`Hand tool · Drag anywhere to pan · ${shortcuts.title('select')}`:cutTool?`Cut tool · Click a filmstrip to split · ${shortcuts.title('select')}`:editor.notice||`Drag to select · Space + drag to pan · ${shortcuts.title('fit')} · Right-click for group actions`}</span><span>{graph.nodes.length} clips · Blue: start ref · Green: end ref</span></div>
     {context&&createPortal(<div ref={menu} className="story-context-menu" role="menu" aria-label={context.colors?(context.groupId?"Group color":"Clip color"):context.templates?"Add template":context.groupId?"Group actions":context.edgeId?"Connection actions":context.id?"Clip actions":"Timeline actions"} style={{left:context.x,top:context.y}} onKeyDown={e=>{
       if(e.key==='Escape'){e.preventDefault();setContext(null);scroll.current?.focus({preventScroll:true});}
       if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const buttons=Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')),index=buttons.indexOf(document.activeElement as HTMLButtonElement);buttons[e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}

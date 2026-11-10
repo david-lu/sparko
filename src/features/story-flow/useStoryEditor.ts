@@ -6,7 +6,7 @@ import { playableResult, type Interstitial } from '../../../shared/interstitials
 import type { ProjectController } from '../project/ProjectController';
 import type { InterstitialController } from '../interstitials/InterstitialController';
 import type { VideoPlayerController } from '../player/VideoPlayerController';
-import { autoLayout, connect, createNode, edge, freshId, nodeDuration, splitClip, withReferenceFade, type CommentAnchor, type GroupBounds, type NodeKind, type StoryComment, type StoryGraph, type StoryNode, type StoryTemplate, type StoryGroup } from './model';
+import { autoLayout, connect, createNode, edge, freshId, nodeDuration, splitClip, withReferenceFade, type CommentAnchor, type NodeKind, type StoryComment, type StoryGraph, type StoryNode, type StoryTemplate, type StoryGroup } from './model';
 import { COMMENT_LIMIT, COMMENT_TEXT_LIMIT, splitComments } from './comments';
 import { captureTemplate, instantiateTemplate, makePreset } from './templates';
 import { groupClips, copyGroups, setGroupMembers } from './groups';
@@ -91,8 +91,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
   };
   const selectGroup=(id:string,next=graph)=>{const group=next?.groups?.find(g=>g.id===id);if(!group)return;setLibrarySelections([]);setSelectedGroupId(id);setSelection(group.nodeIds);setSelectedEdge(null);jobs.select(null);setInspectorRevision(n=>n+1);};
   const patchGroup=(id:string,patch:Partial<Pick<StoryGroup,'name'|'color'|'bounds'>>)=>{if(graph)change({...graph,groups:graph.groups?.map(g=>g.id===id?{...g,...patch,name:patch.name?.trim().slice(0,200)||g.name}:g)});};
-  const createGroup=(ids:string[],bounds?:GroupBounds,name=`Group ${(graph?.groups?.length??0)+1}`)=>{if(!graph)return;const result=groupClips(graph,ids,name,'blue',bounds);if(!result.group)return;change(result.graph);selectGroup(result.group.id,result.graph);setNotice('Group created. Drag its header to move it. Right-click for group actions.');};
-  const groupSelection=(name?:string)=>createGroup(selected,undefined,name);
+  const groupSelection=(name=`Group ${(graph?.groups?.length??0)+1}`)=>{if(!graph)return;const result=groupClips(graph,selected,name);if(!result.group)return;change(result.graph);selectGroup(result.group.id,result.graph);setNotice('Group created. Drag its header to move it. Right-click for group actions.');};
   const changeGroupMembers=(id:string,ids:string[])=>{if(!graph)return;const next=setGroupMembers(graph,id,ids,items);change(next);selectGroup(id,next);setNotice('Group updated. Clips and connections are preserved.');};
   const removeFromGroup=(id:string,ids:string[])=>{const group=graph?.groups?.find(g=>g.id===id);if(group)changeGroupMembers(id,group.nodeIds.filter(n=>!ids.includes(n)));};
   const ungroup=(id=selectedGroup?.id)=>{if(!graph)return;const groups=graph.groups?.filter(g=>id?g.id!==id:!g.nodeIds.some(n=>selected.includes(n)));change({...graph,groups});setSelectedGroupId(null);setNotice('Group removed. Clips and connections are preserved. Undo restores the frame.');};
@@ -274,7 +273,7 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     const ids=await projects.importLibraryAsset(assetId,position);
     if(ids?.length){setSelected([ids[0]]);setSelectedEdge(null);jobs.select(null);if(!position)setFocusRevision(n=>n+1);setNotice('Added clip from the library.');}
   };
-  return {graph,items,selected,selectedGroup,selectGroup,patchGroup,createGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,revealClip,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
+  return {graph,items,selected,selectedGroup,selectGroup,patchGroup,groupSelection,changeGroupMembers,removeFromGroup,ungroup,selectedEdge,connecting,notice,focusRevision,inspectorRevision,selectConnection,select,selectNew,revealClip,setSelected,setSelectedEdge,setConnecting,setNotice,change,add,patch,toggleBehavior,updateConditions,attach,disconnect,remove,duplicate,split,insertTemplate,saveTemplate,rename,
     selectedId:selectedGroup?null:selected[0]??null,importVideos,addAsset,projects,jobs,player,librarySelection,librarySelections,selectLibrary,clipJobs,setStartVideo,setStartAsset,clipDrag,setClipDrag,join,joinReasons,captureFrame,capturingFrame,colorClips,addMedia,replaceAsset,makeGenerative,removingClips,addComment,updateComment,removeComment};
 }
 export type StoryEditor=ReturnType<typeof useStoryEditor>;
