@@ -57,14 +57,15 @@ for (const width of [1440, 390]) test(`mask curves support click-to-add and keyf
     await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0); await expect(key('start', 2)).toBeFocused();
     await expect(dialog).toBeVisible();
 
-    // Endpoints and the fully generated middle cannot be removed or given extra pins.
+    // Endpoints cannot be removed or given extra pins.
     await key('start', 1).click({ button: 'right' });
     await expect(menu.getByRole('menuitem', { name: 'Delete keyframe' })).toBeDisabled();
     await expect(menu.getByRole('menuitem', { name: 'Add keyframe' })).toBeDisabled();
     await page.keyboard.press('Escape'); await expect(key('start', 1)).toBeFocused();
     await dialog.getByRole('button', { name: 'Fit', exact: true }).click();
+    // The generated section takes pins on both channels; spans without input still regenerate.
     await dialog.locator('.mask-editor-graph .mask-generated-region').click({ button: 'right' });
-    await expect(menu.getByRole('menuitem', { name: 'Add keyframe' })).toBeDisabled();
+    await expect(menu.getByRole('menuitem', { name: 'Add keyframe' })).toBeEnabled();
     await expect(menu.getByRole('menuitem', { name: 'Delete keyframe' })).toBeDisabled();
     await page.keyboard.press('Escape'); await expect(dialog).toBeVisible();
 

@@ -480,7 +480,8 @@ describe('interstitial lifecycle', () => {
     vi.mocked(getInterstitialJob).mockResolvedValue(completed);
     await controller.generate(item.id, media, info);
     expect(generationSource).toHaveBeenCalledWith(item, input, expect.any(AbortSignal), info);
-    expect(generateInterstitial).toHaveBeenCalledWith(expect.objectContaining({ time: 2 }), media, info, expect.any(AbortSignal), expect.any(Function));
+    // The story reference also decides which reference spans carry sound in the audio mask.
+    expect(generateInterstitial).toHaveBeenCalledWith(expect.objectContaining({ time: 2 }), media, info, expect.any(AbortSignal), expect.any(Function), input);
     expect(controller.getSnapshot().items.find(current => current.id === item.id)).toMatchObject({ time: 3, result: { reference: input } });
     expect(controller.dependency('call-response-correct')?.stale).toBe(true);
     expect(loadInterstitials('flow').find(current => current.id === item.id)?.result?.reference).toEqual(input);

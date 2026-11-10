@@ -1,5 +1,6 @@
 import { COMFY, TIMELINE_FPS } from '../../../shared/constants.js';
 import { maskStrength, type MaskCurve } from '../../../shared/mask-curves.js';
+import { audioColumn, rangesContain, type TimelineInputRange } from '../../../shared/generation-inputs.js';
 
 export function videoCurvePoints(curve: MaskCurve, prefix: number, suffix: number, frames: number): string {
   return Array.from({ length: frames }, (_, frame) => `${frame}:(${frame >= prefix && frame < frames - suffix ? 1 : Number(maskStrength(curve, (frame + .5) / TIMELINE_FPS,
@@ -7,15 +8,17 @@ export function videoCurvePoints(curve: MaskCurve, prefix: number, suffix: numbe
 }
 
 /** Sample the audio clock without stretching a mask over VAE padding. Any
- * latent interval touching the empty middle must be fully regenerated.
+ * latent interval touching the empty middle, or reference audio outside `content`, must be fully regenerated.
  */
-export function audioCurveSpans(curve: MaskCurve, prefix: number, suffix: number, frames: number) {
+export function audioCurveSpans(curve: MaskCurve, prefix: number, suffix: number, frames: number, content?: TimelineInputRange[]) {
+  const silent = (frame: number) => !!content && frame < frames && !rangesContain(content, frame);
   const rate = COMFY.audioLatentsPerSecond, before = prefix / TIMELINE_FPS, after = suffix / TIMELINE_FPS;
   const duration = (frames - prefix - suffix) / TIMELINE_FPS, first = Math.floor(before * rate), end = Math.ceil((before + duration) * rate);
   const length = Math.max(end, Math.floor(frames / TIMELINE_FPS * rate) - 1);
   const spans: { start: number; length?: number; strength: number }[] = [];
   for (let index = 0; index < length; index++) {
-    const strength = index >= first && index < end ? 1
+    const [a, b] = audioColumn(index);
+    const strength = index >= first && index < end || silent(a) || silent(b - 1e-6) ? 1
       : Number(maskStrength(curve, (index + .5) / rate, before, duration, after).toFixed(6));
     const last = spans.at(-1);
     if (last?.strength === strength) last.length!++;
@@ -24,7 +27,7 @@ export function audioCurveSpans(curve: MaskCurve, prefix: number, suffix: number
   // Extend the endpoint through the last audio column and any VAE padding.
   // Starting inside the timeline avoids an out-of-bounds composite if the
   // fitted audio length rounds down rather than up.
-  if (suffix) spans.push({ start: length, strength: curve.end.at(-1)!.strength });
+  if (suffix) spans.push({ start: length, strength: silent(frames - 1) ? 1 : curve.end.at(-1)!.strength });
   else spans.at(-1)!.length = undefined;
   return spans.filter(span => span.strength > 0);
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bridgeWorkflow } from '../../server/features/comfy/workflow';
 import { comfyBridgePlan } from '../../shared/comfy';
-import { h3MaskGroups, inputMaskCurve, inputMaskStrength, validateInputRanges } from '../../shared/generation-inputs';
+import { h3MaskGroups, inputMaskCurve, inputMaskStrength, referenceContent, validateInputRanges } from '../../shared/generation-inputs';
 import { enabledImageReferences } from '../../shared/image-references';
 import { interstitialSettings } from '../../shared/interstitials';
 import { validateTimelineVideos } from '../../shared/video-references';
@@ -47,9 +47,9 @@ describe('combined generation inputs', () => {
     expect(() => validateTimelineVideos([{ id: 'disabled', frame: 10, enabled: false }], 100)).not.toThrow();
   });
   it('always generates blank regions even when the saved body curve says keep', () => {
-    const curve = inputMaskCurve(undefined, 1, 1, 0, true), ranges = [{ frame: 24, frames: 24 }];
-    expect(inputMaskStrength(curve, 30, 24, 96, 24, ranges)).toBe(1);
-    expect(inputMaskStrength(curve, 60, 24, 96, 24, ranges)).toBe(0);
+    const curve = inputMaskCurve(undefined, 1, 1, 0), content = referenceContent(24, 96, 24, [{ frame: 24, frames: 24 }]);
+    expect(inputMaskStrength(curve, 30, 24, 96, 24, content)).toBe(1);
+    expect(inputMaskStrength(curve, 60, 24, 96, 24, content)).toBe(0);
     const graph = bridgeWorkflow('video', { ...base, videoMaskCurve: curve }, 1);
     expect(graph.middle_mask.inputs.points_string).toContain(`${plan.prefixFrames + 10}:(1)`);
   });

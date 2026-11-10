@@ -1,11 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { DiamondPlus, RotateCcw, Undo2, Redo2, X } from 'lucide-react';
-import { defaultMaskCurve, maskStrength, type MaskCurve, type MaskPoint, type MaskSide as ReferenceMaskSide } from '../../../shared/mask-curves';
+import { maskStrength, type MaskCurve, type MaskPoint, type MaskSide as ReferenceMaskSide } from '../../../shared/mask-curves';
 import type { InterstitialSettings } from '../../../shared/interstitials';
 import type { maskVideoBoundaries } from './mask-video-boundaries';
 import { useExclusiveMenu, useMenuScrollDismiss } from '../../shared/DropdownMenu';
 import './mask-curves.css';
-import { h3MaskGroups } from '../../../shared/generation-inputs';
+import { h3MaskGroups, inputMaskCurve } from '../../../shared/generation-inputs';
 
 export type MaskChannel = 'video' | 'audio';
 type Channel = MaskChannel;
@@ -13,11 +13,14 @@ type MaskSide = ReferenceMaskSide | 'body';
 type EditableCurve = MaskCurve & { body: MaskPoint[] };
 export type MaskCurves = Record<Channel, MaskCurve>;
 type Curves = Record<Channel, EditableCurve>;
-const editable = (values: MaskCurves): Curves => Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { ...value, body: value.body ?? [{ position: 0, strength: 1 }, { position: 1, strength: 1 }] }])) as Curves;
+const editable = (values: MaskCurves): Curves => Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { ...value, body: value.body ?? [{ position: 0, strength: 0 }, { position: 1, strength: 0 }] }])) as Curves;
 type Selection = { side: MaskSide; index: number };
 type KeyframeContext = { x:number; y:number; time:number; strength:number; selection:Selection|null; target:SVGElement };
 type Props = { before: number; after: number; duration: number;
-  allowBody?: boolean;
+  /** Spans, in seconds, with nothing to keep. They always regenerate whatever the curve says. */
+  noInput?: { start: number; end: number }[];
+  /** The strength H3 receives for a curve at a time, after input rules. Defaults to the curve itself. */
+  strengthAt?: (curve: MaskCurve, time: number) => number;
   imageKeyframes?: { id: string; name: string; time: number }[];
   videoMs: number; audioMs: number; onChange: (patch: Partial<InterstitialSettings>) => void };
 const title = (channel: Channel) => channel === 'video' ? 'Video' : 'Audio';
@@ -28,11 +31,11 @@ const timecode = (time: number) => {
   return `${String(Math.floor(frames / 24)).padStart(2, '0')}:${String(frames % 24).padStart(2, '0')}`;
 };
 
-function curvePath(curve: MaskCurve, before: number, duration: number, after: number, from: number, to: number,
+function curvePath(strength: (time: number) => number, from: number, to: number,
   x: (time: number) => number, y: (strength: number) => number, samples = 320) {
   return Array.from({length:samples+1}, (_,i) => {
     const time = from+(to-from)*i/samples;
-    return `${i?'L':'M'}${x(time).toFixed(2)},${y(maskStrength(curve,time,before,duration,after)).toFixed(2)}`;
+    return `${i?'L':'M'}${x(time).toFixed(2)},${y(strength(time)).toFixed(2)}`;
   }).join(' ');
 }
 
@@ -57,7 +60,7 @@ function ImageKeyframeMarkers({ values = [], from, to, x, top, bottom }: {
   </g>);
 }
 
-export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoMs, audioMs, initial, boundaries, active, onChange, onClose, headingId, onPreview, allowBody = false }: Props & {
+export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoMs, audioMs, initial, boundaries, active, onChange, onClose, headingId, onPreview, noInput = [], strengthAt }: Props & {
   initial: MaskCurves; boundaries: ReturnType<typeof maskVideoBoundaries>; active: Channel; onClose: () => void; headingId?: string;
   onPreview?: (value: MaskCurves) => void;
 }) {
@@ -77,14 +80,16 @@ export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoM
   const x=(time:number)=>left+(time-from)/span*(right-left), y=(strength:number)=>bottom-strength*(bottom-top);
   const offset=(side:MaskSide)=>side==='start'?0:side==='body'?before:before+duration;
   const length=(side:MaskSide)=>side==='start'?before:side==='body'?duration:after;
-  const sides:MaskSide[]=allowBody?['start','body','end']:['start','end'];
+  const sides:MaskSide[]=duration>0?['start','body','end']:['start','end'];
   const seconds=(side:MaskSide,p:MaskPoint)=>offset(side)+p.position*length(side);
-  const region=(time:number):MaskSide|null=>before>0&&time<before?'start':after>0&&time>before+duration?'end':allowBody?'body':null;
+  const region=(time:number):MaskSide|null=>before>0&&time<before?'start':after>0&&time>before+duration?'end':duration>0?'body':null;
   const curve=draft[active], point=selection&&curve[selection.side][selection.index];
+  const raw=(time:number)=>maskStrength(curve,time,before,duration,after), effective=(time:number)=>strengthAt?strengthAt(curve,time):raw(time);
+  const defaults=(channel:Channel)=>inputMaskCurve(undefined,before,after,channel==='video'?videoMs:audioMs);
   const boundary=!!selection&&selection.side!=='body'&&(selection.side==='start'?selection.index===curve.start.length-1:selection.index===0);
   const endpoint=!!selection&&(selection.index===0||selection.index===curve[selection.side].length-1);
   const change=(next:Curves)=>{if(same(next,draft))return;setPast(p=>[...p,draft].slice(-50));setFuture([]);setDraft(next);};
-  const reset=()=>{change(editable({...draft,[active]:defaultMaskCurve(before,after,active==='video'?videoMs:audioMs)}));setSelection(null);};
+  const reset=()=>{change(editable({...draft,[active]:defaults(active)}));setSelection(null);};
   const undo=()=>{if(!past.length)return;setFuture(p=>[draft,...p]);setDraft(past.at(-1)!);setPast(p=>p.slice(0,-1));setSelection(null);};
   const redo=()=>{if(!future.length)return;setPast(p=>[...p,draft]);setDraft(future[0]);setFuture(p=>p.slice(1));setSelection(null);};
   const coordinates=(event:{clientX:number;clientY:number})=>{
@@ -131,7 +136,7 @@ export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoM
     if(cancel)setDraft(current.initial);else{setPast(p=>[...p,current.initial].slice(-50));setFuture([]);}
   };
   const apply=()=>{
-    onChange({[`${active}MaskCurve`]:same(draft[active],defaultMaskCurve(before,after,active==='video'?videoMs:audioMs))?undefined:draft[active]});onClose();
+    onChange({[`${active}MaskCurve`]:same(draft[active],defaults(active))?undefined:draft[active]});onClose();
   };
   const handlePosition=(side:MaskSide,index:number,direction:'in'|'out')=>{
     const points=curve[side],p=points[index],neighbor=points[index+(direction==='in'?-1:1)];if(!neighbor)return;
@@ -176,10 +181,13 @@ export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoM
             onDoubleClick={event=>{const p=coordinates(event);add(p.time,p.strength);}}
             onPointerMove={event=>{const current=drag.current;if(!current)return;const p=coordinates(event);current.moved=true;setDraft(movedPoint(current.channel,current.selection,p.time,p.strength,current.handle));setCursor(p.time);}}
             onPointerUp={()=>endDrag()} onPointerCancel={()=>endDrag(true)}>
-            <defs><clipPath id={`${id}-clip`}><rect x={left-8} y={top-10} width={right-left+16} height={bottom-top+20}/></clipPath></defs>
+            <defs><clipPath id={`${id}-clip`}><rect x={left-8} y={top-10} width={right-left+16} height={bottom-top+20}/></clipPath>
+              <pattern id={`${id}-hatch`} width={7} height={7} patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line className="mask-no-input-hatch" x1={0} y1={0} x2={0} y2={7}/></pattern></defs>
             <rect className="mask-plot-background" x={left} y={top} width={right-left} height={bottom-top}/>
             <g clipPath={`url(#${id}-clip)`}>
               <rect className="mask-generated-region" x={x(before)} y={top} width={x(before+duration)-x(before)} height={bottom-top}/>
+              {noInput.filter(span=>span.end>from&&span.start<to).map(span=>{const lo=Math.max(from,span.start),hi=Math.min(to,span.end);
+                return <rect key={`${span.start}:${span.end}`} className="mask-no-input" data-start={span.start.toFixed(3)} data-end={span.end.toFixed(3)} x={x(lo)} y={top} width={x(hi)-x(lo)} height={bottom-top} fill={`url(#${id}-hatch)`}/>;})}
               {active === 'video' && h3MaskGroups(Math.round(total * 24)).filter(group => group.start / 24 >= from && group.start / 24 <= to).map(group => <line key={group.start} className="mask-frame-group" x1={x(group.start / 24)} x2={x(group.start / 24)} y1={top} y2={bottom}><title>Mask cell: frames {group.start}–{group.end - 1}</title></line>)}
               {[0,.25,.5,.75,1].map(value=><line key={value} className="mask-grid-line" x1={left} x2={right} y1={y(value)} y2={y(value)}/>)}
               {Array.from({length:9},(_,i)=><line key={i} className="mask-grid-line" x1={x(from+span*i/8)} x2={x(from+span*i/8)} y1={top} y2={bottom}/>)}
@@ -188,11 +196,13 @@ export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoM
               <ImageKeyframeMarkers values={imageKeyframes} from={from} to={to} x={x} top={top} bottom={bottom}/>
               {sides.map(side=>{
                 const lo=Math.max(from,offset(side)),hi=Math.min(to,offset(side)+length(side));
-                return hi>lo?<path key={side} className="mask-curve-hit" d={curvePath(curve,before,duration,after,lo,hi,x,y)}
+                return hi>lo?<path key={side} className="mask-curve-hit" d={curvePath(raw,lo,hi,x,y)}
                   onClick={event=>{event.stopPropagation();add(coordinates(event).time);}}/>:null;
               })}
-              <path className="mask-curve-line" d={curvePath(curve,before,duration,after,from,to,x,y)}/>
-              {sides.filter(side=>length(side)).flatMap(side=>curve[side].map((p,index)=>{
+              {noInput.length>0&&<path className="mask-curve-raw" d={curvePath(raw,from,to,x,y)}/>}
+              <path className="mask-curve-line" d={curvePath(effective,from,to,x,y)}/>
+              {/* A zoomed reference shows only its own keyframes, never the generated section's at its edge. */}
+              {sides.filter(side=>length(side)&&(view==='all'||view===side)).flatMap(side=>curve[side].map((p,index)=>{
                 const time=seconds(side,p);if(time<from||time>to)return null;
                 const chosen=selection?.side===side&&selection.index===index;
                 const label=`${title(active)} ${side} keyframe ${index+1}`;
@@ -243,7 +253,7 @@ export function MaskCurvePanel({ before, after, duration, imageKeyframes, videoM
       <div className="mask-curve-options"><label>Interpolation<select aria-label="Mask curve interpolation" value={curve.interpolation} onChange={event=>change({...draft,[active]:{...curve,interpolation:event.target.value as MaskCurve['interpolation']}})}>
         <option value="linear">Linear</option><option value="smooth">Easy ease</option><option value="bezier">Bézier</option></select></label>
         <button type="button" onClick={reset}><RotateCcw size={12}/>Reset {active}</button></div>
-      <p className="mask-editor-help">0% keeps the input; 100% regenerates it. Click to add a point. Empty regions always generate.</p>
+      <p className="mask-editor-help">0% keeps the input; 100% regenerates it. Click to add a point. Hatched spans have no {active} input to keep, so they always regenerate; the dashed line is your curve there.</p>
       <footer className="mask-editor-footer"><span>Applies to the next generation.</span><button type="button" className="button" onClick={onClose}>Cancel</button><button type="button" className="button primary" onClick={apply}>Apply {active} mask</button></footer>
     </div>
     {context&&<KeyframeMenu x={context.x} y={context.y} onClose={()=>setContext(null)} restoreFocus={()=>context.target.focus({preventScroll:true})}

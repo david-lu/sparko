@@ -1,8 +1,18 @@
 .generation-timeline{min-width:0;margin:14px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
 .generation-timeline-editor{min-width:0;background:var(--panel);color:var(--text)}
 .generation-timeline-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--surface)}
-.generation-timeline-heading h2{font-size:12px;margin:0 0 4px!important;font-weight:600}
-.generation-timeline-heading span{font:10px var(--mono);color:var(--muted)}
+.generation-timeline-heading>div{min-width:0}
+/* One line in every state: opening a mask adds a crumb without moving the timeline below. Earlier crumbs shorten first. */
+.generation-breadcrumb ol{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;min-width:0;margin:0 0 4px;padding:0;list-style:none;font-size:12px;font-weight:600;line-height:1.3}
+.generation-breadcrumb li{display:flex;align-items:center;gap:6px;flex:0 1 auto;min-width:3em}
+.generation-breadcrumb li:last-child{flex-shrink:0;max-width:55%}
+.generation-breadcrumb li+li::before{content:'›';color:var(--muted);font-weight:400}
+.generation-breadcrumb li>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40ch}
+.generation-breadcrumb [aria-current=page]{color:var(--text)}
+.generation-crumb{all:unset;color:var(--muted);cursor:pointer;border-radius:3px}
+.generation-crumb:hover{color:var(--text);text-decoration:underline}
+.generation-crumb:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+.generation-timeline-heading>div>span{font:10px var(--mono);color:var(--muted)}
 .generation-timeline-toolbar{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px}
 .generation-timeline-toolbar>button{display:flex;align-items:center;gap:5px;font-size:11px;min-height:32px}
 .generation-expand{display:flex;align-items:center;gap:5px;font-size:11px;min-height:30px}
@@ -65,7 +75,7 @@
 .generation-timeline-properties .mask-graph-editor{width:100%;max-height:none;border:0;box-shadow:none;border-radius:0}
 .generation-timeline-properties:has(.mask-graph-editor){padding:0}
 .generation-timeline-properties .image-references{margin-top:14px}
-.generation-timeline-editor[data-workspace=true] .generation-timeline-heading h2{font-size:16px}
+.generation-timeline-editor[data-workspace=true] .generation-breadcrumb ol{font-size:16px}
 .generation-timeline-editor[data-workspace=true] .generation-timeline-heading{position:sticky;top:0;z-index:6}
 .generation-timeline-editor[data-workspace=true] .generation-footage-lane{height:72px}
 .generation-timeline-editor[data-workspace=true] .generation-footage-lane>button{height:64px}

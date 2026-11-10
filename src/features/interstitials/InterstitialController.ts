@@ -286,7 +286,7 @@ export class InterstitialController {
       const submittedPrompt = generationPrompt(source.item);
       const job = await generateInterstitial({ ...source.item, seed: requestSeed, requestOrigin }, source.engine, source.info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
-      });
+      }, dependency?.reference);
       if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId).catch(() => undefined); return; }
       this.patch(id, { requestId: job.requestId, requestMethod: method, requestPrompt: submittedPrompt, requestSeed: job.seed ?? requestSeed, requestInsertion: job.insertion, phase: 'queued', progress: undefined });
       await this.poll(id, job.requestId, operation.signal, job.insertion);

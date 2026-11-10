@@ -13,8 +13,8 @@ import InterstitialTimeField from './InterstitialTimeField';
 
 const ignoreBusy = () => {};
 /** Generation inputs and transport have no dependency on the story player or prompt editor. */
-export default function GenerationTimelineEditor({ selected, controller, info, projects, minDuration, workspace = false, onPreviewPlay, onImagesBusyChange = ignoreBusy, outputVolume, onOutputVolume }: {
-  selected: Interstitial; controller: InterstitialController; info: MediaInfo | null; projects?: ProjectController;
+export default function GenerationTimelineEditor({ selected, controller, info, projects, minDuration, workspace = false, onPreviewPlay, onImagesBusyChange = ignoreBusy, outputVolume, onOutputVolume, clipName }: {
+  selected: Interstitial; /** The story clip's name; defaults to the generation's own label. */ clipName?: string; controller: InterstitialController; info: MediaInfo | null; projects?: ProjectController;
   minDuration: number; workspace?: boolean; onPreviewPlay: () => void; onImagesBusyChange?: (busy: boolean) => void;
   /** The story clip's playback level for the generated video, when the clip is in a story. */
   outputVolume?: number; onOutputVolume?: (volume: number) => void;
@@ -44,7 +44,7 @@ export default function GenerationTimelineEditor({ selected, controller, info, p
       ...(saved.endImageIndex !== undefined && endImageIndex === undefined ? { endReferenceType: 'none' } : {}) });
   }} />;
 
-  return <GenerationTimeline key={selected.id} itemId={selected.id} workspace={workspace} generatedUrl={fullVideoUrl} generatedFrames={currentResult ? Math.round((currentResult.fullRange?.totalDuration ?? currentResult.totalDuration) * TIMELINE_FPS) : undefined}
+  return <GenerationTimeline key={selected.id} itemId={selected.id} workspace={workspace} clipName={clipName || selected.label || 'Untitled clip'} generatedUrl={fullVideoUrl} generatedFrames={currentResult ? Math.round((currentResult.fullRange?.totalDuration ?? currentResult.totalDuration) * TIMELINE_FPS) : undefined}
         upscaledUrl={upscaledUrl} upscaledFrames={upscaled ? Math.round(upscaled.totalDuration * TIMELINE_FPS) : undefined} item={selected} projects={projects} reference={dependency?.reference}
         generatedBodyFrame={currentResult ? Math.round((currentResult.fullRange?.start ?? currentResult.start) * TIMELINE_FPS) : undefined}
         outputVolume={outputVolume} onOutputVolume={onOutputVolume}
