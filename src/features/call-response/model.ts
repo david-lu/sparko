@@ -1,5 +1,6 @@
 import { playableResult, type CallResponseInterstitial, type Interstitial, type InterstitialResult } from '../../../shared/interstitials';
 import { LOOP_CROSSFADE_SECONDS } from '../../../shared/constants';
+import type { FadeCurve } from '../../../shared/fade-curves';
 import type { AnswerColor } from './colors';
 import type { FadeChannel, StoryNode } from '../story-flow/model';
 import { behaviors } from '../story-flow/behaviors';
@@ -46,6 +47,8 @@ export type FlowEdge = {
   transitionFrames: number;
   /** Omitted in older flows, which use the video duration for both channels. */
   audioTransitionFrames?: number;
+  /** Story connections may shape each channel's fade; missing curves are linear. */
+  transitionCurve?: FadeCurve; audioTransitionCurve?: FadeCurve;
 };
 export type CallResponseFlow = {
   /** Project-wide soundtrack layers, supplied at runtime. */
@@ -260,6 +263,10 @@ export function loopCrossfadeFrames(scene: TimelineScene, fps: number, channel?:
     Math.round((scene.storyNode?.[side === 'video' ? 'loopVideoCrossfade' : 'loopAudioCrossfade'] ?? LOOP_CROSSFADE_SECONDS) * fps)));
   return channel ? frames(channel) : Math.max(frames('video'), frames('audio'));
 }
+export const loopCrossfadeCurve = (scene: TimelineScene, channel: FadeChannel): FadeCurve | undefined =>
+  scene.storyNode?.[channel === 'video' ? 'loopVideoCrossfadeCurve' : 'loopAudioCrossfadeCurve'];
+export const transitionCurve = (edge: FlowEdge, channel: FadeChannel): FadeCurve | undefined =>
+  channel === 'audio' ? edge.audioTransitionCurve : edge.transitionCurve;
 export const getScene = (flow: CallResponseFlow, id: SceneId) => flow.scenes.find(scene => scene.id === id)!;
 export const responseInterstitialIds = (flow: CallResponseFlow) => flow.scenes.flatMap(scene => scene.clip.kind === 'response' && scene.interstitialId ? [scene.interstitialId] : []);
 

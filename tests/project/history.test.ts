@@ -34,6 +34,18 @@ describe('project edit history', () => {
     history.commit('undo');
     expect(history.target('redo')?.crossfadeFrames).toBe(16);
   });
+  it('merges length and shape edits on one connection fade, but not rewiring', () => {
+    const node = (id: string) => ({ id, name: id, kind: 'source' as const, x: 0, y: 0, loopCount: 0, source: { assetId: crypto.randomUUID(), inFrame: 0, outFrame: 24 } });
+    const link = { id: 'link', from: 'a', to: 'b', event: 'next' as const, label: 'Next', values: [] };
+    const graph = (edge: Record<string, unknown>) => ({ ...project(), storyFlow: { version: 1 as const, entryId: 'a', nodes: [node('a'), node('b'), node('c')], edges: [{ ...link, ...edge }], templates: [] } });
+    const curve = { interpolation: 'linear' as const, points: [{ position: 0, strength: 0 }, { position: .5, strength: .8 }, { position: 1, strength: 1 }] };
+    const history = new ProjectHistory(), start = graph({}), longer = graph({ videoCrossfade: .5 }), shaped = graph({ videoCrossfade: .5, videoCrossfadeCurve: curve });
+    history.record(start, longer, 0); history.record(longer, shaped, 100);
+    expect(history.undoLabel).toBe('Edit crossfade');
+    expect(history.target('undo')?.storyFlow?.edges[0]).toEqual(link);
+    history.endGroup(); history.record(shaped, graph({ videoCrossfade: .5, videoCrossfadeCurve: curve, to: 'c' }), 200);
+    expect(history.undoLabel).toBe('Edit connections');
+  });
   it('groups consecutive typing, round-trips it, and starts a separate group after undo', () => {
     const history = new ProjectHistory(), start = project(), first = prompt(start, 'H'), next = prompt(first, 'Hello');
     history.record(start, first, 0); history.record(first, next, 100);

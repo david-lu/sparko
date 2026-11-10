@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const handle = z.object({ influence: z.number().finite().min(0).max(1), strength: z.number().finite().min(0).max(1) });
 const point = z.object({ position: z.number().finite().min(0).max(1), strength: z.number().finite().min(0).max(1), in: handle.optional(), out: handle.optional() });
+export const maskPointSchema = point;
 export type MaskPoint = z.infer<typeof point>;
 const points = z.array(point)
   .min(2).max(16).refine(points => points.length >= 2 && points[0].position === 0 && points.at(-1)!.position === 1

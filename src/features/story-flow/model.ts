@@ -1,5 +1,6 @@
 import type { AssetGeneration } from '../../../shared/asset-generation';
 import { TIMELINE_FPS } from '../../../shared/constants';
+import type { FadeCurve } from '../../../shared/fade-curves';
 import { playableResult, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
 import { composeFlows } from '../call-response/compose';
 import { interactionFor, sceneFrames, type CallResponseFlow, type TimelineScene } from '../call-response/model';
@@ -30,6 +31,8 @@ export type StoryNode = {
   loopCount: number;
   /** Independent repeat overlaps in seconds; zero makes a hard cut for that channel. */
   loopVideoCrossfade?: number; loopAudioCrossfade?: number;
+  /** Shape of each repeat overlap. Missing means linear. */
+  loopVideoCrossfadeCurve?: FadeCurve; loopAudioCrossfadeCurve?: FadeCurve;
   loop?: boolean; conditional?: boolean; conditions?: StoryCondition[]; defaultConditionId?: string;
   /** How viewers choose a condition. Missing means buttons. */
   conditionInput?: ConditionInput;
@@ -39,6 +42,8 @@ export type FadeChannel = 'video' | 'audio';
 export type StoryEdge = { id: string; from: string; to: string; event: 'next' | 'answer' | 'fallback'; conditionId?: string; label: string; values: string[];
   /** Shared defaults from older projects; individual edits override only their channel. */
   crossfade?: number; crossfadeReferenceRatio?: number; videoCrossfade?: number; audioCrossfade?: number;
+  /** Shape of each channel's fade, independent of its duration. Missing means linear. */
+  videoCrossfadeCurve?: FadeCurve; audioCrossfadeCurve?: FadeCurve;
   points?: {id:string;x:number;y:number}[] };
 export const groupColors = { blue: '#82a5bd', purple: '#a391c2', green: '#80a69a', amber: '#c4a779', rose: '#c58d99' } as const;
 export type GroupBounds = { x: number; y: number; width: number; height: number };
@@ -361,7 +366,8 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
   };
   scenes.forEach(s => resolveDraft(s));
   const fadeFrames = (e: StoryEdge) => ({ transitionFrames: Math.round(connectionFade(e, graph.nodes, items, 'video') * fps),
-    audioTransitionFrames: Math.round(connectionFade(e, graph.nodes, items, 'audio') * fps) });
+    audioTransitionFrames: Math.round(connectionFade(e, graph.nodes, items, 'audio') * fps),
+    ...(e.videoCrossfadeCurve ? { transitionCurve: e.videoCrossfadeCurve } : {}), ...(e.audioCrossfadeCurve ? { audioTransitionCurve: e.audioCrossfadeCurve } : {}) });
   const edges: CallResponseFlow['edges'] = graph.edges.map(e => ({ ...e, when:e.event === 'answer' ? e.id : e.event === 'fallback' ? 'pending' : 'ended', ...fadeFrames(e) }));
   const interactions: NonNullable<CallResponseFlow['storyInteractions']> = {};
   for (const node of graph.nodes) {

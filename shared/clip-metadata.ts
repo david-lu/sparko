@@ -7,6 +7,7 @@ import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from './constants.js';
 import { generationMethods, generationResolutions, maskInjections } from './interstitials.js';
 import { imageReferencesSchema, imageReferenceIndexSchema } from './image-references.js';
 import { maskCurveSchema } from './mask-curves.js';
+import { fadeCurveSchema } from './fade-curves.js';
 import { videoKeyframesSchema } from './video-keyframes.js';
 
 export const CLIP_METADATA_TAG = 'sparko';
@@ -40,7 +41,8 @@ export const clipOriginSchema = z.object({
   format: z.literal('sparko-clip'), version: z.literal(1), fps: z.literal(TIMELINE_FPS), id: z.uuid(),
   createdAt: z.iso.datetime(),
   clip: z.object({ nodeId: id.optional(), name: z.string().max(1000), time: seconds,
-    loop: z.boolean(), conditional: z.boolean(), loopCount: frame.max(10_000), loopVideoCrossfade: seconds.optional(), loopAudioCrossfade: seconds.optional(), trim: range.optional(),
+    loop: z.boolean(), conditional: z.boolean(), loopCount: frame.max(10_000), loopVideoCrossfade: seconds.optional(), loopAudioCrossfade: seconds.optional(),
+    loopVideoCrossfadeCurve: fadeCurveSchema.optional(), loopAudioCrossfadeCurve: fadeCurveSchema.optional(), trim: range.optional(),
     conditions: z.array(z.object({ id, label: z.string().max(200), values: z.array(z.string().max(200)).max(100) })).max(100).optional(),
     defaultConditionId: id.optional(),
   }),

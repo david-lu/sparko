@@ -9,7 +9,6 @@ import type { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
 import InterstitialEditor from '../interstitials/InterstitialEditor';
 import InterstitialOutput from '../interstitials/InterstitialOutput';
-import InterstitialTimeField from '../interstitials/InterstitialTimeField';
 import { freshId, nodeDuration } from './model';
 import { behaviors, conditionsFor, defaultCondition } from './behaviors';
 import BehaviorSection from './BehaviorSection';
@@ -29,6 +28,7 @@ import { assets } from '../project/assets';
 import { useAssetAvailability } from '../project/useAssetAvailability';
 import VideoFrameRate from '../project/VideoFrameRate';
 import ClipColorPicker from './ClipColorPicker';
+import CrossfadeCurveField from './CrossfadeCurveField';
 
 function ClipName({ value, onSave }: { value: string; onSave: (name: string) => void }) {
   const [name, setName] = useState(value);
@@ -85,12 +85,13 @@ export default function StoryInspector({ editor, engine, info, status }: { edito
       <label className="inspector-property"><span>Loop count</span><input aria-label="Loop count" type="number" min={0} max={10000} value={node.loopCount} title="0 repeats until a condition matches or Continue is pressed." onChange={e=>Number.isFinite(e.target.valueAsNumber)&&editor.patch(node.id,{loopCount:Math.max(0,Math.min(10000,Math.round(e.target.valueAsNumber)))})}/></label>
       <p className="inspector-behavior-hint">{node.loopCount?`Play up to ${node.loopCount} times; a choice can exit sooner.`:behavior.conditional?'Repeat until a condition matches.':'Repeat until Continue is pressed.'}</p>
       {(['Video','Audio'] as const).map(channel=>{
-        const field=channel==='Video'?'loopVideoCrossfade':'loopAudioCrossfade';
+        const field=channel==='Video'?'loopVideoCrossfade':'loopAudioCrossfade',shape=channel==='Video'?'loopVideoCrossfadeCurve':'loopAudioCrossfadeCurve';
         const fade=Math.min(maxLoopFade,Math.round((node[field]??LOOP_CROSSFADE_SECONDS)*TIMELINE_FPS)/TIMELINE_FPS);
-        return <InterstitialTimeField key={channel} name={`Loop ${channel.toLowerCase()} crossfade duration`} label={`${channel} fade`} min={0} max={maxLoopFade} step={1/TIMELINE_FPS}
-          value={Number(fade.toFixed(3))} onChange={value=>Number.isFinite(value)&&editor.patch(node.id,{[field]:Math.min(maxLoopFade,Math.max(0,Math.round(value*TIMELINE_FPS)/TIMELINE_FPS))})}/>;
+        return <CrossfadeCurveField key={`${node.id}:${channel}`} name={`Loop ${channel.toLowerCase()} crossfade`} label={`${channel} fade`} duration={fade} max={maxLoopFade} step={1/TIMELINE_FPS}
+          curve={node[shape]} onCurve={curve=>editor.patch(node.id,{[shape]:curve})} onBoundary={()=>editor.projects.endHistoryGroup()}
+          onDuration={value=>editor.patch(node.id,{[field]:Math.min(maxLoopFade,Math.max(0,Math.round(value*TIMELINE_FPS)/TIMELINE_FPS))})}/>;
       })}
-      <p className="inspector-behavior-hint">Blend the ending into the beginning. Set either fade to 0 for a cut. Each is limited to half the clip; repeats are shorter by the longer overlap.</p>
+      <p className="inspector-behavior-hint">Blend the ending into the beginning. Drag each end point to change its length; 0 makes a cut. Each is limited to half the clip; repeats are shorter by the longer overlap.</p>
     </BehaviorSection>
     <BehaviorSection key={`conditional:${node.id}`} name="Conditional" enabled={behavior.conditional} onToggle={enabled=>editor.toggleBehavior(node.id,'conditional',enabled)}>
       <div className="inspector-property condition-input" role="radiogroup" aria-label="Condition input"><span aria-hidden>Input</span>
