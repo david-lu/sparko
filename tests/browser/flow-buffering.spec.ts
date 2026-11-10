@@ -103,8 +103,9 @@ test('loop picture and sound fade independently while retaining the incoming dec
   expect(overlaps.some((e: any) => e.frame === 23)).toBe(true);
   for (const event of overlaps) {
     expect(event.layers[0].gain + event.layers[1].gain).toBeCloseTo(1);
-    expect(event.layers[0].volume + event.layers[1].volume).toBeCloseTo(.4, 2);
-    // AudioParam values advance on the audio render clock between JS reads.
+    // AudioParam values advance on the audio render clock between JS reads, so two
+    // voices read mid-ramp can drift apart slightly (0.407 on a slow CI runner).
+    expect(event.layers[0].volume + event.layers[1].volume).toBeCloseTo(.4, 1);
     for (const layer of event.layers) expect(layer.volume).toBeCloseTo(layer.gain * .4, 1);
   }
   for (const visit of [1, 2, 3]) {
