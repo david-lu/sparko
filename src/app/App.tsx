@@ -91,7 +91,7 @@ export default function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [startReady, setStartReady] = useState(false);
   const [error, setError] = useState('');
-  const [shortcuts, setShortcuts] = useState(false);
+  const [keybindsOpen, setKeybindsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [preview, setPreview] = useState(false);
@@ -206,7 +206,7 @@ export default function App() {
   useEffect(() => {
     if (!projectState.source) {
       controller.close(); setEngine(null); setInfo(null); setThumbnails([]); setThumbnailsFailed(false);
-      setSelectedFlowScene(null); setSelectedFlowEdge(null); setShortcuts(false);
+      setSelectedFlowScene(null); setSelectedFlowEdge(null); setKeybindsOpen(false);
       return;
     }
     const version = ++sourceVersion.current;
@@ -396,19 +396,18 @@ export default function App() {
         <button role="menuitem" aria-keyshortcuts={keys.aria('saveAs')} title={keys.title('saveAs')} disabled={projectState.busy || !projectState.project} onClick={() => { void saveAsFile(); }}><Save size={14} />Save as new file{shortcutHint('saveAs')}</button>
         <button role="menuitem" disabled={projectState.busy || !projectState.project} onClick={() => { if (fileMenu.current) fileMenu.current.open = false; void exportProject(); }}><Download size={14} />Export project</button>
       </div></DropdownMenu>
-      {!preview && <><PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} onPreferences={()=>setPreferencesOpen(true)} />
+      {!preview && <><PlaybackOptions perClip={!!storyGraph} crossfade={crossfade} onCrossfade={setCrossfade} crossfadeFrames={crossfadeFrames} onCrossfadeFrames={value => projects.setCrossfadeFrames(value)} matchFraming={matchFraming} onMatchFraming={setMatchFraming} onPreferences={()=>setPreferencesOpen(true)} onKeybinds={()=>setKeybindsOpen(true)} />
       <WindowMenu workspace={workspace} panelsAvailable={!!storyGraph} timelineVisible={!timelineCollapsed} onTimeline={()=>{if(!workspace.locked)setTimelineCollapsed(value=>!value);}} onReset={resetWorkspace} onHelp={()=>{controller.pause();setHelpOpen(true);}}/>
       <div className="history-controls" role="group" aria-label="Edit history">
         <button className="icon-button small" aria-label="Undo" aria-keyshortcuts={keys.aria('undo')} title={keys.title('undo',projectState.undoLabel ? `Undo: ${projectState.undoLabel}` : 'Undo')}
           disabled={projectState.busy || !projectState.undoLabel} onClick={() => { controller.pause(); void projects.undo(); }}><Undo2 size={14} />{shortcutHint('undo')}</button>
         <button className="icon-button small" aria-label="Redo" aria-keyshortcuts={keys.aria('redo')} title={keys.title('redo',projectState.redoLabel ? `Redo: ${projectState.redoLabel}` : 'Redo')}
           disabled={projectState.busy || !projectState.redoLabel} onClick={() => { controller.pause(); void projects.redo(); }}><Redo2 size={14} />{shortcutHint('redo')}</button>
-      </div>
-      <button className={`menu-button ${shortcuts ? 'selected' : ''}`} aria-haspopup="dialog" aria-expanded={shortcuts} onClick={() => setShortcuts(!shortcuts)}>Shortcuts</button></>}
+      </div></>}
       <span className="menu-document">{projectState.fileName || projectState.project?.name || source.name}</span>
       <div className="mode-toggle" role="group" aria-label="Workspace mode">
         <button aria-pressed={!preview} disabled={projectState.busy} onClick={() => setPreview(false)}><Pencil size={13} />Edit</button>
-        <button aria-pressed={preview} disabled={projectState.busy} onClick={() => { projects.endHistoryGroup(); setShortcuts(false); setPreferencesOpen(false); setHelpOpen(false); setPreview(true); }}><Eye size={14} />Preview</button>
+        <button aria-pressed={preview} disabled={projectState.busy} onClick={() => { projects.endHistoryGroup(); setKeybindsOpen(false); setPreferencesOpen(false); setHelpOpen(false); setPreview(true); }}><Eye size={14} />Preview</button>
       </div><span className="menu-app-name">SPARKO</span>
     </header>
     <main className="workspace">
@@ -431,7 +430,7 @@ export default function App() {
     <input className="sr-only" ref={fileInput} type="file" aria-label="Choose video file" accept="video/*,image/*,.mkv" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) openFile(file); event.target.value = ''; }} />
     <input className="sr-only" ref={projectInput} type="file" aria-label="Choose project file" accept=".sparko,.zip,application/zip" disabled={preview} onChange={event => { const file = event.target.files?.[0]; if (file && !preview) void projects.importProject(file); event.target.value = ''; }} />
     <ToastStack/>
-    {shortcuts && <ShortcutSettings onClose={()=>setShortcuts(false)}/>}
+    {keybindsOpen && <ShortcutSettings onClose={()=>setKeybindsOpen(false)}/>}
     {helpOpen && <HelpTutorial onClose={()=>setHelpOpen(false)}/>}
     {preferencesOpen && <Preferences playheadTimeMode={playheadTimeMode} onPlayheadTimeMode={setPlayheadTimeMode} pinchZoomSensitivity={pinchZoomSensitivity} onPinchZoomSensitivity={setPinchZoomSensitivity} defaultTurbo={defaultTurbo} onDefaultTurbo={setDefaultTurbo} convertImportedVideo={convertImportedVideo} onConvertImportedVideo={setConvertImportedVideo} onClose={()=>setPreferencesOpen(false)}/>}
     {closePrompt && <ModalBackdrop labelledBy="close-project-title" onCancel={()=>{if(!projectState.busy)setClosePrompt(false);}}><div className="project-card">

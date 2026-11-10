@@ -86,9 +86,9 @@ fieldset:disabled{opacity:.55}
 @media(max-width:440px){.project-start{padding:14px 14px 24px}.project-start-header{padding:17px 18px;border-radius:15px}.project-start-header h1{font-size:24px}.project-start-section{padding:17px}.project-start-row{flex-wrap:wrap}.project-start-row-actions:has(.danger){width:100%;justify-content:flex-end}}
 .menubar{height:38px;min-height:38px;display:flex;align-items:center;gap:2px;background:var(--panel);border-bottom:1px solid var(--line);user-select:none;padding:0 8px}
 .file-menu{position:relative;height:28px;flex-shrink:0}
-.file-menu summary,.menu-button{font-size:11px;height:28px;padding:0 10px;background:transparent;display:flex;align-items:center;cursor:pointer;list-style:none;color:var(--text-secondary);border-radius:4px;flex-shrink:0}
+.file-menu summary{font-size:11px;height:28px;padding:0 10px;background:transparent;display:flex;align-items:center;cursor:pointer;list-style:none;color:var(--text-secondary);border-radius:4px;flex-shrink:0}
 .file-menu summary::-webkit-details-marker{display:none}
-.file-menu[open] summary,.file-menu summary:hover,.menu-button:hover,.menu-button.selected{background:var(--hover);color:var(--text)}
+.file-menu[open] summary,.file-menu summary:hover{background:var(--hover);color:var(--text)}
 .menu-items{position:absolute;left:0;top:calc(100% + 6px);width:244px;border:1px solid var(--line);background:var(--surface);padding:5px;border-radius:var(--radius-sm);box-shadow:0 10px 30px #0006,0 1px 3px #0004}
 .menu-items button{width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:9px 10px;font-size:12px;background:transparent;border-radius:4px}
 .menu-items button:hover:not(:disabled){background:var(--hover)}

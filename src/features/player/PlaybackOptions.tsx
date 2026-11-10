@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Check, Settings2 } from 'lucide-react';
+import { Check, Keyboard, Settings2 } from 'lucide-react';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { maxCrossfadeFrames } from './preferences';
 import './options.css';
@@ -7,11 +7,12 @@ import DropdownMenu from '../../shared/DropdownMenu';
 
 export { crossfadePreference, savedCrossfadePreference, crossfadeLengthPreference, savedCrossfadeFrames, framingPreference, savedFramingPreference } from './preferences';
 
-export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrames, onCrossfadeFrames, matchFraming, onMatchFraming, onPreferences, perClip = false }: {
+export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrames, onCrossfadeFrames, matchFraming, onMatchFraming, onPreferences, onKeybinds, perClip = false }: {
   crossfade: boolean; onCrossfade: (value: boolean) => void; matchFraming: boolean; onMatchFraming: (value: boolean) => void;
   crossfadeFrames: number; onCrossfadeFrames: (value: number) => void;
   perClip?: boolean;
   onPreferences: () => void;
+  onKeybinds: () => void;
 }) {
   const menu = useRef<HTMLDetailsElement>(null);
   const length = `${(crossfadeFrames / TIMELINE_FPS).toFixed(2)} s`;
@@ -38,5 +39,6 @@ export default function PlaybackOptions({ crossfade, onCrossfade, crossfadeFrame
     </button>
     <div role="separator"/>
     <button role="menuitem" aria-haspopup="dialog" onClick={()=>{if(menu.current)menu.current.open=false;onPreferences();}}><Settings2 size={14}/>Preferences…</button>
+    <button role="menuitem" aria-haspopup="dialog" onClick={()=>{if(menu.current)menu.current.open=false;onKeybinds();}}><Keyboard size={14}/>Keybinds…</button>
   </div></DropdownMenu>;
 }

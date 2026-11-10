@@ -10,7 +10,7 @@ const topics = [
   { id: 'timeline', title: 'Timeline & connections' },
   { id: 'generate', title: 'Generate a video' },
   { id: 'templates', title: 'Reuse templates' },
-  { id: 'workspace', title: 'Workspace & shortcuts' },
+  { id: 'workspace', title: 'Workspace & keybinds' },
 ] as const;
 type Topic = typeof topics[number]['id'];
 const steps: { title: string; text: string; picture: HelpPictureId }[] = [
@@ -77,7 +77,7 @@ export default function HelpTutorial({onClose}:{onClose:()=>void}) {
             <p>Use <strong>Window</strong> to show panels. Drag their titles to move them.</p>
             {illustration('workspace')}
             <h3>Lock your layout</h3><p>Choose <strong>Lock workspace</strong> to prevent panel changes.</p>
-            <h3>Useful keys</h3><p>Change these in the <strong>Shortcuts</strong> menu.</p>
+            <h3>Useful keys</h3><p>Change these in <strong>Options → Keybinds</strong>.</p>
             <dl className="help-shortcuts">{usefulShortcuts.map(id=><div key={id}><dt>{shortcutActions.find(action=>action.id===id)!.label}</dt><dd><kbd>{keys.label(id)||'Unassigned'}</kbd></dd></div>)}</dl>
           </>}
         </article>

@@ -20,7 +20,7 @@ for(const width of [1440,390])test(`menus are exclusive, dismiss consistently an
     await page.keyboard.press('Escape');await expect(dropdowns(page)).toHaveCount(0);await expect(trigger(page,name)).toBeFocused();
   }
   await trigger(page,'File').click();await page.locator('.menu-app-name').click();await expect(dropdowns(page)).toHaveCount(0);
-  await trigger(page,'Options').click();await page.getByRole('button',{name:'Shortcuts',exact:true}).focus();await expect(dropdowns(page)).toHaveCount(0);
+  await trigger(page,'Options').click();await page.getByRole('group',{name:'Workspace mode'}).getByRole('button',{name:'Edit',exact:true}).focus();await expect(dropdowns(page)).toHaveCount(0);
   // Named native menus remain exclusive when opened without pointer/focus events.
   await page.locator('details[data-popup-menu]').evaluateAll(elements=>{for(const el of elements)(el as HTMLDetailsElement).open=true;});await expect(dropdowns(page)).toHaveCount(1);
   await page.keyboard.press('Escape');await expect(dropdowns(page)).toHaveCount(0);
@@ -41,5 +41,6 @@ for(const width of [1440,390])test(`menus are exclusive, dismiss consistently an
   await expect(generation).toHaveAttribute('open','');await expect(references).toHaveAttribute('open','');
   await page.keyboard.press('Escape');await closeGenerationTimeline(page);
   await openGenerationTimeline(page);await expect(references).toBeVisible();await closeGenerationTimeline(page);
-  await page.getByRole('button',{name:'Shortcuts',exact:true}).click();await expect(page.getByRole('dialog',{name:'Keyboard shortcuts'})).toBeVisible();await expect(dropdowns(page)).toHaveCount(0);await page.keyboard.press('Escape');expect(errors).toEqual([]);
+  await trigger(page,'Options').click();await page.getByRole('menuitem',{name:'Keybinds…',exact:true}).click();const keybinds=page.getByRole('dialog',{name:'Keybinds',exact:true});await expect(keybinds).toBeVisible();await expect(dropdowns(page)).toHaveCount(0);
+  await page.keyboard.press('Escape');await expect(keybinds).toHaveCount(0);await expect(trigger(page,'Options')).toBeFocused();expect(errors).toEqual([]);
 });

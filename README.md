@@ -89,7 +89,7 @@ The video player stays on top, with the clip timeline directly below and dockabl
 | Ctrl/Cmd + Z | Undo |
 | Ctrl/Cmd + Shift + Z / Ctrl + Y | Redo |
 
-Text fields keep their normal editing shortcuts. Playback also retains volume/mute, speed, skips, fullscreen, picture-in-picture where supported, and WebVTT subtitles. Canvas height and inspector width are resizable and remembered locally. Narrow screens stack the inspector below the player and graph. Generation feedback occupies reserved space or overlays inside clips, so loading does not push controls down.
+Change key assignments, add alternate keys, or restore the defaults in **Options → Keybinds…**; assignments are saved on this device. Text fields keep their normal editing shortcuts. Playback also retains volume/mute, speed, skips, fullscreen, picture-in-picture where supported, and WebVTT subtitles. Canvas height and inspector width are resizable and remembered locally. Narrow screens stack the inspector below the player and graph. Generation feedback occupies reserved space or overlays inside clips, so loading does not push controls down.
 
 ## Generation and compatibility
 

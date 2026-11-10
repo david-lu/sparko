@@ -127,8 +127,9 @@ for (const width of [1440, 390]) {
     await expect(close).toBeVisible(); await expectOnTop(close.locator('.project-card'));
     expect(await close.evaluate(el => el.matches(':modal'))).toBe(true);
     await page.keyboard.press('Escape'); await expect(close).toHaveCount(0);
-    await page.getByRole('button', { name: 'Shortcuts', exact: true }).click();
-    await expectOnTop(page.getByRole('dialog', { name: 'Keyboard shortcuts' }));
+    await page.locator('.playback-options>summary').click();
+    await page.getByRole('menuitem', { name: 'Keybinds…', exact: true }).click();
+    await expectOnTop(page.getByRole('dialog', { name: 'Keybinds', exact: true }));
     await page.keyboard.press('Escape');
   });
 }

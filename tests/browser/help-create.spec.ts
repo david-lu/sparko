@@ -69,12 +69,12 @@ for(const width of [1440,390])test(`help opens from Window and preserves editing
   await expect(page.locator('.window-menu')).not.toHaveAttribute('open','');
   await expect(help.getByRole('heading',{name:'Quick start',exact:true})).toBeVisible();
   await page.screenshot({path:testInfo.outputPath(`help-${width}.png`)});
-  for(const topic of ['Timeline & connections','Generate a video','Reuse templates','Workspace & shortcuts']){
+  for(const topic of ['Timeline & connections','Generate a video','Reuse templates','Workspace & keybinds']){
     await help.getByRole('button',{name:topic,exact:false}).click();
     await expect(help.getByRole('heading',{name:topic,exact:true})).toBeVisible();
     expect(await help.locator('article').evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
   }
-  await expect(help.locator('dl').getByText('Alt+F',{exact:true})).toBeVisible();
+  await expect(help.locator('dl').getByText('Alt+F',{exact:true})).toBeVisible();await expect(help.getByText('Options → Keybinds',{exact:true})).toBeVisible();
   await help.locator('article').focus();await page.keyboard.press('s');
   await expect(page.locator('.story-clip')).toHaveCount(1);
   await page.keyboard.press('Escape');await expect(help).toHaveCount(0);
