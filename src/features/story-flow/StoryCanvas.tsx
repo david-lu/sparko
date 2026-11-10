@@ -47,6 +47,10 @@ import AudioLayers from '../project/AudioLayersEditor';
 import { audioTrackAssetIds } from '../../../shared/audio-tracks';
 import './groups.css';
 
+/** Pins show their opening words until the timeline is zoomed far out. */
+const PIN_LABEL_ZOOM=.5,PIN_LABEL_MAX=180,PIN_LABEL_MIN=72,PLAYHEAD_SNAP=8;
+const sameAnchor=(a:CommentAnchor|null,b:CommentAnchor|null)=>a===b||!!a&&!!b&&JSON.stringify(a)===JSON.stringify(b);
+
 export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeight,collapsed,onCollapsed,pinchZoomSensitivity,playheadTimeMode,sourceDuration}:{editor:StoryEditor;flow:CallResponseFlow;session:PlaybackSession|null;height:number;maxHeight:number;onHeight:(height:number)=>void;collapsed:boolean;onCollapsed:(collapsed:boolean)=>void;pinchZoomSensitivity:number;playheadTimeMode:PlayheadTimeMode;sourceDuration?:number}) {
   const canvasId=useId(),workspaceLocked=useWorkspaceLocked();
   const shortcuts=useShortcuts();
@@ -75,7 +79,8 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     const frame=requestAnimationFrame(()=>editor.player.seekFlowScene(pending.id,pending.frame));return()=>cancelAnimationFrame(frame);
   },[flow]);
   const [cutTool,setCutTool]=useState(false),[cutPreview,setCutPreview]=useState<{id:string;frame:number}|null>(null);
-  const [commentTool,setCommentTool]=useState(false),[commentEditor,setCommentEditor]=useState<{id:string|null;anchor:CommentAnchor}|null>(null),[commentDrag,setCommentDrag]=useState<{id:string|null;anchor:CommentAnchor}|null>(null);
+  const [commentTool,setCommentTool]=useState(false),[commentEditor,setCommentEditor]=useState<{id:string|null;anchor:CommentAnchor;color?:ClipColor}|null>(null),[commentDrag,setCommentDrag]=useState<{id:string|null;anchor:CommentAnchor}|null>(null);
+  const [commentGhost,setCommentGhost]=useState<CommentAnchor|null>(null),lastPointer=useRef<Point|null>(null);
   const [groupTool,setGroupTool]=useState(false),[drawnGroup,setDrawnGroup]=useState<GroupBounds|null>(null),[framePreview,setFramePreview]=useState<{id:string;bounds:GroupBounds}|null>(null);
   const [context,setContext]=useState<{id?:string;groupId?:string;edgeId?:string;pointId?:string;selectionIds?:string[];colors?:boolean;templates?:boolean;commentAnchor?:CommentAnchor;x:number;y:number;point:Point}|null>(null),menu=useRef<HTMLDivElement>(null);
   const suppressClick=useRef(false),lastFocusRevision=useRef(editor.focusRevision);
@@ -159,6 +164,8 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   };
   const chooseTool=(tool:'cut'|'group'|'pan'|'comment'|null)=>{
     gestureCancel.current?.();setCutTool(tool==='cut'&&!cutTool);setGroupTool(tool==='group'&&!groupTool);setPanTool(tool==='pan'&&!panTool);setCommentTool(tool==='comment'&&!commentTool);
+    // Show where a comment would land straight away when the pointer is already over the timeline.
+    setCommentGhost(tool==='comment'&&!commentTool&&hovering.current&&lastPointer.current?commentAnchorAt(lastPointer.current):null);
     setCutPreview(null);setDrawnGroup(null);editor.setConnecting(null);
   };
   const fit=(targets:StoryNode[]=nodes,maxZoom=2,edges=graph.edges)=>{
@@ -431,7 +438,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
     if((event.target as Element).closest('.content-issues,.content-issues-popover'))return;
     if(commentTool&&event.button===0&&!space.current.held&&!(event.target as Element).closest('[data-comment-id]')){
       event.preventDefault();event.stopPropagation();suppressClick.current=true;setTimeout(()=>{suppressClick.current=false;},0);
-      setCommentTool(false);openCommentDraft(commentAnchorAt({x:event.clientX,y:event.clientY}));return;
+      setCommentTool(false);setCommentGhost(null);openCommentDraft(commentAnchorAt({x:event.clientX,y:event.clientY}));return;
     }
     const pan=event.button===1||event.button===0&&(panTool||space.current.held);
     const blank=!(event.target as Element).closest('[data-node-id],[data-edge-id],[data-group-id],button,input,textarea,select');
@@ -522,17 +529,27 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   const commentAnchorAt=(client:Point):CommentAnchor=>{
     const clip=document.elementsFromPoint(client.x,client.y).map(element=>element.closest<HTMLElement>('.story-clip[data-node-id]')).find(Boolean);
     const node=clip&&nodes.find(n=>n.id===clip.dataset.nodeId),scene=node&&flow.scenes.find(s=>s.id===node.id),strip=clip?.querySelector('.story-filmstrip');
-    if(node&&scene&&strip)return clipAnchor(node,Math.max(0,Math.min(sceneFrames(scene)-1,frameAt(node,client.x,strip.getBoundingClientRect()))));
+    if(node&&scene&&strip){
+      const bounds=strip.getBoundingClientRect(),layout=layouts[node.id],playhead=editor.player.getSnapshot().flow;
+      let frame=Math.max(0,Math.min(sceneFrames(scene)-1,frameAt(node,client.x,bounds)));
+      // Within a few pixels of the playhead, use its exact frame.
+      if(playhead?.sceneId===node.id&&Math.abs(client.x-(bounds.left+(layout.before+playhead.frame/flow.fps)/layout.total*bounds.width))<=PLAYHEAD_SNAP)frame=playhead.frame;
+      return clipAnchor(node,frame);
+    }
     return toWorld(localPoint(client),cameraRef.current);
   };
+  const atPlayhead=(anchor:CommentAnchor)=>{
+    if(!isClipAnchor(anchor)||session?.sceneId!==anchor.nodeId)return false;
+    const node=nodes.find(n=>n.id===anchor.nodeId);return !!node&&commentSceneFrame(node,anchor.frame)===session.frame;
+  };
   const commentPlace=(anchor:CommentAnchor)=>{
-    if(!isClipAnchor(anchor)){const p=toScreen(anchor,camera);return {...p,label:'the timeline',location:'Timeline',outside:false};}
+    if(!isClipAnchor(anchor)){const p=toScreen(anchor,camera);return {...p,label:'the timeline',location:'Timeline',time:undefined,outside:false};}
     const node=nodes.find(n=>n.id===anchor.nodeId),scene=flow.scenes.find(s=>s.id===anchor.nodeId);if(!node||!scene)return;
     // Trimmed-out moments stay attached; their pin waits at the nearest edge.
     const frames=Math.max(1,Math.round(durations[node.id]*flow.fps)),frame=commentSceneFrame(node,anchor.frame),shown=Math.max(0,Math.min(frames-1,frame));
     const time=formatTime(playheadTime(scene,shown,flow.fps,playheadTimeMode),true);
     return {x:(node.x+shown/flow.fps*PIXELS_PER_SECOND)*zoom+camera.x,y:node.y*camera.rowScale+camera.y+CLIP_HEIGHT,outside:shown!==frame,
-      label:`${scene.label} at ${time}`,location:`${time} · ${scene.label}`};
+      label:`${scene.label} at ${time}`,location:`${time} · ${scene.label}`,time};
   };
   const seekComment=(anchor:CommentAnchor)=>{
     if(!isClipAnchor(anchor))return;
@@ -602,7 +619,9 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       <button className="button small" aria-label="Fit" aria-keyshortcuts={shortcuts.aria('fit')} title={shortcuts.title('fit','Fit selected clips, or all clips with no selection')} onClick={fitSelected}>Fit</button>
       <button className={`icon-button small ${follow?'active':''}`} aria-label="Follow playhead" aria-pressed={follow} onClick={()=>setFollow(v=>!v)}><Maximize size={14}/></button>
     </div>
-    <div id={canvasId} className="story-scroll" hidden={collapsed} ref={scroll} tabIndex={0} aria-label="Clip graph" data-zoom={zoom} onPointerEnter={()=>{hovering.current=true;}} onPointerLeave={()=>{hovering.current=false;}} style={{backgroundPosition:`${camera.x}px ${camera.y}px`,backgroundSize:`${gridX*4}px ${gridY*4}px, ${gridX}px ${gridY}px`}} onPointerDownCapture={beginAreaGesture} onFocusCapture={e=>{const id=(e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;if(id)reveal(id);}} onDrop={drop} onDragOver={dragOver} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node)){setFileDrag(false);setDropTarget(null);setDropPoint(null);}}} onContextMenu={e=>{
+    <div id={canvasId} className="story-scroll" hidden={collapsed} ref={scroll} tabIndex={0} aria-label="Clip graph" data-zoom={zoom} onPointerEnter={()=>{hovering.current=true;}} onPointerLeave={()=>{hovering.current=false;setCommentGhost(null);}}
+      onPointerMove={e=>{lastPointer.current={x:e.clientX,y:e.clientY};if(!commentTool)return;
+        const next=e.buttons||(e.target as Element).closest('[data-comment-id]')?null:commentAnchorAt({x:e.clientX,y:e.clientY});setCommentGhost(current=>sameAnchor(current,next)?current:next);}} style={{backgroundPosition:`${camera.x}px ${camera.y}px`,backgroundSize:`${gridX*4}px ${gridY*4}px, ${gridX}px ${gridY}px`}} onPointerDownCapture={beginAreaGesture} onFocusCapture={e=>{const id=(e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;if(id)reveal(id);}} onDrop={drop} onDragOver={dragOver} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node)){setFileDrag(false);setDropTarget(null);setDropPoint(null);}}} onContextMenu={e=>{
       e.preventDefault();chooseTool(null);
       const pin=(e.target as Element).closest<HTMLElement>('[data-comment-id]'),pinned=comments.find(c=>c.id===pin?.dataset.commentId);
       if(pin){setContext(null);if(pinned)openComment(pinned);return;}
@@ -732,24 +751,44 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
             {!reached.has(node.id)&&clipWidth>=20&&<span className="story-clip-caption" role="img" aria-label="Disconnected from story start" title="Disconnected from story start"><Unplug size={12} aria-hidden/></span>}
           </div>;
         })}
-        {[...comments.map(comment=>({id:comment.id as string|null,comment:comment as StoryComment|undefined,anchor:comment.anchor})),...(commentEditor&&!commentEditor.id?[{id:null,comment:undefined,anchor:commentEditor.anchor}]:[])].map(({id,comment,anchor})=>{
-          const dragging=!!commentDrag&&commentDrag.id===id,place=commentPlace(dragging?commentDrag.anchor:anchor);if(!place)return null;
-          const open=!!commentEditor&&commentEditor.id===id,summary=comment?commentSummary(comment):'New comment';
-          return <button key={id??'new'} type="button" data-comment-id={id??'new'} className={`story-comment-pin ${isClipAnchor(dragging?commentDrag.anchor:anchor)?'on-clip':'on-canvas'} ${comment?.resolved?'resolved':''} ${open?'open':''} ${place.outside?'outside':''} ${dragging?'dragging':''} ${id?'':'draft'}`}
-            style={{left:place.x,top:place.y}} aria-expanded={open} aria-haspopup="dialog"
-            aria-label={comment?`${comment.resolved?'Resolved comment':'Comment'} on ${place.label}: ${summary}`:`New comment on ${place.label}`}
-            title={`${summary}\n${place.label}${place.outside?' · trimmed out of the clip':''}\nClick to open · Drag to move · ${shortcuts.label('delete')} removes`}
-            onPointerDown={e=>dragComment(e,id,anchor)} onClick={e=>{if(e.detail===0&&comment)openComment(comment);}} onKeyDown={e=>nudgeComment(e,id,anchor)}>
-            {comment?.resolved?<Check size={11} aria-hidden/>:<MessageSquare size={11} aria-hidden/>}
-          </button>;
-        })}
+        {(()=>{
+          const views=[...comments.map(comment=>({id:comment.id as string|null,comment:comment as StoryComment|undefined,anchor:comment.anchor,color:comment.color})),
+            ...(commentEditor&&!commentEditor.id?[{id:null,comment:undefined,anchor:commentEditor.anchor,color:commentEditor.color}]:[])].flatMap(view=>{
+            const dragging=!!commentDrag&&commentDrag.id===view.id,shown=dragging?commentDrag!.anchor:view.anchor,place=commentPlace(shown);
+            return place?[{...view,dragging,shown,place}]:[];
+          });
+          // Labels run right from each pin and shorten before the next pin on the same row.
+          // Only far out do they collapse to icons; hovering shows more of the text.
+          const labelWidth=(view:typeof views[number])=>!view.comment||zoom<PIN_LABEL_ZOOM?0:Math.max(PIN_LABEL_MIN,Math.min(PIN_LABEL_MAX,
+            ...views.filter(other=>other!==view&&!other.dragging&&Math.abs(other.place.y-view.place.y)<20&&other.place.x>=view.place.x).map(other=>other.place.x-view.place.x-4)));
+          const ghost=commentTool&&commentGhost?commentPlace(commentGhost):undefined;
+          return <>
+            {views.map(view=>{
+              const {id,comment,anchor,shown,dragging,place,color}=view,open=!!commentEditor&&commentEditor.id===id,summary=comment?commentSummary(comment):'New comment',width=labelWidth(view);
+              return <button key={id??'new'} type="button" data-comment-id={id??'new'} data-color={color??'default'} data-labelled={width>0}
+                className={`story-comment-pin ${isClipAnchor(shown)?'on-clip':'on-canvas'} ${comment?.resolved?'resolved':''} ${open?'open':''} ${place.outside?'outside':''} ${dragging?'dragging':''} ${dragging&&atPlayhead(shown)?'snapped':''} ${id?'':'draft'}`}
+                style={{left:place.x,top:place.y,'--pin-width':`${width||20}px`,...color?{'--comment-color':clipColors[color]}:{}} as React.CSSProperties} aria-expanded={open} aria-haspopup="dialog"
+                aria-label={comment?`${comment.resolved?'Resolved comment':'Comment'} on ${place.label}: ${summary}`:`New comment on ${place.label}`}
+                title={`${summary}\n${place.label}${place.outside?' · trimmed out of the clip':''}\nClick to open · Drag to move · ${shortcuts.label('delete')} removes`}
+                onPointerDown={e=>dragComment(e,id,anchor)} onClick={e=>{if(e.detail===0&&comment)openComment(comment);}} onKeyDown={e=>nudgeComment(e,id,anchor)}>
+                <span className="story-comment-bubble"><span className="story-comment-icon">{comment?.resolved?<Check size={11} aria-hidden/>:<MessageSquare size={11} aria-hidden/>}</span>
+                  {comment&&<span className="story-comment-label" aria-hidden>{commentSummary(comment,60)}</span>}</span>
+              </button>;
+            })}
+            {ghost&&commentGhost&&<span className={`story-comment-pin ghost ${isClipAnchor(commentGhost)?'on-clip':'on-canvas'} ${atPlayhead(commentGhost)?'snapped':''}`} aria-hidden
+              style={{left:ghost.x,top:ghost.y,'--pin-width':ghost.time?`${PIN_LABEL_MAX}px`:'20px'} as React.CSSProperties}>
+              <span className="story-comment-bubble"><span className="story-comment-icon"><MessageSquarePlus size={11}/></span>{ghost.time&&<span className="story-comment-label">{ghost.time}</span>}</span>
+            </span>}
+          </>;
+        })()}
         {dropConnection&&(()=>{const {middle}=geometry(dropConnection);return <div className="story-transition-drop-label" aria-hidden
           style={{left:Math.max(8,Math.min(middle.x-75,size.width-158)),top:Math.max(8,middle.y-49)}}><Plus size={13}/>Replace transition</div>;})()}
         {marquee&&<div className="story-marquee" style={{left:Math.min(marquee.start.x,marquee.end.x)*zoom+camera.x,top:Math.min(marquee.start.y,marquee.end.y)*camera.rowScale+camera.y,width:Math.abs(marquee.end.x-marquee.start.x)*zoom,height:Math.abs(marquee.end.y-marquee.start.y)*camera.rowScale}}/>}
       </div>
     </div>
     <input ref={videoInput} hidden multiple type="file" accept="video/*,image/*,.mkv,.mov,.webm,.mp4" aria-label="Import videos onto timeline" onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value='';void editor.importVideos(files);}}/>
-    <div className="story-status"><span role="status">{trimPreview?`Trim ${trimPreview.side} · ${nodeDuration(trimPreview.node,editor.items).toFixed(3)} s · Release to apply · Escape cancels`:dropTarget?(fileDrag?'Release to import clips here':libraryDrag&&'assetId' in libraryDrag?'Release to add a separate clip':dropTarget==='canvas'?'Release to place here':dropConnection?'Release to replace transition and connect both sides':'Release to attach to this clip'):libraryDrag?'Drag onto the timeline · Escape cancels':wire?'Drop onto a clip to connect · Escape cancels':editor.connecting?'Choose a destination clip · Escape cancels':commentDrag?`${isClipAnchor(commentDrag.anchor)?'Release to pin the comment to this moment':'Release to place the comment here'} · Escape cancels`:commentTool?`Comment tool · Click a clip to comment on that moment, or anywhere on the timeline · ${shortcuts.title('select')}`:groupTool?'Draw group · Drag a frame · Release to create · Esc cancels':panTool?`Hand tool · Drag anywhere to pan · ${shortcuts.title('select')}`:cutTool?`Cut tool · Click a filmstrip to split · ${shortcuts.title('select')}`:editor.notice||`Drag to select · Space + drag to pan · ${shortcuts.title('fit')} · Right-click for group actions`}</span><span>{graph.nodes.length} clips · Blue: start ref · Green: end ref</span></div>
+    <div className="story-status"><span role="status">{trimPreview?`Trim ${trimPreview.side} · ${nodeDuration(trimPreview.node,editor.items).toFixed(3)} s · Release to apply · Escape cancels`:dropTarget?(fileDrag?'Release to import clips here':libraryDrag&&'assetId' in libraryDrag?'Release to add a separate clip':dropTarget==='canvas'?'Release to place here':dropConnection?'Release to replace transition and connect both sides':'Release to attach to this clip'):libraryDrag?'Drag onto the timeline · Escape cancels':wire?'Drop onto a clip to connect · Escape cancels':editor.connecting?'Choose a destination clip · Escape cancels':commentDrag?`${isClipAnchor(commentDrag.anchor)?`Release to pin the comment at ${commentPlace(commentDrag.anchor)?.time??'this moment'}`:'Release to place the comment here'}${atPlayhead(commentDrag.anchor)?' · Snapped to playhead':''} · Escape cancels`
+      :commentTool?commentGhost&&isClipAnchor(commentGhost)?`Click to comment on ${commentPlace(commentGhost)?.label??'this clip'}${atPlayhead(commentGhost)?' · Snapped to playhead':''} · ${shortcuts.title('select')}`:`Comment tool · Click a clip to comment on that moment, or anywhere on the timeline · ${shortcuts.title('select')}`:groupTool?'Draw group · Drag a frame · Release to create · Esc cancels':panTool?`Hand tool · Drag anywhere to pan · ${shortcuts.title('select')}`:cutTool?`Cut tool · Click a filmstrip to split · ${shortcuts.title('select')}`:editor.notice||`Drag to select · Space + drag to pan · ${shortcuts.title('fit')} · Right-click for group actions`}</span><span>{graph.nodes.length} clips · Blue: start ref · Green: end ref</span></div>
     {context&&createPortal(<div ref={menu} className="story-context-menu" role="menu" aria-label={context.colors?(context.groupId?"Group color":"Clip color"):context.templates?"Add template":context.groupId?"Group actions":context.edgeId?"Connection actions":context.id?"Clip actions":"Timeline actions"} style={{left:context.x,top:context.y}} onKeyDown={e=>{
       if(e.key==='Escape'){e.preventDefault();setContext(null);scroll.current?.focus({preventScroll:true});}
       if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const buttons=Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')),index=buttons.indexOf(document.activeElement as HTMLButtonElement);buttons[e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}
@@ -794,8 +833,9 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
       const restore=(id?:string)=>{commentFocus.current=id??null;};
       let created:string|undefined;
       return <CommentPopover key={commentEditor.id??'new'} comment={comment} location={place?.location??'Timeline'} pin={()=>commentPin(commentEditor.id)}
+        color={comment?comment.color:commentEditor.color} onColor={color=>{if(comment)editor.updateComment(comment.id,{color});else setCommentEditor(current=>current&&{...current,color});}}
         onSeek={isClipAnchor(anchor)?()=>seekComment(anchor):undefined}
-        onSave={text=>{if(comment)editor.updateComment(comment.id,{text});else created=editor.addComment(anchor,text);}}
+        onSave={text=>{if(comment)editor.updateComment(comment.id,{text});else created=editor.addComment(anchor,text,commentEditor.color);}}
         onResolve={resolved=>{if(comment)editor.updateComment(comment.id,{resolved});}}
         onDelete={()=>{if(!comment)return;editor.removeComment(comment.id);setCommentEditor(null);restore();}}
         onClose={focus=>{setCommentEditor(null);if(focus)restore(comment?.id??created);}}/>;

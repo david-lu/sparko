@@ -217,14 +217,14 @@ export function useStoryEditor(graph:StoryGraph|undefined,items:Interstitial[],p
     });
     const next=result.rightId?splitComments(result.graph,id,result.rightId):result.graph;
     change(autoLayout(next,[...items,...result.items]),result.items,generations);setSelected([id]);setNotice('Clip split. Media is preserved; outgoing connections follow the second half.');return true;};
-  const addComment=(anchor:CommentAnchor,text:string)=>{
+  const addComment=(anchor:CommentAnchor,text:string,color?:ClipColor)=>{
     const value=text.trim().slice(0,COMMENT_TEXT_LIMIT);if(!graph||!value)return;
     if((graph.comments?.length??0)>=COMMENT_LIMIT){setNotice(`A project can contain up to ${COMMENT_LIMIT.toLocaleString()} comments.`);return;}
     const id=freshId();
-    projects.endHistoryGroup();change({...graph,comments:[...graph.comments??[],{id,text:value,createdAt:Date.now(),anchor}]});projects.endHistoryGroup();
+    projects.endHistoryGroup();change({...graph,comments:[...graph.comments??[],{id,text:value,createdAt:Date.now(),anchor,...(color?{color}:{})}]});projects.endHistoryGroup();
     setNotice('Comment added. Drag its pin to move it; Undo removes it.');return id;
   };
-  const updateComment=(id:string,patch:Partial<Pick<StoryComment,'text'|'resolved'|'anchor'>>)=>{
+  const updateComment=(id:string,patch:Partial<Pick<StoryComment,'text'|'resolved'|'anchor'|'color'>>)=>{
     const comment=graph?.comments?.find(c=>c.id===id);if(!graph||!comment)return;
     const next={...comment,...patch,...(patch.text!==undefined?{text:patch.text.trim().slice(0,COMMENT_TEXT_LIMIT)||comment.text}:{})};
     if(JSON.stringify(next)===JSON.stringify(comment))return;

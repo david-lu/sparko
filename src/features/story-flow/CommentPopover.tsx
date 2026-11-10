@@ -3,6 +3,9 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { StoryComment } from './model';
 import { COMMENT_TEXT_LIMIT } from './comments';
+import { clipColors, clipColorName, type ClipColor } from './clipColors';
+
+const colors = [undefined, ...Object.keys(clipColors) as ClipColor[]];
 
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -10,10 +13,13 @@ const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator
  * A non-modal editor beside its pin. Clicking elsewhere keeps typed text, as
  * clip and group names do on blur; Escape discards it.
  */
-export default function CommentPopover({ comment, pin, location, onSeek, onSave, onResolve, onDelete, onClose }: {
+export default function CommentPopover({ comment, pin, location, color, onColor, onSeek, onSave, onResolve, onDelete, onClose }: {
   comment?: StoryComment;
   pin: () => HTMLElement | null;
   location: string;
+  /** Missing means the default light pin. */
+  color?: ClipColor;
+  onColor: (color: ClipColor | undefined) => void;
   onSeek?: () => void;
   onSave: (text: string) => void;
   onResolve?: (resolved: boolean) => void;
@@ -77,6 +83,12 @@ export default function CommentPopover({ comment, pin, location, onSeek, onSave,
       {comment && onDelete && <button type="button" className="icon-button small" aria-label="Delete comment" title="Delete comment · Undo restores it" onClick={onDelete}><Trash2 size={13} aria-hidden /></button>}
     </header>
     <textarea ref={input} aria-label="Comment text" rows={3} maxLength={COMMENT_TEXT_LIMIT} placeholder="Add a comment" value={text} onChange={event => setText(event.target.value)} />
+    <div className="clip-colors story-comment-colors" role="group" aria-label="Comment color">
+      {colors.map(value => <button key={value ?? 'default'} type="button" aria-label={`${value ? clipColorName(value) : 'Default'} comment color`} title={value ? clipColorName(value) : 'Default'}
+        aria-pressed={color === value} style={{ background: value ? clipColors[value] : 'var(--text)' }} onClick={() => onColor(value)}>
+        {color === value && <Check size={12} aria-hidden />}
+      </button>)}
+    </div>
     <footer>
       <small>{created ? `Added ${created}` : `${mac ? '⌘' : 'Ctrl'}+Enter to save`}</small>
       <button type="button" className="button small" onClick={() => finish.current(false, true)}>Cancel</button>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TIMELINE_FPS } from '../../shared/constants';
 import type { Interstitial } from '../../shared/interstitials';
-import { clipAnchor, commentSceneFrame, keepComments, splitComments } from '../../src/features/story-flow/comments';
+import { clipAnchor, commentSceneFrame, commentSummary, keepComments, splitComments } from '../../src/features/story-flow/comments';
 import { joinClips } from '../../src/features/story-flow/joinClips';
 import { CLIP_HEIGHT, PIXELS_PER_SECOND, createNode, edge, removeNodes, splitClip, type StoryComment, type StoryGraph, type StoryNode } from '../../src/features/story-flow/model';
 import { storyGraphSchema } from '../../src/features/story-flow/schema';
@@ -79,13 +79,14 @@ describe('timeline comments', () => {
   });
 
   it('are validated, saved in project files and survive reopening', async () => {
-    const clip = source('clip'), comments = [comment('pinned', { nodeId: 'clip', frame: 10 }, { resolved: true }), comment('loose', { x: 5.5, y: -12 })];
+    const clip = source('clip'), comments = [comment('pinned', { nodeId: 'clip', frame: 10 }, { resolved: true, color: 'blue' }), comment('loose', { x: 5.5, y: -12 })];
     const graph = graphOf([clip], comments);
     expect(storyGraphSchema.safeParse(graph).success).toBe(true);
     expect(storyGraphSchema.safeParse({ ...graph, comments: [comment('x', { nodeId: 'missing', frame: 0 })] }).success).toBe(false);
     expect(storyGraphSchema.safeParse({ ...graph, comments: [comments[1], comments[1]] }).success).toBe(false);
     expect(storyGraphSchema.safeParse({ ...graph, comments: [{ ...comments[1], text: '  ' }] }).success).toBe(false);
     expect(storyGraphSchema.safeParse({ ...graph, comments: [comment('x', { nodeId: 'clip', frame: -1 })] }).success).toBe(false);
+    expect(storyGraphSchema.safeParse({ ...graph, comments: [{ ...comments[1], color: 'teal' }] }).success).toBe(false);
 
     const project: Project = { id: 'comments', name: 'Comments', updatedAt: 1, source: { name: 'Video', assetId }, storyFlow: graph, interstitials: [], subtitle: null, analysis: emptyAnalysis() };
     const signal = new AbortController().signal, files = [{ id: assetId, name: 'clip.mp4', blob: new Blob(['fixture'], { type: 'video/mp4' }) }];
@@ -109,6 +110,8 @@ describe('timeline comments', () => {
     history.record(base, steps[0], 0); expect(history.undoLabel).toBe('Add comment');
     history.endGroup(); history.record(steps[0], steps[1], 10); expect(history.undoLabel).toBe('Edit comment');
     history.endGroup(); history.record(steps[1], steps[2], 20); expect(history.undoLabel).toBe('Resolve comment');
+    history.endGroup(); history.record(steps[2], withComments([{ ...note, text: 'Changed', resolved: true, color: 'rose' }]), 25); expect(history.undoLabel).toBe('Change comment color');
+    history.commit('undo');
     history.endGroup();
     const nudged = (frame: number) => withComments([{ ...note, text: 'Changed', resolved: true, anchor: { nodeId: 'clip', frame } }]);
     history.record(steps[2], nudged(11), 30); history.record(nudged(11), nudged(12), 40); history.record(nudged(12), nudged(13), 50);
@@ -116,5 +119,12 @@ describe('timeline comments', () => {
     expect(history.target('undo')?.storyFlow?.comments?.[0].anchor).toEqual({ nodeId: 'clip', frame: 10 });
     history.commit('undo'); expect(history.undoLabel).toBe('Resolve comment');
     history.record(steps[2], withComments([]), 60); expect(history.undoLabel).toBe('Delete comment');
+  });
+
+  it('summarize to the opening words on one line', () => {
+    expect(commentSummary({ text: '  Hold on\nthe   reaction ' })).toBe('Hold on the reaction');
+    expect(commentSummary({ text: 'Warmer grade on the close-up so it matches the wide shot' }, 30)).toBe('Warmer grade on the close-up…');
+    expect(commentSummary({ text: 'Supercalifragilisticexpialidocious' }, 10)).toBe('Supercali…');
+    expect(commentSummary({ text: 'Too dark here, and the audio clips' }, 16)).toBe('Too dark here…');
   });
 });

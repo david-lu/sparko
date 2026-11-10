@@ -51,7 +51,10 @@ export function splitComments(graph: StoryGraph, leftId: string, rightId: string
     ? { ...comment, anchor: { ...comment.anchor, nodeId: rightId } } : comment) };
 }
 
+/** The opening words on one line, ending at a word boundary when one is close. */
 export function commentSummary(comment: Pick<StoryComment, 'text'>, length = 80) {
   const text = comment.text.replace(/\s+/g, ' ').trim();
-  return text.length > length ? `${text.slice(0, length - 1)}…` : text;
+  if (text.length <= length) return text;
+  const cut = text.slice(0, length - 1), space = cut.lastIndexOf(' ');
+  return `${(space > length / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.–—-]+$/, '')}…`;
 }

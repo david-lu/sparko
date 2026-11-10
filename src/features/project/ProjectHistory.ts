@@ -38,8 +38,9 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
       if(next.length!==previous.length)return {label:next.length>previous.length?'Add comment':'Delete comment'};
       const changed=next.filter(c=>!same(c,previous.find(p=>p.id===c.id))),old=changed.length===1?previous.find(p=>p.id===changed[0].id):undefined;
       if(old&&!!old.resolved!==!!changed[0].resolved)return {label:changed[0].resolved?'Resolve comment':'Reopen comment'};
+      if(old&&old.color!==changed[0].color)return {label:'Change comment color'};
       // Arrow-key nudges on one pin merge like a slider drag.
-      if(old&&old.text===changed[0].text)return {label:'Move comment',key:`comment:${old.id}:move`};
+      if(old&&!same(old.anchor,changed[0].anchor))return {label:'Move comment',key:`comment:${old.id}:move`};
       return {label:'Edit comment'};
     }
     if(!same(a.edges,b.edges)){

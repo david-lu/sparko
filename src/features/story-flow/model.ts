@@ -51,7 +51,9 @@ export type StoryGroup = { id: string; name: string; nodeIds: string[]; color: k
 export type StoryTemplate = { id: string; name: string; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; settings: Record<string, InterstitialSettings>; generations?: AssetGeneration[]; color?: StoryGroup['color'] };
 /** A clip comment stays on one moment of that clip's media; a canvas comment keeps its timeline position. */
 export type CommentAnchor = { nodeId: string; frame: number } | { x: number; y: number };
-export type StoryComment = { id: string; text: string; createdAt: number; resolved?: boolean; anchor: CommentAnchor };
+export type StoryComment = { id: string; text: string; createdAt: number; resolved?: boolean; anchor: CommentAnchor;
+  /** Missing means the default light pin. */
+  color?: ClipColor };
 export type StoryGraph = { version: 1; entryId: string; nodes: StoryNode[]; edges: StoryEdge[]; templates: StoryTemplate[]; groups?: StoryGroup[]; comments?: StoryComment[] };
 export const PIXELS_PER_SECOND = 32;
 export const CLIP_HEIGHT = 76;
