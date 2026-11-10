@@ -5,6 +5,13 @@ const other = 'iris-animation__h3_other.safetensors';
 const panel = (page: Page) => page.getByRole('region', { name: 'Project LoRAs', exact: true });
 const strength = (page: Page) => page.getByRole('spinbutton', { name: 'LoRA strength value', exact: true });
 const selection = (page: Page) => page.getByLabel('Generation LoRA', { exact: true });
+const fullHint = 'H3 already has a LoRA. Edit or remove it to use another. Image and audio models don’t use LoRAs.';
+// Positions relative to the panel, so scrolling the inspector doesn't count as movement.
+const panelLayout = (page: Page) => panel(page).evaluate(element => {
+  const top = element.getBoundingClientRect().top, box = (selector: string) => element.querySelector(selector)!.getBoundingClientRect();
+  const add = box('.project-loras-heading .button'), hints = box('.project-loras-hints'), list = box('.project-loras-hints + *');
+  return { add: { x: add.x, y: add.y - top, width: add.width, height: add.height }, hints: { y: hints.y - top, height: hints.height }, list: list.y - top };
+});
 async function setup(page: Page) {
   await page.route('**/api/status', async route => { const response = await route.fetch(); const status = await response.json(); await route.fulfill({ json: { ...status, providers: { ...status.providers, comfy: true, openai: true } } }); });
   await page.route('**/api/comfy/loras/resolve', route => { const body = route.request().postDataJSON(); return route.fulfill({ json: { ...body, name: body.address } }); });
@@ -27,6 +34,9 @@ async function editLora(page: Page) {
 
 for (const width of [1440, 390, 320]) test(`LoRA dialog is stable while checking and on failure at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width <= 390 ? 667 : 1000 }); await setup(page);
+  await expect(panel(page).getByText(fullHint, { exact: true })).toBeHidden();
+  const empty = await panelLayout(page);
+  await panel(page).screenshot({ path: `test-results/project-loras-empty-${width}.png` });
   const dialog = await addLora(page);
   let finish!: () => void, requested = false;
   const gate = new Promise<void>(resolve => { finish = resolve; });
@@ -57,9 +67,22 @@ for (const width of [1440, 390, 320]) test(`LoRA dialog is stable while checking
   await page.route('**/api/comfy/loras/resolve', route => { const body = route.request().postDataJSON(); return route.fulfill({ json: { ...body, name: body.address } }); });
   await dialog.getByRole('button', { name: 'Add LoRA', exact: true }).click();
   await expect(dialog).toHaveCount(0); await expect(panel(page)).toContainText(filename);
-  await expect(panel(page).getByRole('button', { name: 'Add LoRA', exact: true })).toBeDisabled();
   expect((await readProject(page)).loras).toEqual([{ model: 'h3', address: filename, name: filename, instructions: 'Include the trigger Sema.', strength: 1 }]);
+  // H3 is the only LoRA model and now has one: Add LoRA stays usable, says why, and edits that assignment.
+  const add = panel(page).getByRole('button', { name: 'Add LoRA', exact: true }), hint = panel(page).getByText(fullHint, { exact: true });
+  await expect(add).toBeEnabled(); await expect(hint).toBeVisible(); await expect(add).toHaveAccessibleDescription(fullHint);
+  expect(await panelLayout(page)).toEqual(empty);
+  expect(await hint.evaluate(element => element.getBoundingClientRect().right <= element.closest('section')!.getBoundingClientRect().right)).toBe(true);
   await panel(page).screenshot({ path: `test-results/project-loras-${width}.png` });
+  await add.click();
+  const edit = page.getByRole('dialog', { name: 'Edit LoRA', exact: true });
+  await expect(edit.getByLabel('Comfy Cloud model address', { exact: true })).toHaveValue(filename);
+  await expect(edit.getByLabel('Instructions (optional)', { exact: true })).toHaveValue('Include the trigger Sema.');
+  await edit.getByLabel('Comfy Cloud model address', { exact: true }).fill(other);
+  await edit.getByRole('button', { name: 'Save LoRA', exact: true }).click();
+  await expect(edit).toHaveCount(0); await expect(add).toBeFocused(); await expect(panel(page)).toContainText(other);
+  expect((await readProject(page)).loras).toEqual([{ model: 'h3', address: other, name: other, instructions: 'Include the trigger Sema.', strength: 1 }]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
 
 test('project assignments default new generations, persist, undo and never overwrite existing overrides', async ({ page }) => {
@@ -98,6 +121,8 @@ test('project assignments default new generations, persist, undo and never overw
   expect(saved.loras[0].address).toBe(other); expect(saved.interstitials[0].lora).toBeNull(); expect(saved.interstitials[1].lora).toBe(filename);
   await panel(page).getByRole('button', { name: 'Remove H3 LoRA', exact: true }).click();
   await expect(panel(page)).toContainText('No LoRAs yet'); await expect(panel(page).getByRole('button', { name: 'Add LoRA', exact: true })).toBeEnabled();
+  await expect(panel(page).getByText(fullHint, { exact: true })).toBeHidden();
+  await expect(panel(page).getByRole('button', { name: 'Add LoRA', exact: true })).not.toHaveAttribute('aria-describedby');
   await addDraft(page, 'No LoRA'); await expect(selection(page)).toHaveValue('');
   expect((await readProject(page)).interstitials[1].lora).toBe(filename);
 });
