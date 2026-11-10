@@ -1,6 +1,7 @@
 import { enhancedPromptSettings } from '../../../shared/prompt-versions';
 import { generationSeedSchema } from '../../../shared/generation-seed';
 import { loraSettings, projectLorasSchema } from '../../../shared/loras';
+import { PROMPT_INSTRUCTIONS_MAX_LENGTH } from '../../../shared/prompt-instructions';
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { z } from 'zod';
 import { generationMethods, generationResolutions, interstitialSettings, maskInjections } from '../../../shared/interstitials';
@@ -72,6 +73,7 @@ const projectSchema = z.object({
       return true;
     }), 'Invalid folder hierarchy.').optional(),
   loras: projectLorasSchema.optional(),
+  promptInstructions: z.string().max(PROMPT_INSTRUCTIONS_MAX_LENGTH).optional(),
   assetAliases: z.record(z.uuid(), z.uuid()).optional(),
   mediaModelVersion: z.literal(1).optional(),
   deletedAssetIds: z.array(z.uuid()).max(100000).optional(),

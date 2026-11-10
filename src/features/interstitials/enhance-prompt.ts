@@ -28,7 +28,7 @@ function promptReferences(item: PromptItem, reference: GenerationReference | und
 }
 
 export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, reference: GenerationReference | undefined,
-  engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, { target, player, captureFrame, editInstructions, onAnalyzing }: { target?: 'continuity'; player?: PromptFramePlayer; captureFrame?: PromptFrameCapture; editInstructions?: string; onAnalyzing?: (active: boolean) => void } = {}) {
+  engine: MediaEngine | null, info: MediaInfo | null, signal: AbortSignal, { target, player, captureFrame, editInstructions, projectInstructions, onAnalyzing }: { target?: 'continuity'; player?: PromptFramePlayer; captureFrame?: PromptFrameCapture; editInstructions?: string; projectInstructions?: string; onAnalyzing?: (active: boolean) => void } = {}) {
   const savedPictures = (item.imageReferences ?? []).map((image, index) => ({ image, index })).filter(value => value.image.enabled !== false);
   const enhancedPrompt = editInstructions && item.enhancedPrompt?.trim() ? enabledImageReferences({ ...item, prompt: item.enhancedPrompt }).prompt : undefined;
   item = enabledImageReferences(item);
@@ -71,7 +71,7 @@ export async function enhancePrompt(item: PromptItem, kind: PromptClipKind, refe
     ?? defaultMaskCurve(referenceTiming.prefixFrames / TIMELINE_FPS, referenceTiming.suffixFrames / TIMELINE_FPS, item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs) : undefined;
   const result = await request<PromptEnhancement>('/api/interstitials/enhance-prompt', { method: 'POST', signal,
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: item.prompt, enhancedPrompt, editInstructions, duration: item.duration, kind, target, currentFrame, referenceFrames, referenceTiming, referenceDescriptions, referenceAudioMask, imageReferences, ...(keyframes.length ? { keyframes } : {}),
-      imageGuides: { start: item.startImageIndex, end: item.endImageIndex }, continuity: item.continuity, dialogue: item.dialogue, loraInstructions: item.loraInstructions }) });
+      imageGuides: { start: item.startImageIndex, end: item.endImageIndex }, continuity: item.continuity, dialogue: item.dialogue, loraInstructions: item.loraInstructions, projectInstructions }) });
   const restorePictures = (prompt: string) => prompt.replace(/<Picture\s+(\d+)>/g, (tag, number) => savedPictures[Number(number) - 1] ? `<Picture ${savedPictures[Number(number) - 1].index + 1}>` : tag);
   return { ...result, prompt: restorePictures(result.prompt), ...(result.enhancedPrompt !== undefined ? { enhancedPrompt: restorePictures(result.enhancedPrompt) } : {}) };
 }

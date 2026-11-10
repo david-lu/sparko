@@ -18,3 +18,9 @@
 .project-inspector-summary>div{display:flex;justify-content:space-between;gap:8px}
 .project-inspector-summary dt{color:var(--muted)}
 .project-inspector-summary dd{margin:0;font-family:var(--mono)}
+.project-prompt-instructions{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;min-width:0}
+.project-prompt-instructions h3{margin:0;font-size:12px}.project-prompt-instructions label{cursor:default}
+.project-prompt-instructions>.hint{margin:7px 0 8px;line-height:1.5}
+.project-prompt-instructions textarea{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:88px;max-height:320px;resize:vertical;padding:8px 9px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--input);color:var(--text);font:inherit;font-size:11px;line-height:1.5}
+.project-prompt-instructions textarea:hover{border-color:var(--line-strong)}
+.project-prompt-instructions textarea::placeholder{color:#a09689;opacity:1}
