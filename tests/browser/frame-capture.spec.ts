@@ -62,9 +62,11 @@ for (const width of [1440, 390]) test(`AI editing from generation uses its visib
   await page.getByRole('button', { name: 'Edit generation timeline', exact: true }).click();
   const bodies: any[] = [];
   await page.route('**/api/interstitials/enhance-prompt', async route => {
-    bodies.push(route.request().postDataJSON());
-    await route.fulfill({ json: { prompt: `Edited scene ${bodies.length}.`, model: 'test' } });
+    const body = route.request().postDataJSON(); bodies.push(body);
+    // Once an enhanced version exists, Edit with AI rewrites both versions together.
+    await route.fulfill({ json: { prompt: `Edited scene ${bodies.length}.`, ...(body.enhancedPrompt ? { enhancedPrompt: `Enhanced scene ${bodies.length}.` } : {}), model: 'test' } });
   });
+  const enhanced = page.getByLabel('Enhanced prompt', { exact: true });
   const edit = async (color?: boolean[]) => {
     const count = bodies.length;
     await page.getByRole('button', { name: 'Edit with AI', exact: true }).click();
@@ -73,6 +75,7 @@ for (const width of [1440, 390]) test(`AI editing from generation uses its visib
     await dialog.getByRole('button', { name: 'Apply edit', exact: true }).click();
     await expect(prompt).toHaveValue(`Edited scene ${count + 1}.`, { timeout: 15000 });
     const body = bodies.at(-1); expect(body.editInstructions).toBe('Make it more cheerful.');
+    if (body.enhancedPrompt) await expect(enhanced).toHaveValue(`Enhanced scene ${count + 1}.`);
     if (!color) expect(body).not.toHaveProperty('currentFrame');
     else {
       expect(body.currentFrame).toMatch(/^data:image\/jpeg;base64,/); expect(body.currentFrame.length).toBeLessThanOrEqual(32_000);
@@ -93,7 +96,9 @@ for (const width of [1440, 390]) test(`AI editing from generation uses its visib
   await edit([false, true, false]); // Reference trim offset plus frame 30, not the hidden story playhead.
   const referenceFrame = bodies.at(-1).currentFrame;
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
-  await expect(prompt).toHaveValue('Edited scene 3.', { timeout: 15000 });
+  // Enhancing fills the separate enhanced version and keeps the original draft.
+  await expect(enhanced).toHaveValue('Edited scene 3.', { timeout: 15000 });
+  await expect(prompt).toHaveValue('Edited scene 2.');
   expect(bodies.at(-1).currentFrame).toBe(referenceFrame);
   await region.getByRole('button', { name: 'Generated', exact: true }).click();
   await ruler.press('Home'); for (let i = 0; i < 6; i++) await ruler.press('Shift+ArrowRight');
