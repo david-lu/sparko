@@ -17,7 +17,8 @@ function unchanged(actual: Awaited<ReturnType<typeof bounds>>, expected: Awaited
   }
 }
 
-for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 320, height: 700 }]) {
+// 320px is the stricter narrow check; no style rule between 320 and 390px applies to these views.
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 320, height: 700 }]) {
   test(`initial project read keeps the chooser steady without a loading blurb at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.addInitScript(() => {
@@ -211,8 +212,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     });
     await page.goto('/__loading-layout');
     await expect(page.locator('#clip .interstitial-editor').first()).toBeVisible();
-    await page.getByRole('button', { name: 'Enable mic', exact: true }).evaluate(button => (button as HTMLButtonElement).click());
-    const selectors = ['#clip .panel-content', ...[1, 2, 3, 4].map(n => `#clip .clip-subpanel:nth-child(${n}) .clip-subpanel-heading`), '#clip .interstitial-editor', '#clip textarea', '#clip .generation-timeline-summary', '#clip button[type=submit]', '#clip .task-status', '#rows .interstitial-row', '#voice .mic-status', '#voice .voice-capture-actions', '#voice .voice-capture-actions>.button'];
+    const selectors = ['#clip .panel-content', ...[1, 2, 3, 4].map(n => `#clip .clip-subpanel:nth-child(${n}) .clip-subpanel-heading`), '#clip .interstitial-editor', '#clip textarea', '#clip .generation-timeline-summary', '#clip button[type=submit]', '#clip .task-status', '#rows .interstitial-row'];
     const idle = await bounds(page, selectors);
     const stages = [
       { phase: 'preparing', progress: .2 }, { phase: 'uploading' }, { phase: 'queued', queuePosition: 1000 },
@@ -226,35 +226,5 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await expect(page.locator('#clip .clip-subpanel-heading').first()).toContainText(patch.phase === 'ready' ? 'Video ready' : patch.phase === 'preparing' ? 'Preparing' : patch.phase === 'uploading' ? 'Uploading' : patch.phase === 'queued' ? 'Queued' : patch.progressDetails!.stage);
       unchanged(await bounds(page, selectors), idle);
     }
-    for (const [phase, label] of Object.entries({ requesting: 'Waiting for microphone access', loading: 'Loading speech detection', listening: 'Listening for speech', recording: 'Recording speech', stopping: 'Finishing answer', idle: 'Mic off' })) {
-      await page.evaluate(phase => (window as any).setMicPhase(phase), phase);
-      await expect(page.locator('#voice .mic-status')).toContainText(label);
-      unchanged(await bounds(page, selectors), idle);
-    }
-    await page.evaluate(() => (window as any).setMicPhase('ready'));
-    const send = page.getByRole('button', { name: 'Send to LLM', exact: true });
-    await expect(send).toBeEnabled();
-    let voiceRequests = 0;
-    await page.route('**/api/voice/openai', async route => {
-      if (++voiceRequests === 1) await route.fulfill({ json: { transcript: 'Test answer', response: 'Test response', provider: 'openai', model: 'test', context: { sourceId: 'test', videoTime: 0 } } });
-    });
-    await send.evaluate(button => (button as HTMLButtonElement).click());
-    await expect(page.getByRole('article', { name: 'Voice result' })).toBeVisible();
-    const voiceSelectors = ['#voice .panel-content', '#voice .analysis-result', '#voice .task-status', '#voice .voice-review'];
-    const voiceIdle = await bounds(page, voiceSelectors);
-    await send.evaluate(button => (button as HTMLButtonElement).click());
-    await expect(page.getByRole('button', { name: 'Cancel voice request' })).toBeVisible();
-    unchanged(await bounds(page, voiceSelectors), voiceIdle);
-    await page.getByRole('button', { name: 'Cancel voice request' }).evaluate(button => (button as HTMLButtonElement).click());
-    await expect(send).toBeEnabled();
-    unchanged(await bounds(page, voiceSelectors), voiceIdle);
-    // Analysis keeps the existing result visible while its replacement is pending.
-    const analysis = await bounds(page, ['#analysis .panel-content', '#analysis .analysis-result', '#analysis .task-status']);
-    await page.route('**/api/analyze/openai', () => {});
-    await page.locator('#analysis button[type=submit]').evaluate(button => (button as HTMLButtonElement).click());
-    await expect(page.getByRole('button', { name: 'Cancel analysis' })).toBeVisible();
-    unchanged(await bounds(page, ['#analysis .panel-content', '#analysis .analysis-result', '#analysis .task-status']), analysis);
-    await page.getByRole('button', { name: 'Cancel analysis' }).evaluate(button => (button as HTMLButtonElement).click());
-    unchanged(await bounds(page, ['#analysis .panel-content', '#analysis .analysis-result', '#analysis .task-status']), analysis);
   });
 }

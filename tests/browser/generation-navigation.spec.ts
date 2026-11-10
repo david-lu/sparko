@@ -25,6 +25,10 @@ for (const width of [1440, 390]) test(`footage and zoomed ruler scrub precisely 
   await expect(region.getByRole('button', { name: 'Edit audio mask', exact: true })).toBeInViewport();
   if (width === 390) {
     expect((await page.locator('.main-column').boundingBox())!.y + (await page.locator('.main-column').boundingBox())!.height).toBeLessThanOrEqual((await page.locator('.sidebar').boundingBox())!.y);
+    // Tracks sit above the properties panel and both masks are reachable without scrolling.
+    const layout = await region.evaluate(el => ({ tracks: el.querySelector('.generation-timeline-scroll')!.getBoundingClientRect().toJSON(), properties: el.querySelector('.generation-selection-panel')!.getBoundingClientRect().toJSON() }));
+    expect(layout.tracks.bottom).toBeLessThanOrEqual(844); expect(layout.tracks.bottom).toBeLessThanOrEqual(layout.properties.top);
+    await expect(region.getByRole('button', { name: 'Edit video mask', exact: true })).toBeInViewport();
     await page.screenshot({ path: 'test-results/generation-navigation-mobile-open.png' });
   }
   await body.scrollIntoViewIfNeeded();
@@ -44,6 +48,8 @@ for (const width of [1440, 390]) test(`footage and zoomed ruler scrub precisely 
   await reference.click({ position: { x: ref.width * .6, y: 20 } });
   expect(Math.abs(Number(await playhead(page).inputValue()) - 39 * .6)).toBeLessThanOrEqual(1);
   await expect(region.getByRole('button', { name: 'Input', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await region.locator('.generation-reference-segment[data-side=end]').click();
+  expect(Number(await playhead(page).inputValue())).toBeGreaterThan(100);
 
   const ruler = region.getByRole('slider', { name: 'Timeline ruler', exact: true });
   await ruler.focus(); await ruler.press('Home'); await ruler.press('ArrowRight'); await ruler.press('Shift+ArrowRight');
@@ -64,7 +70,7 @@ for (const width of [1440, 390]) test(`footage and zoomed ruler scrub precisely 
   await page.screenshot({ path: `test-results/generation-navigation-${width}.png` });
 });
 
-for (const width of [1440, 390]) test(`scrubbing keeps the chosen mode and input gaps stay black with a saved result at ${width}px`, async ({ page }) => {
+for (const width of [1440]) test(`scrubbing keeps the chosen mode and input gaps stay black with a saved result at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await open(page, true);
   const region = editor(page), input = region.getByRole('button', { name: 'Input', exact: true }), generated = region.getByRole('button', { name: 'Generated', exact: true });
   const screen = region.locator('.generation-player-screen'), ruler = region.getByRole('slider', { name: 'Timeline ruler', exact: true });

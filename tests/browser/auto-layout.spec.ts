@@ -90,7 +90,8 @@ for(const width of [1440,390])test(`conditional outputs stack vertically after c
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect.poll(async()=>(await saved(page)).storyFlow.nodes).toEqual(before.nodes);
 });
 
-for(const width of [1440,390])for(const mixed of [false,true])test(`cleanup separates ${mixed?'mixed routes and groups':'disconnected clips'} at ${width}px and survives Fit all`,async({page})=>{
+// The mixed graph also has seven unconnected clips, and tests/story-flow/layout.test.ts covers an all-disconnected graph.
+for(const width of [1440,390])for(const mixed of [true])test(`cleanup separates ${mixed?'mixed routes and groups':'disconnected clips'} at ${width}px and survives Fit all`,async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.setViewportSize({width,height:1000});await page.goto('/');await expect(page.getByRole('button',{name:/^New project/})).toBeEnabled();
   await page.getByLabel('Choose video file',{exact:true}).setInputFiles('tests/fixtures/interstitial-reference.mp4');await expect(page.locator('.story-clip')).toHaveCount(1);

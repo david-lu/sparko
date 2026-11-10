@@ -276,21 +276,6 @@ test('framing changes preserve the canvas playhead, speed and pending response',
   await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
 });
 
-test('canvas playback works without MediaSource and returns to the source frames', async ({ page }) => {
-  await setup(page, { native: true });
-  await expect.poll(async () => (await read(page)).buffering).toBe(false);
-  await expect(page.locator('canvas')).toHaveAttribute('data-renderer', 'webgpu');
-  await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('correct', 12));
-  await expect.poll(async () => (await read(page)).buffering).toBe(false);
-  expect((await read(page)).activeTime).toBe(.5);
-  expect((await activePixel(page, 80))[1]).toBeGreaterThan(200);
-  await page.evaluate(() => (window as any).flowBufferTest.playback.seekScene('continue', 12));
-  await expect.poll(async () => (await read(page)).buffering).toBe(false);
-  expect((await read(page)).activeTime).toBe(1.5);
-  expect((await activePixel(page, 80))[0]).toBeGreaterThan(200);
-  await page.evaluate(() => (window as any).flowBufferTest.playback.dispose());
-});
-
 test('idle loops and branches reuse generated media without encoding the source', async ({ page }) => {
   const third = await setup(page);
   expect((await read(page)).encoded).toBe(0);

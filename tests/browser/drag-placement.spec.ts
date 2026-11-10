@@ -66,6 +66,11 @@ test('wire drops attach at the pointer and template drops preserve existing posi
   expect(ghostRects).toHaveLength(4);const groupRect=await page.locator('.story-group-preview').boundingBox();await page.mouse.up();await expect(page.locator('.story-clip')).toHaveCount(6);
   const clipRects=await page.locator('.story-clip:not(.type-source)').evaluateAll(nodes=>nodes.map(el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}));
   expect(clipRects).toEqual(ghostRects);expect(await page.locator('.story-group').boundingBox()).toEqual(groupRect);await expect(page.locator('.story-group-preview')).toHaveCount(0);project=await saved(page);expect(project.storyFlow.nodes.slice(0,2)).toEqual(initial.storyFlow.nodes);expect(project.storyFlow.edges[0]).toEqual(initial.storyFlow.edges[0]);expect(await camera(page)).toEqual(view);
+  // Dropping a video onto a source clip attaches it after that clip.
+  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(2);
+  const target=page.locator('.story-clip.type-source').last();await target.scrollIntoViewIfNeeded();await page.getByRole('button',{name:'Add video',exact:true}).dragTo(target);await expect(page.locator('.story-clip')).toHaveCount(3);
+  project=await saved(page);const targetId=initial.storyFlow.edges[0].to,attached=project.storyFlow.nodes.at(-1);
+  expect(project.storyFlow.edges.find((e:any)=>e.from===targetId)?.to).toBe(attached.id);
 });
 
 for(const width of [1440,390])test(`template drops replace a highlighted transition and reconnect every branch at ${width}px`,async({page})=>{

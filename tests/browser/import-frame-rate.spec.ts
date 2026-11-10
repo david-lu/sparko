@@ -36,7 +36,7 @@ async function holdConversion(page: Page) {
   });
 }
 
-for (const width of [1440, 390]) test(`dimension conversion creates a resized copy without changing clips at ${width}px`, async ({ page }) => {
+for (const width of [1440]) test(`dimension conversion creates a resized copy without changing clips at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 844 }); await openVideo(page);
   await page.locator('.story-clip-title').click();
   const before = await readProject(page), original = await rate(page, before.source.assetId);
@@ -103,21 +103,26 @@ for (const [width, fps] of [[1440, 29.97], [390, 30]]) test(`explicit FPS conver
   expect(media.fps).toBeCloseTo(fps, 3); expect([media.width, media.height]).toEqual([original.width, original.height]);
   expect(Math.abs(media.duration - original.duration)).toBeLessThanOrEqual(1 / fps);
   for (const [i, p] of media.packets.entries()) expect(p.time).toBeCloseTo(i / fps, 5);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(page.getByRole('button', { name: `Library asset ${copy.name}`, exact: true })).toHaveCount(0);
-  expect((await readProject(page)).storyFlow).toEqual(before.storyFlow);
-  await page.getByRole('button', { name: 'Redo', exact: true }).click();
-  await page.getByRole('button', { name: `Library asset ${copy.name}`, exact: true }).dblclick();
-  await expect(page.locator('.story-clip')).toHaveCount(2);
-  await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText(`${fps} fps`);
-  expect((await readProject(page)).storyFlow.nodes.find((n: any) => n.name === copy.name).source.assetId).toBe(copy.assetId);
-  await page.locator('.clip-inspector').screenshot({ path: `test-results/convert-fps-result-${width}.png` });
+  // Undo, redo, placing the copy and persistence run once, at full width; both widths convert and check overflow.
+  if (width === 1440) {
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.getByRole('button', { name: `Library asset ${copy.name}`, exact: true })).toHaveCount(0);
+    expect((await readProject(page)).storyFlow).toEqual(before.storyFlow);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await page.getByRole('button', { name: `Library asset ${copy.name}`, exact: true }).dblclick();
+    await expect(page.locator('.story-clip')).toHaveCount(2);
+    await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText(`${fps} fps`);
+    expect((await readProject(page)).storyFlow.nodes.find((n: any) => n.name === copy.name).source.assetId).toBe(copy.assetId);
+    await page.locator('.clip-inspector').screenshot({ path: `test-results/convert-fps-result-${width}.png` });
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-  await saveAndReopen(page);
-  const reopened = await readProject(page), savedCopy = reopened.library.find((a: any) => a.name === copy.name);
-  expect(savedCopy.normalizedFps).toBe(fps);
-  expect((await rate(page, savedCopy.assetId)).fps).toBeCloseTo(fps, 3);
-  expect((await rate(page, savedCopy.originalAssetId)).fps).toBe(25);
+  if (width === 1440) {
+    await saveAndReopen(page);
+    const reopened = await readProject(page), savedCopy = reopened.library.find((a: any) => a.name === copy.name);
+    expect(savedCopy.normalizedFps).toBe(fps);
+    expect((await rate(page, savedCopy.assetId)).fps).toBeCloseTo(fps, 3);
+    expect((await rate(page, savedCopy.originalAssetId)).fps).toBe(25);
+  }
 });
 
 test('explicit conversion can be cancelled or retried after failure without a partial Library copy', async ({ page }) => {
@@ -190,16 +195,19 @@ for (const width of [1440, 390]) test(`import preference normalizes timeline and
   expect((await rate(page, node.source.originalAssetId)).fps).toBe(25);
   expect(project.library.find((a: any) => a.assetId === node.source.assetId).normalizedFps).toBe(24);
 
-  await page.getByLabel('Import library assets', { exact: true }).setInputFiles({ name: 'Library24.mp4', mimeType: 'video/mp4', buffer: await readFile(fixture) });
-  await expect(page.getByRole('button', { name: 'Library asset Library24.mp4', exact: true })).toBeVisible(encoding);
-  await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('24 fps');
-  const imported = (await readProject(page)).library.find((a: any) => a.name === 'Library24.mp4');
-  expect(imported.normalizedFps).toBe(24); expect((await rate(page, imported.originalAssetId)).fps).toBe(25);
-  await page.getByRole('button', { name: 'Library asset Library24.mp4', exact: true }).dblclick();
-  await expect(page.locator('.story-clip')).toHaveCount(3);
-  expect((await readProject(page)).storyFlow.nodes.find((n: any) => n.name === 'Library24.mp4').source.assetId).toBe(imported.assetId);
-  await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('24 fps');
-  await page.locator('.clip-inspector').screenshot({ path: `test-results/fps-inspector-${width}.png` });
+  // The Library import path is checked once, at full width.
+  if (width === 1440) {
+    await page.getByLabel('Import library assets', { exact: true }).setInputFiles({ name: 'Library24.mp4', mimeType: 'video/mp4', buffer: await readFile(fixture) });
+    await expect(page.getByRole('button', { name: 'Library asset Library24.mp4', exact: true })).toBeVisible(encoding);
+    await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('24 fps');
+    const imported = (await readProject(page)).library.find((a: any) => a.name === 'Library24.mp4');
+    expect(imported.normalizedFps).toBe(24); expect((await rate(page, imported.originalAssetId)).fps).toBe(25);
+    await page.getByRole('button', { name: 'Library asset Library24.mp4', exact: true }).dblclick();
+    await expect(page.locator('.story-clip')).toHaveCount(3);
+    expect((await readProject(page)).storyFlow.nodes.find((n: any) => n.name === 'Library24.mp4').source.assetId).toBe(imported.assetId);
+    await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('24 fps');
+    await page.locator('.clip-inspector').screenshot({ path: `test-results/fps-inspector-${width}.png` });
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
 

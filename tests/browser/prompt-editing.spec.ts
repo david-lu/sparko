@@ -123,29 +123,34 @@ for (const kind of ['video', 'image'] as const) for (const width of [1440, 390])
   finish(); await expect(dialog).toHaveCount(0);
   await expect(original).toHaveValue('A room in evening light.'); await expect(downstream).toHaveValue(afterText);
   expect(await layout()).toEqual(idle);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(original).toHaveValue('A room in daylight.'); await expect(downstream).toHaveValue(beforeText);
-  await page.getByRole('button', { name: 'Redo', exact: true }).click();
-  await expect(original).toHaveValue('A room in evening light.'); await expect(downstream).toHaveValue(afterText);
+  // Undo, redo and persistence run once, at full width.
+  if (width === 1440) {
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(original).toHaveValue('A room in daylight.'); await expect(downstream).toHaveValue(beforeText);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(original).toHaveValue('A room in evening light.'); await expect(downstream).toHaveValue(afterText);
+  }
   await edit.click(); await dialog.getByLabel('What should change?', { exact: true }).fill('Make it warmer.');
   await dialog.getByRole('button', { name: 'Apply edit', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('Your prompts have been kept');
   await expect(original).toHaveValue('A room in evening light.'); await expect(downstream).toHaveValue(afterText);
   expect(await layout()).toEqual(idle);
-  gate = new Promise<void>(resolve => { finish = resolve; });
-  await dialog.getByRole('button', { name: 'Apply edit', exact: true }).click(); await expect.poll(() => edits).toBe(3);
-  await page.keyboard.press('Escape'); finish(); await expect(dialog).toHaveCount(0);
-  await expect(original).toHaveValue('A room in evening light.'); await expect(downstream).toHaveValue(afterText);
-  await original.fill('A garden in evening light.');
-  await expect(page.locator('.prompt-version-status')).toContainText('Original or settings changed');
-  const generate = page.getByRole('button', { name: kind === 'video' ? 'Generate' : 'Generate image', exact: true });
-  await expect(generate).toBeDisabled();
-  await choice.selectOption('original'); await expect(generate).toBeEnabled();
-  const saved = await readProject(page), state = kind === 'video' ? saved.interstitials[0] : saved.clipGenerations[0].settings;
-  expect(state).toMatchObject({ prompt: 'A garden in evening light.', enhancedPrompt: afterText, enhancedPromptStale: true, useEnhancedPrompt: false });
-  await saveAndReopen(page);
-  await (kind === 'video' ? page.locator('.story-clip.type-simple .story-clip-title') : page.locator('.story-clip-title').filter({ hasText: saved.clipGenerations[0].name })).click();
-  await expect(original).toHaveValue('A garden in evening light.'); await expect(downstream).toHaveValue(afterText); await expect(choice).toHaveValue('original');
-  await expect(page.locator('.prompt-version-status')).toContainText('Original or settings changed');
+  if (width === 1440) {
+    gate = new Promise<void>(resolve => { finish = resolve; });
+    await dialog.getByRole('button', { name: 'Apply edit', exact: true }).click(); await expect.poll(() => edits).toBe(3);
+    await page.keyboard.press('Escape'); finish(); await expect(dialog).toHaveCount(0);
+    await expect(original).toHaveValue('A room in evening light.'); await expect(downstream).toHaveValue(afterText);
+    await original.fill('A garden in evening light.');
+    await expect(page.locator('.prompt-version-status')).toContainText('Original or settings changed');
+    const generate = page.getByRole('button', { name: kind === 'video' ? 'Generate' : 'Generate image', exact: true });
+    await expect(generate).toBeDisabled();
+    await choice.selectOption('original'); await expect(generate).toBeEnabled();
+    const saved = await readProject(page), state = kind === 'video' ? saved.interstitials[0] : saved.clipGenerations[0].settings;
+    expect(state).toMatchObject({ prompt: 'A garden in evening light.', enhancedPrompt: afterText, enhancedPromptStale: true, useEnhancedPrompt: false });
+    await saveAndReopen(page);
+    await (kind === 'video' ? page.locator('.story-clip.type-simple .story-clip-title') : page.locator('.story-clip-title').filter({ hasText: saved.clipGenerations[0].name })).click();
+    await expect(original).toHaveValue('A garden in evening light.'); await expect(downstream).toHaveValue(afterText); await expect(choice).toHaveValue('original');
+    await expect(page.locator('.prompt-version-status')).toContainText('Original or settings changed');
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });

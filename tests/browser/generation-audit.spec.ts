@@ -12,15 +12,6 @@ async function addVideo(page: Page) {
   await expect(timeline(page).getByRole('group', { name: 'Timeline video', exact: true })).toHaveAttribute('aria-busy', 'false');
 }
 
-test('mobile keeps tracks above properties and both masks visible without scrolling', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 }); await open(page);
-  const bounds = await timeline(page).evaluate(el => ({ tracks: el.querySelector('.generation-timeline-scroll')!.getBoundingClientRect().toJSON(), properties: el.querySelector('.generation-selection-panel')!.getBoundingClientRect().toJSON() }));
-  expect(bounds.tracks.bottom).toBeLessThanOrEqual(844);
-  expect(bounds.tracks.bottom).toBeLessThanOrEqual(bounds.properties.top);
-  await expect(timeline(page).getByRole('button', { name: 'Edit video mask', exact: true })).toBeInViewport();
-  await expect(timeline(page).getByRole('button', { name: 'Edit audio mask', exact: true })).toBeInViewport();
-});
-
 for (const width of [1440, 390]) test(`mask edits have explicit Apply/Cancel and Escape cancels only the mask at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 844 });
   await open(page); await timeline(page).getByRole('button', { name: 'Edit video mask', exact: true }).click();
@@ -43,17 +34,6 @@ test('playback restarts from the final frame and follows the zoomed playhead', a
   await slider(page).focus(); await slider(page).press('End');
   await timeline(page).getByLabel('Generation timeline zoom').selectOption('8');
   expect(await timeline(page).evaluate(el => { const lane = el.querySelector('.generation-timeline-scroll')!.getBoundingClientRect(), cursor = el.querySelector('.generation-cursor-line')!.getBoundingClientRect(); return cursor.x >= lane.x && cursor.x <= lane.right; })).toBe(true);
-});
-
-test('reference and video selection seek to the selected input', async ({ page }) => {
-  await open(page); await slider(page).focus(); await slider(page).press('Home');
-  await timeline(page).locator('.generation-reference-segment[data-side=end]').click();
-  expect(Number(await slider(page).inputValue())).toBeGreaterThan(100);
-  await addVideo(page); const first = (await readProject(page)).interstitials[0].timelineVideos[0];
-  await slider(page).focus(); await slider(page).press('Home');
-  await timeline(page).getByRole('button', { name: 'Add video', exact: true }).click();
-  await timeline(page).getByLabel('Selected generation input').selectOption(`video:${first.id}`);
-  expect(Number(await slider(page).inputValue())).toBe(39 + first.frame);
 });
 
 test('video moves and source trims stay inside the generated interval', async ({ page }) => {

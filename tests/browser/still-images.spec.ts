@@ -135,11 +135,14 @@ for (const width of [1440, 390]) test(`one-frame clips hide crowded circles whil
   expect(await circleSizes()).toEqual([]);
   await expect(page.getByRole('slider', { name: `Trim end of ${video.name}`, exact: true })).toBeVisible();
   await page.screenshot({ path: `test-results/one-frame-handles-${width}.png`, fullPage: true });
-  await saveAndReopen(page);
-  const restored = (await readProject(page)).storyFlow;
-  expect(restored.edges).toHaveLength(2);
-  expect(restored.nodes.map((node: any) => node.source.outFrame - node.source.inFrame)).toEqual([1, 1]);
-  expect(await circleSizes()).toEqual([]);
+  // Persistence is checked once, at full width.
+  if (width === 1440) {
+    await saveAndReopen(page);
+    const restored = (await readProject(page)).storyFlow;
+    expect(restored.edges).toHaveLength(2);
+    expect(restored.nodes.map((node: any) => node.source.outFrame - node.source.inFrame)).toEqual([1, 1]);
+    expect(await circleSizes()).toEqual([]);
+  }
 });
 
 for (const width of [1440, 390]) test(`the left image handle extends, shortens, cancels and saves a held frame at ${width}px`, async ({ page }) => {
@@ -177,11 +180,16 @@ for (const width of [1440, 390]) test(`the left image handle extends, shortens, 
   await dragLeft(); await expect.poll(async () => (await node()).source.outFrame).toBeGreaterThan(1);
   const extended = await node(); expect(extended.x).toBeLessThan(original.x); expect(right(extended)).toBeCloseTo(right(original));
   expect(extended.source.inFrame).toBe(0); expect(await workspaceBounds(page)).toEqual(before);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect.poll(async () => (await node()).source.outFrame).toBe(1);
-  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect.poll(node).toEqual(extended);
+  // Undo and redo run once, at full width; both widths check the cancelled drag below.
+  if (width === 1440) {
+    await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect.poll(async () => (await node()).source.outFrame).toBe(1);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect.poll(node).toEqual(extended);
+  }
   await dragLeft(true); expect(await node()).toEqual(extended); expect(await workspaceBounds(page)).toEqual(before);
-  await saveAndReopen(page); expect((await node()).source).toMatchObject({ kind: 'image', inFrame: 0, outFrame: extended.source.outFrame });
-  expect((await node()).x).toBeCloseTo(extended.x);
+  if (width === 1440) {
+    await saveAndReopen(page); expect((await node()).source).toMatchObject({ kind: 'image', inFrame: 0, outFrame: extended.source.outFrame });
+    expect((await node()).x).toBeCloseTo(extended.x);
+  }
   expect(errors).toEqual([]);
 });
 
@@ -252,14 +260,17 @@ for (const width of [1440, 390]) test(`image keyframe positions and methods stay
   await editor.getByLabel('Keyframe frame', { exact: true }).press('ArrowUp'); await expect(editor.getByLabel('Keyframe frame', { exact: true })).toHaveValue('1');
   const frames = (await readProject(page)).interstitials[0].keyframes;
   expect(frames).toMatchObject([{ frame: 1, image: { name: 'First.png' } }, { frame: 48, method: 'frame', image: { name: 'Second.png' } }]);
-  await closeGenerationTimeline(page); await saveAndReopen(page);
-  const restored = (await readProject(page)).interstitials[0].keyframes;
-  expect(restored).toMatchObject(frames.map(({ image, ...frame }: any) => ({ ...frame, image: { name: image.name } })));
-  expect(await page.evaluate(async () => {
-    const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
-    const frames = (await readActiveProject()).interstitials[0].keyframes;
-    return Promise.all(frames.map(async (frame: any) => (await readAsset(frame.image.assetId))?.blob.size > 0));
-  })).toEqual([true, true]);
+  // Persistence is checked once, at full width.
+  if (width === 1440) {
+    await closeGenerationTimeline(page); await saveAndReopen(page);
+    const restored = (await readProject(page)).interstitials[0].keyframes;
+    expect(restored).toMatchObject(frames.map(({ image, ...frame }: any) => ({ ...frame, image: { name: image.name } })));
+    expect(await page.evaluate(async () => {
+      const { readActiveProject, readAsset } = await import('/src/features/project/database.ts' as string);
+      const frames = (await readActiveProject()).interstitials[0].keyframes;
+      return Promise.all(frames.map(async (frame: any) => (await readAsset(frame.image.assetId))?.blob.size > 0));
+    })).toEqual([true, true]);
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
 

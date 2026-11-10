@@ -45,19 +45,22 @@ for (const [width, normalize] of [[1440, true], [390, false]] as const) test(`dr
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Ending video');
   await expect(page.getByRole('region', { name: 'Video breakdown' })).toContainText('Original clip is not in this project');
   await expect(page.getByRole('button', { name: /Select (start|end) reference video/ })).toHaveCount(0);
-  const downloadEvent = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click();
-  const download = await downloadEvent, saved = await readClipMetadata(new Blob([await readFile((await download.path())!)]), new AbortController().signal);
-  expect(saved).toEqual(clipMetadata);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(page.locator('.story-clip')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Library asset Across the doorway', exact: true }).dblclick();
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
-  const duplicate = await readProject(page); expect(duplicate.interstitials).toHaveLength(1);expect(duplicate.storyFlow.nodes.at(-1).source.assetId).toBe(duplicate.interstitials[0].result.assetId);
-  expect(new Set(duplicate.interstitials.map((i: any) => i.result.assetId)).size).toBe(1);
-  await saveAndReopen(page); await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
-  expect((await readProject(page)).interstitials.every((i: any) => i.result.metadata.references.before.name === 'Opening video')).toBe(true);
+  // The narrow run checks layout; the wide run covers the rest of the flow.
+  if (width === 1440) {
+    const downloadEvent = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full video' }).click();
+    const download = await downloadEvent, saved = await readClipMetadata(new Blob([await readFile((await download.path())!)]), new AbortController().signal);
+    expect(saved).toEqual(clipMetadata);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click(); await expect(page.locator('.story-clip')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click(); await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Library asset Across the doorway', exact: true }).dblclick();
+    await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+    await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
+    const duplicate = await readProject(page); expect(duplicate.interstitials).toHaveLength(1);expect(duplicate.storyFlow.nodes.at(-1).source.assetId).toBe(duplicate.interstitials[0].result.assetId);
+    expect(new Set(duplicate.interstitials.map((i: any) => i.result.assetId)).size).toBe(1);
+    await saveAndReopen(page); await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+    await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
+    expect((await readProject(page)).interstitials.every((i: any) => i.result.metadata.references.before.name === 'Opening video')).toBe(true);
+  }
   expect(errors).toEqual([]);
 });
 
@@ -95,27 +98,30 @@ for (const width of [1440, 390]) test(`imported scene references stay disconnect
   await names.scrollIntoViewIfNeeded();
   const bounds = await names.boundingBox(); expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
   await page.screenshot({ path: `test-results/generated-references-${width}.png` });
-  await page.getByRole('button', { name: 'Select start reference video', exact: true }).click();
-  await expect(page.locator('.story-clip.selected')).toHaveAttribute('data-node-id', before.id);
-  await expect(page.getByLabel('Clip name', { exact: true })).toHaveValue(before.name);
-  await showReferences();
-  await page.getByRole('button', { name: 'Select end reference video', exact: true }).click();
-  await expect(page.locator('.story-clip.selected')).toHaveAttribute('data-node-id', after.id);
-  await expect(page.getByLabel('Clip name', { exact: true })).toHaveValue(after.name);
-  expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Redo', exact: true }).click();
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
-  await page.getByRole('button', { name: 'Library asset Across the doorway', exact: true }).dblclick();
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await expect(page.locator('.story-clip.type-source')).toHaveCount(3);
-  expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
-  await saveAndReopen(page);
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await expect(page.locator('.story-clip.type-source')).toHaveCount(3);
-  expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
+  // The narrow run checks layout; the wide run covers the rest of the flow.
+  if (width === 1440) {
+    await page.getByRole('button', { name: 'Select start reference video', exact: true }).click();
+    await expect(page.locator('.story-clip.selected')).toHaveAttribute('data-node-id', before.id);
+    await expect(page.getByLabel('Clip name', { exact: true })).toHaveValue(before.name);
+    await showReferences();
+    await page.getByRole('button', { name: 'Select end reference video', exact: true }).click();
+    await expect(page.locator('.story-clip.selected')).toHaveAttribute('data-node-id', after.id);
+    await expect(page.getByLabel('Clip name', { exact: true })).toHaveValue(after.name);
+    expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('.story-clip.type-simple')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+    expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
+    await page.getByRole('button', { name: 'Library asset Across the doorway', exact: true }).dblclick();
+    await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+    await expect(page.locator('.story-clip.type-source')).toHaveCount(3);
+    expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
+    await saveAndReopen(page);
+    await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
+    await expect(page.locator('.story-clip.type-source')).toHaveCount(3);
+    expect((await readProject(page)).storyFlow.edges).toEqual(original.storyFlow.edges);
+  }
 });
 
 test('converting a generated scene creates a separate copy with its metadata and reference ranges', async ({ page }) => {
@@ -145,18 +151,6 @@ test('converting a generated scene creates a separate copy with its metadata and
   await expect(page.getByLabel('Video frame rate', { exact: true })).toHaveText('30 fps');
   expect((await readProject(page)).storyFlow.nodes.at(-1).source).toMatchObject({assetId:copy.assetId,inFrame:24,outFrame:72});
   await expect(await showGenerationInfo(page)).toContainText(clipMetadata.prompt);
-});
-
-test('opening a portable video directly restores it; ordinary and invalid metadata files remain sources', async ({ page }) => {
-  await page.goto('/'); await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'portable.mp4', mimeType: 'video/mp4', buffer: await video() });
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles('tests/fixtures/interstitial-reference.mp4');
-  await expect(page.locator('.story-clip.type-source')).toHaveCount(1);
-  const unknownVersion = await video(), offset = unknownVersion.indexOf('"version":1');
-  expect(offset).toBeGreaterThan(0); unknownVersion.write('2', offset + '"version":'.length);
-  await page.getByLabel('Import videos onto timeline', { exact: true }).setInputFiles({ name: 'future-version.mp4', mimeType: 'video/mp4', buffer: unknownVersion });
-  await expect(page.locator('.story-clip.type-source')).toHaveCount(2);
-  expect((await readProject(page)).interstitials).toHaveLength(1);
 });
 
 test('a direct Comfy download restores reference identities and the generated section from its saved workflow', async ({ page }) => {

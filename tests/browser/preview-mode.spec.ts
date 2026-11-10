@@ -54,6 +54,7 @@ test('preview preserves playback and supports pointer seeking, captions, speed, 
   await page.getByRole('button', { name: 'Toggle captions' }).click();
   await expect(page.locator('.playback-captions')).toBeHidden();
   await page.getByRole('combobox', { name: 'Playback speed' }).selectOption('0.5');
+  await page.getByRole('button', { name: 'Mute', exact: true }).click(); await expect(page.getByRole('button', { name: 'Unmute', exact: true })).toBeVisible();
   await seek(page).press('Home');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect.poll(async () => Number(await seek(page).inputValue())).toBeGreaterThan(.1);
@@ -95,7 +96,8 @@ test('audience answers work in preview and the timeline follows the chosen branc
   await expect(page.locator('.story-canvas')).toBeHidden();
 });
 
-for (const width of [1440, 390, 320]) test(`preview controls stay fixed through buffering and errors at ${width}px`, async ({ page }) => {
+// 320px is the stricter narrow check; no style rule between 320 and 390px applies here.
+for (const width of [1440, 320]) test(`preview controls stay fixed through buffering and errors at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   await openVideo(page); await preview(page).click();
   await expect(page.locator('.buffering')).toHaveCount(0);

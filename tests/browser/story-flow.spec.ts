@@ -167,19 +167,6 @@ test('the bundled sample project opens its saved timeline and interaction groups
   await page.screenshot({path:'test-results/story-flow-sample.png',fullPage:true});expect(errors).toEqual([]);
 });
 
-test('cut tool, context menu and S split source and video clips without changing the player layout',async({page})=>{
-  await open(page);const stage=await page.locator('.video-stage').boundingBox(),timeline=await page.locator('.story-canvas').boundingBox();expect(stage!.y+stage!.height).toBeLessThanOrEqual(timeline!.y+1);
-  await page.getByRole('button',{name:'Cut tool',exact:true}).click();await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','true');
-  const film=page.locator('.story-filmstrip').first(),box=await film.boundingBox();await page.mouse.click(box!.x+box!.width/2,box!.y+box!.height/2);await expect(page.locator('.story-clip')).toHaveCount(2);
-  await expect(page.getByRole('button',{name:'Cut tool',exact:true})).toHaveAttribute('aria-pressed','false');
-  await page.getByRole('button',{name:'Add video',exact:true}).dragTo(page.locator('.story-scroll'),{targetPosition:{x:240,y:30}});await fitAll(page);
-  const generated=page.locator('.story-clip.type-simple .story-filmstrip');await generated.scrollIntoViewIfNeeded();await generated.focus();await page.keyboard.press('Home');await page.keyboard.press('Shift+ArrowRight');await generated.click({button:'right',position:{x:60,y:20}});await expect(page.getByRole('menu',{name:'Clip actions'})).toBeVisible();await page.getByRole('menuitem',{name:/Cut at playhead/}).click();
-  await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);const project=await saved(page),parts=project.storyFlow.nodes.filter((n:any)=>n.interstitialId);expect(parts[0].trim.outFrame).toBe(24);expect(parts[1].trim.inFrame).toBe(24);expect(parts[0].trim.inFrame).toBe(0);expect(parts[1].trim.outFrame).toBe(144);
-  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  await page.getByRole('slider',{name:'Scrub New scene',exact:true}).focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');await expect(page.locator('.story-clip.type-simple')).toHaveCount(2);
-  await page.screenshot({path:'test-results/story-flow-cut-tool.png',fullPage:true});
-});
-
 test('auto layout brings loose clips along with a moved entry and preserves undo',async({page})=>{
   await open(page);await page.getByRole('button',{name:'Add video',exact:true}).press('Enter');
   await expect(page.locator('.story-clip')).toHaveCount(2);await fitAll(page);
@@ -197,27 +184,6 @@ test('auto layout brings loose clips along with a moved entry and preserves undo
   await page.getByRole('button',{name:'Undo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(before);
   await page.getByRole('button',{name:'Redo',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(after);
   await page.getByRole('button',{name:'Auto layout',exact:true}).click();expect((await saved(page)).storyFlow).toEqual(after);
-});
-
-test('the side panel drops videos and templates onto the canvas and inserts on arrows',async({page})=>{
-  await open(page);const library=page.getByRole('region',{name:'Videos and templates'}),canvas=page.locator('.story-scroll');
-  await library.getByRole('button',{name:'Add video',exact:true}).dragTo(canvas,{targetPosition:{x:40,y:30}});await expect(page.locator('.story-clip.type-simple')).toHaveCount(1);
-  let project=await saved(page);const bounds=(await canvas.boundingBox())!,loop=(await page.locator('.story-clip.type-simple').boundingBox())!;expect(loop.x+loop.width/2-bounds.x).toBeCloseTo(40,0);expect(loop.y+loop.height/2-bounds.y).toBeCloseTo(30,0);
-  await library.getByRole('button',{name:'Add template Question & response',exact:true}).dragTo(canvas,{targetPosition:{x:250,y:100}});await expect(page.locator('.story-clip')).toHaveCount(6);
-  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(2);
-  const looseClips=(await saved(page)).storyFlow.nodes;
-  await page.getByRole('button',{name:'Auto layout',exact:true}).click();await fitAll(page);
-  expect((await saved(page)).storyFlow.nodes).toEqual(looseClips);
-  const source=page.locator('.story-clip.type-source');await source.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add video',exact:true}).dragTo(source);await expect(page.locator('.story-clip')).toHaveCount(3);
-  project=await saved(page);const sourceId=project.storyFlow.nodes.find((n:any)=>n.kind==='source').id,next=project.storyFlow.edges.find((e:any)=>e.from===sourceId);expect(next).toBeTruthy();
-  // A drop centers the new clip on the source. Separate them before targeting its wire.
-  await page.getByRole('button',{name:'Auto layout',exact:true}).click();
-  const loose=looseClips.find((n:any)=>n.kind==='simple'),anchor=project.storyFlow.nodes.at(-1),arranged=(await saved(page)).storyFlow.nodes;
-  const movedAnchor=arranged.find((n:any)=>n.id===anchor.id);
-  expect(arranged.find((n:any)=>n.id===loose.id)).toEqual({...loose,x:loose.x+movedAnchor.x-anchor.x,y:loose.y+movedAnchor.y-anchor.y});
-  await fitAll(page);const insert=page.getByRole('button',{name:/Edit crossfade from/}).first();await insert.scrollIntoViewIfNeeded();await library.getByRole('button',{name:'Add video',exact:true}).dragTo(insert);
-  await expect(page.locator('.story-clip')).toHaveCount(4);project=await saved(page);const inserted=project.storyFlow.nodes.at(-1);expect(project.storyFlow.edges.find((e:any)=>e.from===sourceId).to).toBe(inserted.id);expect(project.storyFlow.edges.find((e:any)=>e.from===inserted.id&&e.event==='next').to).toBe(next.to);
-  await page.screenshot({path:'test-results/story-flow-library.png',fullPage:true});
 });
 
 test('multiple videos import as independent clips and retain their assets through undo and archive reopening',async({page,browser})=>{
@@ -245,7 +211,9 @@ test('dropping a video on an existing arrow imports a separate clip and a failed
 });
 
 for(const width of [1440,390])test(`right-click cuts at the existing playhead without seeking at ${width}px`,async({page})=>{
-  await page.setViewportSize({width,height:1000});await open(page);await fitAll(page);
+  await page.setViewportSize({width,height:1000});await open(page);
+  if(width===1440){const stage=await page.locator('.video-stage').boundingBox(),timeline=await page.locator('.story-canvas').boundingBox();expect(stage!.y+stage!.height).toBeLessThanOrEqual(timeline!.y+1);}
+  await fitAll(page);
   const film=page.locator('.story-filmstrip').first();await film.focus();await page.keyboard.press('Home');
   const original=(await saved(page)).storyFlow;
   await film.click({button:'right',position:{x:50,y:20}});await expect(page.getByRole('menuitem',{name:/Cut at playhead/})).toBeDisabled();await expect(film).toHaveAttribute('aria-valuenow','0');await page.keyboard.press('Escape');

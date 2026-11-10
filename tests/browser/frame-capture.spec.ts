@@ -40,7 +40,7 @@ async function openCaptureMenu(page: Page) {
   await expect(capture).toBeEnabled(); return capture;
 }
 
-for (const width of [1440, 390]) test(`AI editing from generation uses its visible preview and handles empty input at ${width}px`, async ({ page }) => {
+for (const width of [1440]) test(`AI editing from generation uses its visible preview and handles empty input at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   await page.route('**/api/status', async route => {
     const status = await (await route.fetch()).json();

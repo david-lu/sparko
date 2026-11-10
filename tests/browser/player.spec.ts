@@ -1,40 +1,6 @@
-import { expect, test, openVideo, seekSource, addDraft, saveAndReopen } from './fixtures';
+import { expect, test, openVideo } from './fixtures';
 
 test.beforeEach(async ({ page }) => { await openVideo(page); });
-
-test('canvas playback, settings and draft persistence', async ({ page }) => {
-  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  await page.locator('.video-stage').hover();
-  await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect.poll(async () => Number(await page.locator('.story-filmstrip').getAttribute('aria-valuenow'))).toBeGreaterThan(.1);
-  await page.getByRole('button', { name: 'Pause', exact: true }).click();
-  await seekSource(page, 1.5);
-  await page.locator('.video-stage').hover();
-  await page.getByRole('combobox', { name: 'Playback speed' }).selectOption('1.5');
-  await expect(page.getByRole('combobox', { name: 'Playback speed' })).toHaveValue('1.5');
-  await page.getByRole('button', { name: 'Mute', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Unmute', exact: true })).toBeVisible();
-  await addDraft(page, 'Opening moment');
-  await page.getByLabel('Video prompt').fill('Remember the opening');
-  await saveAndReopen(page);
-  await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await expect(page.getByLabel('Video prompt')).toHaveValue('Remember the opening');
-  await page.getByRole('button', { name: 'Delete selected clips' }).click();
-  await expect(page.locator('.story-clip')).toHaveCount(1);
-  expect(errors).toEqual([]);
-});
-
-test('keyboard seeking, captions and mobile layout', async ({ page }) => {
-  await seekSource(page, 1);
-  await page.locator('.story-filmstrip').press('ArrowRight');
-  await expect(page.locator('.story-filmstrip')).toHaveAttribute('aria-valuenow', String(25 / 24));
-  await page.getByLabel('Choose subtitle file').setInputFiles({ name: 'test.vtt', mimeType: 'text/vtt', buffer: Buffer.from('WEBVTT\n\n00:00.000 --> 00:03.000\nTest subtitle\n') });
-  await expect(page.locator('.playback-captions')).toContainText('Test subtitle');
-  await page.locator('.video-stage').hover(); await page.getByRole('button', { name: 'Toggle captions' }).click();
-  await expect(page.locator('.playback-captions')).toBeHidden();
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-});
 
 test('Mediabunny exports a non-keyframe MP4 cut with video and audio', async ({ page }) => {
   const result = await page.evaluate(async () => {

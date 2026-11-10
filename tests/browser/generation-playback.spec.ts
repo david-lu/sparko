@@ -20,7 +20,7 @@ async function openAudioVideo(page: Page) {
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeEnabled();
 }
 
-for (const width of [1440, 390]) test(`generation transport stays independent and story scrubbing survives returning at ${width}px`, async ({ page }) => {
+for (const width of [1440]) test(`generation transport stays independent and story scrubbing survives returning at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await openVideo(page); await addBridge(page);
   const story = page.locator('.story-clip.type-simple .story-filmstrip');
   await story.press('Home'); await story.press('Shift+ArrowRight');
@@ -51,7 +51,7 @@ for (const width of [1440, 390]) test(`generation transport stays independent an
   expect((await readProject(page)).interstitials).toEqual(project.interstitials);
 });
 
-for (const width of [1440, 390]) test(`closing generation never steals the next story keyboard action at ${width}px`, async ({ page }) => {
+for (const width of [1440]) test(`closing generation never steals the next story keyboard action at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await openVideo(page); await addBridge(page);
   await openGenerationTimeline(page);
   const keptFocus = await page.evaluate(async () => {

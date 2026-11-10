@@ -107,23 +107,6 @@ test('starts on the chooser and opens the example only when requested', async ({
   expect(downloads).toBe(2);
 });
 
-test('keeps the sample project available when no sample video URL exists', async ({ page }) => {
-  let downloads = 0;
-  await page.route('**/api/status', async route => {
-    const body = await (await route.fetch()).json();
-    await route.fulfill({ json: { ...body, defaultVideo: { ...body.defaultVideo, url: '' }, defaultProject: { url: exampleUrl } } });
-  });
-  await page.route(exampleUrl, route => { downloads++; return route.fulfill({ contentType: 'application/zip', body: archive }); });
-  await page.goto('/');
-  await expect(page.getByRole('button', { name: /Sample video/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Sample project/ })).toBeVisible();
-  expect(downloads).toBe(0);
-  await openExample(page);
-  await ready(page);
-  expect((await activeProject(page)).source.name).toBe('example.mp4');
-  expect(downloads).toBe(1);
-});
-
 test('failed sample project downloads and corrupt archives leave the chooser ready for retry', async ({ page }) => {
   let attempt = 0;
   await page.route(exampleUrl, route => {

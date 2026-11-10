@@ -103,10 +103,13 @@ for(const width of [1440,390]) test(`separate neutral mask editors preserve pins
   await video.getByRole('button',{name:'Reset video',exact:true}).click();
   await video.getByRole('button',{name:'Cancel',exact:true}).click();
   expect((await item()).videoMaskCurve).toEqual(saved.videoMaskCurve);
-  await page.getByRole('button',{name:'Close generation timeline',exact:true}).click();
-  await saveAndReopen(page);await page.locator('.story-clip.type-simple .story-clip-title').click();
-  await page.getByRole('button',{name:'Edit generation timeline',exact:true}).click();
-  expect((await item()).audioMaskCurve).toEqual(saved.audioMaskCurve);expect((await item()).videoMaskCurve).toEqual(saved.videoMaskCurve);
+  // Persistence is checked once, at full width.
+  if (width===1440) {
+    await page.getByRole('button',{name:'Close generation timeline',exact:true}).click();
+    await saveAndReopen(page);await page.locator('.story-clip.type-simple .story-clip-title').click();
+    await page.getByRole('button',{name:'Edit generation timeline',exact:true}).click();
+    expect((await item()).audioMaskCurve).toEqual(saved.audioMaskCurve);expect((await item()).videoMaskCurve).toEqual(saved.videoMaskCurve);
+  }
   await page.getByRole('button',{name:'Edit audio mask',exact:true}).click();
   await audio.getByRole('button',{name:'End',exact:true}).click();
   const boundary=audio.getByRole('button',{name:'Audio end keyframe 1',exact:true});await boundary.focus();

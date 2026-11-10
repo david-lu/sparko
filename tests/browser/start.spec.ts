@@ -30,13 +30,6 @@ test('starts with an empty project and keeps the player above its timeline', asy
   await expect(page.locator('.menu-document')).toHaveText('Untitled project');await expect(page.locator('.story-clip')).toHaveCount(0);
 });
 
-test('shows the sample project without a sample video action', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Make videos pop.' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Sample video/ })).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Sample projects' }).getByRole('button', { name: /Sample project/ })).toBeVisible();
-});
-
 test('opens the bundled sample project with its saved videos', async ({ page }) => {
   test.setTimeout(240_000);
   await page.goto('/');

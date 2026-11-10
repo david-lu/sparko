@@ -13,13 +13,16 @@ for (const width of [1440, 390]) test(`template durations and conditions are ind
   await page.getByLabel('Condition 1 label', { exact: true }).fill('Ready');
   await page.getByRole('button', { name: '+ Add condition', exact: true }).click();
   await page.getByLabel('Condition 3 label', { exact: true }).fill('More time');
-  await saveAndReopen(page); await fitAll(page);
-  const project = await readProject(page);
-  expect(project.interstitials.find((item: any) => item.label === 'Celebrate').duration).toBe(8);
-  expect(project.interstitials.find((item: any) => item.label === 'Encourage').duration).toBe(6);
-  await clip('Wait for the viewer').press('Enter');
-  await expect(page.getByLabel('Condition 1 label', { exact: true })).toHaveValue('Ready');
-  await expect(page.getByLabel('Condition 3 label', { exact: true })).toHaveValue('More time');
+  // Persistence is checked once, at full width.
+  if (width === 1440) {
+    await saveAndReopen(page); await fitAll(page);
+    const project = await readProject(page);
+    expect(project.interstitials.find((item: any) => item.label === 'Celebrate').duration).toBe(8);
+    expect(project.interstitials.find((item: any) => item.label === 'Encourage').duration).toBe(6);
+    await clip('Wait for the viewer').press('Enter');
+    await expect(page.getByLabel('Condition 1 label', { exact: true })).toHaveValue('Ready');
+    await expect(page.getByLabel('Condition 3 label', { exact: true })).toHaveValue('More time');
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
 
