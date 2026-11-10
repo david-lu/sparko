@@ -30,7 +30,13 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
     if(a.entryId!==b.entryId)return {label:'Change start video'};
     if(!same(a.templates,b.templates))return {label:'Save group template'};
     if(!same(a.groups,b.groups))return {label:(b.groups?.length??0)>(a.groups?.length??0)?'Group clips':(b.groups?.length??0)<(a.groups?.length??0)?'Ungroup clips':'Edit group'};
-    if(!same(a.edges,b.edges))return {label:'Edit connections'};
+    if(!same(a.edges,b.edges)){
+      // Fade duration and shape edits on one connection merge like a slider drag.
+      const changed=b.edges.filter(e=>!same(e,a.edges.find(p=>p.id===e.id))),previous=changed.length===1?a.edges.find(e=>e.id===changed[0].id):undefined;
+      const withoutFade=(e:typeof b.edges[number])=>({...e,crossfade:undefined,crossfadeReferenceRatio:undefined,videoCrossfade:undefined,audioCrossfade:undefined,videoCrossfadeCurve:undefined,audioCrossfadeCurve:undefined});
+      if(previous&&a.edges.length===b.edges.length&&same(withoutFade(previous),withoutFade(changed[0])))return {label:'Edit crossfade',key:`edge:${previous.id}:fade`};
+      return {label:'Edit connections'};
+    }
     const changed=b.nodes.filter(n=>!same(n,a.nodes.find(p=>p.id===n.id)));
     return {label:'Edit clip',key:changed.length===1?`node:${changed[0].id}`:undefined};
   }

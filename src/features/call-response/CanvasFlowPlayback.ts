@@ -1,9 +1,10 @@
 import { assets } from '../project/assets';
 import { INTERSTITIAL_CROSSFADE_FRAMES } from '../../../shared/constants';
+import { fadeLevel } from '../../../shared/fade-curves';
 import type { MediaInfo, MediaSource } from '../../media/media';
 import { CanvasMediaDecks, type PlaybackClip, type PlaybackLayer, type PlaybackSettings } from '../player/CanvasMediaDecks';
-import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, loopCrossfadeFrames, nextEdge, previewScene, sceneFrames, startSession,
-  type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
+import { advanceSession, answerSession, branchSession, playbackPath, flowLayout, getScene, loopCrossfadeCurve, loopCrossfadeFrames, nextEdge, previewScene, sceneFrames, startSession,
+  transitionCurve, type CallResponseFlow, type Outcome, type PlaybackSession, type SceneId } from './model';
 import { flowTransition } from './transitions';
 import { sceneMediaRange } from '../story-flow/mediaRange';
 import type { FadeChannel } from '../story-flow/model';
@@ -102,12 +103,12 @@ export class CanvasFlowPlayback {
       const frames = loopCrossfadeFrames(scene, this.flow.fps, channel);
       const offset = frame - sceneFrames(scene);
       if (frames && offset >= -frames && offset < 0) {
-        const weight = (offset + frames) / frames, rate = this.flow.fps / frames;
+        const { mix, rate } = fadeLevel(loopCrossfadeCurve(scene, channel), (offset + frames) / frames, this.flow.fps / frames);
         const nextClip = this.clip({ ...current, visit: current.visit + 1 }, offset + loopCrossfadeFrames(scene, this.flow.fps));
-        return [{ ...currentClip, opacity: 1, gain: currentClip.muted ? 0 : 1 - weight, gainRate: currentClip.muted ? 0 : -rate,
-          musicGain: single[0].musicGain * (1 - weight) },
-          { ...nextClip, opacity: weight, gain: nextClip.muted ? 0 : weight, gainRate: nextClip.muted ? 0 : rate,
-            musicGain: single[0].musicGain * weight }];
+        return [{ ...currentClip, opacity: 1, gain: currentClip.muted ? 0 : 1 - mix, gainRate: currentClip.muted ? 0 : -rate,
+          musicGain: single[0].musicGain * (1 - mix) },
+          { ...nextClip, opacity: mix, gain: nextClip.muted ? 0 : mix, gainRate: nextClip.muted ? 0 : rate,
+            musicGain: single[0].musicGain * mix }];
       }
     }
     const previous = current.lastEdgeId ? this.flow.edges.find(edge => edge.id === current.lastEdgeId) : undefined;
@@ -132,13 +133,14 @@ export class CanvasFlowPlayback {
       const afterFrame = this.flow.storyGraph ? offset : transition.after.clip.kind === 'idle' && offset < 0 && !transition.after.generated?.fullRange ? 0
         : transition.before.clip.kind === 'idle' && offset < 0
           ? Math.max(offset, -Math.floor((transition.after.generated?.start ?? 0) * this.flow.fps + 1e-6)) : offset;
-      const rate = this.flow.fps / fadeFrames;
+      // The curve shapes the shortened window too, so a late answer keeps the same fade.
+      const { mix, rate } = fadeLevel(transitionCurve(edge, channel), weight, this.flow.fps / fadeFrames);
       const beforeClip = this.clip(before, beforeFrame), afterClip = this.clip(after, afterFrame);
       const mutedBeforeCut = afterClip.muted || transition.before.clip.kind === 'idle' && offset < 0 && (!this.flow.storyGraph || beforeClip.muted);
-      return [{ ...beforeClip, opacity: 1, gain: beforeClip.muted ? 0 : 1 - weight, gainRate: beforeClip.muted ? 0 : -rate,
-        musicGain: !this.flow.storyGraph && transition.before.clip.kind === 'idle' ? 1 - weight : 0 },
-        { ...afterClip, muted: mutedBeforeCut, opacity: weight, gain: mutedBeforeCut ? 0 : weight,
-          gainRate: mutedBeforeCut ? 0 : rate, musicGain: !this.flow.storyGraph && transition.after.clip.kind === 'idle' ? weight : 0 }];
+      return [{ ...beforeClip, opacity: 1, gain: beforeClip.muted ? 0 : 1 - mix, gainRate: beforeClip.muted ? 0 : -rate,
+        musicGain: !this.flow.storyGraph && transition.before.clip.kind === 'idle' ? 1 - mix : 0 },
+        { ...afterClip, muted: mutedBeforeCut, opacity: mix, gain: mutedBeforeCut ? 0 : mix,
+          gainRate: mutedBeforeCut ? 0 : rate, musicGain: !this.flow.storyGraph && transition.after.clip.kind === 'idle' ? mix : 0 }];
     }
     return single;
   }

@@ -6,6 +6,7 @@ import type { PlaybackLayer } from '../../src/features/player/CanvasMediaDecks';
 import { flowTransition } from '../../src/features/call-response/transitions';
 import { createNode, edge, migrateGraph, runtimeFlow, splitClip, type StoryGraph } from '../../src/features/story-flow/model';
 import { readFile } from 'node:fs/promises';
+import { FADE_PRESETS, fadeLevel, fadeMix } from '../../shared/fade-curves';
 import { projectFlows, type Project } from '../../src/features/project/types';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -144,6 +145,39 @@ describe('canvas flow playback', () => {
     expect(player.session.frame).toBe(frame);
     player.seekScene(b.node.id, 0);
     expect(layers()).toHaveLength(1); expect(layers()[0]).toMatchObject({ opacity: 1, gain: 1, time: 2 });
+    player.dispose();
+  });
+
+  it('shapes each channel of a connection fade with its own curve', () => {
+    const a = createNode('simple'), b = createNode('simple');
+    const items = [a,b].map(p => ({ ...p.item, phase: 'ready' as const,
+      result: { assetId: `mock:${p.node.id}`, url: 'blob:generated', start: 2, duration: 6, totalDuration: 10 } }));
+    const [, slow, , sCurve] = FADE_PRESETS.map(preset => preset.curve);
+    const graph: StoryGraph = { version: 1, entryId: a.node.id, nodes: [a.node,b.node], templates: [],
+      edges: [{ ...edge(a.node.id,b.node.id), videoCrossfade: 1, audioCrossfade: 1, videoCrossfadeCurve: sCurve, audioCrossfadeCurve: slow }] };
+    const player = makePlayer(runtimeFlow(graph, items, 'mock:original', 20));
+    // The one-second fade finishes at the cut, so frame 126 is a quarter of the way through.
+    for (const [frame, progress] of [[126, .25], [138, .75]]) {
+      player.seekScene(a.node.id, frame);
+      const before = layers().find(l => l.source.assetId === items[0].result.assetId)!;
+      const after = layers().find(l => l.source.assetId === items[1].result.assetId)!;
+      expect(after.opacity).toBeCloseTo(fadeMix(sCurve, progress));
+      expect(after.gain).toBeCloseTo(fadeMix(slow, progress)); expect(before.gain).toBeCloseTo(1 - fadeMix(slow, progress));
+      expect(after.gainRate).toBeCloseTo(fadeLevel(slow, progress, 1).rate); expect(before.gainRate).toBeCloseTo(-after.gainRate!);
+    }
+    expect(fadeMix(sCurve, .25)).toBeLessThan(.25); expect(fadeMix(slow, .75)).toBeLessThan(.75);
+    player.dispose();
+  });
+  it('shapes repeat fades with the clip\'s loop curves', () => {
+    const { node, item } = createNode('looped');
+    const [, slow, fast] = FADE_PRESETS.map(preset => preset.curve);
+    Object.assign(node, { loopVideoCrossfade: .5, loopAudioCrossfade: .5, loopVideoCrossfadeCurve: fast, loopAudioCrossfadeCurve: slow });
+    const saved = { ...item, phase: 'ready' as const, result: { assetId: 'mock:finished', url: 'blob:finished', start: 0, duration: 4, totalDuration: 4 } };
+    const player = makePlayer(runtimeFlow({ version: 1, entryId: node.id, nodes: [node], edges: [], templates: [] }, [saved], 'mock:original', 20));
+    player.seekScene(node.id, 96 - 6);
+    expect(layers()).toHaveLength(2);
+    expect(layers()[1].opacity).toBeCloseTo(fadeMix(fast, .5)); expect(layers()[1].gain).toBeCloseTo(fadeMix(slow, .5));
+    expect(layers()[0].gain + layers()[1].gain).toBeCloseTo(1);
     player.dispose();
   });
 

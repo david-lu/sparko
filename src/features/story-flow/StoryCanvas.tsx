@@ -30,7 +30,7 @@ import { edgeVelocity, fitCamera, gridSpacing, minimumRowScale, toScreen, toWorl
 import { linkGeometry } from './links';
 import { connectionReference } from './references';
 import { referenceHighlights } from './referenceHighlights';
-import { connectionColor, transitionRegions } from './transitionRegions';
+import { connectionColor, fadeRegionShape, transitionRegions } from './transitionRegions';
 import { sceneMediaRange, playheadTime } from './mediaRange';
 import { clipTrimRange, trimClip, trimPreviewScene, type TrimSide } from './trimming';
 import type { PlayheadTimeMode } from '../../shared/preferences';
@@ -235,7 +235,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   useEffect(()=>{
     if(collapsed)return;
     const key=(event:KeyboardEvent)=>{
-      const target=event.target as HTMLElement;if(event.defaultPrevented||event.isComposing||target.isContentEditable||target.closest('input,textarea,select,dialog,[role="dialog"],video[controls],audio[controls],[role="menu"],[data-popup-menu][open],.sidePanelSectionHeader,.asset-library,.asset-inspector,.dock-header,.dock-float-grip'))return;
+      const target=event.target as HTMLElement;if(event.defaultPrevented||event.isComposing||target.isContentEditable||target.closest('input,textarea,select,dialog,[role="dialog"],video[controls],audio[controls],[role="menu"],[data-popup-menu][open],.sidePanelSectionHeader,.asset-library,.asset-inspector,.dock-header,.dock-float-grip,.crossfade-curve-graph'))return;
       if(event.key==='Escape'){chooseTool(null);setTemplateName(null);setContext(null);return;}
       const action=shortcuts.action(event);
       if(!action)return;
@@ -623,7 +623,8 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
                     title={`${label} · ${region.mediaStart.toFixed(3)}–${region.mediaEnd.toFixed(3)} s in this video`}
                     onPointerEnter={()=>setHoveredConnection(region.edgeId)} onPointerLeave={()=>setHoveredConnection(null)}
                     style={{left:`${region.start/layout.total*100}%`,width:`${(region.end-region.start)/layout.total*100}%`,
-                      top:`${(channel==='video'?0:50)+region.lane*50/laneEnds.length}%`,height:`${50/laneEnds.length}%`,color:connectionColors[region.edgeId]}}>
+                      top:`${(channel==='video'?0:50)+region.lane*50/laneEnds.length}%`,height:`${50/laneEnds.length}%`,color:connectionColors[region.edgeId],
+                      '--fade-shape':fadeRegionShape(region)} as React.CSSProperties}>
                     {(region.end-region.start)*PIXELS_PER_SECOND*zoom>=20&&laneEnds.length<=2&&<b aria-hidden>{channel==='video'?'V':'A'}</b>}
                   </span>;
                 });
