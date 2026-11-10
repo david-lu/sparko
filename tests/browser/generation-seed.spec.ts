@@ -19,8 +19,7 @@ for (const width of [1440, 390]) test(`seed settings support exact integers, und
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await expect(mode).toHaveValue('random'); await expect(value).toBeDisabled();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await page.getByLabel('Enable 2K regeneration', { exact: true }).check();
-  await expect(page.locator('.generation-seed')).toContainText('H3 base seed');
+  await expect(page.locator('.generation-seed')).toContainText('Upscale to 2K has no seed control');
   await page.locator('.generation-seed').screenshot({ path: `test-results/generation-seed-${width}.png` });
   expect(await page.locator('.generation-seed').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   await saveAndReopen(page); await fitAll(page);

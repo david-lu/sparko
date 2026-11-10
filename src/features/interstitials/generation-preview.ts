@@ -1,51 +1,64 @@
 import type { InterstitialSettings } from '../../../shared/interstitials';
 import type { GenerationSegment } from './generation-timeline';
 
-export type PreviewMode = 'input' | 'generated';
+export type PreviewMode = 'input' | 'generated' | 'upscaled';
 export type InputPreview = { assetId: string; kind?: 'image' | 'audio'; sourceFrame: number; label: string; held?: boolean };
 type GeneratedPreview = { url: string; frames: number; estimate: number };
 export type GenerationPreviewState = {
   mode: PreviewMode; frame: number; playing: boolean; inputFrames: number; generated?: GeneratedPreview;
+  /** The optional 2K video of the same complete render, on the same frame clock. */
+  upscaled?: GeneratedPreview;
 };
 export type GenerationPreviewAction =
-  | { type: 'configure'; inputFrames: number; generatedUrl?: string; generatedFrames?: number }
+  | { type: 'configure'; inputFrames: number; generatedUrl?: string; generatedFrames?: number; upscaledUrl?: string; upscaledFrames?: number }
   | { type: 'metadata'; url: string; frames: number }
   | { type: 'seek' | 'inspect-input' | 'tick'; frame: number }
   | { type: 'mode'; mode: PreviewMode }
   | { type: 'toggle' | 'pause' };
 
 const frameCount = (value: number | undefined, fallback = 1) => Number.isFinite(value) ? Math.max(1, Math.round(value!)) : fallback;
-export const previewFrames = (state: GenerationPreviewState) => state.mode === 'generated' && state.generated ? state.generated.frames : state.inputFrames;
+/** The rendered video shown by the Generated or Upscaled tab. */
+export const previewOutput = (state: GenerationPreviewState) => state.mode === 'input' ? undefined : state[state.mode];
+export const previewFrames = (state: GenerationPreviewState) => previewOutput(state)?.frames ?? state.inputFrames;
 export const clampPreviewFrame = (frame: number, frames: number) => Math.max(0, Math.min(frameCount(frames) - 1, Number.isFinite(frame) ? Math.round(frame) : 0));
 
-export function createGenerationPreview(inputFrames: number, frame = 0, generatedUrl?: string, generatedFrames?: number): GenerationPreviewState {
-  const frames = frameCount(inputFrames), estimate = frameCount(generatedFrames, frames);
+export function createGenerationPreview(inputFrames: number, frame = 0, generatedUrl?: string, generatedFrames?: number, upscaledUrl?: string, upscaledFrames?: number): GenerationPreviewState {
+  const frames = frameCount(inputFrames), output = (url?: string, count?: number) => url ? { url, frames: frameCount(count, frames), estimate: frameCount(count, frames) } : undefined;
   return { mode: 'input', frame: clampPreviewFrame(frame, frames), playing: false, inputFrames: frames,
-    generated: generatedUrl ? { url: generatedUrl, frames: estimate, estimate } : undefined };
+    generated: output(generatedUrl, generatedFrames), upscaled: output(upscaledUrl, upscaledFrames) };
+}
+/** Keeps loaded metadata for an unchanged video; a new URL or estimate starts from its estimate. */
+function configuredOutput(current: GeneratedPreview | undefined, url: string | undefined, frames: number | undefined, inputFrames: number) {
+  const estimate = frameCount(frames, url === current?.url ? current?.estimate ?? inputFrames : inputFrames);
+  const same = url === current?.url && (!url || estimate === current?.estimate);
+  return { same, value: !url ? undefined : same ? current : { url, frames: estimate, estimate } };
 }
 
 /** Seeking never changes the preview source. Inspecting an input and switching modes are explicit actions. */
 export function generationPreviewReducer(state: GenerationPreviewState, action: GenerationPreviewAction): GenerationPreviewState {
   switch (action.type) {
     case 'configure': {
-      const inputFrames = frameCount(action.inputFrames), estimate = frameCount(action.generatedFrames, action.generatedUrl === state.generated?.url ? state.generated?.estimate ?? inputFrames : inputFrames);
-      const sameResult = action.generatedUrl === state.generated?.url && (!action.generatedUrl || estimate === state.generated?.estimate);
-      if (inputFrames === state.inputFrames && sameResult) return state;
-      const generated = !action.generatedUrl ? undefined : sameResult ? state.generated : { url: action.generatedUrl, frames: estimate, estimate };
-      const next = { ...state, inputFrames, generated, playing: false, mode: generated ? state.mode : 'input' as const };
-      return { ...next, frame: clampPreviewFrame(state.frame, previewFrames(next)) };
+      const inputFrames = frameCount(action.inputFrames);
+      const generated = configuredOutput(state.generated, action.generatedUrl, action.generatedFrames, inputFrames);
+      const upscaled = configuredOutput(state.upscaled, action.upscaledUrl, action.upscaledFrames, inputFrames);
+      if (inputFrames === state.inputFrames && generated.same && upscaled.same) return state;
+      const next = { ...state, inputFrames, generated: generated.value, upscaled: upscaled.value, playing: false };
+      // A tab whose video is gone falls back to the input timeline.
+      const mode = next.mode !== 'input' && !next[next.mode] ? 'input' as const : next.mode;
+      return { ...next, mode, frame: clampPreviewFrame(state.frame, previewFrames({ ...next, mode })) };
     }
     case 'metadata': {
-      if (!state.generated || action.url !== state.generated.url || !Number.isFinite(action.frames) || action.frames < 1) return state;
-      const frames = frameCount(action.frames);
-      if (frames === state.generated.frames) return state;
-      const next = { ...state, generated: { ...state.generated, frames } }, frame = clampPreviewFrame(state.frame, previewFrames(next));
+      const key = state.generated?.url === action.url ? 'generated' : state.upscaled?.url === action.url ? 'upscaled' : undefined;
+      if (!key || !Number.isFinite(action.frames) || action.frames < 1) return state;
+      const current = state[key]!, frames = frameCount(action.frames);
+      if (frames === current.frames) return state;
+      const next = { ...state, [key]: { ...current, frames } }, frame = clampPreviewFrame(state.frame, previewFrames(next));
       return { ...next, frame, playing: state.playing && frame === state.frame };
     }
     case 'seek': return { ...state, frame: clampPreviewFrame(action.frame, previewFrames(state)), playing: false };
     case 'inspect-input': return { ...state, mode: 'input', frame: clampPreviewFrame(action.frame, state.inputFrames), playing: false };
     case 'mode': {
-      if (action.mode === 'generated' && !state.generated) return state;
+      if (action.mode !== 'input' && !state[action.mode]) return state;
       const next = { ...state, mode: action.mode, playing: false };
       return { ...next, frame: clampPreviewFrame(state.frame, previewFrames(next)) };
     }

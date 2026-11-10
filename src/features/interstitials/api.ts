@@ -97,5 +97,18 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   onProgress('uploading');
   return sendForm<GenerationJob>('/api/comfy/interstitials', body, signal);
 }
+/** Sends a finished native render for the official 2K pass. Progress and output use the normal job routes. */
+export async function upscaleInterstitial(video: Blob, input: { prompt: string; preservedFrames: number[] }, signal: AbortSignal, onUploading: () => void): Promise<GenerationJob> {
+  validateH3PromptLength(input.prompt);
+  const readiness = await request<{ ready: boolean; message?: string }>(`/api/comfy/upscales/status${input.preservedFrames.length ? '?preservedFrames=true' : ''}`, { signal });
+  if (!readiness.ready) throw new Error(readiness.message || 'Comfy Cloud is not ready for 2K regeneration.');
+  signal.throwIfAborted();
+  const body = new FormData();
+  body.set('prompt', input.prompt);
+  if (input.preservedFrames.length) body.set('preservedFrames', JSON.stringify(input.preservedFrames));
+  body.set('video', new File([video], 'native-render.mp4', { type: 'video/mp4' }));
+  onUploading();
+  return sendForm<GenerationJob>('/api/comfy/upscales', body, signal);
+}
 export const getInterstitialJob = (id: string, signal?: AbortSignal) => request<GenerationJob>(`/api/comfy/jobs/${encodeURIComponent(id)}`, { signal });
 export const cancelInterstitialJob = (id: string) => request<GenerationJob>(`/api/comfy/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });

@@ -27,6 +27,7 @@ import TaskStatus from '../../shared/TaskStatus';
 import { sequenceActive } from '../call-response/sequence';
 import GenerationFeedback from './GenerationFeedback';
 import GenerationSeed from './GenerationSeed';
+import UpscaleControl from './UpscaleControl';
 import { hasNoVideoInput } from './api';
 import { maskCurveSchema } from '../../../shared/mask-curves';
 import type { ProjectController } from '../project/ProjectController';
@@ -42,7 +43,7 @@ export type InterstitialEditorProps = {
   player?: PromptFramePlayer;
 };
 export default function InterstitialEditor({ selected, controller, engine, info, status, active, onPreviewPlay, resultDetails, compact = false, showOutput = true, projects, player }: InterstitialEditorProps) {
-  const promptId = useId(), resolutionId = useId(), analysisId = useId();
+  const promptId = useId(), analysisId = useId();
   const dependency = controller.dependency(selected.id);
   const kind = controller.clipKind(selected.id);
   useAssetAvailability([dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId, ...(selected.imageReferences ?? []).map(ref => ref.assetId), ...(selected.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...(selected.keyframes ?? []).flatMap(k => k.image ? [k.image.assetId] : [])]);
@@ -129,15 +130,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         {!compact && (selected.continuity?.trim() || selected.dialogue?.trim()) && <p className="hint">Enhance this clip to include the shared brief and any saved dialogue. Generation sends the version selected above.</p>}
       </div>
       {timeline}
-      <div className="field interstitial-resolution">
-        <label className="interstitial-option" htmlFor={resolutionId}>
-          <input id={resolutionId} type="checkbox" aria-label="Enable 2K regeneration" aria-describedby={`${resolutionId}-help`} checked={selected.resolution === '2k'}
-            onChange={event=>controller.edit(selected.id,{resolution:event.target.checked?'2k':'native'})}/>
-          Enable 2K regeneration (optional)
-        </label>
-        <p id={`${resolutionId}-help`} className="hint">Off by default: Native H3 output. Enable this to add the official H3-Regenerate-2K pass.</p>
-      </div>
-      <GenerationSeed key={`seed:${selected.id}`} value={selected.seed} lastSeed={currentResult?.metadata?.seed} baseOnly={selected.resolution === '2k'}
+      <GenerationSeed key={`seed:${selected.id}`} value={selected.seed} lastSeed={currentResult?.metadata?.seed}
         onChange={seed => controller.edit(selected.id, { seed })} />
     </fieldset>
     {!compact && <div className="interstitial-generation-feedback" aria-live="polite">
@@ -156,6 +149,7 @@ export default function InterstitialEditor({ selected, controller, engine, info,
         else if (!retryChecking) void controller.resume(selected.id);
       }}>{retryChecking ? 'Regenerate' : 'Check result'}</button>}</div>
     </div>
+    <UpscaleControl item={selected} controller={controller} connected={!!status?.providers.comfy}/>
     {compact && <GenerationFeedback busy={busy} message={message} messages={messages} error={!!(selected.error || validationError || dependency?.blocked)} progress={progress} onCancel={() => void controller.cancel(selected.id)} />}
     {!compact && status && !status.providers.comfy && <p className="hint interstitial-action-hint">Comfy Cloud is not connected.</p>}
   </form>;

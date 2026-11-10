@@ -15,7 +15,7 @@ vi.mock('mediabunny', () => ({ ALL_FORMATS: [], BlobSource: class {}, Input: cla
   computeDuration() { return Promise.resolve(mediaDuration); }
   dispose() {}
 } }));
-const comfy = { resolveLora: vi.fn(), check: vi.fn(), submit: vi.fn(), status: vi.fn(), events: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn() };
+const comfy = { resolveLora: vi.fn(), check: vi.fn(), submit: vi.fn(), status: vi.fn(), events: vi.fn(), cancel: vi.fn(), assetUrl: vi.fn(), checkUpscale: vi.fn(), upscale: vi.fn() };
 const providers: Providers = { configured: { openai: false, gemini: false, comfy: true }, models: { openai: 'test', gemini: 'test' },
   openai: vi.fn(), gemini: vi.fn(), voice: vi.fn(), voiceChoice: vi.fn(), enhancePrompt: vi.fn(), enhanceImagePrompt: vi.fn(), comfy };
 let app: Express;
@@ -268,5 +268,31 @@ describe('Comfy API boundaries', () => {
     expect(response.body.error).toContain('no new generation is needed');
     expect(response.text).not.toContain('signed=private');
     expect(comfy.submit).not.toHaveBeenCalled();
+  });
+});
+
+describe('on-demand 2K upscale routes', () => {
+  const upscale = (fields: Record<string, string> = { prompt: 'Bridge this scene' }) => request(app).post('/api/comfy/upscales').set('x-sparko-request', '1').field(fields)
+    .attach('video', Buffer.from('validated by the media-reader fixture'), { filename: 'native.mp4', contentType: 'video/mp4' });
+  it('checks 2K readiness separately from native generation', async () => {
+    comfy.checkUpscale.mockResolvedValue({ ready: true });
+    await request(app).get('/api/comfy/upscales/status').expect(200, { ready: true });
+    await request(app).get('/api/comfy/upscales/status?preservedFrames=true').expect(200);
+    expect(comfy.checkUpscale.mock.calls).toEqual([[false], [true]]); expect(comfy.check).not.toHaveBeenCalled();
+  });
+  it('counts the uploaded render frames on the server and submits its exact prompt', async () => {
+    mediaDuration = 226 / 24; comfy.upscale.mockResolvedValue({ requestId: 'comfy-2k-job', status: 'IN_QUEUE' });
+    const response = await upscale({ prompt: 'Bridge this scene', preservedFrames: JSON.stringify([39, 120]) }).expect(202);
+    expect(response.body).toEqual({ requestId: 'comfy-2k-job', status: 'IN_QUEUE' });
+    expect(comfy.upscale.mock.calls[0][1]).toEqual({ prompt: 'Bridge this scene', frames: 226, preservedFrames: [39, 120] });
+    expect(comfy.upscale.mock.calls[0][0]).toBeInstanceOf(Blob);
+  });
+  it('rejects renders outside the official frame range, missing prompts and invalid frames before submission', async () => {
+    mediaDuration = 106 / 24; expect((await upscale().expect(400)).body.error).toContain('4.46 seconds');
+    mediaDuration = 226 / 24;
+    await upscale({ prompt: '   ' }).expect(400);
+    expect((await upscale({ prompt: 'Scene', preservedFrames: JSON.stringify([226]) }).expect(400)).body.error).toContain('inside the video');
+    await request(app).post('/api/comfy/upscales').set('x-sparko-request', '1').field({ prompt: 'Scene' }).expect(400);
+    expect(comfy.upscale).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@ import { setVideoReference, test, expect, addDraft, readProject, saveAndReopen, 
 
 const controls = (page: Page) => page.locator('.interstitial-editor').evaluate(root => {
   const top = root.getBoundingClientRect().top;
-  return ['textarea', '.interstitial-resolution', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
+  return ['textarea', '.interstitial-upscale', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
     const rect = root.querySelector(selector)!.getBoundingClientRect(); return { top: rect.top - top, height: rect.height };
   });
 });

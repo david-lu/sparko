@@ -3,24 +3,29 @@ import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { assets } from '../project/assets';
 import { useAssetAvailability } from '../project/useAssetAvailability';
-import { previewFrames, type GenerationPreviewState, type GenerationPreviewAction, type InputPreview } from './generation-preview';
+import { previewFrames, previewOutput, type GenerationPreviewState, type GenerationPreviewAction, type InputPreview, type PreviewMode } from './generation-preview';
 
 export type GenerationPlayback = { pause: () => void; toggle: () => void };
-/** Both views share a playhead. Loading and missing inputs stay inside the player. */
+const modes: { value: PreviewMode; label: string; unavailable: string }[] = [
+  { value: 'input', label: 'Input', unavailable: '' },
+  { value: 'generated', label: 'Generated', unavailable: 'Generate a video to preview the result' },
+  { value: 'upscaled', label: 'Upscaled', unavailable: 'Upscale the generated video to 2K to preview it here' },
+];
+/** All views share a playhead. Loading and missing inputs stay inside the player. */
 export default function GenerationPlayer({ preview, input, onAction, onPlay, active, ref }: {
   preview: GenerationPreviewState; input?: InputPreview; onAction: (action: GenerationPreviewAction) => void; onPlay: () => void;
   active: boolean; ref?: Ref<GenerationPlayback>;
 }) {
-  const { frame: currentFrame, mode, playing, generated } = preview, length = previewFrames(preview);
+  const { frame: currentFrame, mode, playing } = preview, length = previewFrames(preview), output = previewOutput(preview), rendered = mode !== 'input';
   const [mediaState, setMediaState] = useState<{ url: string; loaded?: boolean; error?: string }>();
   const video = useRef<HTMLVideoElement>(null), playhead = useRef(currentFrame), dispatch = useRef(onAction);
   playhead.current = currentFrame; dispatch.current = onAction;
   useAssetAvailability([input?.assetId]);
-  const url = mode === 'generated' ? generated?.url : input && assets.url(input.assetId);
+  const url = rendered ? output?.url : input && assets.url(input.assetId);
   const loaded = mediaState?.url === url && mediaState?.loaded, error = mediaState?.url === url ? mediaState?.error : undefined;
   const image = mode === 'input' && input?.kind === 'image';
   useLayoutEffect(() => { setMediaState(undefined); }, [url, image]);
-  const sourceTime = mode === 'generated' ? currentFrame / TIMELINE_FPS : (input?.sourceFrame ?? 0) / TIMELINE_FPS;
+  const sourceTime = rendered ? currentFrame / TIMELINE_FPS : (input?.sourceFrame ?? 0) / TIMELINE_FPS;
   const loading = url ? !loaded && !error : mode === 'input' && !!input && !assets.error(input.assetId);
   const pause = () => { video.current?.pause(); dispatch.current({ type: 'pause' }); };
   const toggle = () => {
@@ -38,7 +43,7 @@ export default function GenerationPlayer({ preview, input, onAction, onPlay, act
   }, []);
   useEffect(() => {
     const media = video.current;
-    if (mode === 'generated' && url && media && media.readyState >= 1 && Number.isFinite(media.duration))
+    if (rendered && url && media && media.readyState >= 1 && Number.isFinite(media.duration))
       onAction({ type: 'metadata', url, frames: Math.max(1, Math.round(media.duration * TIMELINE_FPS)) });
   }, [mode, url, loaded]);
   useEffect(() => {
@@ -69,15 +74,17 @@ export default function GenerationPlayer({ preview, input, onAction, onPlay, act
   const gap = mode === 'input' && !input;
   return <section className="generation-player" aria-label="Generation preview">
     <div className="generation-player-modes" role="group" aria-label="Preview mode">
-      {(['input', 'generated'] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} disabled={value === 'generated' && !generated}
-        title={value === 'generated' && !generated ? 'Generate a video to preview the result' : undefined}
-        onClick={() => { pause(); onAction({ type: 'mode', mode: value }); }}>{value === 'input' ? 'Input' : 'Generated'}</button>)}
+      {modes.map(({ value, label, unavailable }) => {
+        const missing = value !== 'input' && !preview[value];
+        return <button key={value} type="button" aria-pressed={mode === value} disabled={missing} title={missing ? unavailable : undefined}
+          onClick={() => { pause(); onAction({ type: 'mode', mode: value }); }}>{label}</button>;
+      })}
     </div>
     <div className="generation-player-screen" data-empty={gap}>
       {url && (image ? <img key={url} src={url} alt={input?.label ?? 'Image keyframe'} onLoad={() => setMediaState({ url, loaded: true })} onError={() => { setMediaState({ url, error: 'Image unavailable' }); pause(); }}/>
         : <video key={url} ref={video} src={url} playsInline preload="auto" onLoadedMetadata={event => {
           const media = event.currentTarget;
-          if (mode === 'generated' && Number.isFinite(media.duration)) onAction({ type: 'metadata', url, frames: Math.max(1, Math.round(media.duration * TIMELINE_FPS)) });
+          if (rendered && Number.isFinite(media.duration)) onAction({ type: 'metadata', url, frames: Math.max(1, Math.round(media.duration * TIMELINE_FPS)) });
           media.currentTime = Math.min(sourceTime, Math.max(0, media.duration - 1 / TIMELINE_FPS)); setMediaState({ url, loaded: true });
         }} onError={() => { setMediaState({ url, error: 'Video unavailable' }); pause(); }}/>) }
       <span className="generation-player-status" role="status">{gap ? '' : error || (mode === 'input' && input && assets.error(input.assetId)) || (url ? loaded ? '' : 'Loading…' : input ? 'Loading…' : '')}</span>
@@ -87,7 +94,7 @@ export default function GenerationPlayer({ preview, input, onAction, onPlay, act
       <button type="button" className="icon-button" aria-label={playing ? 'Pause timeline' : 'Play timeline'} disabled={!active} onClick={toggle}>{playing ? <Pause size={17}/> : <Play size={17}/>}</button>
       <button type="button" className="icon-button" aria-label="Next frame" disabled={currentFrame >= length - 1} onClick={() => seek(currentFrame + 1)}><SkipForward size={15}/></button>
       <input type="range" aria-label="Generation timeline playhead" min={0} max={length - 1} step={1} value={currentFrame} onChange={event => seek(event.currentTarget.valueAsNumber)}/>
-      <time title={mode === 'generated' ? 'Saved video duration' : 'Input timeline duration'}>{(currentFrame / TIMELINE_FPS).toFixed(2)} / {(length / TIMELINE_FPS).toFixed(2)}s</time>
+      <time title={mode === 'upscaled' ? '2K video duration' : mode === 'generated' ? 'Saved video duration' : 'Input timeline duration'}>{(currentFrame / TIMELINE_FPS).toFixed(2)} / {(length / TIMELINE_FPS).toFixed(2)}s</time>
     </div>
   </section>;
 }

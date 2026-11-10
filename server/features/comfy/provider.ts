@@ -5,12 +5,12 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { GenerationEvent, GenerationJob } from '../../../shared/contracts.js';
 import { readServerEvents } from '../../../shared/server-events.js';
-import { COMFY_MODELS } from '../../../shared/constants.js';
+import { COMFY, COMFY_MODELS } from '../../../shared/constants.js';
 import { comfyBridgePlan, validateComfyResolution } from '../../../shared/comfy.js';
 import { HttpError } from '../../shared/http.js';
 import { ComfyClient, type ComfySocketFactory } from './client.js';
 import { readComfyNodeEvents } from './node-progress.js';
-import { bridgeWorkflow, type BridgeInput } from './workflow.js';
+import { bridgeWorkflow, upscaleWorkflow, type BridgeInput, type UpscaleInput, type Workflow } from './workflow.js';
 import { type MaskInjection, type GenerationResolution } from '../../../shared/interstitials.js';
 import { generationProgress, progressSchema } from './progress.js';
 import { IMAGE_REFERENCE } from '../../../shared/image-references.js';
@@ -26,11 +26,30 @@ export interface ComfyProvider {
   resolveLora(address: string): Promise<string>;
   check(maskInjection?: MaskInjection, resolution?: GenerationResolution, imageReferences?: boolean, imageGuides?: boolean, lora?: boolean, turbo?: boolean): Promise<ComfyReadiness>;
   submit(file: Blob | undefined, input: BridgeInput, images?: Blob[], keyframeImages?: Blob[]): Promise<GenerationJob>;
+  /** Checks the nodes and partner model used by an on-demand 2K pass, without a submission. */
+  checkUpscale(preservedFrames?: boolean): Promise<ComfyReadiness>;
+  /** Submits a saved native render for official 2K regeneration as its own Comfy job. */
+  upscale(file: Blob, input: UpscaleInput): Promise<GenerationJob>;
   status(requestId: string): Promise<GenerationJob>;
   events(requestId: string, signal: AbortSignal): AsyncIterable<GenerationEvent>;
   cancel(requestId: string): Promise<void>;
   assetUrl(assetId: string): Promise<string>;
 }
+
+type NodeCatalog = Record<string, { input?: { required?: Record<string, unknown[]> } }>;
+type ModelRequirement = [node: string, field: string, model: string];
+const regenerationModel: ModelRequirement = ['MinimaxHailuo03RegenerateNode', 'model', COMFY_MODELS.regeneration];
+function missingModel(nodes: NodeCatalog, models: ModelRequirement[]): ComfyReadiness | undefined {
+  for (const [node, field, model] of models) {
+    const definition = nodes[node].input?.required?.[field];
+    const values = Array.isArray(definition?.[0]) ? definition[0] : (definition?.[1] as { options?: unknown } | undefined)?.options;
+    // V3 DynamicCombo options carry a key plus their nested input schema.
+    const options = Array.isArray(values) ? values.map(value => typeof value === 'string' ? value : (value as {key?:string})?.key)
+      : values && typeof values === 'object' ? Object.keys(values) : undefined;
+    if (options && !options.includes(model)) return { ready: false, message: `Comfy is missing model ${model}.` };
+  }
+}
+const missingNodes = (nodes: NodeCatalog, graph: Workflow) => [...new Set(Object.values(graph).map(node => node.class_type))].filter(name => !nodes[name]);
 
 export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fetch = fetch, connect: ComfySocketFactory = url => new WebSocket(url)): ComfyProvider {
   const client = new ComfyClient(env, transport);
@@ -41,7 +60,7 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
     const key = `${resolution}:${imageReferences}:${imageGuides}:${lora}:${turbo}`, cached = checks.get(key);
     if (cached && Date.now() - cached.at < 60_000) return cached.promise;
     const promise = (async () => {
-      const nodes = await client.call<Record<string, { input?: { required?: Record<string, unknown[]> } }>>('/api/object_info', { signal: AbortSignal.timeout(15_000) });
+      const nodes = await client.call<NodeCatalog>('/api/object_info', { signal: AbortSignal.timeout(15_000) });
       const graph = bridgeWorkflow('preflight-asset', { before: 1.625, after: 1.625, mode: 'bridge', duration: 6, prompt: 'Check', width: 960, height: 544, hasAudio: true, resolution, turbo }, 0, undefined, imageReferences || imageGuides ? ['preflight-image'] : []);
       // The hard mask is also used when transitions or both references are off.
       const missing = [...new Set([...Object.values(graph).map(node => node.class_type), 'MVEx_FrameRangeMask', ...(imageGuides ? ['MiniMaxH3AddGuide'] : []), ...(lora ? ['LoraLoaderModelOnly'] : [])])].filter(name => !nodes[name]);
@@ -49,20 +68,30 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       if (turbo && !loraOptions(nodes.LoraLoaderModelOnly)?.includes(COMFY_MODELS.turboLora)) {
         return { ready: false, message: `Comfy is missing the H3 Turbo LoRA (${COMFY_MODELS.turboLora}). Turn off Turbo or add this model to your Comfy deployment.` };
       }
-      const models = [['UNETLoader', 'unet_name', COMFY_MODELS.diffusion], ['CLIPLoader', 'clip_name', COMFY_MODELS.textEncoder], ['VAELoader', 'vae_name', COMFY_MODELS.videoVae], ['VAELoader', 'vae_name', COMFY_MODELS.audioVae]];
-      if (resolution === '2k') models.push(['MinimaxHailuo03RegenerateNode', 'model', COMFY_MODELS.regeneration]);
-      for (const [node, field, model] of models) {
-        const definition = nodes[node].input?.required?.[field];
-        const values = Array.isArray(definition?.[0]) ? definition[0] : (definition?.[1] as { options?: unknown } | undefined)?.options;
-        // V3 DynamicCombo options carry a key plus their nested input schema.
-        const options = Array.isArray(values) ? values.map(value => typeof value === 'string' ? value : (value as {key?:string})?.key)
-          : values && typeof values === 'object' ? Object.keys(values) : undefined;
-        if (options && !options.includes(model)) return { ready: false, message: `Comfy is missing model ${model}.` };
-      }
-      return { ready: true };
+      const models: ModelRequirement[] = [['UNETLoader', 'unet_name', COMFY_MODELS.diffusion], ['CLIPLoader', 'clip_name', COMFY_MODELS.textEncoder], ['VAELoader', 'vae_name', COMFY_MODELS.videoVae], ['VAELoader', 'vae_name', COMFY_MODELS.audioVae]];
+      if (resolution === '2k') models.push(regenerationModel);
+      return missingModel(nodes, models) ?? { ready: true };
     })().catch(error => ({ ready: false, message: client.message(error instanceof Error ? error.message : error) }));
     checks.set(key, { promise, at: Date.now() });
     return promise;
+  };
+  const checkUpscale = (preservedFrames = false) => {
+    if (!client.configured) return Promise.resolve({ ready: false, message: 'Add COMFY_CLOUD_API_KEY to .env and restart the server.' });
+    const key = `upscale:${preservedFrames}`, cached = checks.get(key);
+    if (cached && Date.now() - cached.at < 60_000) return cached.promise;
+    const promise = (async (): Promise<ComfyReadiness> => {
+      const nodes = await client.call<NodeCatalog>('/api/object_info', { signal: AbortSignal.timeout(15_000) });
+      const missing = missingNodes(nodes, upscaleWorkflow('preflight-asset', { prompt: 'Check', frames: COMFY.minRegenerationFrames, preservedFrames: preservedFrames ? [0] : [] }));
+      if (missing.length) return { ready: false, message: `Comfy is missing required 2K nodes: ${missing.join(', ')}.` };
+      return missingModel(nodes, [regenerationModel]) ?? { ready: true };
+    })().catch(error => ({ ready: false, message: client.message(error instanceof Error ? error.message : error) }));
+    checks.set(key, { promise, at: Date.now() });
+    return promise;
+  };
+  const uploadVideo = async (file: Blob) => {
+    // Comfy reads multipart uploads sequentially: metadata must arrive before the file.
+    const body = new FormData(); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`); body.set('file', file, 'reference.mp4');
+    return z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body })).id;
   };
   const status = async (requestId: string): Promise<GenerationJob> => {
     const data = jobSchema.parse(await client.call(`/api/v2/jobs/${encodeURIComponent(id.parse(requestId))}`));
@@ -132,12 +161,10 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
       if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready.');
       const plan = comfyBridgePlan(input.before, input.after, input.duration, input.mode);
       validateComfyResolution(plan,input.resolution);
-      // Comfy reads multipart uploads sequentially: metadata must arrive before the file.
       let referenceAssetId: string | undefined;
       if (plan.prefixFrames || plan.suffixFrames || input.fullInput) {
         if (!file) throw new HttpError(400, 'Upload the connected reference footage.');
-        const body = new FormData(); body.set('content_type', 'video/mp4'); body.set('file_path', `sparko-${randomUUID()}.mp4`); body.set('file', file, 'reference.mp4');
-        referenceAssetId = z.object({ id }).parse(await client.call('/api/v2/assets', { method: 'POST', body })).id;
+        referenceAssetId = await uploadVideo(file);
       }
       const imageAssetIds: string[] = [];
       for (const image of [...images, ...keyframeImages]) {
@@ -150,6 +177,18 @@ export function createComfyProvider(env: NodeJS.ProcessEnv, transport: typeof fe
         // Partner credentials belong in per-job extra_data, never in the saved graph.
         body: JSON.stringify({ workflow, ...(input.resolution === '2k' ? {extra_data:{api_key_comfy_org:partnerKey}} : {}) }) }));
       return { requestId: job.id, status: 'IN_QUEUE', insertion: plan.insertion, seed };
+    },
+    checkUpscale,
+    async upscale(file, input) {
+      // Validate the graph and partner capability before uploading or paying for anything.
+      upscaleWorkflow('validation-video', input);
+      const readiness = await checkUpscale(!!input.preservedFrames?.length);
+      if (!readiness.ready) throw new HttpError(503, readiness.message || 'Comfy is not ready for 2K regeneration.');
+      const workflow = upscaleWorkflow(await uploadVideo(file), input);
+      // Never automatically retry a paid submission after an ambiguous network error.
+      const job = jobSchema.parse(await client.call('/api/v2/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },
+        body: JSON.stringify({ workflow, extra_data: { api_key_comfy_org: partnerKey } }) }));
+      return { requestId: job.id, status: 'IN_QUEUE' };
     },
     async cancel(requestId) {
       const path = `/api/v2/jobs/${encodeURIComponent(id.parse(requestId))}`;

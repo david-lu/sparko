@@ -589,14 +589,14 @@ describe('interstitial lifecycle', () => {
   });
   it('keeps edits during preparation, upload, queueing and loading separate from the submitted inputs', async () => {
     const id = add();
-    controller.edit(id,{resolution:'2k',seed:0});
+    controller.edit(id,{turbo:true,seed:0});
     const submitted = interstitialSettings(controller.getSnapshot().items[0]);
     const edited = new Set<string>();
     controller.subscribe(() => {
       const item = controller.getSnapshot().items[0];
       if (!item || edited.has(item.phase) || item.phase === 'draft') return;
       edited.add(item.phase);
-      controller.edit(id, { prompt: `Edited during ${item.phase}`, duration: 7.5, resolution:'native' });
+      controller.edit(id, { prompt: `Edited during ${item.phase}`, duration: 7.5, turbo:false });
     });
     vi.mocked(generateInterstitial).mockImplementation(async (item, _engine, _info, _signal, progress) => {
       expect(interstitialSettings(item)).toEqual(submitted);
@@ -615,7 +615,7 @@ describe('interstitial lifecycle', () => {
     // Opening a saved completed video must not block editing either.
     controller.edit(id, { prompt: 'Edited while reopening' });
     await vi.waitFor(() => expect(controller.getSnapshot().items[0].phase).toBe('ready'));
-    expect(loadInterstitials('source')[0]).toMatchObject({ prompt: 'Edited while reopening', resolution:'native', generationSettings: {...submitted,resolution:'2k'} });
+    expect(loadInterstitials('source')[0]).toMatchObject({ prompt: 'Edited while reopening', turbo:false, generationSettings: {...submitted,turbo:true} });
   });
   it('submits current edits after a download fails if they changed while the job was running', async () => {
     const id = add();

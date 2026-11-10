@@ -211,6 +211,21 @@ describe('portable project archives', () => {
     expect(await restored.assets.find(asset => asset.id === result.fullAssetId)!.blob.text()).toBe(await full.blob.text());
     await expect(packProject(snapshot, media, signal(), progress)).rejects.toThrow(/missing/);
   });
+  it.each([false, true])('exports and remaps the optional 2K video with its render, current or previous: %s', async previous => {
+    const upscaled = { id: crypto.randomUUID(), name: 'Finished 2K.mp4', blob: new Blob(['2k render'], { type: 'video/mp4' }) };
+    const snapshot = structuredClone(project), item = snapshot.interstitials[1];
+    item.result = { ...item.result!, upscaled: { assetId: upscaled.id, totalDuration: 9 } };
+    if (previous) { item.previousResult = item.result; item.result = undefined; item.phase = 'error'; }
+    expect(assetIds(snapshot)).toContain(upscaled.id);
+    // A transient 2K job is browser recovery state, not part of the exported document.
+    const packed = await packProject({ ...snapshot, interstitials: snapshot.interstitials.map(i => i.id === 'ready' ? { ...i, upscale: { phase: 'rendering', sourceAssetId: sceneId, requestId: 'running-2k-job' } } : i) }, [...media, upscaled], signal(), progress);
+    const restored = await unpackProject(packed, signal(), progress), restoredItem = restored.project.interstitials[1];
+    const result = previous ? restoredItem.previousResult! : restoredItem.result!;
+    expect(result.upscaled?.assetId).toBeTruthy(); expect(result.upscaled?.assetId).not.toBe(upscaled.id); expect(result.upscaled?.totalDuration).toBe(9);
+    expect(await restored.assets.find(asset => asset.id === result.upscaled!.assetId)!.blob.text()).toBe('2k render');
+    expect(restoredItem.upscale).toBeUndefined();
+    await expect(packProject(snapshot, media, signal(), progress)).rejects.toThrow(/missing/);
+  });
   it('preserves Comfy selection, submitted provider, and exact output boundaries', async () => {
     const snapshot = structuredClone(project);
     const item = snapshot.interstitials[0];
