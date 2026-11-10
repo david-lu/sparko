@@ -180,3 +180,37 @@ export function bridgeWorkflow(assetId: string | undefined, input: BridgeInput, 
   }
   return graph;
 }
+
+export type UpscaleInput = { prompt: string; frames: number; preservedFrames?: number[] };
+/** On-demand 2K pass for a finished native render. The official partner node sends
+ * the complete saved video (references included) and its exact prompt to MiniMax's
+ * /v2/video_regeneration API. It needs no H3 latents or text embeddings. */
+export function upscaleWorkflow(assetId: string, input: UpscaleInput): Workflow {
+  validateH3PromptLength(input.prompt);
+  const prompt = normalizeH3Prompt(input.prompt), frames = input.frames, preserved = [...new Set(input.preservedFrames ?? [])].sort((a, b) => a - b);
+  if (!Number.isInteger(frames) || frames > COMFY.maxFrames) throw new Error('H3 2K regeneration supports up to 362 frames.');
+  validateComfyResolution({ totalFrames: frames }, '2k');
+  if (preserved.length > MAX_VIDEO_KEYFRAMES || preserved.some(frame => !Number.isInteger(frame) || frame < 0 || frame >= frames)) throw new Error('Preserved frames must lie inside the video.');
+  const graph: Workflow = {};
+  const add = (id: string, class_type: string, inputs: Record<string, unknown>) => { graph[id] = { class_type, inputs }; return [id, 0]; };
+  // Zero width, height and cap keep the saved render's own dimensions and every frame.
+  const source = add('source_video', 'VHS_LoadVideoFFmpeg', { video: { __type: 'core/ASSET', info: { id: assetId } }, force_rate: TIMELINE_FPS,
+    custom_width: 0, custom_height: 0, frame_load_cap: 0, start_time: 0, format: 'None' });
+  const base = add('base_video', 'CreateVideo', { images: source, audio: ['source_video', 2], fps: TIMELINE_FPS });
+  const regenerated = add('regenerate_2k', 'MinimaxHailuo03RegenerateNode', { video: base, model: COMFY_MODELS.regeneration, 'model.prompt': prompt, 'model.resolution': '2K', watermark: false });
+  let finalVideo = regenerated;
+  if (preserved.length) {
+    // Exact-frame keyframes were spliced into the native render. Restore them from
+    // that render at the 2K size, as the single-job 2K path does.
+    let pixels = add('regenerated_components', 'GetVideoComponents', { video: regenerated });
+    const size = add('regenerated_size', 'GetImageSize', { image: pixels });
+    for (const [index, frame] of preserved.entries()) {
+      const native = add(`preserved_native_${index}`, 'ImageFromBatch', { image: source, batch_index: frame, length: 1 });
+      const image = add(`preserved_2k_${index}`, 'ImageScale', { image: native, upscale_method: 'lanczos', width: size, height: ['regenerated_size', 1], crop: 'center' });
+      pixels = replaceImageFrame(graph, `restore_2k_${index}`, pixels, image, frame, frames);
+    }
+    finalVideo = add('preserved_2k_video', 'CreateVideo', { images: pixels, audio: ['regenerated_components', 1], fps: ['regenerated_components', 2] });
+  }
+  add('output', 'SaveVideo', { video: finalVideo, filename_prefix: 'sparko/interstitial-2k', format: 'mp4', 'format.codec': 'auto' });
+  return graph;
+}

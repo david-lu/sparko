@@ -22,6 +22,7 @@ const text = z.string().max(50_000);
 const clipReferenceSchema = z.object({ kind: z.enum(['image','audio']).optional(), sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
 const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge', 'custom']).optional(), before: clipReferenceSchema.optional(), after: clipReferenceSchema.optional(), beforeClips: z.array(clipReferenceSchema).max(1000).optional(), afterClips: z.array(clipReferenceSchema).max(1000).optional() });
 const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(), prompt:z.string().max(8000).optional(), metadata: clipMetadataSchema.optional(),
+  upscaled: z.object({ assetId: z.uuid(), totalDuration: number.positive() }).optional(),
   fullRange: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
     .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid full video boundaries.').optional(),
   start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
@@ -184,7 +185,8 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
       before: input.before && remapClip(input.before), after: input.after && remapClip(input.after),
       beforeClips: input.beforeClips?.map(remapClip), afterClips: input.afterClips?.map(remapClip) } : undefined;
     const remapGeneration=(g:import('../../../shared/asset-generation').AssetGeneration)=>({...g,settings:remapAssetSettings(g.settings),submitted:g.submitted?remapAssetSettings(g.submitted):undefined,selectedAssetId:g.selectedAssetId?remap.get(g.selectedAssetId)!:undefined,versions:g.versions.map(v=>({...v,assetId:remap.get(v.assetId)!,settings:remapAssetSettings(v.settings)}))});
-    const remapResult=(result:z.infer<typeof resultSchema>)=>({...result,reference:remapReference(result.reference),assetId:remap.get(result.assetId)??result.assetId,fullAssetId:result.fullAssetId?remap.get(result.fullAssetId)??result.fullAssetId:undefined,url:`asset:${remap.get(result.assetId)??result.assetId}`});
+    const remapResult=(result:z.infer<typeof resultSchema>)=>({...result,reference:remapReference(result.reference),assetId:remap.get(result.assetId)??result.assetId,fullAssetId:result.fullAssetId?remap.get(result.fullAssetId)??result.fullAssetId:undefined,
+      upscaled:result.upscaled?{...result.upscaled,assetId:remap.get(result.upscaled.assetId)??result.upscaled.assetId}:undefined,url:`asset:${remap.get(result.assetId)??result.assetId}`});
     const assets: Asset[] = []; let read = 0;
     for (const asset of descriptions) {
       signal.throwIfAborted();
@@ -215,8 +217,8 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
         generationSettings: item.generationSettings ? remapSettings(item.generationSettings) : undefined,
         requestReference: remapReference(item.requestReference),
         phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase,
-        result: item.result ? { ...item.result, reference: remapReference(item.result.reference), assetId: remap.get(item.result.assetId)!, ...(item.result.fullAssetId ? { fullAssetId: remap.get(item.result.fullAssetId)! } : {}), url: `asset:${remap.get(item.result.assetId)}` } : undefined,
-        previousResult: item.previousResult ? { ...item.previousResult, reference: remapReference(item.previousResult.reference), assetId: remap.get(item.previousResult.assetId)!, ...(item.previousResult.fullAssetId ? { fullAssetId: remap.get(item.previousResult.fullAssetId)! } : {}), url: `asset:${remap.get(item.previousResult.assetId)}` } : undefined,
+        result: item.result ? { ...item.result, reference: remapReference(item.result.reference), assetId: remap.get(item.result.assetId)!, ...(item.result.fullAssetId ? { fullAssetId: remap.get(item.result.fullAssetId)! } : {}), ...(item.result.upscaled ? { upscaled: { ...item.result.upscaled, assetId: remap.get(item.result.upscaled.assetId)! } } : {}), url: `asset:${remap.get(item.result.assetId)}` } : undefined,
+        previousResult: item.previousResult ? { ...item.previousResult, reference: remapReference(item.previousResult.reference), assetId: remap.get(item.previousResult.assetId)!, ...(item.previousResult.fullAssetId ? { fullAssetId: remap.get(item.previousResult.fullAssetId)! } : {}), ...(item.previousResult.upscaled ? { upscaled: { ...item.previousResult.upscaled, assetId: remap.get(item.previousResult.upscaled.assetId)! } } : {}), url: `asset:${remap.get(item.previousResult.assetId)}` } : undefined,
       })),
     }, assets };
   } finally { await reader.close(); }

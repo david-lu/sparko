@@ -1,5 +1,6 @@
 import { timelineInputRangesSchema, validateInputRanges } from '../../../shared/generation-inputs.js';
-import { videoKeyframeInputsSchema, validateVideoKeyframeInputs } from '../../../shared/video-keyframes.js';
+import { MAX_VIDEO_KEYFRAMES, videoKeyframeInputsSchema, validateVideoKeyframeInputs } from '../../../shared/video-keyframes.js';
+import { upscaleWorkflow } from './workflow.js';
 import { generationSeedSchema } from '../../../shared/generation-seed.js';
 import express, { type Express } from 'express';
 import { H3_MODEL_ID, loraAddressSchema, loraStrengthSchema } from '../../../shared/loras.js';
@@ -64,6 +65,11 @@ const schema = z.object({
     videoMaskTransitionMs: value.videoMaskTransitionMs ?? maskTransitionMs ?? MASK_TRANSITION.defaultMs,
     maskInjection: normalizeMaskInjection(value.maskInjection, interpolateMiddle === 'true') }));
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
+const upscaleSchema = z.object({
+  prompt: z.string().transform(normalizeH3Prompt).pipe(z.string().min(1).max(H3_PROMPT_MAX_LENGTH, H3_PROMPT_LENGTH_ERROR).refine(value => !!value.trim(), 'This video has no saved prompt to regenerate at 2K.')),
+  preservedFrames: z.preprocess(value => { if (typeof value !== 'string' || value.length > 1000) return value; try { return JSON.parse(value); } catch { return value; } },
+    z.array(z.number().int().min(0).max(COMFY.maxFrames - 1)).max(MAX_VIDEO_KEYFRAMES).optional()),
+});
 
 export function addComfyRoutes(app: Express, providers: Providers, receive: UploadReceiver) {
   const requireComfy = requireProvider(providers.configured, 'comfy');
@@ -125,6 +131,33 @@ export function addComfyRoutes(app: Express, providers: Providers, receive: Uplo
     } finally { media.dispose(); }
     if (res.destroyed) return;
     const job = await provider().submit(file, { ...settings, ...dimensions, hasAudio }, ...imageArgs);
+    if (res.destroyed) { await provider().cancel(job.requestId).catch(() => undefined); return; }
+    res.status(202).json(job);
+  });
+  app.get('/api/comfy/upscales/status', authenticate, requireComfy, async (req, res) => {
+    res.json(await provider().checkUpscale(z.enum(['true', 'false']).optional().parse(req.query.preservedFrames) === 'true'));
+  });
+  app.post('/api/comfy/upscales', authenticate, requireComfy, ...receive('video'), async (req, res) => {
+    const { prompt, preservedFrames } = upscaleSchema.parse(req.body);
+    if (!req.file || req.file.mimetype !== 'video/mp4') throw new HttpError(400, 'Upload the generated MP4 to upscale.');
+    const file = await openAsBlob(req.file.path, { type: 'video/mp4' });
+    const media = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+    let frames: number;
+    try {
+      const video = await media.getPrimaryVideoTrack();
+      if (!video) throw new HttpError(400, 'The generated video has no video track.');
+      // Count the uploaded render's own frames; the client only names which frames to keep.
+      frames = Math.round(await media.computeDuration() * TIMELINE_FPS);
+      if (Math.abs((await video.computePacketStats(100)).averagePacketRate - TIMELINE_FPS) > 0.01) throw new HttpError(400, 'The generated video must be 24 fps.');
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(400, 'Unable to read the generated MP4.');
+    } finally { media.dispose(); }
+    const input = { prompt, frames, preservedFrames };
+    try { upscaleWorkflow('validation-video', input); }
+    catch (error) { throw new HttpError(400, (error as Error).message); }
+    if (res.destroyed) return;
+    const job = await provider().upscale(file, input);
     if (res.destroyed) { await provider().cancel(job.requestId).catch(() => undefined); return; }
     res.status(202).json(job);
   });

@@ -19,6 +19,7 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     for (const result of [item.result, item.previousResult]) {
       add(result?.assetId, owner, node ? 'Timeline generated footage' : 'Generated output');
       add(result?.fullAssetId, owner, 'Full generated output');
+      add(result?.upscaled?.assetId, owner, '2K upscaled output');
       for (const side of ['before', 'after'] as const) for (const ref of referenceClips(result?.reference, side)) add(ref.assetId, owner, `Rendered ${side === 'before' ? 'start' : 'end'} reference`);
     }
     for (const side of ['before', 'after'] as const) for (const ref of referenceClips(item.requestReference, side)) add(ref.assetId, owner, `Submitted ${side === 'before' ? 'start' : 'end'} reference`);
@@ -31,7 +32,7 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
   }
   const recordedOutputs = new Set([
     ...project.clipGenerations?.flatMap(g => g.versions.map(v => v.assetId)) ?? [],
-    ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId]),
+    ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.result?.upscaled?.assetId, item.previousResult?.assetId, item.previousResult?.fullAssetId, item.previousResult?.upscaled?.assetId]),
   ]);
   for (const asset of project.library ?? []) {
     if (!asset.generation || recordedOutputs.has(asset.assetId)) continue;

@@ -3,7 +3,7 @@ const openTimeline = (page: Page) => page.getByRole('button', { name: 'Edit gene
 const closeTimeline = (page: Page) => page.getByRole('button', { name: 'Close generation timeline', exact: true }).click();
 const layout = (page: Page, editor: boolean) => page.locator(editor ? '.generation-timeline-editor' : '.interstitial-editor').evaluate((root, editor) => {
   const top = root.getBoundingClientRect().top;
-  return (editor ? ['.generation-player', '.generation-timeline-toolbar', '.generation-timeline-scroll'] : ['.generation-timeline-summary', '.interstitial-resolution', 'button[type=submit]']).map(selector => {
+  return (editor ? ['.generation-player', '.generation-timeline-toolbar', '.generation-timeline-scroll'] : ['.generation-timeline-summary', '.interstitial-upscale', 'button[type=submit]']).map(selector => {
     const rect = root.querySelector(selector)!.getBoundingClientRect(); return { top: rect.top - top, height: rect.height };
   });
 }, editor);

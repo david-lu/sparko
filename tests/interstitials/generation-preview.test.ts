@@ -7,6 +7,17 @@ const initial = () => createGenerationPreview(226, 113, 'saved.mp4', 96);
 const apply = (...actions: GenerationPreviewAction[]) => actions.reduce(reduce, initial());
 
 describe('generation preview transport', () => {
+  it('shows the 2K video in its own Upscaled tab on the shared clock', () => {
+    expect(reduce(initial(), { type: 'mode', mode: 'upscaled' })).toMatchObject({ mode: 'input' });
+    let state = reduce(initial(), { type: 'configure', inputFrames: 226, generatedUrl: 'saved.mp4', generatedFrames: 96, upscaledUrl: '2k.mp4', upscaledFrames: 96 });
+    state = reduce(reduce(state, { type: 'mode', mode: 'upscaled' }), { type: 'seek', frame: 40 });
+    expect(state).toMatchObject({ mode: 'upscaled', frame: 40, generated: { url: 'saved.mp4' }, upscaled: { url: '2k.mp4', frames: 96 } });
+    // Each tab keeps its own measured length; the playhead stays put across tabs.
+    state = reduce(state, { type: 'metadata', url: '2k.mp4', frames: 95 });
+    expect(previewFrames(state)).toBe(95); expect(reduce(state, { type: 'mode', mode: 'generated' })).toMatchObject({ frame: 40, generated: { frames: 96 } });
+    // A replacement render has no 2K video yet, so the Upscaled tab falls back to Input.
+    expect(reduce(state, { type: 'configure', inputFrames: 226, generatedUrl: 'new.mp4', generatedFrames: 96 })).toMatchObject({ mode: 'input', upscaled: undefined });
+  });
   it('starts paused in Input even when a saved result exists', () => {
     expect(initial()).toMatchObject({ mode: 'input', frame: 113, playing: false });
     expect(previewFrames(initial())).toBe(226);

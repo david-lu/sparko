@@ -21,6 +21,7 @@ export function projectContent(project: Project, target: 'file' | 'browser' = 'f
         timelineVideos: item.timelineVideos?.length ? item.timelineVideos : undefined,
         generationSettings: item.generationSettings && interstitialSettings(item.generationSettings),
         progress: undefined, progressDetails: undefined, queuePosition: undefined,
+        upscale: item.upscale && { ...item.upscale, progress: undefined, progressDetails: undefined, queuePosition: undefined },
         // Reopening a stored render checks playback without changing the document.
         // Browser recovery still persists every phase transition, including validation finishing.
         phase: revalidating ? 'ready' : item.phase,

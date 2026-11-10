@@ -48,6 +48,6 @@ export const assetIds = (project: Project) => [...new Set([project.source.assetI
   ...project.storyFlow?.nodes.flatMap(node => node.source ? [node.source.assetId,node.source.originalAssetId] : []) ?? [],
   ...project.storyFlow?.templates.flatMap(t => t.nodes.flatMap(node => node.source ? [node.source.assetId,node.source.originalAssetId] : [])) ?? [],
   ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId)),
-  ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId,
+  ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.result?.upscaled?.assetId, item.previousResult?.assetId, item.previousResult?.fullAssetId, item.previousResult?.upscaled?.assetId,
     ...[item, item.generationSettings].flatMap(settings => [...(settings?.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...videoAssets(settings ?? {}, 'start').map(r => r.assetId), ...videoAssets(settings ?? {}, 'end').map(r => r.assetId), ...settings?.imageReferences?.map(image => image.assetId) ?? [], ...settings?.keyframes?.flatMap(keyframe => keyframe.image ? [keyframe.image.assetId] : []) ?? []]),
     ...[item.result?.reference, item.previousResult?.reference, item.requestReference].flatMap(input => [...referenceClips(input, 'before'), ...referenceClips(input, 'after')].map(r => r.assetId))])].filter((id): id is string => !!id && !project.deletedAssetIds?.includes(id)))];

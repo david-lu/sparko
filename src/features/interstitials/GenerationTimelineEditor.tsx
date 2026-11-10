@@ -18,9 +18,9 @@ export default function GenerationTimelineEditor({ selected, controller, info, p
   minDuration: number; workspace?: boolean; onPreviewPlay: () => void; onImagesBusyChange?: (busy: boolean) => void;
 }) {
   const dependency = controller.dependency(selected.id), method = normalizeGenerationMethod(selected.method), currentResult = playableResult(selected);
-  const resultId = currentResult?.fullAssetId ?? currentResult?.assetId;
-  useAssetAvailability([resultId, dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId]);
-  const fullVideoUrl = resultId ? assets.url(resultId) : undefined;
+  const resultId = currentResult?.fullAssetId ?? currentResult?.assetId, upscaled = currentResult?.upscaled;
+  useAssetAvailability([resultId, upscaled?.assetId, dependency?.reference?.before?.assetId, dependency?.reference?.after?.assetId]);
+  const fullVideoUrl = resultId ? assets.url(resultId) : undefined, upscaledUrl = upscaled ? assets.url(upscaled.assetId) : undefined;
   let comfyPlan: ReturnType<typeof comfyReferenceRange>['plan'] | undefined;
   try {
     const timing = dependency?.reference && referenceTiming(selected, dependency.reference);
@@ -42,7 +42,8 @@ export default function GenerationTimelineEditor({ selected, controller, info, p
       ...(saved.endImageIndex !== undefined && endImageIndex === undefined ? { endReferenceType: 'none' } : {}) });
   }} />;
 
-  return <GenerationTimeline key={selected.id} itemId={selected.id} workspace={workspace} generatedUrl={fullVideoUrl} generatedFrames={currentResult ? Math.round((currentResult.fullRange?.totalDuration ?? currentResult.totalDuration) * TIMELINE_FPS) : undefined} item={selected} projects={projects} reference={dependency?.reference}
+  return <GenerationTimeline key={selected.id} itemId={selected.id} workspace={workspace} generatedUrl={fullVideoUrl} generatedFrames={currentResult ? Math.round((currentResult.fullRange?.totalDuration ?? currentResult.totalDuration) * TIMELINE_FPS) : undefined}
+        upscaledUrl={upscaledUrl} upscaledFrames={upscaled ? Math.round(upscaled.totalDuration * TIMELINE_FPS) : undefined} item={selected} projects={projects} reference={dependency?.reference}
         prefixFrames={comfyPlan?.prefixFrames ?? (selected.useInputReference === false ? 0 : Math.round(selected.start_range * TIMELINE_FPS))}
         middleFrames={comfyPlan?.middleFrames ?? Math.round(selected.duration * TIMELINE_FPS)}
         suffixFrames={comfyPlan?.suffixFrames ?? (method === 'comfy-extend' || selected.useOutputReference === false ? 0 : Math.round(selected.end_range * TIMELINE_FPS))}

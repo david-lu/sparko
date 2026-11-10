@@ -203,7 +203,7 @@ for (const width of [1440, 390, 320]) test(`Turbo persists and keeps video contr
   await turbo.check();
   const controls = () => page.locator('.interstitial-editor').evaluate(el => {
     const top = el.getBoundingClientRect().top;
-    return ['.generation-lora select', '.generation-turbo', 'textarea', '.interstitial-resolution', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
+    return ['.generation-lora select', '.generation-turbo', 'textarea', '.interstitial-upscale', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
       const rect = el.querySelector(selector)!.getBoundingClientRect(); return { top: rect.top - top, height: rect.height, width: rect.width };
     });
   });

@@ -2,15 +2,16 @@ import { TIMELINE_FPS } from '../../../shared/constants';
 import { imagePreview } from '../../media/imagePreview';
 import { sampleFrame, type MediaSource } from '../../media/media';
 import { assets } from '../project/assets';
-import type { GenerationPreviewState, InputPreview } from './generation-preview';
+import { previewOutput, type GenerationPreviewState, type InputPreview } from './generation-preview';
 
 /** Decode the preview's exact source/frame without touching either player's transport. */
 export async function captureGenerationPromptFrame(preview: GenerationPreviewState, input: InputPreview | undefined, signal: AbortSignal): Promise<string | undefined> {
   signal.throwIfAborted();
   let source: MediaSource, frame: number;
-  if (preview.mode === 'generated') {
-    if (!preview.generated) return undefined;
-    source = { id: 'generated-preview', name: 'Generated preview', url: preview.generated.url };
+  if (preview.mode !== 'input') {
+    const output = previewOutput(preview);
+    if (!output) return undefined;
+    source = { id: `${preview.mode}-preview`, name: preview.mode === 'upscaled' ? '2K preview' : 'Generated preview', url: output.url };
     frame = preview.frame;
   } else {
     // A gap or audio-only input has no visual frame. References still accompany

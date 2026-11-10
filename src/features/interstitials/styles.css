@@ -58,12 +58,17 @@
 .clip-status-badge[data-status=generating] svg{animation:clip-status-spin 1.4s linear infinite}
 @keyframes clip-status-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.clip-status-badge[data-status=generating] svg{animation:none}}
-.interstitial-resolution .hint{min-height:3em;line-height:1.5}
+.field.interstitial-upscale{display:block;margin:8px 0 0}
+.interstitial-upscale-actions{display:flex;align-items:center;gap:6px;min-width:0}
+.interstitial-upscale-actions>.button{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.interstitial-upscale-secondary{flex:none}.interstitial-upscale-secondary[data-visible=false]{visibility:hidden}
+/* Two reserved lines in every state, so status and errors never move the controls below. */
+.interstitial-upscale-status{height:3em;line-height:1.5;margin:4px 0 0;overflow:auto;overflow-wrap:anywhere}
+.interstitial-upscale-status[data-error]{color:var(--error,#f28b82)}
 .generation-seed-controls{display:flex;align-items:center;gap:8px;min-width:0}
 .generation-seed-controls select{flex:1;min-width:0}
 .generation-seed-controls .button{flex:none}
 .generation-seed input{width:100%;min-width:0;font-family:var(--mono)}
-.interstitial-resolution .interstitial-option{flex-basis:100%;margin-bottom:0}
 .interstitial-editor .prompt-character-count{display:block;min-height:16px;line-height:16px;margin:0;text-align:right;font-variant-numeric:tabular-nums}
 
 .field.image-references{display:block}.image-references>input[hidden]{display:none}.image-reference-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.image-reference-heading>span{font-size:11px}.image-reference-heading small{color:var(--muted);margin-left:4px}.image-reference-heading>.button{width:106px;flex-shrink:0;white-space:nowrap}.image-reference-list{height:108px;overflow:auto;margin:8px 0 0;padding:0;list-style:none;border:1px solid var(--line);border-radius:5px}.image-reference-list:empty::before{content:'Drop images from Library or files here';display:grid;place-items:center;height:100%;color:var(--muted);font-size:11px}.image-reference-list li{display:flex;align-items:center;gap:8px;padding:5px;min-width:0;height:52px;box-sizing:border-box}.image-reference-thumb{width:48px;height:40px;flex-shrink:0;background:var(--surface);border-radius:3px;overflow:hidden}.image-reference-thumb img{width:100%;height:100%;object-fit:contain}.image-reference-list li>span:not(.content-issues){min-width:0;flex:1;display:grid;gap:3px}.image-reference-list strong{font-size:11px;font-weight:500}.image-reference-list small{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.image-reference-feedback{height:32px;overflow:auto;color:var(--error,#f28b82);font-size:11px;line-height:16px;margin-top:4px;overflow-wrap:anywhere}

@@ -14,7 +14,7 @@ import { generationTimelineSegments, timelineSeconds } from './generation-timeli
 import './generation-timeline.css';
 import { enabledImageReferences } from '../../../shared/image-references';
 import GenerationPlayer, { type GenerationPlayback } from './GenerationPlayer';
-import { createGenerationPreview, generationPreviewReducer, generationEndpointImages, generationInputAtFrame, previewFrames, previewKeyboardFrame } from './generation-preview';
+import { createGenerationPreview, generationPreviewReducer, generationEndpointImages, generationInputAtFrame, previewFrames, previewKeyboardFrame, previewOutput } from './generation-preview';
 import TimelineVideoProperties from './TimelineVideoProperties';
 import { inputMaskCurve, inputMaskStrength, h3MaskGroups } from '../../../shared/generation-inputs';
 import { validateTimelineVideos } from '../../../shared/video-references';
@@ -28,7 +28,7 @@ import { captureGenerationPromptFrame } from './generation-prompt-frame';
 type Selection = 'references' | 'frames' | 'videos' | MaskChannel;
 type ImageTarget = { kind: 'keyframe'; id: string } | { kind: 'endpoint'; side: 'start' | 'end' };
 type Props = {
-  itemId: string; workspace?: boolean; generatedUrl?: string; generatedFrames?: number; item: InterstitialSettings; projects?: ProjectController; reference?: GenerationReference;
+  itemId: string; workspace?: boolean; generatedUrl?: string; generatedFrames?: number; upscaledUrl?: string; upscaledFrames?: number; item: InterstitialSettings; projects?: ProjectController; reference?: GenerationReference;
   prefixFrames: number; middleFrames: number; suffixFrames: number;
   videoMs: number; audioMs: number; imageControls?: ReactNode; durationControl: ReactNode;
   onChange: (patch: Partial<InterstitialSettings>) => void;
@@ -54,10 +54,11 @@ export default function GenerationTimeline(props: Props) {
   const [inline, setInline] = useState(false);
   const expanded = props.workspace || inline;
   const open = () => { if (workspace) workspace.open(props.itemId); else setInline(true); };
-  const [preview, dispatchPreview] = useReducer(generationPreviewReducer, undefined, () => createGenerationPreview(inputFrames, prefixFrames + Math.floor(middleFrames / 2), props.generatedUrl, props.generatedFrames));
+  const [preview, dispatchPreview] = useReducer(generationPreviewReducer, undefined, () => createGenerationPreview(inputFrames, prefixFrames + Math.floor(middleFrames / 2), props.generatedUrl, props.generatedFrames, props.upscaledUrl, props.upscaledFrames));
   const { frame: cursorFrame, mode: previewMode } = preview, totalFrames = previewFrames(preview);
   const setCursorFrame = (frame: number) => dispatchPreview({ type: 'seek', frame });
-  useLayoutEffect(() => { dispatchPreview({ type: 'configure', inputFrames, generatedUrl: props.generatedUrl, generatedFrames: props.generatedFrames }); }, [inputFrames, props.generatedUrl, props.generatedFrames]);
+  useLayoutEffect(() => { dispatchPreview({ type: 'configure', inputFrames, generatedUrl: props.generatedUrl, generatedFrames: props.generatedFrames, upscaledUrl: props.upscaledUrl, upscaledFrames: props.upscaledFrames }); },
+    [inputFrames, props.generatedUrl, props.generatedFrames, props.upscaledUrl, props.upscaledFrames]);
   useLayoutEffect(() => { dispatchPreview({ type: 'pause' }); }, [reference, item.keyframes, item.timelineVideos, item.imageReferences, item.startImageIndex, item.endImageIndex, item.useInputReference, item.useOutputReference]);
   const playback = useRef<GenerationPlayback>(null), tracks = useRef<HTMLDivElement>(null);
   const onChange: Props['onChange'] = patch => { playback.current?.pause(); props.onChange(patch); };
@@ -196,7 +197,8 @@ export default function GenerationTimeline(props: Props) {
   useLayoutEffect(() => {
     if (expanded) return workspace?.registerFrameCapture(signal => captureGenerationPromptFrame(preview, previewInput, signal));
   }, [expanded, workspace, preview, previewInput]);
-  const waveformClips: WaveformClip[] = previewMode === 'generated' ? (preview.generated ? [{ url: preview.generated.url, sourceFrame: 0, startFrame: 0, frames: totalFrames, label: 'Generated video' }] : [])
+  const output = previewOutput(preview);
+  const waveformClips: WaveformClip[] = previewMode !== 'input' ? (output ? [{ url: output.url, sourceFrame: 0, startFrame: 0, frames: totalFrames, label: previewMode === 'upscaled' ? '2K video' : 'Generated video' }] : [])
     : [...segments.flatMap(segment => segment.clip && segment.clip.kind !== 'image' && !segment.held ? [{ assetId: segment.clip.assetId, sourceFrame: segment.clip.inFrame, startFrame: segment.startFrame, frames: segment.endFrame - segment.startFrame, label: nameFor(segment.clip.assetId) ?? 'Reference video' }] : []),
       ...videos.flatMap(video => video.enabled && video.video && video.frame < middleFrames ? [{ assetId: video.video.assetId, sourceFrame: video.video.inFrame, startFrame: prefixFrames + video.frame, frames: Math.min(video.video.outFrame - video.video.inFrame, middleFrames - video.frame), label: video.video.name }] : [])];
   const drop = useGenerationDrop({ active: expanded && !isMask, projects, item, prefix: prefixFrames, middle: middleFrames, total: totalFrames, onChange, onKeyframesChange, onFrame: frame => seekTo(frame, 'input'),
@@ -420,7 +422,7 @@ export default function GenerationTimeline(props: Props) {
             if (next !== undefined) { event.preventDefault(); event.stopPropagation(); seekTo(next); }
           }}>
           {expanded && <GenerationWaveform clips={waveformClips} frames={totalFrames}/>}
-          <span className="generation-lane-label">{previewMode === 'generated' ? 'Generated' : 'Input'} audio</span>
+          <span className="generation-lane-label">{previewMode === 'upscaled' ? '2K' : previewMode === 'generated' ? 'Generated' : 'Input'} audio</span>
         </div>
         <div className="generation-timeline-lines" aria-hidden="true">
           {[prefixFrames, prefixFrames + middleFrames].filter(frame => frame > 0 && frame < totalFrames).map(frame => <i className="generation-window-line" key={frame} style={{ left: percent(frame) }}/>)}

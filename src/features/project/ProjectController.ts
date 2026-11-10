@@ -405,7 +405,7 @@ export class ProjectController {
     }
     const subtitle = project.subtitle && !project.deletedAssetIds?.includes(project.subtitle.assetId) ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
     // Restore retained renders before publishing the timeline, including failed/cancelled retries.
-    await Promise.all([...new Set([...project.storyFlow?.nodes.flatMap(n=>n.source?[n.source.assetId]:[])??[],...project.storyFlow?.templates.flatMap(t=>t.nodes.flatMap(n=>n.source?[n.source.assetId]:[]))??[],...project.interstitials.flatMap(item => [item.previousResult?.assetId, item.previousResult?.fullAssetId, item.result?.assetId, item.result?.fullAssetId]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
+    await Promise.all([...new Set([...project.storyFlow?.nodes.flatMap(n=>n.source?[n.source.assetId]:[])??[],...project.storyFlow?.templates.flatMap(t=>t.nodes.flatMap(n=>n.source?[n.source.assetId]:[]))??[],...project.interstitials.flatMap(item => [item.previousResult?.assetId, item.previousResult?.fullAssetId, item.previousResult?.upscaled?.assetId, item.result?.assetId, item.result?.fullAssetId, item.result?.upscaled?.assetId]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
       .filter((id): id is string => !!id && !project.deletedAssetIds?.includes(id)))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
@@ -478,7 +478,7 @@ export class ProjectController {
       originalAssetId: restoredOriginal ? undefined : project.source.originalAssetId ?? (working !== original ? original.id : undefined) }, updatedAt: Date.now() }, pendingAssets };
   }
   private async prepareGenerated(project: Project, pendingAssets: Asset[], signal: AbortSignal) {
-    const generated = [...new Set([...(project.library ?? []).filter(item => item.kind === 'generated').map(item => item.assetId), ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId]),
+    const generated = [...new Set([...(project.library ?? []).filter(item => item.kind === 'generated').map(item => item.assetId), ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.result?.upscaled?.assetId, item.previousResult?.assetId, item.previousResult?.fullAssetId, item.previousResult?.upscaled?.assetId]),
       ...projectFlows(project).flatMap(flow => flow.scenes.filter(scene => !scene.draft).map(scene => scene.clip.assetId))])]
       .filter((id): id is string => !!id && !project.deletedAssetIds?.includes(id) && id !== project.source.assetId && id !== project.source.originalAssetId);
     if (!generated.length) return;
