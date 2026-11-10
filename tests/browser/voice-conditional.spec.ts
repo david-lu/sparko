@@ -68,10 +68,11 @@ async function judgeWith(page: Page, decide: (request: Judged) => string | null,
   });
   return requests;
 }
+const indicator = (page: Page) => page.locator('.voice-answer-indicator');
+/** Waits for the microphone to open on its own, checks the live badge, then speaks. Returns the control's box while listening. */
 async function answer(page: Page) {
-  const controls = page.getByRole('group', { name: 'Choose an answer' });
-  await controls.getByRole('button', { name: 'Answer out loud: Tap to talk', exact: true }).click();
-  await expect(controls.getByRole('button', { name: 'Answer out loud: Listening…', exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(indicator(page)).toHaveAttribute('data-state', 'listening', { timeout: 30000 });
+  await expect(indicator(page)).toHaveText('Listening…');
   // The live-microphone badge rests at the top of the video, apart from the answer control.
   const cue = page.locator('.player-listening-cue');
   await expect(cue).toBeVisible();
@@ -82,32 +83,28 @@ async function answer(page: Page) {
   await page.evaluate(() => window.voiceTest.play('/test-speech.wav'));
   return listening;
 }
-// Measure after the entry animation, which scales the button while it pops in.
+// Measure after the entry animation, which scales the control while it pops in.
 const box = async (page: Page) => {
-  const button = page.locator('.voice-answer-button');
-  await button.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
-  return (await button.boundingBox())!;
+  await indicator(page).evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
+  return (await indicator(page).boundingBox())!;
 };
 
-test('a voice conditional listens, keeps its layout while judging, and follows the matched condition', async ({ page }) => {
+test('a voice conditional listens on its own, keeps its layout while judging, and follows the matched condition', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   let release!: () => void;
   const requests = await judgeWith(page, request => request.conditions[0].id, new Promise<void>(resolve => { release = resolve; }));
   const { celebrate } = await openVoiceQuestion(page);
+  // Nothing to tap: no choice buttons and no talk button.
   const controls = page.getByRole('group', { name: 'Choose an answer' });
-  await expect(controls.getByRole('button', { name: /^Choose / })).toHaveCount(0);
-  await expect(controls.getByRole('button', { name: 'Answer out loud: Tap to talk', exact: true })).toBeVisible();
-  const idle = await box(page);
+  await expect(controls.getByRole('button')).toHaveCount(0);
+  const listening = await answer(page);
+  await expect(indicator(page)).toHaveText('Thinking…', { timeout: 30000 });
+  await expect(indicator(page)).toHaveAttribute('aria-busy', 'true');
   await expect(page.locator('.player-listening-cue')).toHaveCount(0);
-  expect(await answer(page)).toEqual(idle);
-  const thinking = controls.getByRole('button', { name: 'Answer out loud: Thinking…', exact: true });
-  await expect(thinking).toBeVisible({ timeout: 30000 });
-  await expect(thinking).toHaveAttribute('aria-busy', 'true');
-  await expect(page.locator('.player-listening-cue')).toHaveCount(0);
-  expect(await box(page)).toEqual(idle);
+  expect(await box(page)).toEqual(listening);
   await page.screenshot({ path: 'test-results/voice-conditional-thinking.png' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(thinking).toBeVisible();
+  await expect(indicator(page)).toBeVisible();
   const narrow = await box(page);
   expect(narrow.x).toBeGreaterThanOrEqual(0); expect(narrow.x + narrow.width).toBeLessThanOrEqual(390);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -120,8 +117,8 @@ test('a voice conditional listens, keeps its layout while judging, and follows t
   expect(requests[0].question).toBe('Wait for the viewer');
   expect(requests[0].bytes.toString('ascii', 0, 4)).toBe('RIFF'); expect(requests[0].bytes.readUInt32LE(24)).toBe(16000);
   release();
-  await expect(controls.getByRole('button', { name: 'Answer out loud: Got it!', exact: true })).toBeVisible();
-  expect(await box(page)).toEqual(idle);
+  await expect(indicator(page)).toHaveText('Got it!');
+  expect(await box(page)).toEqual(listening);
   await expect(page.locator(`[data-node-id="${celebrate.id}"] .story-playhead`)).toBeVisible({ timeout: 15000 });
   expect(errors).toEqual([]);
 });
@@ -130,15 +127,27 @@ test('a voice answer that matches no condition plays the default', async ({ page
   await judgeWith(page, () => null);
   const { encourage } = await openVoiceQuestion(page);
   await answer(page);
-  await expect(page.getByRole('button', { name: 'Answer out loud: Got it!', exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(indicator(page)).toHaveText('Got it!', { timeout: 30000 });
   await expect(page.locator(`[data-node-id="${encourage.id}"] .story-playhead`)).toBeVisible({ timeout: 15000 });
 });
 
-test('a voice conditional offers buttons when the microphone is unavailable', async ({ page }) => {
+test('a failed check listens again on its own, and repeated failures fall back to buttons', async ({ page }) => {
+  let calls = 0;
+  await page.route('**/api/voice/choice', async route => { calls++; await route.fulfill({ status: 429, json: { error: 'Hume is busy. Wait a moment and try again.' } }); });
   await openVoiceQuestion(page);
-  await page.evaluate(() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Denied', 'NotAllowedError'); }; });
-  await page.getByRole('button', { name: 'Answer out loud: Tap to talk', exact: true }).click();
+  await answer(page);
+  await expect(indicator(page)).toHaveAttribute('data-state', 'listening', { timeout: 30000 });
+  await expect(page.locator('.player-voice-status')).toHaveText('Hume is busy. Wait a moment and try again.');
+  await page.evaluate(() => window.voiceTest.play('/test-speech.wav'));
+  await expect(page.getByRole('button', { name: 'Choose Not yet', exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(indicator(page)).toHaveCount(0);
+  expect(calls).toBe(2);
+});
+
+test('a voice conditional offers buttons when the microphone is unavailable', async ({ page }) => {
+  await page.addInitScript(() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Denied', 'NotAllowedError'); }; });
+  await openVoiceQuestion(page);
   await expect(page.getByRole('button', { name: 'Choose Not yet', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Choose an answer' }).getByRole('button', { name: /^Choose / })).toHaveCount(2);
-  await expect(page.locator('.voice-answer-button')).toHaveCount(0);
+  await expect(indicator(page)).toHaveCount(0);
 });

@@ -20,7 +20,7 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   const interaction = idleId ? interactionFor(value.flow, idleId) : null;
   const question = interaction?.question ?? '';
   const voice = interaction?.input === 'voice';
-  // Scenes whose microphone failed fall back to buttons until the scene is entered again.
+  // Scenes where voice is unavailable fall back to buttons until the scene is entered again.
   const [noMicScene, setNoMicScene] = useState<SceneId | null>(null);
   const [micState, setMicState] = useState<ListeningState>(null);
   const questionId = useId();
