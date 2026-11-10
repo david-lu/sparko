@@ -137,8 +137,11 @@ test('a failed check listens again on its own, and repeated failures fall back t
   await page.route('**/api/voice/choice', async route => { calls++; await route.fulfill({ status: 429, json: { error: 'Hume is busy. Wait a moment and try again.' } }); });
   await openVoiceQuestion(page);
   await answer(page);
-  await expect(cue(page)).toHaveAttribute('data-state', 'listening', { timeout: 30000 });
-  await expect(cue(page)).toHaveText('Hume is busy. Wait a moment and try again.');
+  // The cue still reads "listening" until the speech is detected, so wait for the error itself: it appears only after
+  // the first check fails. Then the mic must be listening again before the second answer is played.
+  await expect(cue(page)).toHaveText('Hume is busy. Wait a moment and try again.', { timeout: 30000 });
+  await expect(cue(page)).toHaveAttribute('data-state', 'listening');
+  expect(calls).toBe(1);
   await page.evaluate(() => window.voiceTest.play('/test-speech.wav'));
   await expect(page.getByRole('button', { name: 'Choose Not yet', exact: true })).toBeVisible({ timeout: 30000 });
   await expect(cue(page)).toHaveCount(0);
