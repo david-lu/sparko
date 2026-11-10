@@ -95,16 +95,15 @@ test('a voice conditional listens on its own, shows only a corner badge, and fol
   let release!: () => void;
   const requests = await judgeWith(page, request => request.conditions[0].id, new Promise<void>(resolve => { release = resolve; }));
   const { celebrate } = await openVoiceQuestion(page);
-  // Nothing to tap and no large controls: only the question stays in the answer area.
-  const controls = page.getByRole('group', { name: 'Choose an answer' }), question = page.locator('.player-branch-question');
-  await expect(controls.getByRole('button')).toHaveCount(0);
+  // Nothing to tap, no large controls and no text over the video: only the corner badge.
+  await expect(page.getByRole('group', { name: 'Choose an answer' })).toHaveCount(0);
   await expect(page.locator('.video-stage .choice-button')).toHaveCount(0);
-  const before = await box(question);
+  await expect(page.locator('.player-branch-question')).toHaveCount(0);
+  await expect(page.locator('.video-stage').getByText('Wait for the viewer')).toHaveCount(0);
   await answer(page);
   await expect(cue(page)).toHaveText('Thinking…', { timeout: 30000 });
   await expect(cue(page)).toHaveAttribute('aria-busy', 'true');
   await expectCornerBadge(page);
-  expect(await box(question)).toEqual(before);
   await page.screenshot({ path: 'test-results/voice-conditional-thinking.png' });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(cue(page)).toBeVisible();
@@ -116,7 +115,8 @@ test('a voice conditional listens on its own, shows only a corner badge, and fol
   // Only the non-default condition is judged, as its plain-language description.
   expect(requests).toHaveLength(1);
   expect(requests[0].conditions.map(c => c.description)).toEqual(['The viewer says something similar to "trees breathe air"']);
-  expect(requests[0].question).toBe('Wait for the viewer');
+  // The clip's name is not a question, so none is sent.
+  expect(requests[0].question).toBeUndefined();
   expect(requests[0].bytes.toString('ascii', 0, 4)).toBe('RIFF'); expect(requests[0].bytes.readUInt32LE(24)).toBe(16000);
   release();
   await expect(cue(page)).toHaveText('Got it');

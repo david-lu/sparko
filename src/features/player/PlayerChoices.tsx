@@ -75,20 +75,25 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
   }, [selectedId, sceneId, phase]);
 
   if (!presentation || !presentation.choices.length || presentation.phase === 'done') return null;
-  const listening = presentation.voice && noMicScene !== presentation.sceneId;
-  // Voice conditions are instructions for Hume, not viewer-facing labels, so no choice buttons are shown.
-  const shown = listening ? [] : presentation.choices;
   const choose = (choice: Choice) => {
     setPresentation({ ...presentation, selectedId: choice.id, phase: 'dismissing' });
     value.onBranch(presentation.sceneId, choice.outcome);
   };
-  return <>
-  <div key={presentation.sceneId} ref={controls} className="player-branch-controls" role="group" aria-label="Choose an answer"
-    aria-describedby={presentation.question.trim() ? questionId : undefined} data-input={listening ? 'voice' : 'button'}
-    data-phase={presentation.phase} style={{ '--choice-columns': listening ? 1 : Math.min(3, presentation.choices.length), '--choice-exit-duration': `${EXIT_MS}ms` } as CSSProperties}
+  // Voice conditions are instructions for Hume, not viewer-facing labels, so voice shows only a corner badge, never buttons.
+  if (presentation.voice && noMicScene !== presentation.sceneId) {
+    return <PlayerVoiceAnswer key={presentation.sceneId} context={voiceContext} chosen={!!selectedId} leaving={presentation.phase === 'exiting'}
+      onUnavailable={() => setNoMicScene(presentation.sceneId)} onAnswer={answerId => {
+        const choice = presentation.choices.find(choice => choice.outcome === (answerId ?? fallbackId));
+        if (!choice) return false;
+        choose(choice); return true;
+      }} />;
+  }
+  return <div key={presentation.sceneId} ref={controls} className="player-branch-controls" role="group" aria-label="Choose an answer"
+    aria-describedby={presentation.question.trim() ? questionId : undefined}
+    data-phase={presentation.phase} style={{ '--choice-columns': Math.min(3, presentation.choices.length), '--choice-exit-duration': `${EXIT_MS}ms` } as CSSProperties}
     onDoubleClick={event => event.stopPropagation()}>
     {presentation.question.trim() && <p id={questionId} className="player-branch-question">{presentation.question}</p>}
-    {shown.map((choice, index) => <button key={choice.id} className="choice-button"
+    {presentation.choices.map((choice, index) => <button key={choice.id} className="choice-button"
       style={{ ...choice.style, animationDelay: selectedId ? '0ms' : `${Math.min(index, 6) * 100}ms` }}
       aria-label={`Choose ${choice.label}`} aria-pressed={selectedId === choice.id} aria-disabled={!!selectedId}
       tabIndex={selectedId && selectedId !== choice.id ? -1 : undefined}
@@ -98,12 +103,5 @@ export default function PlayerChoices({ value }: { value: FlowTimeline }) {
       }} onKeyDown={event => { if (event.key === ' ') event.stopPropagation(); }}>
       <ChoiceFace>{choice.label}</ChoiceFace>
     </button>)}
-  </div>
-  {/* Voice answers show only a corner badge, outside the controls so it never moves them. It follows them in the DOM so their exit phase can fade it. */}
-  {listening && <PlayerVoiceAnswer key={`${presentation.sceneId}:voice`} context={voiceContext} chosen={!!selectedId} onUnavailable={() => setNoMicScene(presentation.sceneId)} onAnswer={answerId => {
-    const choice = presentation.choices.find(choice => choice.outcome === (answerId ?? fallbackId));
-    if (!choice) return false;
-    choose(choice); return true;
-  }} />}
-  </>;
+  </div>;
 }

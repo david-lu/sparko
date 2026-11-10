@@ -41,7 +41,7 @@
 .player-voice-cue[data-state="listening"] svg,.player-voice-cue[data-state="hearing"] svg{color:#ff5d52}
 .player-voice-cue[data-state="thinking"] svg{animation:voice-cue-think 1s ease-in-out infinite alternate}
 .player-voice-cue[data-state="answered"] svg{color:#5fd17f}
-.player-branch-controls[data-phase="exiting"] ~ .player-voice-cue{animation:voice-cue-out .22s ease-in both}
+.player-voice-cue[data-leaving]{animation:voice-cue-out .22s ease-in both}
 .player-voice-bars{display:flex;align-items:center;gap:2px;height:12px}
 .player-voice-bars i{width:3px;height:100%;border-radius:2px;background:#fff;scale:1 .45;animation:voice-bar-idle 1.6s ease-in-out infinite}
 .player-voice-bars i:nth-child(2){animation-delay:.2s}

@@ -366,7 +366,8 @@ export function runtimeFlow(graph: StoryGraph, items: Interstitial[], sourceAsse
   const interactions: NonNullable<CallResponseFlow['storyInteractions']> = {};
   for (const node of graph.nodes) {
     const behavior=behaviors(node);
-    if (behavior.conditional) interactions[node.id] = { question:node.name,waitSceneId:node.id,input:node.conditionInput??'button',fallbackAnswerId:graph.edges.find(e=>e.from===node.id&&e.event==='answer'&&(e.conditionId??e.id)===defaultCondition(graph,node)?.id)?.id??null,
+    // A clip's name is an editor label, not a question for viewers, so it is neither shown over the video nor sent to Hume.
+    if (behavior.conditional) interactions[node.id] = { question:'',waitSceneId:node.id,input:node.conditionInput??'button',fallbackAnswerId:graph.edges.find(e=>e.from===node.id&&e.event==='answer'&&(e.conditionId??e.id)===defaultCondition(graph,node)?.id)?.id??null,
       answers:conditionsFor(graph,node).flatMap(c=>{const e=graph.edges.find(e=>e.from===node.id&&e.event==='answer'&&(e.conditionId??e.id)===c.id);return e?[{id:e.id,label:c.label,values:c.values,sceneId:e.to}]:[]}) };
     else if (behavior.loop) {
       const next = graph.edges.find(e => e.from === node.id && e.event === 'next');

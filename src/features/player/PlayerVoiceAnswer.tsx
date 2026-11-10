@@ -12,10 +12,10 @@ const MAX_FAILURES = 2;
  * Listens hands-free from the moment the scene shows its question and asks the server which condition the answer matches.
  * `onAnswer` receives the matched answer ID (null for the default) and returns false when nothing could be chosen; listening then restarts.
  * `chosen` marks the scene as answered, which stops listening. `onUnavailable` reports that voice cannot be used, so buttons replace it.
- * Its only visible part is a small badge in the corner of the video.
+ * Its only visible part is a small badge in the corner of the video; `leaving` fades it out as the scene ends.
  */
-export default function PlayerVoiceAnswer({ context, chosen, onAnswer, onUnavailable }: {
-  context: VoiceChoiceContext; chosen: boolean; onAnswer: (answerId: string | null) => boolean; onUnavailable: () => void;
+export default function PlayerVoiceAnswer({ context, chosen, leaving = false, onAnswer, onUnavailable }: {
+  context: VoiceChoiceContext; chosen: boolean; leaving?: boolean; onAnswer: (answerId: string | null) => boolean; onUnavailable: () => void;
 }) {
   const [microphone] = useState(() => new MicrophoneController(VOICE_CHOICE.maxSeconds));
   const mic = useSyncExternalStore(microphone.subscribe, microphone.getSnapshot);
@@ -76,7 +76,7 @@ export default function PlayerVoiceAnswer({ context, chosen, onAnswer, onUnavail
   const state = chosen ? 'answered' : busy ? 'thinking' : mic.phase === 'recording' ? 'hearing' : mic.phase === 'listening' ? 'listening' : 'starting';
   const label = message && (state === 'starting' || state === 'listening') ? message
     : { answered: 'Got it', thinking: 'Thinking…', hearing: 'Hearing you', listening: 'Listening', starting: 'Starting mic…' }[state];
-  return <div className="player-voice-cue" data-state={state} role="status" aria-busy={busy}>
+  return <div className="player-voice-cue" data-state={state} data-leaving={leaving || undefined} role="status" aria-busy={busy}>
     {chosen ? <Check size={14} strokeWidth={2.5} aria-hidden /> : <Mic size={14} strokeWidth={2.5} aria-hidden />}
     {(state === 'listening' || state === 'hearing') && <span className="player-voice-bars" aria-hidden><i /><i /><i /></span>}
     <span>{label}</span>
