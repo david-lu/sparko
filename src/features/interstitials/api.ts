@@ -1,3 +1,4 @@
+import { generationPrompt, promptSelectionError } from '../../../shared/prompt-versions';
 import { prepareTimelineInput } from './prepare-timeline-input';
 import { validateTimelineVideos } from '../../../shared/video-references';
 import { enabledImageReferences } from '../../../shared/image-references';
@@ -19,7 +20,9 @@ export const hasNoVideoInput = (item: Interstitial) => item.useInputReference ==
 
 export async function generateInterstitial(item: Interstitial, engine: Pick<MediaEngine, 'exportMp4'> | null, info: MediaInfo | null, signal: AbortSignal,
   onProgress: (phase: 'preparing' | 'uploading', fraction?: number) => void): Promise<GenerationJob> {
-  item = enabledImageReferences(item);
+  const selectionError = promptSelectionError(item);
+  if (selectionError) throw new Error(selectionError);
+  item = enabledImageReferences({ ...item, prompt: generationPrompt(item) });
   validateH3PromptLength(item.prompt);
   const seed = chooseGenerationSeed(item.seed);
   const audioMaskTransitionMs = item.audioMaskTransitionMs ?? item.maskTransitionMs ?? MASK_TRANSITION.defaultMs;
@@ -93,6 +96,19 @@ export async function generateInterstitial(item: Interstitial, engine: Pick<Medi
   body.set('resolution', item.resolution ?? 'native');
   onProgress('uploading');
   return sendForm<GenerationJob>('/api/comfy/interstitials', body, signal);
+}
+/** Sends a finished native render for the official 2K pass. Progress and output use the normal job routes. */
+export async function upscaleInterstitial(video: Blob, input: { prompt: string; preservedFrames: number[] }, signal: AbortSignal, onUploading: () => void): Promise<GenerationJob> {
+  validateH3PromptLength(input.prompt);
+  const readiness = await request<{ ready: boolean; message?: string }>(`/api/comfy/upscales/status${input.preservedFrames.length ? '?preservedFrames=true' : ''}`, { signal });
+  if (!readiness.ready) throw new Error(readiness.message || 'Comfy Cloud is not ready for 2K regeneration.');
+  signal.throwIfAborted();
+  const body = new FormData();
+  body.set('prompt', input.prompt);
+  if (input.preservedFrames.length) body.set('preservedFrames', JSON.stringify(input.preservedFrames));
+  body.set('video', new File([video], 'native-render.mp4', { type: 'video/mp4' }));
+  onUploading();
+  return sendForm<GenerationJob>('/api/comfy/upscales', body, signal);
 }
 export const getInterstitialJob = (id: string, signal?: AbortSignal) => request<GenerationJob>(`/api/comfy/jobs/${encodeURIComponent(id)}`, { signal });
 export const cancelInterstitialJob = (id: string) => request<GenerationJob>(`/api/comfy/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });

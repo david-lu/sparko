@@ -2,7 +2,7 @@ import { setVideoReference, test, expect, addDraft, readProject, saveAndReopen, 
 
 const controls = (page: Page) => page.locator('.interstitial-editor').evaluate(root => {
   const top = root.getBoundingClientRect().top;
-  return ['textarea', '.interstitial-resolution', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
+  return ['textarea', '.interstitial-upscale', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
     const rect = root.querySelector(selector)!.getBoundingClientRect(); return { top: rect.top - top, height: rect.height };
   });
 });
@@ -53,7 +53,7 @@ for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 imag
   });
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
   await expect.poll(() => enhancedRequests).toBe(1); expect(await controls(page)).toEqual(before);
-  finishEnhancement(); await expect(prompt).toHaveValue(enhanced); expect(await controls(page)).toEqual(before);
+  finishEnhancement(); await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue(enhanced); expect(await controls(page)).toEqual(before);
 
   let complete = false, submitted = 0;
   await page.route('**/api/comfy/status*', route => {

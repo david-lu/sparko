@@ -104,3 +104,12 @@ describe('fal media generations', () => {
     await request(app).get('/api/library-generations/nano-banana-2/request_123/content/0').expect(200).expect('Content-Type', /image\/png/);
   });
 });
+
+
+it('submits only the selected prompt and refuses a stale enhanced image prompt', () => {
+  const settings = { ...newAssetGeneration('image').settings, prompt: 'Original', enhancedPrompt: 'Enhanced', useEnhancedPrompt: true };
+  expect(falPayload(settings, []).input.prompt).toBe('Enhanced');
+  expect(falPayload({ ...settings, useEnhancedPrompt: false }, []).input.prompt).toBe('Original');
+  expect(() => falPayload({ ...settings, enhancedPromptStale: true }, [])).toThrow('needs updating');
+  expect(() => falPayload({ ...settings, enhancedPrompt: '' }, [])).toThrow('choose Original');
+});

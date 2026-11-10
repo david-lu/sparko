@@ -3,512 +3,272 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AI_MODELS } from '../../shared/constants';
 import { createProviders } from '../../server/providers';
-import { addPromptEnhancementRoutes, continuity, type EnhancePromptInput } from '../../server/features/interstitials/prompt-enhancement';
-import { lightingColorContinuity } from '../../server/shared/prompt-lighting';
+import { addPromptEnhancementRoutes, type EnhancePromptInput } from '../../server/features/interstitials/prompt-enhancement';
 import { errorHandler, protectRequests } from '../../server/shared/http';
 import { promptTimeline } from '../../shared/prompt-timing';
 import { defaultMaskCurve } from '../../shared/mask-curves';
 
 const respond = vi.hoisted(() => vi.fn());
-vi.mock('openai', async importOriginal => ({
-  ...await importOriginal<typeof import('openai')>(),
-  default: class { responses = { create: respond }; },
-}));
+vi.mock('openai', async original => ({ ...await original<typeof import('openai')>(), default: class { responses = { create: respond }; } }));
 const input: EnhancePromptInput = { prompt: 'She asks, "What is 2 + 2?"', kind: 'call', duration: 6,
   referenceFrames: ['data:image/jpeg;base64,YQ=='], signal: new AbortController().signal };
-const motionContinuity = 'Use smooth motion with no cuts or position jumps. Keep lighting continuous, with no jumps or sudden changes.';
-const h3 = (description: string) => `integrated_multimodal_description: [Shot 1] ${description}\noverall_soundscape: Quiet room tone.\nnon_diegetic_music: N/A`;
-const asked = 'She (S1) asks once: <d>[English] What is 2 + 2?</d> She closes her mouth and waits silently.';
 beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllEnvs());
+const output = (prompt: string) => respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt }) });
 
-describe('interstitial prompt enhancement', () => {
-  it('shows timed image anchors with both clocks in enhancement and the timing pass', async () => {
-    const referenceTiming = { prefixFrames: 39, suffixFrames: 0 }, timeline = promptTimeline(6, referenceTiming);
-    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) })
-      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ requiredDuration: 3, opening: 'Static camera.', beats: [
-        { start: 0, end: Number(timeline.generatedDuration.toFixed(3)), action: 'She holds the rock at two seconds.', speech: { line: 0, delivery: 'S1 asks clearly' } },
-      ] }) });
-    await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, referenceTiming, keyframes: [{ frame: 48, image: 'data:image/jpeg;base64,Yg==' }] });
-    expect(respond).toHaveBeenCalledTimes(2);
-    for (const [call] of respond.mock.calls) {
-      expect(call.instructions).toContain('Timed image guides specify');
-      expect(call.input[0].content).toEqual(expect.arrayContaining([
-        expect.objectContaining({ type: 'input_text', text: expect.stringContaining('generated frame 48, 2 seconds') }),
-        expect.objectContaining({ type: 'input_text', text: expect.stringContaining('3.625 seconds on the full-video clock') }),
-        expect.objectContaining({ type: 'input_image', image_url: 'data:image/jpeg;base64,Yg==' }),
-      ]));
-    }
-  });
-  it.each([undefined, 'Keep the same question, but sound more excited.'])('uses the actual generated window for enhancement and editing: %s', async editInstructions => {
-    const referenceTiming = { prefixFrames: 39, suffixFrames: 39 }, timeline = promptTimeline(6, referenceTiming);
-    const plan = { requiredDuration: 3, opening: 'Static camera; one uninterrupted shot.', beats: [
-      { start: 0, end: 3, action: 'She stands in place.', speech: { line: 0, delivery: 'S1 asks clearly' } },
-      { start: 3, end: Number(timeline.generatedDuration.toFixed(3)), action: 'She waits with her mouth closed.', speech: null },
-    ] };
-    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) })
-      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify(plan) });
-    const referenceAudioMask = defaultMaskCurve(1.625, 1.625, 250);
-    const referenceDescriptions = [{ side: 'start' as const, frames: 39, description: '0–1.583s: She says "Already spoken" and lowers the bowl over music. 1.583–1.625s: still image, silent.' },
-      { side: 'end' as const, frames: 39, description: '0–1.625s: Hands at waist, silent.' }];
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, referenceTiming, referenceDescriptions, referenceAudioMask, editInstructions });
-    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ duration: 148 / 24, timeline });
-    expect(result.prompt).toContain('opening reference footage and audio occupy 0 to 1.625 seconds');
-    expect(result.prompt).toContain('ending reference footage and audio occupy 7.792 to 9.417 seconds');
-    expect(result.prompt).toContain('From 1.625 to 4.625 seconds: She stands in place. S1 asks clearly: <d>[English] What is 2 + 2?</d>');
-    expect(result.prompt).toContain('From 4.625 to 7.792 seconds:');
-    expect(result.prompt.length).toBeLessThanOrEqual(7000);
-    for (const call of respond.mock.calls) expect(JSON.parse(call[0].input[0].content[0].text).referenceContext).toMatchObject([
-      { side: 'start', start: 0, end: 1.625, duration: 1.625, description: referenceDescriptions[0].description, audioRegenerationCurve: referenceAudioMask.start },
-      { side: 'end', start: timeline.generatedEnd, end: timeline.totalDuration, duration: 1.625 },
-    ]);
-    expect(result.prompt).not.toContain('Already spoken');
-    expect(respond.mock.calls[0][0].instructions).toContain('continue that existing music smoothly across masked gaps');
-    expect(respond.mock.calls[0][0].instructions).toContain('Explicit user music/silence edits take precedence');
-  });
-  it('times a silent video-reference loop without restoring speech inherited from an old draft', async () => {
-    const referenceTiming = { prefixFrames: 39, suffixFrames: 39 }, timeline = promptTimeline(3, referenceTiming);
-    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: h3('She silently nods and returns to her starting pose.') }) })
-      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ requiredDuration: 3, opening: 'Static camera; one uninterrupted shot.', beats: [
-        { start: 0, end: Number(timeline.generatedDuration.toFixed(3)), action: 'She nods silently and returns to the starting pose.', speech: null },
-      ] }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', duration: 3, referenceTiming });
-    expect(result.prompt).toContain('From 1.625 to 4.958 seconds:');
-    expect(result.prompt).not.toContain('<d>');
-    expect(result.prompt).toContain('perfect seamless loop');
-  });
+// Regression: readable AI output must not be rejected by a second, code-based editor.
+describe('AI-owned prompt enhancement', () => {
   it.each([
-    { editInstructions: 'Replace the question with "Ready?".', action: 'She asks <d>[English] Ready?</d>.' },
-    { editInstructions: 'Remove the spoken question and have her nod silently.', action: 'She nods silently.' },
-  ])('applies a targeted edit without requiring the previous dialogue: $editInstructions', async ({ editInstructions, action }) => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(action) }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, editInstructions, dialogue: 'What is 2 + 2?' });
-    expect(result.prompt).toContain(action);
-    expect(result.prompt).not.toContain('What is 2 + 2?');
-    expect(result.prompt).toContain('Lighting and color MUST NOT CHANGE.');
-    const options = respond.mock.calls[0][0];
-    expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ draft: input.prompt, editInstructions, requiredDialogue: [] });
-    expect(options.instructions).toContain('This is a targeted edit, not a general enhancement.');
-    expect(respond).toHaveBeenCalledOnce();
-  });
-  it('enhances a simple brief without requiring an existing storyboard', async () => {
-    const prompt = 'She smiles and says "Hello!"';
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('Static camera; one uninterrupted shot. She (S1) smiles and says warmly: <d>[English] Hello!</d>') }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt });
-    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: prompt, rewriteMode: 'enhance' });
-    expect(result.prompt).toContain('<d>[English] Hello!</d>');
-    expect(respond).toHaveBeenCalledOnce();
-  });
-  it('repairs an existing prompt, applies its correction, and schedules the corrected sequence for the current duration', async () => {
-    const rock = '<d>[English] A rock?</d>', bowl = '<d>[English] Old vegetables?</d>';
-    const old = h3(`Over 99 seconds, she picks up a rock, then a bowl. The old script lists ${bowl} then ${rock}. Correction: ask about the rock while holding it first, then ask about the vegetables while holding the bowl.`)
-      .replace('Quiet room tone.', `An incorrect echo of the dialogue: ${rock} ${bowl}`);
-    const repaired = h3(`Static camera; one uninterrupted shot. She holds the rock while asking ${rock}. Only after finishing does she put it down, lift the bowl and ask ${bowl}.`);
-    const plan = { requiredDuration: 6, opening: 'Static camera; one uninterrupted shot. Keep reference lighting and colors.', beats: [
-      { start: 0, end: 1, action: 'She picks up the rock.', speech: null },
-      { start: 1, end: 3, action: 'She holds the rock throughout the line.', speech: { line: 0, delivery: 'She (S1) asks curiously' } },
-      { start: 3, end: 4, action: 'She sets down the rock and picks up the bowl.', speech: null },
-      { start: 4, end: 6, action: 'She holds the bowl throughout the line.', speech: { line: 1, delivery: 'She (S1) asks doubtfully' } },
-      { start: 6, end: 13, action: 'She lowers the bowl and waits with her mouth closed.', speech: null },
-    ] };
-    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: repaired }) })
-      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify(plan) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: '```text\n' + old + '\n```', duration: 13 });
-    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: old, rewriteMode: 'repair', duration: 13 });
-    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text)).toMatchObject({ repair: true, enhancedPrompt: repaired, duration: 13, lines: [rock, bowl] });
-    expect(result.prompt.match(/<d>[\s\S]*?<\/d>/g)).toEqual([rock, bowl]);
-    expect(result.prompt).toContain(`From 1 to 3 seconds: She holds the rock throughout the line. She (S1) asks curiously: ${rock}`);
-    expect(result.prompt).toContain('From 6 to 13 seconds:');
-    expect(result.prompt).not.toMatch(/99 seconds|incorrect echo|```/);
-    expect(result.prompt).toContain('Lighting and color MUST NOT CHANGE.');
-    expect(result.prompt.length).toBeLessThanOrEqual(7000);
-  });
-  it('labels the current frame separately from boundary frames and numbered image references', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) });
-    const currentFrame = 'data:image/jpeg;base64,Yw==', image = 'data:image/jpeg;base64,Yg==';
-    await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, currentFrame, imageReferences: [image] });
-    const options = respond.mock.calls[0][0];
-    expect(options.input[0].content.slice(1)).toEqual([
-      { type: 'input_text', text: 'Current player frame (scene context only):' },
-      { type: 'input_image', image_url: currentFrame, detail: 'low' },
-      { type: 'input_image', image_url: input.referenceFrames[0], detail: 'low' },
-      { type: 'input_text', text: 'H3 image reference <Picture 1>' },
-      { type: 'input_image', image_url: image, detail: 'low' },
-    ]);
-    expect(options.instructions).toContain('not a numbered generation reference or a first/last-frame constraint');
-  });
-  it('restores the sock question from an explicit correction and rejects a rewrite that drops it', async () => {
-    const lines = ['And we need something that makes trees grow fast!', 'So, what goes into our super-duper plant food?', 'A rock?', 'Old vegetables?', 'or this sock']
-      .map(line => `<d>[English] ${line}</d>`);
-    const old = h3(`She speaks ${lines.slice(0, 4).join(' Then ')}. She lifts the sock and stays silent with her mouth closed through the end.`);
-    const prompt = `${old}\nCorrection: after asking about the vegetables, she picks up the sock and says "or this sock" while holding it. She closes her mouth only after this final question.`;
-    const repaired = h3(`She speaks ${lines.slice(0, 4).join(' Then ')}. She lifts and holds the sock while asking ${lines[4]}. Only then does she close her mouth.`);
-    const plan = { requiredDuration: 13, opening: 'Static camera; one uninterrupted shot in the laboratory.', beats: [
-      { start: 0, end: 3, action: 'She keeps her hands empty.', speech: { line: 0, delivery: 'S1 says eagerly' } },
-      { start: 3, end: 6, action: 'She looks at the ingredients without touching them.', speech: { line: 1, delivery: 'S1 asks brightly' } },
-      { start: 6, end: 6.5, action: 'She picks up the rock.', speech: null },
-      { start: 6.5, end: 7.5, action: 'She holds the rock.', speech: { line: 2, delivery: 'S1 asks curiously' } },
-      { start: 7.5, end: 8.5, action: 'She sets down the rock and picks up the vegetables.', speech: null },
-      { start: 8.5, end: 10, action: 'She holds the bowl.', speech: { line: 3, delivery: 'S1 asks curiously' } },
-      { start: 10, end: 11, action: 'She sets down the bowl and picks up the sock.', speech: null },
-      { start: 11, end: 12.5, action: 'She holds the striped sock in her right hand.', speech: { line: 4, delivery: 'S1 asks doubtfully' } },
-      { start: 12.5, end: 13, action: 'She keeps holding the sock, closes her mouth and waits.', speech: null },
-    ] };
-    const enhance = createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt;
-    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: repaired }) })
-      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify(plan) });
-    const result = await enhance({ ...input, prompt, duration: 13 });
-    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).requiredDialogue).toEqual(lines);
-    expect(result.prompt.match(/<d>[\s\S]*?<\/d>/g)).toEqual(lines);
-    expect(result.prompt).toContain(`From 11 to 12.5 seconds: She holds the striped sock in her right hand. S1 asks doubtfully: ${lines[4]}`);
-    expect(result.prompt.length).toBeLessThanOrEqual(7000);
-    respond.mockClear();
-    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: old }) });
-    await expect(enhance({ ...input, prompt, duration: 13 })).rejects.toMatchObject({ status: 502 });
-    expect(respond).toHaveBeenCalledOnce();
-  });
-  it.each(['interstitial', 'call', 'idle', 'response'] as const)('supplies LoRA guidance alongside the draft for %s', async kind => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(`Sema waves. ${asked}`) }) });
-    const loraInstructions = 'Name Sema and use her canonical description.';
-    await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind, loraInstructions });
-    const options = respond.mock.calls[0][0];
-    expect(JSON.parse(options.input[0].content[0].text)).toMatchObject({ draft: input.prompt, loraInstructions });
-    expect(options.instructions).toContain('Preserve exact trigger words');
-    expect(options.instructions).not.toContain(loraInstructions);
-  });
-  it('respects selected endpoint pictures and leaves optional images unanchored for prompt-only loops', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(`A gentle movement. ${asked}`) }) });
-    const enhance = createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt;
-    const images = ['data:image/jpeg;base64,YQ==', 'data:image/jpeg;base64,Yg=='];
-    await enhance({ ...input, imageReferences: images, imageGuides: { start: 1, end: 0 } });
-    expect(respond.mock.calls[0][0].instructions).toContain('<Picture 2> anchors the first frame');
-    expect(respond.mock.calls[0][0].instructions).toContain('<Picture 1> anchors the last frame');
-    await enhance({ ...input, kind: 'idle', referenceFrames: [], imageReferences: images, imageGuides: {} });
-    expect(respond.mock.calls[1][0].instructions).not.toContain('shared first-frame');
-    await enhance({ ...input, kind: 'idle', referenceFrames: [], imageReferences: images, imageGuides: { start: 1, end: 1 } });
-    expect(respond.mock.calls[2][0].instructions).toContain('<Picture 2> is the shared first-frame');
-  });
-  it('uses the first picture as both boundaries when enhancing an image-only loop', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('The subject in <Picture 1> moves gently and returns to the same pose.') }) });
-    await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: 'A subtle loop', kind: 'idle', referenceFrames: [], imageReferences: ['data:image/jpeg;base64,YQ=='] });
-    expect(respond.mock.calls[0][0].instructions).toContain('<Picture 1>');
-    expect(respond.mock.calls[0][0].instructions).toContain('never use another picture as a different ending');
-  });
-  it('shows every attached image with its H3 picture number independently of video boundary frames', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(`The character from <Picture 1> walks through the setting in <Picture 2>. ${asked}`) }) });
-    const images = ['data:image/jpeg;base64,Yg==', 'data:image/jpeg;base64,Yw=='];
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, imageReferences: images });
-    const options = respond.mock.calls[0][0], content = options.input[0].content;
-    expect(content.slice(1)).toEqual([
-      { type: 'input_image', image_url: input.referenceFrames[0], detail: 'low' },
-      { type: 'input_text', text: 'H3 image reference <Picture 1>' }, { type: 'input_image', image_url: images[0], detail: 'low' },
-      { type: 'input_text', text: 'H3 image reference <Picture 2>' }, { type: 'input_image', image_url: images[1], detail: 'low' },
-    ]);
-    expect(options.instructions).toContain('Preserve these exact tags');
-    expect(options.instructions).toContain('Unlabeled video boundary frames are context only');
-    expect(result.prompt).toContain('<Picture 1>'); expect(result.prompt).toContain('<Picture 2>');
-  });
-  it('uses the current model, reference frames and original dialogue with mandatory shot and position continuity', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(asked) }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt(input);
-    expect(result).toMatchObject({ model: AI_MODELS.promptEnhancement });
-    expect(result.prompt).toContain('<d>[English] What is 2 + 2?</d>');
-    expect(result.prompt).toContain(` ${continuity}\noverall_soundscape: `);
-    expect(result.prompt).toContain('The background must remain fixed and continuous, with no jumps, shifts, or sudden changes.');
-    expect(result.prompt).toContain('Particle effects, if present, must remain continuous with no jumps');
-    expect(result.prompt).toContain(motionContinuity);
-    expect(result.prompt).toContain(lightingColorContinuity);
-    expect(result.prompt.length).toBeLessThanOrEqual(7000);
-    expect(result.prompt.split('\n')).toHaveLength(3);
-    const [options, requestOptions] = respond.mock.calls[0];
-    expect(options).toMatchObject({ model: AI_MODELS.promptEnhancement, store: false, reasoning: { effort: 'low' } });
-    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft: input.prompt, rewriteMode: 'enhance', kind: 'call', duration: input.duration, requiredDialogue: ['<d>[English] What is 2 + 2?</d>'] });
-    expect(options.input[0].content[1]).toEqual({ type: 'input_image', image_url: input.referenceFrames[0], detail: 'low' });
-    expect(options.instructions).toContain('Nothing may snap to a new position');
-    expect(options.instructions).toContain('The background must not jump, shift or suddenly change between frames');
-    expect(options.instructions).toContain(lightingColorContinuity);
-    expect(options.instructions).not.toContain('Any changes in color or lighting should happen gradually');
-    expect(options.instructions).toContain('particle effects are present, their movement must remain continuous');
-    expect(options.instructions).toContain('Write visual instructions in English');
-    expect(options.instructions).toContain('Preserve requested English words and punctuation exactly');
-    expect(options.instructions).toContain('Detect dialogue from the user\'s natural wording');
-    expect(options.instructions).toContain('<d>[English] Do you know what the G in GPU stand for?</d>');
-    expect(options.instructions).toContain('overall_soundscape:');
-    expect(options.instructions).toContain('non_diegetic_music:');
-    expect(result.prompt).toContain('English speech only');
-    expect(options.instructions).toContain('For a Call clip');
-    expect(options.instructions).toContain('single [Shot 1]');
-    expect(options.instructions).toContain('Use the supplied duration to pace the one continuous shot');
-    expect(options.instructions).toContain('do not fill unused time with speech');
-    expect(requestOptions.signal).toBe(input.signal);
-    expect(respond).toHaveBeenCalledOnce();
-  });
-  it.each(['interstitial', 'call', 'response'] as const)('preserves a complete multi-object sequence beyond 1,200 characters for %s', async kind => {
-    const draft = 'The girl asks, "And we need something that makes trees grow fast!" Then she asks, "So, what goes into our super-duper plant food?" '
-      + 'She lifts the rock and asks, "A rock?" She puts it down, lifts the bowl and asks, "Old vegetables?" After putting down the bowl, she raises the striped sock and looks at it silently.';
-    const rewritten = h3([
-      'Static camera; one uninterrupted shot. Keep the reference framing, angle and subject scale. The girl (S1) stands behind the vat, with the goat on her left and the boy on her right.',
-      'Her voice is clear and full, with connected syllables and natural resonance, audible above the quiet lab ambience. She says with eager emphasis on fast: <d>[English] And we need something that makes trees grow fast!</d>',
-      'After finishing that line, she looks over the ingredients and asks with a questioning rise: <d>[English] So, what goes into our super-duper plant food?</d>',
-      'She lifts the rock. While holding the rock, she asks: <d>[English] A rock?</d> She keeps the rock raised until the last word finishes. Only then does she set the rock on the table and reach for the bowl of old vegetables.',
-      'She lifts the bowl. While holding the bowl, she asks: <d>[English] Old vegetables?</d> She keeps the bowl raised until the line finishes. Only then does she put the bowl back on the table.',
-      'After releasing the bowl, she picks up the striped sock and raises it into view. She looks at the sock with a doubtful expression, keeping her mouth closed. The goat and boy stay in their reference positions. The shot ends with the sock still in her hand.',
-    ].join(' '));
-    expect(rewritten.length).toBeGreaterThan(1200);
-    const plan = { requiredDuration: 11.5, opening: 'Static camera; one uninterrupted shot. Keep the reference framing and lighting. Her voice sounds clear and full.', beats: [
-      { start: 0, end: 3, action: 'The girl keeps her hands empty; all ingredients stay on the table.', speech: { line: 0, delivery: 'The girl (S1) says eagerly' } },
-      { start: 3, end: 6, action: 'Her hands remain empty as she looks at the ingredients.', speech: { line: 1, delivery: 'The girl (S1) asks brightly' } },
-      { start: 6, end: 6.5, action: 'She picks up the rock.', speech: null },
-      { start: 6.5, end: 7.5, action: 'She holds the rock throughout the line. The bowl and sock stay on the table.', speech: { line: 2, delivery: 'The girl (S1) asks with a rising pitch' } },
-      { start: 7.5, end: 8.5, action: 'She sets down the rock, then picks up the bowl.', speech: null },
-      { start: 8.5, end: 9.5, action: 'She holds the bowl throughout the line.', speech: { line: 3, delivery: 'The girl (S1) asks doubtfully' } },
-      { start: 9.5, end: 10.5, action: 'She puts down the bowl and picks up the sock.', speech: null },
-      { start: 10.5, end: 12.25, action: 'She holds the sock and looks at it with her mouth closed.', speech: null },
-    ] };
-    respond.mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify({ prompt: rewritten }) })
-      .mockResolvedValueOnce({ status: 'completed', output_text: JSON.stringify(plan) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind, duration: 12.25, prompt: draft });
-    const options = respond.mock.calls[0][0];
-    expect(JSON.parse(options.input[0].content[0].text).draft).toBe(draft);
-    expect(options.text.format.schema.properties.prompt.maxLength).toBeGreaterThan(rewritten.length);
-    expect(options.max_output_tokens).toBe(4000);
-    expect(options.instructions).toContain('identify the ordered beats');
-    expect(options.instructions).toContain('hold that object throughout its associated line');
-    expect(options.instructions).toContain('Preserve explicitly requested before/during/after relationships and simultaneous actions');
-    expect(options.instructions).toContain('never describe all the actions first and collect the dialogue afterward');
-    expect(options.instructions).toContain('Use short, literal sentences and concrete verbs');
-    expect(respond).toHaveBeenCalledTimes(2);
-    const [timingOptions, timingRequest] = respond.mock.calls[1];
-    expect(timingOptions.text.format.name).toBe('timed_dialogue_beats');
-    expect(JSON.parse(timingOptions.input[0].content[0].text)).toMatchObject({ originalDraft: draft, enhancedPrompt: rewritten, duration: 12.25 });
-    expect(timingRequest.signal).toBe(input.signal);
-    expect(result.prompt).toContain('From 6.5 to 7.5 seconds: She holds the rock throughout the line.');
-    expect(result.prompt).toContain('From 10.5 to 12.25 seconds: She holds the sock');
-    expect(result.prompt.match(/<d>[\s\S]*?<\/d>/g)).toEqual(rewritten.match(/<d>[\s\S]*?<\/d>/g));
-    expect(result.prompt).toContain('After the final scripted line');
-    expect(result.prompt.length).toBeLessThanOrEqual(7000);
-  });
-  it.each(['interstitial', 'idle', 'continuity'] as const)('budgets the complete %s output including shared and mandatory directions', async mode => {
-    const shared = 'Keep the same room and character. '.repeat(120).trim();
-    let rewritten = '';
-    respond.mockImplementation(async options => {
-      const maxLength = options.text.format.schema.properties.prompt.maxLength;
-      rewritten = mode === 'continuity' ? 'A'.repeat(maxLength) : h3('A'.repeat(maxLength - h3('').length));
-      return { status: 'completed', output_text: JSON.stringify({ prompt: rewritten }) };
-    });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: 'A quiet scene.',
-      kind: mode === 'idle' ? 'idle' : 'interstitial', target: mode === 'continuity' ? 'continuity' : undefined, continuity: shared });
-    expect(result.prompt.length).toBeLessThanOrEqual(mode === 'continuity' ? 4000 : 7000);
-    if (mode !== 'continuity') expect(result.prompt).toHaveLength(7000);
-    if (mode === 'continuity') expect(result.prompt).toContain(rewritten);
-    else {
-      expect(result.prompt).toContain(shared);
-      expect(result.prompt).toContain(rewritten.split('\n')[0]);
-      expect(result.prompt).toContain('\nnon_diegetic_music: N/A');
+    { prefixFrames: 39, suffixFrames: 39, start: '1.625', end: '7.792', total: '9.417', body: '6.167', suffix: '1.625' },
+    { prefixFrames: 39, suffixFrames: 0, start: '1.625', end: '8', total: '8', body: '6.375', suffix: '0' },
+    { prefixFrames: 0, suffixFrames: 39, start: '0', end: '6.375', total: '8', body: '6.375', suffix: '1.625' },
+    { prefixFrames: 0, suffixFrames: 0, start: '0', end: '6.583', total: '6.583', body: '6.583', suffix: '0' },
+    { prefixFrames: 56, suffixFrames: 90, start: '2.333', end: '8.5', total: '12.25', body: '6.167', suffix: '3.75' },
+  ])('supplies both reference boundaries to Enhance and Edit: $prefixFrames / $suffixFrames', async ({ prefixFrames, suffixFrames, start, end, total, body, suffix }) => {
+    for (const editInstructions of [undefined, 'Fix the timing and keep every spoken word.']) {
+      respond.mockClear(); output('She speaks naturally within the generated section.');
+      await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, editInstructions,
+        referenceTiming: { prefixFrames, suffixFrames }, keyframes: [{ frame: 11, image: 'data:image/jpeg;base64,YQ==' }] });
+      expect(respond).toHaveBeenCalledOnce();
+      const args = respond.mock.calls[0][0], instructions = args.instructions;
+      expect(instructions).toContain(`from ${start} to ${end} seconds`);
+      expect(instructions).toContain(`clock runs from 0 to ${body} seconds`);
+      expect(instructions).toContain(`adding ${start} seconds exactly once`);
+      expect(instructions).toContain(`end reference reserves ${suffix} seconds`);
+      if (suffixFrames) expect(instructions).toContain(`occupy ${end} to ${total} seconds`);
+      expect(instructions).toContain('already excludes BOTH reference windows');
+      expect(instructions).toContain('never a conflict report, clarification question');
+      expect(instructions).toContain('Keep the guide times and visible states fixed');
+      expect(instructions).not.toContain('report the timing conflict instead');
+      const context = JSON.parse(args.input[0].content[0].text).context;
+      expect(context.timeline).toEqual(promptTimeline(6, { prefixFrames, suffixFrames }));
+      expect(context.timing).toEqual({
+        offsetSeconds: prefixFrames / 24,
+        defaultTimeBasis: { draft: 'generated-section', dialogue: 'generated-section', enhancedPrompt: 'full-video', editInstructions: 'draft' },
+        outputTimeBasis: { prompt: editInstructions ? 'draft' : 'full-video' },
+      });
     }
   });
-  it.each(['missing', 'soundscape'] as const)('rejects %s separate dialogue instead of appending speech after the actions', async placement => {
-    const line = 'A rock?';
-    const rewritten = h3('She lifts the rock, puts it down and lifts the bowl.')
-      .replace('Quiet room tone.', placement === 'soundscape' ? `<d>[English] ${line}</d>` : 'Quiet room tone.');
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: rewritten }) });
-    await expect(createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: 'She lifts the rock, puts it down and lifts the bowl.', dialogue: line }))
-      .rejects.toMatchObject({ status: 502, message: 'The enhanced prompt omitted the supplied dialogue from the action. Try again.' });
+  it('gives one rewrite the clocks, early guides and padded final hold from the reported conflict', async () => {
+    const draft = 'S2 says "with a mega remote control" naturally while typing and finishes before the cut at 1.650 seconds. S1 holds a sock at generated time 13.167 and keeps it held to the end. Resolve the conflicting opening framing.';
+    output('Corrected prompt with natural speech across the required cuts and the final sock held through the section end.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 13, prompt: draft,
+      referenceTiming: { prefixFrames: 39, suffixFrames: 0 },
+      keyframes: [11, 33, 316].map(frame => ({ frame, image: 'data:image/jpeg;base64,YQ==' })) });
     expect(respond).toHaveBeenCalledOnce();
+    const args = respond.mock.calls[0][0], instructions = args.instructions;
+    expect(instructions).toContain('from 1.625 to 15.083 seconds');
+    expect(instructions).toContain('clock runs from 0 to 13.458 seconds');
+    expect(instructions).toContain('including padding after the last timed guide');
+    expect(instructions).toMatch(/allow speech to continue across a necessary camera cut/i);
+    expect(instructions).toContain('Images and a short time budget are not evidence that a line was already spoken');
+    expect(instructions).toContain('do not ask which clock was intended');
+    expect(JSON.parse(args.input[0].content[0].text).draft).toBe(draft);
+    expect(JSON.parse(args.input[0].content[0].text).context.timing.offsetSeconds).toBe(1.625);
+    for (const time of ['0.458 seconds from the generated section\'s start; 2.083 seconds on the full-video clock (At 00:02.083)',
+      '1.375 seconds from the generated section\'s start; 3 seconds on the full-video clock (At 00:03.000)',
+      '13.167 seconds from the generated section\'s start; 14.792 seconds on the full-video clock (At 00:14.792)']) {
+      expect(args.input[0].content).toContainEqual(expect.objectContaining({ type: 'input_text', text: expect.stringContaining(time) }));
+    }
+    expect(instructions).toContain('without mentioning the guide itself');
+    expect(instructions).toContain('when only framing distance or angle changes, use camera motion within the shot');
   });
-  it('instructs the enhancer to tag the exact Call line, including unusual grammar', async () => {
-    const prompt = 'The girl asks, "Do you know what the G in GPU stand for?" She pauses for an answer.';
-    const line = 'Do you know what the G in GPU stand for?';
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(`The girl (S1) asks once: <d>[English] ${line}</d> She closes her mouth and waits silently.`) }) });
-    const enhancer = createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt;
-    const result = await enhancer({ ...input, prompt });
-    expect(result.prompt).toContain(`<d>[English] ${line}</d>`);
-    expect(result.prompt).not.toContain('stands for');
+  it('asks Enhance for H3 speaker IDs, one line per action with a closing beat, and a timecoded cut out of the opening footage', async () => {
+    output('A corrected prompt.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 13, referenceTiming: { prefixFrames: 39, suffixFrames: 0 } });
     const instructions = respond.mock.calls[0][0].instructions;
-    expect(instructions).toContain('Quotation marks in the finished H3 prompt are for visible on-screen text');
-    expect(instructions).toContain('introduce no additional dialogue');
-
-    const repeated = await enhancer({ ...input, prompt: result.prompt });
-    expect(repeated.prompt).toBe(result.prompt);
-    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).draft).toBe(h3(`The girl (S1) asks once: <d>[English] ${line}</d> She closes her mouth and waits silently.`));
-
-  });
-  it('treats a quoted Response line as spoken dialogue and strips an older enhancement suffix', async () => {
-    const line = "That's right GPU stands for Graphical Processing Unit! Well done!";
-    const draft = `The girl on the right says, "${line}"`;
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({
-      prompt: h3(`The girl on the right (S1) says once: <d>[English] ${line}</d> She closes her mouth and returns to the continuation.`),
-    }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({
-      ...input, kind: 'response', prompt: `${draft} Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. English speech only.`,
-    });
-    const options = respond.mock.calls[0][0];
-    expect(JSON.parse(options.input[0].content[0].text)).toEqual({ draft, rewriteMode: 'enhance', kind: 'response', duration: input.duration, requiredDialogue: [`<d>[English] ${line}</d>`] });
-    expect(options.instructions).toContain('Response dialogue is mandatory');
-    expect(options.instructions).toContain('Do not leave spoken words in quotation marks or as untagged prose');
-    expect(options.instructions).toContain('<d>[English] We made it!</d>');
-    expect(options.instructions).toContain('check every requested spoken line');
-    expect(options.instructions).toContain('Do not postpone the match until the reference section or cut');
-    expect(result.prompt).toContain(`<d>[English] ${line}</d>`);
-  });
-  it('accepts unstructured output when no separately supplied dialogue needs validation', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'A concise visual direction with no H3 sections.' }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: 'A quiet scene.' });
-    expect(result.prompt).toContain('A concise visual direction with no H3 sections.');
-  });
-  it('keeps quoted text on a sign out of H3 spoken dialogue', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('The girl points to a sign reading "GPU".') }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'interstitial', prompt: 'The girl points to a sign that says "GPU".' });
-    expect(result.prompt).toContain('sign reading "GPU"');
-    expect(result.prompt).not.toContain('<d>');
-  });
-  it('accepts an H3 dialogue tag when the user requests speech without quoting a line', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('The girl (S1) says: <d>[English] Hello.</d> She closes her mouth.') }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: 'The girl says hello.' });
-    expect(result.prompt).toContain('<d>[English] Hello.</d>');
-  });
-  it('keeps repeated enhancements from accumulating the mandatory continuity block', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(`Quiet breathing. ${continuity}`) }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: `Quiet breathing.\n\n${continuity}` });
-    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: 'Quiet breathing.', kind: 'idle' });
-    expect(result.prompt).toContain('The character stays silent with their mouth closed throughout the generated loop. No speech, dialogue or lip movement. Only subtle ambient sound.');
-    expect(result.prompt).toContain('The background must remain fixed and continuous, with no jumps, shifts, or sudden changes.');
-    expect(result.prompt).toContain('Make this a perfect seamless loop: the first and last frames must match exactly');
-    expect(result.prompt).toContain('Particle effects, if present, must remain continuous with no jumps');
-    expect(result.prompt).toContain('particle state, with no visible jump when repeated');
-    expect(result.prompt).not.toContain('English speech only');
-    expect(respond.mock.calls[0][0].instructions).toContain('silent perfect seamless loop');
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('Quiet breathing.') }) });
-    const repeated = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: result.prompt });
-    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text)).toMatchObject({ draft: h3('Quiet breathing.'), kind: 'idle' });
-    expect(repeated.prompt).toBe(result.prompt);
-  });
-  it.each(['interstitial', 'call', 'idle', 'response', 'continuity'] as const)('locks lighting and color for %s and removes the old gradual-change rule', async mode => {
-    const value: EnhancePromptInput = { ...input, prompt: 'A small smile.', kind: mode === 'continuity' ? 'call' : mode,
-      target: mode === 'continuity' ? 'continuity' : undefined, currentFrame: 'data:image/jpeg;base64,Yw==' };
-    const action = mode === 'continuity' ? 'Keep the same room and subject.' : h3('A small smile.');
-    const legacy = 'Any changes in color or lighting should happen gradually across frames, without abrupt shifts or flashes.';
-    const enhance = createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt;
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: action }) });
-    const first = await enhance(value);
-    expect(first.prompt.split(lightingColorContinuity)).toHaveLength(2);
-    if (mode !== 'continuity') expect(first.prompt.indexOf(lightingColorContinuity)).toBeLessThan(first.prompt.indexOf('\noverall_soundscape:'));
-    const previous = first.prompt.replace(lightingColorContinuity, legacy);
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: previous }) });
-    const updated = await enhance({ ...value, prompt: previous, continuity: legacy });
-    expect(updated.prompt).toBe(first.prompt);
-    const options = respond.mock.calls[1][0], context = JSON.parse(options.input[0].content[0].text);
-    expect(context.draft).toBe(action); expect(context.sharedContinuity).toBe('');
-    expect(options.instructions).toContain('Use the current player frame as the lighting and color baseline');
-    expect(options.instructions).not.toContain(legacy);
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: updated.prompt }) });
-    expect((await enhance({ ...value, prompt: updated.prompt })).prompt).toBe(first.prompt);
-  });
-  it('replaces the previous Idle suffix without stacking loop instructions', async () => {
-    const previousIdle = 'Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Characters do not talk. Keep everything mostly quiet, with only subtle ambient sound.';
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(`Quiet breathing. ${previousIdle}`) }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: `Quiet breathing. ${previousIdle}` });
-    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).draft).toBe('Quiet breathing.');
-    expect(result.prompt.match(/perfect seamless loop/g)).toHaveLength(1);
-    expect(result.prompt.match(/No speech, dialogue or lip movement/g)).toHaveLength(1);
-  });
-  it('replaces an existing perfect-loop suffix when adding particle continuity', async () => {
-    const previousIdle = 'Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Characters do not talk. Keep everything mostly quiet, with only subtle ambient sound. Make this a perfect seamless loop: the first and last frames must match exactly in character pose, framing, background and lighting, with no visible jump when repeated.';
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('Quiet breathing.') }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, kind: 'idle', prompt: `Quiet breathing. ${previousIdle}` });
-    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).draft).toBe('Quiet breathing.');
-    expect(result.prompt.match(/perfect seamless loop/g)).toHaveLength(1);
-    expect(result.prompt.match(/Particle effects, if present/g)).toHaveLength(1);
-  });
-  it('uses separate instructions for every clip kind and excludes inherited speech from Idle context', async () => {
-    respond.mockImplementation(async options => {
-      const { kind } = JSON.parse(options.input[0].content[0].text);
-      return { status: 'completed', output_text: JSON.stringify({ prompt: h3(kind === 'idle'
-        ? 'Quiet motion. English speech only.' : 'Quiet motion. The character (S1) says: <d>[English] Speak now.</d> English speech only.') }) };
-    });
-    const enhancer = createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt;
-    const kinds = ['interstitial', 'call', 'idle', 'response'] as const;
-    const results = [];
-    for (const kind of kinds) results.push(await enhancer({ ...input, kind, prompt: 'Quiet motion. English speech only.',
-      continuity: 'Keep the same scene. English speech only.', dialogue: 'Speak now.' }));
-    const instructions = respond.mock.calls.map(([options]) => options.instructions);
-    for (const result of results) expect(result.prompt.split(motionContinuity)).toHaveLength(2);
-    expect(new Set(instructions).size).toBe(4);
-    expect(instructions[0]).toContain('For a regular interstitial');
-    expect(instructions[1]).toContain('For a Call clip');
-    expect(instructions[2]).toContain('For an Idle clip');
-    expect(instructions[2]).toContain('Omit all dialogue, voices, speech and lip movement');
-    expect(instructions[3]).toContain('For a Response clip');
-    expect(instructions[0]).toContain('nothing is added at submission');
-    expect(instructions[1]).toContain('include that exact line in an H3 dialogue tag with its vocal direction');
-    const idleContext = JSON.parse(respond.mock.calls[2][0].input[0].content[0].text);
-    expect(idleContext).toMatchObject({ draft: 'Quiet motion.', sharedContinuity: 'Keep the same scene.' });
-    expect(idleContext).not.toHaveProperty('separateDialogue');
-    expect(results[2].prompt).not.toContain('English speech only');
-    expect(results[2].prompt).toContain('No speech, dialogue or lip movement');
-    expect(results[2].prompt).toContain('Keep the same scene.');
-    expect(results[2].prompt).not.toContain('<d>');
-    for (const result of [results[0], results[1], results[3]]) {
-      expect(result.prompt).toContain('Keep the same scene.');
-      expect(result.prompt).toContain('<d>[English] Speak now.</d>');
-    }
-  });
-  it('replaces the older continuity suffix when enhancing an existing clip again', async () => {
-    const previous = 'Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. English speech only.';
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(`A small gesture. ${previous}`) }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: `A small gesture. ${previous}` });
-    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).draft).toBe('A small gesture.');
-    expect(result.prompt).toBe(h3(`A small gesture. ${continuity}`));
-    const lastWording = 'Keep the same shot, background, framing and character placement. Use smooth motion with no cuts or position jumps. no jumps in particle effects or lighting. The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. English speech only.';
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3('A small gesture.') }) });
-    const updated = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: `A small gesture. ${lastWording}` });
-    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).draft).toBe('A small gesture.');
-    expect(updated.prompt).toBe(h3(`A small gesture. ${continuity}`));
-    const earlierCurrent = `Keep the same shot, background, framing and character placement. ${motionContinuity} The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. Only scripted dialogue is spoken, once each. After speaking, the character closes their mouth and remains silent. English speech only.`;
-    const migrated = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: `A small gesture. ${earlierCurrent}` });
-    expect(JSON.parse(respond.mock.calls[2][0].input[0].content[0].text).draft).toBe('A small gesture.');
-    expect(migrated.prompt).toBe(h3(`A small gesture. ${continuity}`));
-    const previousWithLighting = earlierCurrent.replace('Only scripted dialogue', `${lightingColorContinuity} Only scripted dialogue`);
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: h3(`A small gesture. ${previousWithLighting}`) }) });
-    const synchronized = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, prompt: h3(`A small gesture. ${previousWithLighting}`) });
-    expect(JSON.parse(respond.mock.calls[3][0].input[0].content[0].text).draft).toBe(h3('A small gesture.'));
-    expect(synchronized.prompt).toBe(h3(`A small gesture. ${continuity}`));
-  });
-  it('enhances a shared continuity brief without treating it as a clip action or appending another brief', async () => {
-    const brief = 'Preserve the same character, framing and lighting.';
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: brief }) });
-    const result = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, target: 'continuity', prompt: brief });
-    const options = respond.mock.calls[0][0];
-    expect(JSON.parse(options.input[0].content[0].text).draft).toBe(brief);
-    expect(options.instructions).toContain('shared continuity brief');
-    expect(options.instructions).toContain('background to remain continuous without jumps');
-    expect(options.instructions).toContain('particle effects must also move continuously without jumps');
-    expect(options.instructions).toContain('Do not add stage-specific actions');
-    expect(options.input[0].content[1].image_url).toBe(input.referenceFrames[0]);
-    expect(result.prompt).toBe(`${brief} ${motionContinuity} The background must remain fixed and continuous, with no jumps, shifts, or sudden changes. Particle effects, if present, must remain continuous with no jumps, resets, popping, or sudden shifts between frames. ${lightingColorContinuity}`);
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: result.prompt }) });
-    const repeated = await createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, target: 'continuity', prompt: result.prompt });
-    expect(JSON.parse(respond.mock.calls[1][0].input[0].content[0].text).draft).toBe(brief);
-    expect(repeated.prompt).toBe(result.prompt);
+    expect(instructions).toContain('stable speaker ID such as (S1)');
+    expect(instructions).toContain('its own <d> block in the same sentence as the visible action or state it accompanies');
+    expect(instructions).toContain('about 2.5 words per second');
+    expect(instructions).toContain('visible closing beat');
+    expect(instructions).toContain('[Shot 1] briefly describes its visible subject, setting and action');
+    expect(instructions).toContain('[Shot 2] At 00:01.625, the camera cuts to');
+    expect(instructions).toContain('never a range');
+    expect(instructions).toContain('Leave out clock labels, generation ranges');
+    expect(instructions).toContain('without a negative prompt');
+    expect(instructions).toContain('Do not add a clock label to full-video output');
+    expect(instructions).not.toContain('Explicitly label full-video output');
+    expect(instructions).not.toContain('ends on the end reference footage');
   });
   it.each([
-    { status: 'incomplete', output_text: '{"prompt":"unfinished"}' },
-    { status: 'completed', output_text: '{' },
-    { status: 'completed', output_text: '{"prompt":""}' },
-    { status: 'completed', output_text: JSON.stringify({ prompt: 'x'.repeat(8001) }) },
-  ])('rejects incomplete or invalid provider output without returning a replacement prompt', async response => {
-    respond.mockResolvedValue(response);
-    await expect(createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt(input)).rejects.toMatchObject({ status: 502 });
+    { prefixFrames: 0, suffixFrames: 39, opening: false, ending: '[Shot N] At 00:06.375' },
+    { prefixFrames: 0, suffixFrames: 0, opening: false, ending: undefined },
+  ])('describes reference footage shots only where footage exists: $prefixFrames / $suffixFrames', async ({ prefixFrames, suffixFrames, opening, ending }) => {
+    output('A corrected prompt.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, referenceTiming: { prefixFrames, suffixFrames } });
+    const instructions = respond.mock.calls[0][0].instructions;
+    expect(instructions.includes('opens on the start reference footage')).toBe(opening);
+    if (ending) expect(instructions).toContain(ending);
+    else expect(instructions).not.toContain('ends on the end reference footage');
   });
-  it('does not expose connection error details or retry automatically', async () => {
-    respond.mockRejectedValue(new Error('private-key https://private.example/request'));
-    await expect(createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt(input)).rejects.toMatchObject({ status: 502, message: 'Prompt enhancement could not reach OpenAI. Try again.' });
+  it('applies H3 conventions to the enhanced version of a paired edit only', async () => {
+    const edit = { duration: 10, referenceTiming: { prefixFrames: 39, suffixFrames: 0 }, editInstructions: 'Make the lighting warmer.' };
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'Warm light.', enhancedPrompt: '[Shot 1] Warm light.' }) });
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, ...edit, enhancedPrompt: '[Shot 1] Daylight.' });
+    expect(respond.mock.calls[0][0].instructions).toContain('Apply these conventions to the text you add or change in enhancedPrompt; leave the original prompt in its own format.');
+    expect(respond.mock.calls[0][0].instructions).toContain('stable speaker ID such as (S1)');
+    respond.mockClear(); output('Warm light.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, ...edit });
+    expect(respond.mock.calls[0][0].instructions).not.toContain('(S1)');
+    expect(respond.mock.calls[0][0].instructions).toContain('fullVideoTime = generatedTime + context.timing.offsetSeconds');
+    respond.mockClear(); output('A shared brief.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, target: 'continuity' });
+    expect(respond.mock.calls[0][0].instructions).not.toContain('(S1)');
+  });
+  it('includes encoded timing without footage and leaves shared briefs free of clip timing', async () => {
+    output('A corrected prompt.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, referenceFrames: [] });
+    expect(respond.mock.calls[0][0].instructions).toContain('from 0 to 6.583 seconds');
+    respond.mockClear();
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, target: 'continuity' });
+    expect(respond.mock.calls[0][0].instructions).not.toContain('generated-section clock');
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('timeline');
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('timing');
+    expect(respond.mock.calls[0][0].instructions).not.toContain('show-and-name demonstration');
+  });
+  it.each([
+    'She closes the door, then says "Ready."',
+    'She says "Ready." before closing the door.',
+    'She says "Keep going." while walking, without stopping.',
+  ])('uses the original sequence for Enhance and paired Edit without a default action order: %s', async draft => {
+    for (const editing of [false, true]) {
+      respond.mockClear();
+      const enhancedPrompt = `Full-video clock. ${draft}`;
+      const correction = 'Make the lighting warmer; preserve the event order.';
+      const result = { prompt: draft, ...(editing ? { enhancedPrompt } : {}) };
+      respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify(result) });
+      const rewritten = await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 10, prompt: draft,
+        referenceTiming: { prefixFrames: 39, suffixFrames: 39 }, ...(editing ? { enhancedPrompt, editInstructions: correction } : {}) });
+      expect(rewritten).toMatchObject(result);
+      expect(respond).toHaveBeenCalledOnce();
+      const args = respond.mock.calls[0][0], data = JSON.parse(args.input[0].content[0].text);
+      expect(data.draft).toBe(draft);
+      if (editing) expect(data).toMatchObject({ enhancedPrompt, editInstructions: correction });
+      expect(data.context.timing.offsetSeconds).toBe(1.625);
+      expect(args.instructions).toContain('Follow the order of events in the original prompt');
+      expect(args.instructions).toContain('preserving its before/during/after relationships and any intentional overlap');
+      expect(args.instructions).toContain('without inventing a default sequence');
+      expect(args.instructions).toContain('Apply explicit user corrections to that order');
+      expect(args.instructions).not.toMatch(/show-and-name|pickup|put-down|held object|held prop|hands free of demonstration objects/i);
+    }
+  });
+  it('gives paired edits an explicit offset while keeping original and enhanced clocks separate', async () => {
+    const draft = 'At 7.95 seconds she holds the rock and asks "A rock?". At 9.85 seconds she holds the bowl. At 11.95 seconds she holds the sock.';
+    const enhancedPrompt = 'All times use the full-video clock. At 9.575 seconds she holds the rock and asks "A rock?". At 11.475 seconds she holds the bowl. At 13.575 seconds she holds the sock.';
+    const edited = { prompt: draft.replace('7.95', '8.00'), enhancedPrompt: enhancedPrompt.replace('9.575', '9.625') };
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify(edited) });
+    const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 13, prompt: draft, enhancedPrompt,
+      editInstructions: 'Move the rock cue to 8.00 seconds; keep the other cue times.', referenceTiming: { prefixFrames: 39, suffixFrames: 0 } });
+    expect(result).toMatchObject(edited); expect(respond).toHaveBeenCalledOnce();
+    const args = respond.mock.calls[0][0], data = JSON.parse(args.input[0].content[0].text);
+    expect(data).toMatchObject({ draft, enhancedPrompt, context: { timing: {
+      offsetSeconds: 1.625,
+      defaultTimeBasis: { draft: 'generated-section', enhancedPrompt: 'full-video', editInstructions: 'draft' },
+      outputTimeBasis: { prompt: 'draft', enhancedPrompt: 'full-video' },
+    } } });
+    expect(args.instructions).toContain('fullVideoTime = generatedTime + context.timing.offsetSeconds');
+    expect(args.instructions).toContain('point cues and BOTH endpoints of time ranges');
+    expect(args.instructions).toContain('do not drop numeric cues');
+    expect(args.instructions).toContain('Do not shift elapsed durations, pause lengths, or numbers inside spoken dialogue');
+  });
+  it('passes an already full-video draft through with an explicit rule against double-offsetting', async () => {
+    const draft = 'All times below use the full-video clock. At 9.575 seconds she holds a rock for 0.5 seconds and asks "A rock?".';
+    output(draft);
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 13, prompt: draft,
+      referenceTiming: { prefixFrames: 39, suffixFrames: 0 } });
+    const args = respond.mock.calls[0][0], data = JSON.parse(args.input[0].content[0].text);
+    expect(data.draft).toBe(draft);
+    expect(data.context.timing).toMatchObject({ offsetSeconds: 1.625, outputTimeBasis: { prompt: 'full-video' } });
+    expect(args.instructions).toContain('An explicit clock declaration in the text overrides that field\'s default');
+    expect(args.instructions).toContain('Already full-video timestamps and the supplied full-video guide times stay unchanged');
     expect(respond).toHaveBeenCalledOnce();
   });
-  it('honors cancellation before contacting the provider', async () => {
+  it.each([undefined, 'continuity'] as const)('keeps music continuous across shots for target %s, with explicit user overrides', async target => {
+    output('Keep the music continuous through the cut.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, target });
+    const instructions = respond.mock.calls[0][0].instructions;
+    expect(instructions).toContain('Continue established or requested music seamlessly between shots and across clip boundaries by default');
+    expect(instructions).toContain('unless the user explicitly requests a music change or silence');
+    expect(instructions).toContain('If no music is established or requested, do not invent a soundtrack');
+  });
+  it.each([
+    'She smiles, asks the question, then waits quietly.',
+    'integrated_multimodal_description: Keep the voices clear. [Shot 1] The boy speaks. [Shot 2] Cut to the girl after he finishes.',
+    'integrated_multimodal_description: [Shot 1] She waves. [Shot 2] Cut to the garden.',
+    '[Shot 2] The scene opens on a quiet garden.',
+    '**Scene:** A quiet garden.\n**Sound:** Wind in the trees.',
+    'From 0 to 3 seconds: she speaks. Then she waits.',
+  ])('returns the AI text unchanged in one call: %s', async prompt => {
+    output(prompt);
+    const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt(input);
+    expect(result).toEqual({ prompt, model: AI_MODELS.promptEnhancement });
+    expect(respond).toHaveBeenCalledOnce();
+    const [options, request] = respond.mock.calls[0];
+    expect(options.text.format.schema.required).toEqual(['prompt']);
+    expect(options.text.format.schema.properties.prompt.maxLength).toBe(7000);
+    expect(options.instructions).toContain('using two rules');
+    expect(options.instructions).toContain('Preserve event-based cuts without inventing timestamps');
+    expect(options.instructions).toContain('nothing is appended by the application');
+    expect(request.signal).toBe(input.signal);
+  });
+  it('gives the AI the original draft and complete context without extracting a script or adding a timing pass', async () => {
+    const draft = '```text\n[Shot 1] S2 says <d>[English] with a mega remote control</d>\n[Shot 2] After he finishes, cut to S1. She asks <d>[English] A rock?</d>\n```';
+    const referenceTiming = { prefixFrames: 39, suffixFrames: 39 }, timeline = promptTimeline(6, referenceTiming);
+    const referenceDescriptions = [{ side: 'start' as const, frames: 39, description: 'A boy at a computer; soft music continues.' }];
+    const referenceAudioMask = defaultMaskCurve(1.625, 1.625, 500);
+    const prompt = 'The boy speaks, then cut to the girl. Continue the music.';
+    output(prompt);
+    const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, prompt: draft, referenceTiming,
+      referenceDescriptions, referenceAudioMask, continuity: 'Keep the laboratory.', dialogue: 'A rock?', loraInstructions: 'Use Sema.',
+      currentFrame: 'data:image/jpeg;base64,Yg==', imageReferences: ['data:image/jpeg;base64,Yw=='], imageGuides: { start: 0 },
+      keyframes: [{ frame: 48, image: 'data:image/jpeg;base64,ZA==' }] });
+    expect(result.prompt).toBe(prompt); expect(respond).toHaveBeenCalledOnce();
+    const args = respond.mock.calls[0][0], data = JSON.parse(args.input[0].content[0].text);
+    expect(data).toMatchObject({ draft, context: { timeline, duration: timeline.generatedDuration, referenceTiming, referenceDescriptions,
+      referenceAudioMask, continuity: 'Keep the laboratory.', dialogue: 'A rock?', loraInstructions: 'Use Sema.', imageGuides: { start: '<Picture 1>' } } });
+    expect(data).not.toHaveProperty('requiredDialogue');
+    expect(data.context.referenceContext[0]).toMatchObject({ start: 0, end: 1.625, description: referenceDescriptions[0].description });
+    expect(args.input[0].content.filter((v: { type: string }) => v.type === 'input_image')).toHaveLength(4);
+    expect(args.input[0].content).toContainEqual(expect.objectContaining({ type: 'input_text', text: expect.stringContaining('generated frame 48') }));
+    expect(args.input[0].content).toContainEqual({ type: 'input_text', text: 'H3 image reference <Picture 1>' });
+  });
+  it.each(['idle', 'continuity'] as const)('leaves %s wording to the AI without stripping or appending content', async target => {
+    const prompt = 'Keep the same characters and setting. Preserve their natural voices.';
+    output(prompt);
+    expect((await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input,
+      kind: target === 'idle' ? 'idle' : 'call', target: target === 'continuity' ? 'continuity' : undefined })).prompt).toBe(prompt);
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it('provides the same image as both endpoint guides for an image-only Idle loop', async () => {
+    output('A quiet loop.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, kind: 'idle', duration: 2, referenceFrames: [], imageReferences: ['data:image/jpeg;base64,Yw=='] });
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context.imageGuides).toEqual({ start: '<Picture 1>', end: '<Picture 1>' });
+  });
+  it('asks the model to respect its text budget without rejecting or truncating returned content in code', async () => {
+    const prompt = 'A'.repeat(7001); output(prompt);
+    expect((await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt(input)).prompt).toBe(prompt);
+    expect(respond.mock.calls[0][0].instructions).toContain('7000 characters');
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it.each([{ status: 'incomplete', output_text: '{"prompt":"unfinished' }, { status: 'completed', output_text: 'not JSON' },
+    { status: 'completed', output_text: '{}' }, { status: 'completed', output_text: '{"prompt":" "}' }])('handles an unusable API response without content-repair retries', async response => {
+    respond.mockResolvedValue(response);
+    await expect(createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt(input)).rejects.toMatchObject({ status: 502 });
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it('does not start an aborted request or apply a response after cancellation', async () => {
     const operation = new AbortController(); operation.abort();
-    await expect(createProviders({ OPENAI_API_KEY: 'test-key' }).enhancePrompt({ ...input, signal: operation.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, signal: operation.signal })).rejects.toMatchObject({ name: 'AbortError' });
     expect(respond).not.toHaveBeenCalled();
+    const pending = new AbortController();
+    respond.mockImplementation(async () => { pending.abort(); return { status: 'completed', output_text: '{"prompt":"Late response"}' }; });
+    await expect(createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, signal: pending.signal })).rejects.toMatchObject({ status: 504 });
+    expect(respond).toHaveBeenCalledOnce();
+  });
+  it('sanitizes provider failures and does not turn them into content retries', async () => {
+    respond.mockRejectedValue(new Error('private connection details'));
+    await expect(createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt(input)).rejects.toMatchObject({ status: 502, message: 'Unable to reach OpenAI. Check the connection and try again.' });
+    expect(respond).toHaveBeenCalledOnce();
   });
 });
 
@@ -516,7 +276,7 @@ describe('prompt enhancement API', () => {
   const enhancePrompt = vi.fn(), configured = { openai: true, gemini: false, comfy: false };
   const app = express(); app.use(protectRequests, express.json());
   addPromptEnhancementRoutes(app, { configured, enhancePrompt }); app.use(errorHandler);
-  beforeEach(() => { configured.openai = true; enhancePrompt.mockResolvedValue({ prompt: `A restrained gesture.\n\n${continuity}`, model: AI_MODELS.promptEnhancement }); });
+  beforeEach(() => { configured.openai = true; enhancePrompt.mockResolvedValue({ prompt: 'A restrained gesture.', model: AI_MODELS.promptEnhancement }); });
   const send = (body: object) => request(app).post('/api/interstitials/enhance-prompt').set('x-sparko-request', '1').send(body);
   const body = { prompt: input.prompt, kind: input.kind, duration: input.duration, referenceFrames: input.referenceFrames };
   it('validates timed image anchors before calling the enhancement provider', async () => {
@@ -570,7 +330,7 @@ describe('prompt enhancement API', () => {
   it('passes only validated prompt context and frames to the enhancer', async () => {
     const response = await send({ ...body, apiKey: 'ignored', sourceUrl: 'https://ignored.example' }).expect(200);
     expect(enhancePrompt).toHaveBeenCalledWith({ ...body, signal: expect.any(AbortSignal) });
-    expect(response.body.prompt).toContain('no cuts or position jumps');
+    expect(response.body.prompt).toBe('A restrained gesture.');
   });
   it('validates and forwards optional LoRA instructions', async () => {
     await send({ ...body, loraInstructions: '  Name Sema.  ' }).expect(200);
@@ -615,4 +375,32 @@ describe('prompt enhancement API', () => {
     configured.openai = true; vi.stubEnv('APP_PASSWORD', 'workspace-secret'); await send(body).expect(401);
     expect(enhancePrompt).not.toHaveBeenCalled();
   });
+});
+
+
+it('derives the rewrite offset from encoded references rather than a client-supplied offset', async () => {
+  output('All times use the full-video clock. She waves at 3.625 seconds.');
+  const app = express();
+  app.use(protectRequests, express.json()); addPromptEnhancementRoutes(app, createProviders({ OPENAI_API_KEY: 'test' })); app.use(errorHandler);
+  await request(app).post('/api/interstitials/enhance-prompt').set('x-sparko-request', '1')
+    .send({ prompt: 'She waves at 2 seconds.', duration: 6, referenceTiming: { prefixFrames: 39, suffixFrames: 39 },
+      timing: { offsetSeconds: 99 }, offsetSeconds: 99 }).expect(200);
+  const context = JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context;
+  expect(context.timing.offsetSeconds).toBe(1.625);
+  expect(context.timeline.generatedStart).toBe(1.625);
+  expect(context.timeline.generatedEnd).toBeCloseTo(7.7916666667);
+  expect(respond).toHaveBeenCalledOnce();
+});
+
+it('passes both versions through the video edit route without requiring shot, sound or timing sections', async () => {
+  const edited = { prompt: 'She waves in warm evening light.', enhancedPrompt: '[Shot 1] Static camera; she waves. [Shot 2] Cut to the garden in warm evening light.' };
+  respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify(edited) });
+  const app = express();
+  app.use(protectRequests, express.json()); addPromptEnhancementRoutes(app, createProviders({ OPENAI_API_KEY: 'test' })); app.use(errorHandler);
+  const enhancedPrompt = '[Shot 1] Static camera; she waves. [Shot 2] Cut to the garden in daylight.';
+  const result = await request(app).post('/api/interstitials/enhance-prompt').set('x-sparko-request', '1')
+    .send({ ...input, prompt: 'She waves in daylight.', enhancedPrompt, editInstructions: 'Change daylight to warm evening light.' }).expect(200);
+  expect(result.body).toEqual({ ...edited, model: AI_MODELS.promptEnhancement });
+  expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text)).toMatchObject({ draft: 'She waves in daylight.', enhancedPrompt });
+  expect(respond).toHaveBeenCalledOnce();
 });

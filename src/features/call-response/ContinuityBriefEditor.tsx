@@ -5,8 +5,10 @@ import EnhancePromptActions, { type PromptEditResult } from '../interstitials/En
 import { enhancePrompt } from '../interstitials/enhance-prompt';
 import type { FlowTimeline } from '../timeline/FlowTracks';
 import { showErrorToast } from '../../shared/toasts';
+import { useGenerationWorkspace } from '../interstitials/GenerationWorkspace';
 
 export default function ContinuityBriefEditor({ value, engine, info, status, player }: Pick<InterstitialEditorProps, 'engine' | 'info' | 'status' | 'player'> & { value: FlowTimeline }) {
+  const workspace = useGenerationWorkspace();
   const promptId = useId(), { id, time, brief = '' } = value.flow.interstitial;
   const [enhancing, setEnhancing] = useState(false);
   const enhancement = useRef<AbortController | null>(null);
@@ -20,7 +22,7 @@ export default function ContinuityBriefEditor({ value, engine, info, status, pla
     const operation = new AbortController(); enhancement.current = operation;
     setEnhancing(true);
     try {
-      const result = await enhancePrompt({ prompt: brief, time, duration: INTERSTITIAL.defaultDuration }, 'call', undefined, engine, info, operation.signal, { target: 'continuity', player, editInstructions });
+      const result = await enhancePrompt({ prompt: brief, time, duration: INTERSTITIAL.defaultDuration }, 'call', undefined, engine, info, operation.signal, { target: 'continuity', player, captureFrame: workspace?.getFrameCapture(), editInstructions });
       const current = latest.current;
       if (!operation.signal.aborted && enhancement.current === operation && current.flow.interstitial.id === id && (current.flow.interstitial.brief ?? '') === brief) {
         current.onChange?.({ ...current.flow, interstitial: { ...current.flow.interstitial, brief: result.prompt } });

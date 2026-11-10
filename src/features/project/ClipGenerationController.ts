@@ -9,9 +9,11 @@ import { inspectAsset } from './libraryFiles';
 import { readProject, writeProject } from './database';
 import type { ProjectController } from './ProjectController';
 import type { LibraryAsset } from './types';
+import { PromptEnhancementTasks } from '../interstitials/PromptEnhancementTasks';
 
 /** Jobs belong to the document, not to mounted inspectors. */
 export class ClipGenerationController {
+  readonly promptEnhancements = new PromptEnhancementTasks();
   private tasks = new Map<string, AbortController>();
   constructor(private projects: ProjectController) {}
   private get(id: string) { const project=this.projects.getSnapshot().project; return project?.storyFlow?.nodes.some(n=>n.generationId===id) ? project.clipGenerations?.find(g => g.id === id) : undefined; }
@@ -34,7 +36,7 @@ export class ClipGenerationController {
       for (const g of project?.clipGenerations ?? []) if (generationBusy(g) && g.requestId && g.submitted && !this.tasks.has(`${project!.id}:${g.id}`)) void this.resume(g.id);
     };
     const unsubscribe = this.projects.subscribe(check); check();
-    return () => { unsubscribe(); for (const task of this.tasks.values()) task.abort(); this.tasks.clear(); };
+    return () => { unsubscribe(); this.promptEnhancements.dispose(); for (const task of this.tasks.values()) task.abort(); this.tasks.clear(); };
   }
   async generate(id: string) {
     const g = this.get(id), projectId = this.projects.getSnapshot().project?.id;

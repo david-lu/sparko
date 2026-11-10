@@ -149,7 +149,7 @@ test('enhancement uses the selected LoRA instructions and ignores late results a
   const enhance = async () => {
     const count = bodies.length + 1;
     await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
-    await expect(prompt).toHaveValue(`Enhanced ${count}`);
+    await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue(`Enhanced ${count}`);
     await expect(page.getByRole('button', { name: 'Enhance prompt', exact: true })).toBeEnabled();
   };
   await enhance(); expect(bodies.at(-1)).toMatchObject({ prompt: 'She waves.', loraInstructions: 'Name Sema in the prompt.' });
@@ -203,7 +203,7 @@ for (const width of [1440, 390, 320]) test(`Turbo persists and keeps video contr
   await turbo.check();
   const controls = () => page.locator('.interstitial-editor').evaluate(el => {
     const top = el.getBoundingClientRect().top;
-    return ['.generation-lora select', '.generation-turbo', 'textarea', '.interstitial-resolution', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
+    return ['.generation-lora select', '.generation-turbo', 'textarea', '.interstitial-upscale', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
       const rect = el.querySelector(selector)!.getBoundingClientRect(); return { top: rect.top - top, height: rect.height, width: rect.width };
     });
   });

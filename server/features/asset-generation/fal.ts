@@ -1,3 +1,4 @@
+import { generationPrompt } from '../../../shared/prompt-versions.js';
 import { assetModel, validateAssetSettings, type AssetSettings, type MediaKind } from '../../../shared/asset-generation.js';
 import { HttpError } from '../../shared/http.js';
 
@@ -6,7 +7,7 @@ export function falPayload(settings: AssetSettings, references: FalInput[]) {
   const error = validateAssetSettings(settings); if (error) throw new HttpError(400, error);
   const model = assetModel(settings.model)!;
   const images = references.filter(r => r.kind === 'image').map(r => r.data);
-  const input: Record<string, unknown> = { prompt: settings.prompt };
+  const input: Record<string, unknown> = { prompt: generationPrompt(settings) };
   const [w, h] = settings.aspectRatio.split(':').map(Number), edge = settings.resolution === '4K' ? 4096 : settings.resolution === '2K' ? 2048 : 1024;
   const image_size = { width: Math.round((w >= h ? edge : edge * w / h) / 32) * 32, height: Math.round((h >= w ? edge : edge * h / w) / 32) * 32 };
   if (model.id === 'nano-banana-2' || model.id === 'nano-banana-pro') {
@@ -18,7 +19,7 @@ export function falPayload(settings: AssetSettings, references: FalInput[]) {
   else if (model.id === 'stable-audio-2.5') {
     const audio = references.find(r => r.kind === 'audio');
     Object.assign(input, audio ? { audio_url: audio.data, total_seconds: settings.duration } : { seconds_total: settings.duration });
-  } else { delete input.prompt; Object.assign(input, { text: settings.prompt, duration_seconds: settings.duration }); }
+  } else { delete input.prompt; Object.assign(input, { text: generationPrompt(settings), duration_seconds: settings.duration }); }
   if (model.kind === 'image' && images.length) input.image_urls = images;
   return { endpoint: references.length && model.editEndpoint ? model.editEndpoint : model.endpoint, input };
 }

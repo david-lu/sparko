@@ -1,3 +1,4 @@
+import { generationPrompt, promptSelectionError } from '../../../shared/prompt-versions';
 import { Clapperboard, Play, X } from 'lucide-react';
 import type { InterstitialEditorProps } from '../interstitials/InterstitialEditor';
 import { hasUnsubmittedChanges, isGenerating, type Interstitial } from '../../../shared/interstitials';
@@ -12,7 +13,7 @@ export default function SequenceControls({ flow, items, controller, engine, info
   const running = sequenceActive(sequence);
   const clips = ids.flatMap(id => items.find(item => item.id === id) ?? []);
   const busy = clips.some(isGenerating);
-  const missingPrompt = clips.find(item => !item.prompt.trim());
+  const missingPrompt = clips.find(item => !generationPrompt(item).trim() || !!promptSelectionError(item));
   const disconnected = clips.find(() => !status?.providers.comfy);
   const disabled = !engine || !info || !clips.length || busy || sequenceActive(globalSequence) || !!missingPrompt || !!disconnected;
   const canContinue = sequence && ['cancelled', 'error'].includes(sequence.phase) && sequence.ids.join('|') === ids.join('|');
@@ -31,7 +32,7 @@ export default function SequenceControls({ flow, items, controller, engine, info
     </div>
     <p className={sequence?.phase === 'error' ? 'inline-error' : 'hint'} role={sequence?.phase === 'error' ? 'alert' : 'status'}>{message}</p>
     <p className="hint">Edit any clip at any time. Waiting clips use your latest edits; running clips keep their submitted settings.</p>
-    {!running && missingPrompt && <p className="hint">Add a prompt for {missingPrompt.label} to generate the whole sequence.</p>}
+    {!running && missingPrompt && <p className="hint">{promptSelectionError(missingPrompt) ?? `Add a prompt for ${missingPrompt.label} to generate the whole sequence.`}</p>}
     {!running && disconnected && status && <p className="hint">Connect Comfy Cloud to generate {disconnected.label}.</p>}
   </div>;
 }

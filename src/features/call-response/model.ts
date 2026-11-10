@@ -48,6 +48,8 @@ export type FlowEdge = {
   audioTransitionFrames?: number;
 };
 export type CallResponseFlow = {
+  /** Project-wide soundtrack layers, supplied at runtime. */
+  audioLayers?: import('../project/audioLayers').AudioLayer[];
   storyGraph?: boolean;
   storyInteractions?: Record<string, CallResponseFlow['interaction']>;
   version: 2;

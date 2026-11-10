@@ -1,3 +1,4 @@
+import { enhancedPromptSettings } from '../../../shared/prompt-versions';
 import { generationSeedSchema } from '../../../shared/generation-seed';
 import { loraSettings, projectLorasSchema } from '../../../shared/loras';
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
@@ -13,6 +14,7 @@ import { maskCurveSchema } from '../../../shared/mask-curves';
 import { videoReferenceSettings } from '../../../shared/video-references';
 import { assetGenerationSchema, assetSettingsSchema } from '../../../shared/asset-generation';
 import { videoKeyframesSchema } from '../../../shared/video-keyframes';
+import { audioLayersSchema } from './audioLayers';
 
 const MAX_BYTES = 8 * 1024 ** 3;
 const MAX_MANIFEST = 8 * 1024 ** 2;
@@ -21,6 +23,7 @@ const text = z.string().max(50_000);
 const clipReferenceSchema = z.object({ kind: z.enum(['image','audio']).optional(), sceneId: z.string().min(1).max(200), assetId: z.uuid(), inFrame: number.int(), outFrame: number.int().positive() }).refine(value => value.outFrame > value.inFrame);
 const generationReferenceSchema = z.object({ mode: z.enum(['extend', 'loop', 'bridge', 'custom']).optional(), before: clipReferenceSchema.optional(), after: clipReferenceSchema.optional(), beforeClips: z.array(clipReferenceSchema).max(1000).optional(), afterClips: z.array(clipReferenceSchema).max(1000).optional() });
 const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uuid().optional(), prompt:z.string().max(8000).optional(), metadata: clipMetadataSchema.optional(),
+  upscaled: z.object({ assetId: z.uuid(), totalDuration: number.positive() }).optional(),
   fullRange: z.object({ start: number, duration: number.positive(), totalDuration: number.positive() })
     .refine(value => value.start + value.duration <= value.totalDuration + 0.1, 'Invalid full video boundaries.').optional(),
   start: number, duration: number.positive(), totalDuration: number.positive(), reference: generationReferenceSchema.optional() })
@@ -28,6 +31,7 @@ const resultSchema = z.object({ url: text, assetId: z.uuid(), fullAssetId: z.uui
 const settingsSchema = z.object({
   ...videoReferenceSettings,
   ...loraSettings,
+  ...enhancedPromptSettings,
   turbo: z.boolean().optional(), seed: generationSeedSchema.optional(),
   imageReferences: imageReferencesSchema.optional(),
   keyframes: videoKeyframesSchema.optional(),
@@ -60,6 +64,7 @@ const projectSchema = z.object({
   callResponse: callResponseSchema.optional(),
   callResponses: z.array(callResponseSchema).max(100).optional(),
   storyFlow: storyGraphSchema.optional(),
+  audioLayers: audioLayersSchema.optional(),
   libraryFolders: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(1000), parentId: z.uuid().optional() })).max(2000)
     .refine(folders => new Set(folders.map(f => f.id)).size === folders.length && folders.every(folder => {
       const seen = new Set([folder.id]); let parent = folder.parentId;
@@ -103,7 +108,7 @@ const projectSchema = z.object({
   .refine(project=>!project.mediaModelVersion||project.storyFlow?.nodes.every(n=>!n.generationId||project.clipGenerations?.some(g=>g.id===n.generationId)),'A clip references missing generation settings.')
   .refine(project=>!project.mediaModelVersion||(project.clipGenerations??[]).every(g=>project.storyFlow?.nodes.filter(n=>n.generationId===g.id).length===1),'Generation settings must belong to exactly one timeline clip.')
   .refine(project=>!!project.source.assetId||!!project.storyFlow&&!project.callResponse&&!project.callResponses?.length,'A legacy project is missing its source video.');
-const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]), project: projectSchema,
+const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]), project: projectSchema,
   assets: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(1000), mime: z.string().max(200), size: number.int().positive().max(MAX_BYTES) })).max(2000),
 });
 type Progress = (message: string, fraction: number) => void;
@@ -111,7 +116,7 @@ type Progress = (message: string, fraction: number) => void;
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
   assets = assets.filter(asset => !project.deletedAssetIds?.includes(asset.id));
   const supplied = new Set(assets.map(asset => asset.id));
-  const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
+  const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.audioLayers?.length ? 6 : project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
     ...project,
     assetAliases: project.assetAliases ? Object.fromEntries(Object.entries(project.assetAliases).filter(([, id]) => supplied.has(id))) : undefined,
     interstitials: project.interstitials.map(item => ({ ...item, ...interstitialSettings(item), interpolateMiddle: undefined, maskTransitionMs: undefined,
@@ -154,7 +159,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const entry = entries.find(entry => entry.filename === 'project.json');
     if (!entry || entry.directory || entry.uncompressedSize > MAX_MANIFEST) throw new Error('The archive is missing a valid project.json manifest.');
     const raw = JSON.parse(await entry.getData(new TextWriter(), { signal, checkSignature: true }));
-    if (![1, 2, 3, 4, 5].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
+    if (![1, 2, 3, 4, 5, 6].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
     const parsed = manifestSchema.safeParse(raw);
     if (!parsed.success) throw new Error(`Invalid project metadata: ${parsed.error.issues[0].message}`);
     const { project, assets: descriptions } = parsed.data;
@@ -182,7 +187,8 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
       before: input.before && remapClip(input.before), after: input.after && remapClip(input.after),
       beforeClips: input.beforeClips?.map(remapClip), afterClips: input.afterClips?.map(remapClip) } : undefined;
     const remapGeneration=(g:import('../../../shared/asset-generation').AssetGeneration)=>({...g,settings:remapAssetSettings(g.settings),submitted:g.submitted?remapAssetSettings(g.submitted):undefined,selectedAssetId:g.selectedAssetId?remap.get(g.selectedAssetId)!:undefined,versions:g.versions.map(v=>({...v,assetId:remap.get(v.assetId)!,settings:remapAssetSettings(v.settings)}))});
-    const remapResult=(result:z.infer<typeof resultSchema>)=>({...result,reference:remapReference(result.reference),assetId:remap.get(result.assetId)??result.assetId,fullAssetId:result.fullAssetId?remap.get(result.fullAssetId)??result.fullAssetId:undefined,url:`asset:${remap.get(result.assetId)??result.assetId}`});
+    const remapResult=(result:z.infer<typeof resultSchema>)=>({...result,reference:remapReference(result.reference),assetId:remap.get(result.assetId)??result.assetId,fullAssetId:result.fullAssetId?remap.get(result.fullAssetId)??result.fullAssetId:undefined,
+      upscaled:result.upscaled?{...result.upscaled,assetId:remap.get(result.upscaled.assetId)??result.upscaled.assetId}:undefined,url:`asset:${remap.get(result.assetId)??result.assetId}`});
     const assets: Asset[] = []; let read = 0;
     for (const asset of descriptions) {
       signal.throwIfAborted();
@@ -197,6 +203,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     return { project: {
       ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(), assetAliases,
       deletedAssetIds: project.deletedAssetIds?.map(id => remap.get(id)!),
+      audioLayers: project.audioLayers?.map(layer => ({ ...layer, assetId: remap.get(layer.assetId)! })),
       library: project.library?.map(item => ({ ...item, generation:item.generation?.provider==='comfy'?{...item.generation,result:remapResult(item.generation.result),settings:item.generation.settings?remapSettings(item.generation.settings):undefined}:item.generation?{...item.generation,settings:remapAssetSettings(item.generation.settings)}:undefined, assetId: remap.get(item.assetId)!, originalAssetId: item.originalAssetId ? remap.get(item.originalAssetId)! : undefined })),
       assetGenerations:project.assetGenerations?.map(remapGeneration),
       clipGenerations: project.clipGenerations?.map(g => ({ ...g, settings: remapAssetSettings(g.settings), submitted: g.submitted ? remapAssetSettings(g.submitted) : undefined,
@@ -213,8 +220,8 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
         generationSettings: item.generationSettings ? remapSettings(item.generationSettings) : undefined,
         requestReference: remapReference(item.requestReference),
         phase: ['preparing', 'uploading'].includes(item.phase) ? 'draft' : item.phase,
-        result: item.result ? { ...item.result, reference: remapReference(item.result.reference), assetId: remap.get(item.result.assetId)!, ...(item.result.fullAssetId ? { fullAssetId: remap.get(item.result.fullAssetId)! } : {}), url: `asset:${remap.get(item.result.assetId)}` } : undefined,
-        previousResult: item.previousResult ? { ...item.previousResult, reference: remapReference(item.previousResult.reference), assetId: remap.get(item.previousResult.assetId)!, ...(item.previousResult.fullAssetId ? { fullAssetId: remap.get(item.previousResult.fullAssetId)! } : {}), url: `asset:${remap.get(item.previousResult.assetId)}` } : undefined,
+        result: item.result ? { ...item.result, reference: remapReference(item.result.reference), assetId: remap.get(item.result.assetId)!, ...(item.result.fullAssetId ? { fullAssetId: remap.get(item.result.fullAssetId)! } : {}), ...(item.result.upscaled ? { upscaled: { ...item.result.upscaled, assetId: remap.get(item.result.upscaled.assetId)! } } : {}), url: `asset:${remap.get(item.result.assetId)}` } : undefined,
+        previousResult: item.previousResult ? { ...item.previousResult, reference: remapReference(item.previousResult.reference), assetId: remap.get(item.previousResult.assetId)!, ...(item.previousResult.fullAssetId ? { fullAssetId: remap.get(item.previousResult.fullAssetId)! } : {}), ...(item.previousResult.upscaled ? { upscaled: { ...item.previousResult.upscaled, assetId: remap.get(item.previousResult.upscaled.assetId)! } } : {}), url: `asset:${remap.get(item.previousResult.assetId)}` } : undefined,
       })),
     }, assets };
   } finally { await reader.close(); }

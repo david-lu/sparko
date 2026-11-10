@@ -1,6 +1,6 @@
 import GenerationTimelineEditor from '../features/interstitials/GenerationTimelineEditor';
 import InterstitialEditor from '../features/interstitials/InterstitialEditor';
-import { GenerationWorkspaceContext } from '../features/interstitials/GenerationWorkspace';
+import { createGenerationWorkspace, GenerationWorkspaceContext } from '../features/interstitials/GenerationWorkspace';
 import { storyGenerationItem } from '../features/story-flow/referenceInputs';
 import DockWorkspace from '../shared/panels/DockWorkspace';
 import { Activity, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
@@ -76,7 +76,7 @@ export default function App() {
   const projectState = useSyncExternalStore(projects.subscribe, projects.getSnapshot);
   const [generationId, setGenerationId] = useState<string | null>(null);
   useEffect(() => { setGenerationId(null); }, [projectState.activationRevision]);
-  const generationWorkspace = useMemo(() => ({ open: (id: string) => { controller.pause(); setGenerationId(id); }, close: () => setGenerationId(null) }), [controller]);
+  const generationWorkspace = useMemo(() => createGenerationWorkspace(id => { controller.pause(); setGenerationId(id); }, () => setGenerationId(null)), [controller]);
   const storyGraph=projectState.project?.storyFlow;
   const generationItem = interstitialState.items.find(item => item.id === generationId);
   useEffect(() => { if (generationId && !generationItem) setGenerationId(null); }, [generationId, generationItem]);
@@ -157,9 +157,9 @@ export default function App() {
   useEffect(()=>{if(info&&projectState.source)projects.initializeStoryFlow(info.duration);},[info,projectState.source,projects]);
   const flow = useMemo(() => {
     const flow = storyGraph ? runtimeFlow(storyGraph,interstitialState.items,source.assetId??'',info?.duration??0) : info&&source.assetId?composeFlows(savedFlows, interstitialState.items, source.assetId, info.duration):undefined;
-    return flow;
-  }, [storyGraph,savedFlows, readyKey, info, source.assetId]);
-  const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, crossfadeFrames, matchFraming }) : null, [source, info, readyKey, crossfade, crossfadeFrames, matchFraming]);
+    return flow ? { ...flow, audioLayers: projectState.project?.audioLayers } : flow;
+  }, [storyGraph,savedFlows, readyKey, info, source.assetId, projectState.project?.audioLayers]);
+  const composition = useMemo(() => info ? new TimelineComposition(source, info, interstitialState.items, { crossfade, crossfadeFrames, matchFraming, audioLayers: projectState.project?.audioLayers }) : null, [source, info, readyKey, crossfade, crossfadeFrames, matchFraming, projectState.project?.audioLayers]);
   useEffect(() => { if (!projectState.source) return; if (flow && info) controller.setFlow(flow, info, matchFraming, crossfade, crossfadeFrames); else if (!flow && composition) controller.setComposition(composition); }, [composition, controller, flow, info, matchFraming, crossfade, crossfadeFrames, projectState.source]);
   useEffect(() => {
     controller.pause(); setSelectedFlowScene(null); setSelectedFlowEdge(null);

@@ -32,8 +32,8 @@ for (const width of [1440, 390]) test(`image enhancement follows the selected mo
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click(); await expect.poll(() => body?.settings.model).toBe('nano-banana-pro');
   expect(body.images).toHaveLength(1); expect(body.images[0]).toMatch(/^data:image\/jpeg;base64,/);
   await expect(page.getByRole('button', { name: 'Generate image', exact: true })).toBeDisabled(); expect(await positions(page)).toEqual(before);
-  finish(); await expect(prompt).toHaveValue(/A warm poster/); expect(await positions(page)).toEqual(before);
-  const enhanced = await prompt.inputValue(), error = 'The provider rejected the API key or model access. Check your .env configuration.';
+  finish(); await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue(/A warm poster/); expect(await positions(page)).toEqual(before);
+  const enhanced = await page.getByLabel('Enhanced prompt', { exact: true }).inputValue(), error = 'The provider rejected the API key or model access. Check your .env configuration.';
   await page.unroute('**/api/image-prompts/enhance');
   await page.route('**/api/image-prompts/enhance', route => route.fulfill({ status: 502, json: { error } }));
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
@@ -42,7 +42,7 @@ for (const width of [1440, 390]) test(`image enhancement follows the selected mo
   const toolbar = (await page.locator('.menubar').boundingBox())!;
   expect((await toast.boundingBox())!.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height);
   await expect(page.locator('.clip-generation-editor')).not.toContainText(error);
-  await expect(prompt).toHaveValue(enhanced); expect(await positions(page)).toEqual(before);
+  await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue(enhanced); expect(await positions(page)).toEqual(before);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   await page.screenshot({ path: `test-results/enhancement-toast-${width}.png` });
   await toast.getByRole('button', { name: 'Dismiss notification', exact: true }).click();

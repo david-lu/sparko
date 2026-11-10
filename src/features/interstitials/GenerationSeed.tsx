@@ -1,14 +1,14 @@
 import { useEffect, useId, useState } from 'react';
 import { chooseGenerationSeed, generationSeedSchema, MAX_GENERATION_SEED } from '../../../shared/generation-seed';
 
-export default function GenerationSeed({ value, lastSeed, baseOnly, onChange }: {
-  value?: number; lastSeed?: number; baseOnly: boolean; onChange: (seed: number | undefined) => void;
+export default function GenerationSeed({ value, lastSeed, onChange }: {
+  value?: number; lastSeed?: number; onChange: (seed: number | undefined) => void;
 }) {
   const id = useId();
   const [text, setText] = useState(value === undefined ? '' : String(value));
   useEffect(() => { setText(value === undefined ? '' : String(value)); }, [value]);
   return <div className="field generation-seed">
-    <label htmlFor={`${id}-mode`}>{baseOnly ? 'H3 base seed' : 'Seed'}</label>
+    <label htmlFor={`${id}-mode`}>Seed</label>
     <div className="generation-seed-controls">
       <select id={`${id}-mode`} aria-label="Generation seed mode" value={value === undefined ? 'random' : 'fixed'}
         onChange={event => onChange(event.target.value === 'random' ? undefined : chooseGenerationSeed(lastSeed))}>
@@ -24,6 +24,6 @@ export default function GenerationSeed({ value, lastSeed, baseOnly, onChange }: 
         const parsed = generationSeedSchema.safeParse(event.target.valueAsNumber);
         if (event.target.validity.valid && parsed.success) onChange(parsed.data);
       }} />
-    <p id={`${id}-help`} className="hint">Random changes the seed; Fixed reuses it. The optional 2K pass has no seed control.</p>
+    <p id={`${id}-help`} className="hint">Random changes the seed; Fixed reuses it. Upscale to 2K has no seed control.</p>
   </div>;
 }

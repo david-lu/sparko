@@ -9,6 +9,7 @@ export type PlaybackClip = { key: string; source: MediaSource; sourceFootage: bo
   audio?: { key: string; source: MediaSource; time: number } };
 export type PlaybackLayer = PlaybackClip & { opacity: number; gain: number; gainRate?: number; musicGain?: number };
 export type PlaybackSettings = { volume: number; muted: boolean; speed: number };
+export type PlaybackAudioLayer = { key: string; source: MediaSource; time: number; end: number };
 type Deck = { decoder: FrameDecoder; source: string; used: number };
 
 /** Mediabunny decoders feeding one GPU canvas and one audio clock. No preview encoding. */
@@ -63,19 +64,23 @@ export class CanvasMediaDecks {
     if (!this.active.has(clip.key)) this.obtain(clip).at(clip.time);
     if (clip.audio && !this.active.has(clip.audio.key)) this.obtain({ ...clip, ...clip.audio }).at(clip.audio.time);
   }
-  render(layers: PlaybackLayer[], playing: boolean, settings: PlaybackSettings, musicGain = 0) {
+  render(layers: PlaybackLayer[], playing: boolean, settings: PlaybackSettings, musicGain = 0, audioLayers: PlaybackAudioLayer[] = []) {
     if (this.disposed) return false;
     if (this.renderer.error) throw this.renderer.error;
     if (this.audio.error) throw this.audio.error;
     if (playing) this.audio.resume();
-    this.layers = layers; this.active = new Set(layers.flatMap(layer => layer.audio ? [layer.key, layer.audio.key] : [layer.key]));
+    this.layers = layers; this.active = new Set([...layers.flatMap(layer => layer.audio ? [layer.key, layer.audio.key] : [layer.key]), ...audioLayers.map(layer => layer.key)]);
+    const extraAudio = audioLayers.map(layer => {
+      const decoder = this.obtain({ ...layer, sourceFootage: false });
+      return { layer, decoder, sample: decoder.at(layer.time) };
+    });
     const assigned = layers.map(layer => {
       const decoder = this.obtain(layer), sample = decoder.at(layer.time);
       const audioDecoder = layer.audio ? this.obtain({ ...layer, ...layer.audio }) : decoder;
       if (layer.audio) audioDecoder.at(layer.audio.time);
       return { layer, decoder, sample, audioDecoder, audioKey: layer.audio?.key ?? layer.key, audioTime: layer.audio?.time ?? layer.time };
     });
-    const ready = this.renderer.ready && assigned.every(({ layer, sample, audioDecoder, audioTime }) =>
+    const ready = this.renderer.ready && extraAudio.every(({ layer, decoder, sample }) => sample && (!playing || decoder.audioReady(layer.time))) && assigned.every(({ layer, sample, audioDecoder, audioTime }) =>
       sample && (!playing || layer.still || layer.muted || audioDecoder.audioReady(audioTime)));
     this.bufferedAhead = ready ? Math.max(0, Math.min(...assigned.map(({ layer, decoder }) => decoder.bufferedEnd - layer.time))) : 0;
     if (!ready) { this.audio.pause(); return false; }
@@ -89,7 +94,10 @@ export class CanvasMediaDecks {
         .map(({ layer, sample }) => ({ sample: sample!, opacity: layer.opacity, sourceFootage: layer.sourceFootage })), this.matchFraming);
       this.signature = signature;
     }
-    this.audio.retain(playing ? new Set(assigned.filter(({ layer }) => !layer.still && !layer.muted).map(({ audioKey }) => audioKey)) : new Set());
+    this.audio.retain(playing ? new Set([...assigned.filter(({ layer }) => !layer.still && !layer.muted).map(({ audioKey }) => audioKey), ...extraAudio.map(({ layer }) => layer.key)]) : new Set());
+    for (const { layer, decoder } of extraAudio) if (playing) {
+      this.audio.render(layer.key, decoder, layer.time, 1, 0, settings.muted ? 0 : settings.volume * audioVolume(layer.source.volume), settings.speed, layer.end);
+    }
     for (const { layer, audioDecoder, audioKey, audioTime } of assigned) if (playing && !layer.still && !layer.muted) {
       this.audio.render(audioKey, audioDecoder, audioTime, layer.gain, layer.gainRate ?? 0,
         settings.muted ? 0 : settings.volume * audioVolume((layer.audio?.source ?? layer.source).volume), settings.speed);

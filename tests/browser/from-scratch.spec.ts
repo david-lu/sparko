@@ -32,7 +32,7 @@ for (const width of [1440, 390]) for (const loop of [false, true]) for (const co
     const prompt = page.getByLabel('Video prompt', { exact: true }); await prompt.fill('Clouds drift gently across a sunset sky.');
     const controls = () => page.locator('.interstitial-editor').evaluate(root => {
       const top = root.getBoundingClientRect().top;
-      return ['textarea', '.interstitial-resolution', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
+      return ['textarea', '.interstitial-upscale', '.generation-timeline-summary', 'button[type=submit]', '.task-status'].map(selector => {
         const rect = root.querySelector(selector)!.getBoundingClientRect(); return { top: rect.top - top, height: rect.height };
       });
     });

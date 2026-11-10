@@ -1,3 +1,4 @@
+import { enhancedPromptSettings } from '../../../shared/prompt-versions';
 import { generationSeedSchema } from '../../../shared/generation-seed';
 import { videoKeyframesSchema } from '../../../shared/video-keyframes';
 import { loraAddressSchema, loraInstructionsSchema, loraStrengthSchema } from '../../../shared/loras';
@@ -6,7 +7,7 @@ import { INTERSTITIAL } from '../../../shared/constants';
 import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
 import { maskCurveSchema } from '../../../shared/mask-curves';
 import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metadata';
-import { clipMaskInjection, referenceTypes, generationMethods, interstitialSettings, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings } from '../../../shared/interstitials';
+import { clipMaskInjection, referenceTypes, generationMethods, interstitialSettings, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, upscalePhases, type ClipReference, type GenerationReference, type Interstitial, type InterstitialResult, type InterstitialSettings, type UpscaledResult, type UpscaleJob } from '../../../shared/interstitials';
 
 function readReference(value: unknown): GenerationReference | undefined {
   const validClip = (clip: ClipReference | undefined) => clip && typeof clip.sceneId === 'string' && typeof clip.assetId === 'string'
@@ -22,7 +23,7 @@ function readSettings(value: unknown): InterstitialSettings | undefined {
   if (method !== undefined && method !== 'fal' && !generationMethods.includes(method as InterstitialSettings['method'] & string)) return;
   if (![settings.start_range, settings.end_range, settings.duration].every(value => typeof value === 'number' && Number.isFinite(value)) ||
     typeof settings.prompt !== 'string' || typeof settings.enable_prompt_expansion !== 'boolean') return;
-  return interstitialSettings({ ...settings, timelineVideos: videoReferenceSettings.timelineVideos.safeParse(settings.timelineVideos).data, keyframes: videoKeyframesSchema.safeParse(settings.keyframes).data, startVideoAssets: videoReferenceSettings.startVideoAssets.safeParse(settings.startVideoAssets).data, endVideoAssets: videoReferenceSettings.endVideoAssets.safeParse(settings.endVideoAssets).data, seed: generationSeedSchema.safeParse(settings.seed).data, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
+  return interstitialSettings({ ...settings, ...readPromptVersions(settings), timelineVideos: videoReferenceSettings.timelineVideos.safeParse(settings.timelineVideos).data, keyframes: videoKeyframesSchema.safeParse(settings.keyframes).data, startVideoAssets: videoReferenceSettings.startVideoAssets.safeParse(settings.startVideoAssets).data, endVideoAssets: videoReferenceSettings.endVideoAssets.safeParse(settings.endVideoAssets).data, seed: generationSeedSchema.safeParse(settings.seed).data, turbo: typeof settings.turbo === 'boolean' ? settings.turbo : undefined, lora: loraAddressSchema.nullable().safeParse(settings.lora).data, loraInstructions: loraInstructionsSchema.safeParse(settings.loraInstructions).data, loraStrength: loraStrengthSchema.safeParse(settings.loraStrength).data, audioMaskCurve: maskCurveSchema.safeParse(settings.audioMaskCurve).data, videoMaskCurve: maskCurveSchema.safeParse(settings.videoMaskCurve).data, imageReferences: imageReferencesSchema.safeParse(settings.imageReferences).data, startImageIndex: imageReferenceIndexSchema.safeParse(settings.startImageIndex).data, endImageIndex: imageReferenceIndexSchema.safeParse(settings.endImageIndex).data, method: normalizeGenerationMethod(method) });
 }
 
 function readResult(value: unknown): InterstitialResult | undefined {
@@ -34,7 +35,19 @@ function readResult(value: unknown): InterstitialResult | undefined {
   if (result.fullRange && (![result.fullRange.start, result.fullRange.duration, result.fullRange.totalDuration].every(value => typeof value === 'number' && Number.isFinite(value))
     || result.fullRange.start < 0 || result.fullRange.duration <= 0 || result.fullRange.start + result.fullRange.duration > result.fullRange.totalDuration + 0.1)) return;
   if (![result.start, result.duration, result.totalDuration].every(value => typeof value === 'number' && Number.isFinite(value))) return;
-  if (result.start! >= 0 && result.duration! > 0 && result.start! + result.duration! <= result.totalDuration! + 0.1) return { ...result, metadata: clipMetadataSchema.safeParse(result.metadata).data, reference: readReference(result.reference) } as InterstitialResult;
+  if (result.start! >= 0 && result.duration! > 0 && result.start! + result.duration! <= result.totalDuration! + 0.1) return { ...result, metadata: clipMetadataSchema.safeParse(result.metadata).data, reference: readReference(result.reference), upscaled: readUpscaled(result.upscaled) } as InterstitialResult;
+}
+function readUpscaled(value: unknown): UpscaledResult | undefined {
+  const upscaled = value as Partial<UpscaledResult> | undefined;
+  return upscaled && typeof upscaled.assetId === 'string' && upscaled.assetId && typeof upscaled.totalDuration === 'number' && Number.isFinite(upscaled.totalDuration) && upscaled.totalDuration > 0
+    ? { assetId: upscaled.assetId, totalDuration: upscaled.totalDuration } : undefined;
+}
+function readUpscaleJob(value: unknown): UpscaleJob | undefined {
+  const job = value as Partial<UpscaleJob> | undefined;
+  if (!job || !upscalePhases.includes(job.phase!) || typeof job.sourceAssetId !== 'string' || !job.sourceAssetId) return;
+  return { phase: job.phase!, sourceAssetId: job.sourceAssetId,
+    ...(typeof job.requestId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(job.requestId) ? { requestId: job.requestId } : {}),
+    ...(typeof job.error === 'string' ? { error: job.error } : {}) };
 }
 
 export const interstitialKey = (sourceId: string) => `sparko:interstitials:v1:${sourceId}`;
@@ -86,18 +99,26 @@ export function loadInterstitials(sourceId: string): Interstitial[] {
         requestOrigin: clipOriginSchema.safeParse(item.requestOrigin).data,
         requestInsertion: item.requestInsertion && [item.requestInsertion.start, item.requestInsertion.duration, item.requestInsertion.totalDuration].every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
           && item.requestInsertion.start >= 0 && item.requestInsertion.duration > 0 && item.requestInsertion.start + item.requestInsertion.duration <= item.requestInsertion.totalDuration + 0.1 ? item.requestInsertion : undefined,
+        ...readPromptVersions(item),
         prompt: typeof item.prompt === 'string' ? item.prompt : '', phase: phase === 'ready' && !result ? 'error' : phase,
         requestId: typeof item.requestId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(item.requestId) ? item.requestId : undefined,
-        result, previousResult: readResult(item.previousResult), error: typeof item.error === 'string' ? item.error : undefined }];
+        result, previousResult: readResult(item.previousResult), upscale: readUpscaleJob(item.upscale), error: typeof item.error === 'string' ? item.error : undefined }];
     }).sort((a, b) => a.time - b.time);
   } catch { return []; }
 }
 export function saveInterstitials(sourceId: string, items: Interstitial[]) {
   try {
     const key = interstitialKey(sourceId);
-    const value = JSON.stringify(items.map(({ progress: _progress, progressDetails: _details, queuePosition: _position, ...item }) => item));
+    const value = JSON.stringify(items.map(({ progress: _progress, progressDetails: _details, queuePosition: _position, ...item }) => ({ ...item,
+      upscale: item.upscale && { ...item.upscale, progress: undefined, progressDetails: undefined, queuePosition: undefined } })));
     if (localStorage.getItem(key) !== value) localStorage.setItem(key, value);
     return true;
   }
   catch { return false; }
+}
+
+function readPromptVersions(value: Record<string, unknown>) {
+  return { enhancedPrompt: enhancedPromptSettings.enhancedPrompt.safeParse(value.enhancedPrompt).data,
+    enhancedPromptStale: enhancedPromptSettings.enhancedPromptStale.safeParse(value.enhancedPromptStale).data,
+    useEnhancedPrompt: enhancedPromptSettings.useEnhancedPrompt.safeParse(value.useEnhancedPrompt).data };
 }

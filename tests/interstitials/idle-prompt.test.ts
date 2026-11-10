@@ -35,3 +35,19 @@ describe('visible prompts sent to Comfy', () => {
     expect(engine.exportMp4).toHaveBeenCalledOnce();
   });
 });
+
+
+it('uses the selected enhanced prompt for generation while retaining both versions in render settings', async () => {
+  vi.clearAllMocks();
+  vi.mocked(request).mockResolvedValue({ ready: true });
+  vi.mocked(sendForm).mockResolvedValue({ requestId: 'paired-job', status: 'IN_QUEUE' });
+  const item = { ...idle, enhancedPrompt: 'A quiet garden.', useEnhancedPrompt: true, useInputReference: false, useOutputReference: false };
+  const requestOrigin = captureClipOrigin(item, undefined);
+  await generateInterstitial({ ...item, requestOrigin }, null, null, new AbortController().signal, () => undefined);
+  const body = vi.mocked(sendForm).mock.calls[0][1];
+  expect(body.get('prompt')).toBe(item.enhancedPrompt);
+  expect(JSON.parse(String(body.get('clipOrigin'))).settings).toMatchObject({ prompt: idle.prompt, enhancedPrompt: item.enhancedPrompt, useEnhancedPrompt: true });
+  vi.clearAllMocks();
+  await expect(generateInterstitial({ ...item, enhancedPromptStale: true }, null, null, new AbortController().signal, () => undefined)).rejects.toThrow('needs updating');
+  expect(sendForm).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
+});

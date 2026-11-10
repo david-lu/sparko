@@ -18,8 +18,8 @@ test('each template prompt enhances independently without submitting a generatio
       await setVideoReference(page, 'end', false);
     }
     await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click();
-    await expect(page.getByLabel('Video prompt')).toHaveValue(`Enhanced prompt ${index + 1}`);
+    await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue(`Enhanced prompt ${index + 1}`);
   }
-  expect((await readProject(page)).interstitials.map((item: any) => item.prompt)).toEqual([1, 2, 3, 4].map(i => `Enhanced prompt ${i}`));
+  expect((await readProject(page)).interstitials.map((item: any) => item.enhancedPrompt)).toEqual([1, 2, 3, 4].map(i => `Enhanced prompt ${i}`));
   expect(generations).toBe(0);
 });

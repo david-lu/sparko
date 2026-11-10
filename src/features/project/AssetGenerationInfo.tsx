@@ -1,3 +1,4 @@
+import { generationPrompt } from '../../../shared/prompt-versions';
 import { assetModel } from '../../../shared/asset-generation';
 import { referenceClips } from '../../../shared/reference-clips';
 import { videoAssets } from '../../../shared/video-references';
@@ -24,7 +25,7 @@ export default function AssetGenerationInfo({ asset, showPrompt = true, showBrea
   if (!generation) return null;
   const result = generation?.provider === 'comfy' ? generation.result : undefined;
   const metadata = result?.metadata, settings = generation?.settings;
-  const prompt = generation?.provider === 'fal' ? generation.settings.prompt : result?.prompt ?? metadata?.prompt;
+  const prompt = generation?.provider === 'fal' ? generationPrompt(generation.settings) : result?.prompt ?? metadata?.prompt;
   const references = generation?.provider === 'fal' ? generation.settings.references.map(ref => ref.name)
     : metadata ? [...referenceClips(metadata.references, 'before'), ...referenceClips(metadata.references, 'after')].map(ref => ref.name) : [];
   return <section className="asset-generation-info" aria-label="Generation info">

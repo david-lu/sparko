@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { promptReferenceTimingSchema, promptTimeline, promptTimelineDirection } from '../../shared/prompt-timing';
+import { promptReferenceTimingSchema, promptTimecode, promptTimeline, promptTimelineDirection } from '../../shared/prompt-timing';
 
 describe('prompt time within the full H3 render', () => {
   it.each([
@@ -25,6 +25,9 @@ describe('prompt time within the full H3 render', () => {
     expect(pictures).toContain('from 0 to 6.583 seconds');
     expect(pictures).not.toContain('reference footage');
   });
+  it.each([
+    [0, '00:00.000'], [1.625, '00:01.625'], [50 / 24, '00:02.083'], [355 / 24, '00:14.792'], [75.5, '01:15.500'], [59.9996, '01:00.000'],
+  ])('writes %s seconds as the H3 timecode %s', (seconds, timecode) => expect(promptTimecode(seconds)).toBe(timecode));
   it('rejects unencoded windows and a render that exceeds the total H3 limit', () => {
     for (const frames of [-1, 1, 38, 48, 96, Infinity]) expect(promptReferenceTimingSchema.safeParse({ prefixFrames: frames, suffixFrames: 0 }).success).toBe(false);
     expect(() => promptTimeline(13, { prefixFrames: 39, suffixFrames: 39 })).toThrow('362 frames including context');

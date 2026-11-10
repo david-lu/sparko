@@ -3,7 +3,7 @@ const openTimeline = (page: Page) => page.getByRole('button', { name: 'Edit gene
 const closeTimeline = (page: Page) => page.getByRole('button', { name: 'Close generation timeline', exact: true }).click();
 const layout = (page: Page, editor: boolean) => page.locator(editor ? '.generation-timeline-editor' : '.interstitial-editor').evaluate((root, editor) => {
   const top = root.getBoundingClientRect().top;
-  return (editor ? ['.generation-player', '.generation-timeline-toolbar', '.generation-timeline-scroll'] : ['.generation-timeline-summary', '.interstitial-resolution', 'button[type=submit]']).map(selector => {
+  return (editor ? ['.generation-player', '.generation-timeline-toolbar', '.generation-timeline-scroll'] : ['.generation-timeline-summary', '.interstitial-upscale', 'button[type=submit]']).map(selector => {
     const rect = root.querySelector(selector)!.getBoundingClientRect(); return { top: rect.top - top, height: rect.height };
   });
 }, editor);
@@ -38,7 +38,7 @@ for (const width of [1440, 390]) test(`keyframe upload and enhancement keep layo
   });
   await page.getByRole('button', { name: 'Enhance prompt', exact: true }).click(); await expect.poll(() => sent).toBe(1);
   expect(await layout(page, false)).toEqual(idle); finish();
-  await expect(page.getByLabel('Video prompt', { exact: true })).toHaveValue('Hold the rock at chest height.');
+  await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue('Hold the rock at chest height.');
   expect(await layout(page, false)).toEqual(idle);
   await openTimeline(page);
   await page.getByRole('button', { name: 'Add image keyframe', exact: true }).click();
@@ -51,7 +51,9 @@ for (const width of [1440, 390]) test(`keyframe upload and enhancement keep layo
   await openTimeline(page);
   await page.getByLabel('Selected generation input', { exact: true }).selectOption({ index: 2 });
   await page.locator('.video-keyframe-footer').getByRole('checkbox', { name: 'Enabled', exact: true }).uncheck();
-  await closeTimeline(page); await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
+  await closeTimeline(page);
+  await page.getByLabel('Prompt used for generation', { exact: true }).selectOption('original');
+  await expect(page.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
   expect((await readProject(page)).interstitials[0].keyframes[1].enabled).toBe(false); expect(errors).toEqual([]);
 });
 

@@ -27,6 +27,11 @@ export function collectLibrary(project: Project, sourceDuration?: number): Libra
         inFrame: Math.round(result.start * TIMELINE_FPS), outFrame: Math.round((result.start + result.duration) * TIMELINE_FPS) });
       if (result.fullAssetId) add({ assetId: result.fullAssetId, name: `${item.label} · full render`, kind: 'generated', generation,
         duration: result.fullRange?.totalDuration, inFrame: Math.round((result.fullRange?.start ?? 0) * TIMELINE_FPS), outFrame: result.fullRange ? Math.round((result.fullRange.start + result.fullRange.duration) * TIMELINE_FPS) : undefined });
+      // The 2K video covers the complete render, references included, like the full render above.
+      const full = result.fullRange ?? result;
+      if (result.upscaled) add({ assetId: result.upscaled.assetId, name: `${item.label} · 2K`, kind: 'generated', generation, duration: result.upscaled.totalDuration,
+        // Clamp to the returned file in case the 2K service returns a slightly shorter video.
+        inFrame: Math.round(full.start * TIMELINE_FPS), outFrame: Math.min(Math.round((full.start + full.duration) * TIMELINE_FPS), Math.floor(result.upscaled.totalDuration * TIMELINE_FPS)) });
     }
   }
   for (const generation of [...project.clipGenerations ?? [], ...project.assetGenerations ?? []]) for (const version of generation.versions) add({ assetId: version.assetId, name: version.name, kind: generation.kind === 'video' ? 'generated' : generation.kind, generationId: generation.id, folderId: generation.folderId,

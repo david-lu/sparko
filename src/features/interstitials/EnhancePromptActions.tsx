@@ -4,11 +4,12 @@ import { Pencil, Sparkles, X } from 'lucide-react';
 import { PROMPT_EDIT_MAX_LENGTH } from '../../../shared/constants';
 import ModalBackdrop from '../../shared/ModalBackdrop';
 
-export type PromptEditResult = { applied: boolean; error?: string };
+import type { PromptEditResult } from './PromptEnhancementTasks';
+export type { PromptEditResult } from './PromptEnhancementTasks';
 
-export default function EnhancePromptActions({ promptId, enhancing, analyzing = false, enabled, connected, onEnhance, onEdit, onCancel, description, unavailableReason }: {
+export default function EnhancePromptActions({ promptId, enhancing, analyzing = false, enabled, connected, onEnhance, onEdit, onCancel, description, unavailableReason, editsBoth = false }: {
   promptId: string; enhancing: boolean; enabled: boolean; connected: boolean; onEnhance: () => void; onEdit: (instructions: string) => Promise<PromptEditResult>; onCancel: () => void; description?: string; unavailableReason?: string;
-  analyzing?: boolean;
+  analyzing?: boolean; editsBoth?: boolean;
 }) {
   const id = useId(), trigger = useRef<HTMLButtonElement>(null), attempt = useRef(0);
   const [editing, setEditing] = useState(false), [instructions, setInstructions] = useState(''), [error, setError] = useState('');
@@ -33,16 +34,17 @@ export default function EnhancePromptActions({ promptId, enhancing, analyzing = 
       <span className="button-labels"><span aria-hidden={enhancingHere}>Enhance prompt</span><span aria-hidden={!enhancingHere || analyzing}>Enhancing…</span><span aria-hidden={!enhancingHere || !analyzing}>Analyzing…</span></span>
     </button>
     <button ref={trigger} type="button" className="text-button enhance-prompt" disabled={enhancing || !connected || !enabled} aria-controls={promptId} aria-haspopup="dialog"
-      title={reason ?? 'Describe a specific change to this prompt'} onClick={() => { setInstructions(''); setError(''); setEditing(true); }}><Pencil size={12}/>Edit with AI</button>
+      title={reason ?? (editsBoth ? 'Apply a change to both the original and enhanced prompts' : 'Describe a change to this prompt')} onClick={() => { setInstructions(''); setError(''); setEditing(true); }}><Pencil size={12}/>Edit with AI</button>
     <button type="button" className="icon-button small enhance-prompt-cancel" aria-label="Cancel prompt enhancement" aria-controls={promptId} aria-hidden={!enhancingHere} disabled={!enhancingHere}
       onClick={onCancel}><X size={13} /></button>
     {editing && createPortal(<ModalBackdrop labelledBy={`${id}-title`} onCancel={close} restoreFocus={() => trigger.current?.focus({preventScroll:true})}>
       <form className="project-card prompt-edit-dialog" onSubmit={event => { event.preventDefault(); event.stopPropagation(); void apply(); }}>
         <h2 id={`${id}-title`}>Edit prompt with AI</h2>
+        <p className="hint">{editsBoth ? 'This edit updates both the original and enhanced prompts together.' : 'Describe the change you want to make to this prompt.'}</p>
         <div className="field">
         <label htmlFor={`${id}-instructions`}>What should change?</label>
         <textarea id={`${id}-instructions`} autoFocus rows={4} required maxLength={PROMPT_EDIT_MAX_LENGTH} value={instructions} readOnly={enhancing}
-          placeholder={'For example: add “Or this sock?” while she holds the sock. Keep the other lines.'}
+          placeholder="For example: use warmer lighting and keep the same composition."
           onChange={event => setInstructions(event.target.value)} onKeyDown={event => { if (event.key==='Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}/>
         </div>
         <p className="prompt-edit-feedback" role="status">{error || (enhancing && analyzing ? 'Analyzing reference videos with Gemini…' : '')}</p>

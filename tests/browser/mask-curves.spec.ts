@@ -58,7 +58,7 @@ for(const width of [1440,390]) test(`separate neutral mask editors preserve pins
   const previews=page.locator('.generation-mask-lane');await expect(previews).toHaveCount(2);
   const positions=()=>page.locator('.interstitial-editor').evaluate(root=>{
     const top=root.getBoundingClientRect().top;
-    return ['.generation-timeline-summary','.interstitial-resolution','button[type=submit]'].map(selector=>{
+    return ['.generation-timeline-summary','.interstitial-upscale','button[type=submit]'].map(selector=>{
       const box=root.querySelector(selector)!.getBoundingClientRect();return {y:box.top-top,height:box.height};
     });
   });
@@ -141,7 +141,7 @@ for(const width of [1440,390]) test(`custom masks submit independently and keep 
   await page.getByRole('button',{name:'Apply video mask',exact:true}).click();
   await page.getByRole('button',{name:'Close generation timeline',exact:true}).click();
   const curve=(await readProject(page)).interstitials[0].videoMaskCurve;
-  const positions=()=>page.locator('.interstitial-editor').evaluate(root=>{const top=root.getBoundingClientRect().top;return ['.generation-timeline-summary','.interstitial-resolution','button[type=submit]'].map(selector=>{const box=root.querySelector(selector)!.getBoundingClientRect();return {y:box.top-top,height:box.height};});});
+  const positions=()=>page.locator('.interstitial-editor').evaluate(root=>{const top=root.getBoundingClientRect().top;return ['.generation-timeline-summary','.interstitial-upscale','button[type=submit]'].map(selector=>{const box=root.querySelector(selector)!.getBoundingClientRect();return {y:box.top-top,height:box.height};});});
   const idle=await positions();await page.getByRole('button',{name:'Generate',exact:true}).click();
   // Preparing real reference media takes longer on CI's software renderer.
   await expect.poll(()=>submitted,{timeout:60000}).toBeTruthy();expect(submitted).toEqual({videoMaskCurve:curve,audioMaskCurve:null});expect(await positions()).toEqual(idle);

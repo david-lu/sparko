@@ -1,0 +1,5 @@
+.enhanced-prompt-field{display:flex;flex-direction:column;gap:4px;min-width:0;width:100%;margin-top:8px}
+.enhanced-prompt-field textarea{width:100%;box-sizing:border-box}
+.enhanced-prompt-field .prompt-version-status{height:48px;overflow:auto;line-height:16px;margin:0}
+.prompt-version-choice{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.prompt-version-choice select{min-width:0;max-width:65%}

@@ -153,7 +153,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await expect(page.getByRole('button', { name: 'Enhancing…', exact: true })).toBeDisabled();
     unchanged(await bounds(page, editor), idleEditor);
     finishEnhancing();
-    await expect(page.getByLabel('Video prompt')).toHaveValue('Continue the dance in the same shot.');
+    await expect(page.getByLabel('Enhanced prompt', { exact: true })).toHaveValue('Continue the dance in the same shot.');
     unchanged(await bounds(page, editor), idleEditor);
 
     let complete = false, releaseDownload!: () => void;

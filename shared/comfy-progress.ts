@@ -23,6 +23,7 @@ const stages: Record<string, string> = {
   sample: 'Generating video and audio', decode_video: 'Decoding video', decode_audio: 'Decoding audio', output: 'Encoding MP4',
   noise: 'Preparing generation', guider: 'Preparing generation', sampler: 'Preparing generation', schedule: 'Preparing generation',
   streams: 'Preparing video and audio for decoding',
+  source_video: 'Reading generated video', regenerated_components: 'Restoring exact frames', regenerated_size: 'Restoring exact frames', preserved_2k_video: 'Restoring exact frames',
 };
 const classes: Record<string, string> = {
   VHS_LoadVideo: 'Reading reference clips', VHS_LoadVideoFFmpeg: 'Reading reference clips',
@@ -34,6 +35,7 @@ const classes: Record<string, string> = {
   FrameInterpolate: 'Interpolating reference motion',
 };
 export const comfyStage = (node?: string | null, nodeClass?: string | null) => node?.startsWith('reference_image_') ? 'Reading image references'
+  : /^(preserved_native|preserved_2k|restore_2k)_/.test(node ?? '') ? 'Restoring exact frames'
   : node?.startsWith('audio_curve_') ? 'Preparing audio mask'
   : nodeClass === 'MiniMaxH3ReferenceToVideo' ? 'Encoding prompt and image references' : stages[node ?? ''] || classes[nodeClass ?? ''] || 'Generating scene';
 

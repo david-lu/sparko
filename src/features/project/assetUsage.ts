@@ -7,6 +7,7 @@ export type AssetUse = { owner: string; role: string };
 export function assetUsage(project: Project, ids: string[]): AssetUse[] {
   const wanted = new Set(ids), uses: AssetUse[] = [];
   const add = (id: string | undefined, owner: string, role: string) => { if (id && wanted.has(id) && !uses.some(u => u.owner === owner && u.role === role)) uses.push({ owner, role }); };
+  for (const layer of project.audioLayers ?? []) add(layer.assetId, layer.name, 'Project audio layer');
   for (const node of project.storyFlow?.nodes ?? []) { add(node.source?.assetId, node.name, 'Timeline footage'); add(node.source?.originalAssetId, node.name, 'Original timeline footage'); }
   for (const item of project.interstitials) {
     const node = project.storyFlow?.nodes.find(n => n.interstitialId === item.id), owner = node?.name ?? item.label;
@@ -19,6 +20,7 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     for (const result of [item.result, item.previousResult]) {
       add(result?.assetId, owner, node ? 'Timeline generated footage' : 'Generated output');
       add(result?.fullAssetId, owner, 'Full generated output');
+      add(result?.upscaled?.assetId, owner, '2K upscaled output');
       for (const side of ['before', 'after'] as const) for (const ref of referenceClips(result?.reference, side)) add(ref.assetId, owner, `Rendered ${side === 'before' ? 'start' : 'end'} reference`);
     }
     for (const side of ['before', 'after'] as const) for (const ref of referenceClips(item.requestReference, side)) add(ref.assetId, owner, `Submitted ${side === 'before' ? 'start' : 'end'} reference`);
@@ -31,7 +33,7 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
   }
   const recordedOutputs = new Set([
     ...project.clipGenerations?.flatMap(g => g.versions.map(v => v.assetId)) ?? [],
-    ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId]),
+    ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.result?.upscaled?.assetId, item.previousResult?.assetId, item.previousResult?.fullAssetId, item.previousResult?.upscaled?.assetId]),
   ]);
   for (const asset of project.library ?? []) {
     if (!asset.generation || recordedOutputs.has(asset.assetId)) continue;

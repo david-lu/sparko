@@ -27,6 +27,7 @@ import { resolveClipReferences, restoreClip } from '../interstitials/clipMetadat
 import { projectContent } from './projectContent';
 import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
 import { savedConvertImportedVideo } from '../../shared/preferences';
+import { audioLayersSchema, type AudioLayer } from './audioLayers';
 
 type State = { project: Project | null; source: MediaSource | null; subtitle: { name: string; url: string } | null;
   busy: boolean; message: string; progress: number | null; error: string | null;
@@ -231,6 +232,27 @@ export class ProjectController {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private update(patch: Partial<State>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
   clearError() { this.update({ error: null }); }
+  addAudioLayers(assetIds: string[], startFrame = 0) {
+    const project = this.state.project;
+    if (!project || this.operation) return;
+    const added = assetIds.map(assetId => {
+      const asset = project.library?.find(asset => asset.assetId === assetId);
+      if (!asset || asset.kind !== 'audio' || !asset.duration || project.deletedAssetIds?.includes(assetId)) throw new Error('Choose an available audio file from Library.');
+      return { id: freshId(), assetId, name: asset.name, startFrame, inFrame: 0,
+        outFrame: Math.max(1, Math.floor(asset.duration * TIMELINE_FPS)), volume: 1, muted: false };
+    });
+    this.setAudioLayers([...project.audioLayers ?? [], ...added]);
+  }
+  setAudioLayers(layers: AudioLayer[]) {
+    const project = this.state.project;
+    if (!project || this.operation) return;
+    const parsed = audioLayersSchema.parse(layers);
+    for (const layer of parsed) {
+      const duration = project.library?.find(asset => asset.assetId === layer.assetId)?.duration;
+      if (duration && layer.outFrame > Math.max(1, Math.floor(duration * TIMELINE_FPS))) throw new Error('The audio out point exceeds the file duration.');
+    }
+    this.save({ ...project, audioLayers: parsed });
+  }
   editAssets(change: (project: Project) => Project, record = true) {
     if (this.state.project) {
       let next=change(this.state.project);
@@ -405,7 +427,7 @@ export class ProjectController {
     }
     const subtitle = project.subtitle && !project.deletedAssetIds?.includes(project.subtitle.assetId) ? { name: project.subtitle.name, url: (await assets.open(project.subtitle.assetId)).url } : null;
     // Restore retained renders before publishing the timeline, including failed/cancelled retries.
-    await Promise.all([...new Set([...project.storyFlow?.nodes.flatMap(n=>n.source?[n.source.assetId]:[])??[],...project.storyFlow?.templates.flatMap(t=>t.nodes.flatMap(n=>n.source?[n.source.assetId]:[]))??[],...project.interstitials.flatMap(item => [item.previousResult?.assetId, item.previousResult?.fullAssetId, item.result?.assetId, item.result?.fullAssetId]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
+    await Promise.all([...new Set([...project.storyFlow?.nodes.flatMap(n=>n.source?[n.source.assetId]:[])??[],...project.storyFlow?.templates.flatMap(t=>t.nodes.flatMap(n=>n.source?[n.source.assetId]:[]))??[],...project.interstitials.flatMap(item => [item.previousResult?.assetId, item.previousResult?.fullAssetId, item.previousResult?.upscaled?.assetId, item.result?.assetId, item.result?.fullAssetId, item.result?.upscaled?.assetId]), ...projectFlows(project).flatMap(flow => flow.scenes.map(scene => scene.clip.assetId))]
       .filter((id): id is string => !!id && !project.deletedAssetIds?.includes(id)))].map(id => assets.open(id)));
     signal.throwIfAborted();
     this.switching = true;
@@ -478,7 +500,7 @@ export class ProjectController {
       originalAssetId: restoredOriginal ? undefined : project.source.originalAssetId ?? (working !== original ? original.id : undefined) }, updatedAt: Date.now() }, pendingAssets };
   }
   private async prepareGenerated(project: Project, pendingAssets: Asset[], signal: AbortSignal) {
-    const generated = [...new Set([...(project.library ?? []).filter(item => item.kind === 'generated').map(item => item.assetId), ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.previousResult?.assetId, item.previousResult?.fullAssetId]),
+    const generated = [...new Set([...(project.library ?? []).filter(item => item.kind === 'generated').map(item => item.assetId), ...project.interstitials.flatMap(item => [item.result?.assetId, item.result?.fullAssetId, item.result?.upscaled?.assetId, item.previousResult?.assetId, item.previousResult?.fullAssetId, item.previousResult?.upscaled?.assetId]),
       ...projectFlows(project).flatMap(flow => flow.scenes.filter(scene => !scene.draft).map(scene => scene.clip.assetId))])]
       .filter((id): id is string => !!id && !project.deletedAssetIds?.includes(id) && id !== project.source.assetId && id !== project.source.originalAssetId);
     if (!generated.length) return;
@@ -696,7 +718,7 @@ export class ProjectController {
         this.switching = false;
         if (this.state.project?.id === project.id) this.save({ ...this.state.project,
           ...(restored ? { callResponse: target.callResponse, callResponses: target.callResponses, storyFlow: target.storyFlow, library: target.library, libraryFolders: target.libraryFolders, deletedAssetIds: target.deletedAssetIds,
-            loras: target.loras, clipGenerations: target.clipGenerations?.map(g => {
+            audioLayers: target.audioLayers, loras: target.loras, clipGenerations: target.clipGenerations?.map(g => {
               const cached=this.generationStates.get(g.id),versions=[...new Map([...cached?.versions??[],...g.versions].map(v=>[v.assetId,v])).values()].filter(v=>target.library?.some(a=>a.assetId===v.assetId));
               const pinned=target.storyFlow?.nodes.find(n=>n.generationId===g.id)?.source?.assetId;
               return {phase:'draft' as const,...cached,...g,versions,selectedAssetId:versions.some(v=>v.assetId===pinned)?pinned:undefined};

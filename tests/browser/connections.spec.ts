@@ -123,6 +123,7 @@ test('reroute points reshape wires, cancel cleanly, and support keyboard and con
   const before=(await saved(page)).storyFlow.edges.find((e:any)=>e.id===link.id),circle=`[data-edge-id="${link.id}"] .story-reroute`;
   await drag(page,circle,{x:point.x+40,y:point.y-60});const moved=(await saved(page)).storyFlow.edges.find((e:any)=>e.id===link.id);
   expect(moved.points[0].y).toBeLessThan(before.points[0].y);expect(moved.from).toBe(link.from);expect(moved.to).toBe(link.to);expect(moved.crossfade).toBe(link.crossfade);
+  await expect(path).toHaveAttribute('d', /^M[^C]+C[^C]+C/);
   await drag(page,circle,{x:point.x+100,y:point.y+40},true);expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===link.id).points).toEqual(moved.points);
   await root.locator('.story-reroute').focus();await page.keyboard.press('Shift+ArrowDown');expect((await saved(page)).storyFlow.edges.find((e:any)=>e.id===link.id).points[0].y).toBeCloseTo(moved.points[0].y+10);
   await root.locator('.story-reroute').click({button:'right'});await page.getByRole('menuitem',{name:'Remove reroute point',exact:true}).click();await expect(root.locator('.story-reroute')).toHaveCount(0);

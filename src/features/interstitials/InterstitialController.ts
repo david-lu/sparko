@@ -1,13 +1,15 @@
+import { generationPrompt, promptSettingsPatch, promptSelectionError } from '../../../shared/prompt-versions';
 import { chooseGenerationSeed, generationSeedSchema } from '../../../shared/generation-seed';
 import { loraAddressSchema, loraInstructionsSchema, loraStrengthSchema, LORA_STRENGTH } from '../../../shared/loras';
 import { storyGenerationItem } from '../story-flow/referenceInputs';
 import { behaviors } from '../story-flow/behaviors';
 import { INTERSTITIAL, MASK_TRANSITION, TIMELINE_FPS } from '../../../shared/constants';
-import { clipMaskInjection, frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, playableResult, type Interstitial, type InterstitialSettings } from '../../../shared/interstitials';
-import type { AppStatus, InsertionRange, PromptClipKind } from '../../../shared/contracts';
+import { clipMaskInjection, frameTime, hasUnsubmittedChanges, interstitialSettings, isGenerating, isUpscaling, normalizeGenerationMethod, normalizeGenerationResolution, normalizeMaskTransitionMs, playableResult, type Interstitial, type InterstitialResult, type InterstitialSettings, type UpscaledResult, type UpscaleJob } from '../../../shared/interstitials';
+import type { AppStatus, GenerationProgress, InsertionRange, PromptClipKind } from '../../../shared/contracts';
 import { MediaEngine } from '../../media/MediaEngine';
 import type { MediaInfo } from '../../media/media';
-import { cancelInterstitialJob, generateInterstitial, getInterstitialJob } from './api';
+import { cancelInterstitialJob, generateInterstitial, getInterstitialJob, upscaleInterstitial } from './api';
+import { upscaleSource } from './upscale';
 import { watchComfyJob } from './progress-stream';
 import { loadInterstitials, saveInterstitials } from './storage';
 import { assets } from '../project/assets';
@@ -23,8 +25,10 @@ import { storyDependency } from '../story-flow/dependencies';
 import { captureClipOrigin } from './clipMetadata';
 import { readClipMetadata, writeClipMetadata } from '../../media/clipMetadata';
 import { defaultTurboEnabled } from '../../shared/preferences';
+import { PromptEnhancementTasks } from './PromptEnhancementTasks';
 
 type State = { items: Interstitial[]; selectedId: string | null; error: string | null; sequence: GenerationSequence | null };
+type JobProgress = { phase: 'queued' | 'rendering'; progress?: number; progressDetails?: GenerationProgress; queuePosition?: number };
 const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   const abort = () => { clearTimeout(timer); reject(signal.reason); };
   const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, INTERSTITIAL.pollMilliseconds);
@@ -33,6 +37,7 @@ const wait = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
 
 /** Owns persisted drafts and independently cancellable generation jobs, outside React. */
 export class InterstitialController {
+  readonly promptEnhancements = new PromptEnhancementTasks();
   private story?: {graph:StoryGraph;assetId:string;duration:number};
   generationItem(item: Interstitial) { return this.story ? storyGenerationItem(item, this.story.graph.nodes.find(node => node.interstitialId === item.id)) : item; }
   setStoryGraph(graph:StoryGraph|undefined,assetId='',duration=0) { this.story=graph?{graph,assetId,duration}:undefined;if(graph)this.linkedDurationIds=[]; }
@@ -43,7 +48,7 @@ export class InterstitialController {
   setDefaultLora(address: string | null, strength = LORA_STRENGTH.default) { this.defaultLora = address; this.defaultLoraStrength = loraStrengthSchema.parse(strength); }
   private withGenerationDefaults(item: Interstitial): Interstitial {
     // Imported renders and copied submitted clips retain their original settings.
-    item = { ...item, turbo: item.turbo ?? (item.result || item.previousResult || item.generationSettings || item.requestId ? false : this.defaultTurbo) };
+    item = { ...item, enhancedPrompt: item.enhancedPrompt ?? '', enhancedPromptStale: item.enhancedPromptStale === true, useEnhancedPrompt: item.useEnhancedPrompt === true, turbo: item.turbo ?? (item.result || item.previousResult || item.generationSettings || item.requestId ? false : this.defaultTurbo) };
     if (item.lora !== undefined) return item;
     if (item.result || item.generationSettings) return { ...item, lora: null };
     return { ...item, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined };
@@ -55,6 +60,7 @@ export class InterstitialController {
   private state: State = { items: [], selectedId: null, error: null, sequence: null };
   private listeners = new Set<() => void>();
   private tasks = new Map<string, AbortController>();
+  private upscaleTasks = new Map<string, AbortController>();
   private retained = new Map<string, Interstitial>();
   private sequenceOperation?: AbortController;
   private cancelling = new Map<string, Promise<boolean>>();
@@ -80,7 +86,7 @@ export class InterstitialController {
       const legacyJob = (item.requestMethod as string | undefined) === 'fal'
         || (!item.requestMethod && (item.generationSettings?.method as string | undefined) === 'fal');
       const { interpolateMiddle: _legacyInterpolation, maskTransitionMs: _legacyTransition, ...current } = item;
-      const restored = { ...current, turbo: item.turbo === true, method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
+      const restored = { ...current, enhancedPrompt: item.enhancedPrompt ?? '', enhancedPromptStale: item.enhancedPromptStale === true, useEnhancedPrompt: item.useEnhancedPrompt === true, turbo: item.turbo === true, method: normalizeGenerationMethod(item.method), duration: item.duration ?? INTERSTITIAL.defaultDuration,
         maskInjection: clipMaskInjection(item),
         audioMaskTransitionMs: normalizeMaskTransitionMs(item.audioMaskTransitionMs ?? item.maskTransitionMs),
         videoMaskTransitionMs: normalizeMaskTransitionMs(item.videoMaskTransitionMs ?? item.maskTransitionMs),
@@ -89,7 +95,11 @@ export class InterstitialController {
       const generationSettings = item.generationSettings
         ? interstitialSettings({ ...item.generationSettings, method: normalizeGenerationMethod(item.generationSettings.method) })
         : (item.result || item.requestId ? interstitialSettings(restored) : undefined);
+      // A 2K request interrupted before Comfy accepted it has no job to resume.
+      const upscale = item.upscale && (isUpscaling(item.upscale) && !item.upscale.requestId
+        ? { ...item.upscale, phase: 'error' as const, error: 'The 2K upscale was interrupted before it was submitted. Try again.' } : item.upscale);
       return { ...restored, generationSettings, requestMethod: legacyJob ? undefined : item.requestMethod,
+        upscale: upscale && { ...upscale, progress: undefined, progressDetails: undefined, queuePosition: undefined },
         ...(legacyJob && item.requestId && !item.result ? { requestId: undefined, phase: 'error' as const,
           error: 'This older generation job cannot resume. Generate again with Comfy Cloud.' } : {}) };
     });
@@ -101,6 +111,7 @@ export class InterstitialController {
     this.update({ items: referenced, selectedId: null, error: null, sequence: null });
     for (const item of this.state.items) if (['queued', 'rendering', 'loading', 'ready'].includes(item.phase)
       && !(item.phase === 'ready' && item.result?.assetId && assets.error(item.result.assetId))) void this.resume(item.id);
+    for (const item of this.state.items) if (isUpscaling(item.upscale)) void this.resumeUpscale(item.id);
   }
   select(id: string | null) { this.update({ selectedId: id }); }
   clearError() { this.update({ error: null }); }
@@ -150,7 +161,7 @@ export class InterstitialController {
     if (existing) { this.select(existing.id); return existing; }
     const item: Interstitial = { id: crypto.randomUUID(), label: 'Untitled', time: anchor, turbo: this.defaultTurbo, lora: this.defaultLora, loraStrength: this.defaultLora ? this.defaultLoraStrength : undefined,
       start_range: INTERSTITIAL.defaultRange, end_range: INTERSTITIAL.defaultRange, duration: INTERSTITIAL.defaultDuration,
-      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, maskInjection: 'standard', audioMaskTransitionMs: MASK_TRANSITION.defaultMs, videoMaskTransitionMs: MASK_TRANSITION.defaultMs, resolution: 'native', method: 'comfy', prompt: '', phase: 'draft' };
+      enable_prompt_expansion: INTERSTITIAL.enablePromptExpansion, maskInjection: 'standard', audioMaskTransitionMs: MASK_TRANSITION.defaultMs, videoMaskTransitionMs: MASK_TRANSITION.defaultMs, resolution: 'native', method: 'comfy', prompt: '', enhancedPrompt: '', enhancedPromptStale: false, useEnhancedPrompt: false, phase: 'draft' };
     this.update({ items: [...this.state.items, item].sort((a, b) => a.time - b.time), selectedId: item.id }, true);
     return item;
   }
@@ -173,10 +184,11 @@ export class InterstitialController {
     if (values.seed !== undefined) generationSeedSchema.parse(values.seed);
     if (values.loraStrength !== undefined) values = { ...values, loraStrength: loraStrengthSchema.parse(values.loraStrength) };
     if (values.loraInstructions !== undefined) values = { ...values, loraInstructions: loraInstructionsSchema.parse(values.loraInstructions) };
+    values = promptSettingsPatch(item, values);
     if (values.duration !== undefined && this.hasLinkedDuration(id)) {
       const linked = this.flowFor(id) ? responseInterstitialIds(this.flowFor(id)!) : this.linkedDurationIds;
       this.update({ items: this.state.items.map(current => current.id === id ? { ...current, ...values }
-        : linked.includes(current.id) ? { ...current, duration: values.duration! } : current) }, true);
+        : linked.includes(current.id) ? { ...current, ...promptSettingsPatch(current, { duration: values.duration! }) } : current) }, true);
     } else this.patch(id, values);
   }
   canRecover(id: string) {
@@ -207,7 +219,8 @@ export class InterstitialController {
         const item = this.state.items.find(item => item.id === id);
         if (!item) throw new Error('A clip was removed. Start a new sequence.');
         this.update({ sequence: { ids, completedIds: [...completedIds], activeId: id, phase: 'running' } });
-        if (!item.prompt.trim()) throw new Error(`Add a prompt for ${item.label} to continue.`);
+        if (promptSelectionError(item)) throw new Error(`${item.label}: ${promptSelectionError(item)}`);
+        if (!generationPrompt(item).trim()) throw new Error(`Add a prompt for ${item.label} to continue.`);
         if (providers && !providers.comfy) throw new Error(`${item.label}: Comfy Cloud is not connected.`);
         const blocked = this.dependency(id)?.blocked;
         if (blocked) throw new Error(blocked);
@@ -248,7 +261,8 @@ export class InterstitialController {
   }
   private async generateClip(id: string, engine: MediaEngine | null, info: MediaInfo | null) {
     const saved = this.state.items.find(item => item.id === id);
-    const item = saved && this.generationItem(saved);
+    // Renders are always native. Older settings and templates may still say 2K; Upscale to 2K is a separate step.
+    const item = saved && { ...this.generationItem(saved), resolution: 'native' as const };
     if (!item || isGenerating(item) || this.tasks.has(id) || this.cancelling.has(id)) return;
     // An unchanged scene that only failed to download can reuse its existing render.
     if (item.result && item.phase !== 'ready' && this.canRecover(id)) return this.resumeClip(id);
@@ -269,7 +283,7 @@ export class InterstitialController {
       this.patch(id, { requestId: undefined, requestMethod: method, requestInsertion: undefined, requestSeed, result: undefined });
       const source = dependency?.reference && (dependency.reference.before || dependency.reference.after) ? await generationSource(item, dependency.reference, operation.signal, info) : { item, engine, info };
       operation.signal.throwIfAborted();
-      const submittedPrompt = source.item.prompt;
+      const submittedPrompt = generationPrompt(source.item);
       const job = await generateInterstitial({ ...source.item, seed: requestSeed, requestOrigin }, source.engine, source.info, operation.signal, (phase, progress) => {
         if (!operation.signal.aborted) this.patch(id, { phase, progress });
       });
@@ -301,6 +315,19 @@ export class InterstitialController {
     finally { if (this.tasks.get(id) === operation) this.tasks.delete(id); }
   }
   private async poll(id: string, requestId: string, signal: AbortSignal, submittedInsertion?: InsertionRange) {
+    const job = await this.watchJob(requestId, signal, patch => this.patch(id, patch));
+    if (job.status === 'CANCELLED') { this.patch(id, { phase: 'cancelled' }); return; }
+    const insertion = job.insertion || submittedInsertion;
+    if (!job.videoUrl || !insertion) throw new Error('The result is missing its generated scene boundaries. Retry checking the result.');
+    const submitted=this.state.items.find(item=>item.id===id);
+    const result = { url: job.videoUrl, ...insertion, reference: submitted?.requestReference, prompt: submitted?.requestPrompt,
+      metadata: submitted?.requestOrigin ? { ...submitted.requestOrigin, media: insertion, prompt: submitted.requestPrompt ?? submitted.requestOrigin.settings.prompt, jobId: requestId,
+        ...(submitted.requestSeed !== undefined ? { seed: submitted.requestSeed } : {}) } : undefined };
+    this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined, progressDetails: undefined });
+    await this.loadResult(id, result, signal);
+  }
+  /** Follows a Comfy job until it completes or is cancelled, reporting queue and render progress. */
+  private async watchJob(requestId: string, signal: AbortSignal, apply: (patch: JobProgress) => void) {
     const stream = new AbortController(), streamSignal = AbortSignal.any([signal, stream.signal]);
     let liveRevision = 0, nodeProgress = false;
     void watchComfyJob(requestId, streamSignal, event => {
@@ -308,9 +335,9 @@ export class InterstitialController {
       liveRevision++;
       if (event.type === 'progress') {
         nodeProgress = event.source === 'comfy-websocket';
-        this.patch(id, { phase: 'rendering', progress: event.progress, progressDetails: event.progressDetails, queuePosition: undefined });
+        apply({ phase: 'rendering', progress: event.progress, progressDetails: event.progressDetails, queuePosition: undefined });
       }
-      if (event.type === 'status') this.patch(id, { phase: event.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: event.queuePosition,
+      if (event.type === 'status') apply({ phase: event.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: event.queuePosition,
         ...(event.status === 'IN_QUEUE' ? { progress: undefined, progressDetails: undefined } : {}) });
     });
     try { for (;;) {
@@ -318,23 +345,12 @@ export class InterstitialController {
       const revisionAtRequest = liveRevision;
       const job = await getInterstitialJob(requestId, signal);
       signal.throwIfAborted();
-      if (job.status === 'CANCELLED') { this.patch(id, { phase: 'cancelled' }); return; }
-      if (job.status === 'COMPLETED') {
-        const insertion = job.insertion || submittedInsertion;
-        if (!job.videoUrl || !insertion) throw new Error('The result is missing its generated scene boundaries. Retry checking the result.');
-        const submitted=this.state.items.find(item=>item.id===id);
-        const result = { url: job.videoUrl, ...insertion, reference: submitted?.requestReference, prompt: submitted?.requestPrompt,
-          metadata: submitted?.requestOrigin ? { ...submitted.requestOrigin, media: insertion, prompt: submitted.requestPrompt ?? submitted.requestOrigin.settings.prompt, jobId: requestId,
-            ...(submitted.requestSeed !== undefined ? { seed: submitted.requestSeed } : {}) } : undefined };
-        stream.abort();
-        this.patch(id, { phase: 'loading', result, queuePosition: undefined, progress: undefined, progressDetails: undefined });
-        await this.loadResult(id, result, signal); return;
-      }
+      if (job.status === 'CANCELLED' || job.status === 'COMPLETED') return job;
       // Discard a snapshot requested before a newer live update, however long the request took.
       // A subsequent poll still reconciles the state, including when the stream is silent.
       // Cloud's v2 snapshot can lag or omit the node fields. Keep native node
       // events until the stream falls back; terminal job states above always win.
-      if (revisionAtRequest === liveRevision && !nodeProgress) this.patch(id, { phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition,
+      if (revisionAtRequest === liveRevision && !nodeProgress) apply({ phase: job.status === 'IN_QUEUE' ? 'queued' : 'rendering', queuePosition: job.queuePosition,
         // Cloud polling can return progress:null throughout a running job. An absent
         // snapshot must not erase progress received from its live stream.
         ...(job.status === 'IN_QUEUE' ? { progress: undefined, progressDetails: undefined }
@@ -389,6 +405,7 @@ export class InterstitialController {
     this.patch(id, { phase: 'loading', progress: undefined, progressDetails: { stage: 'Checking generated video' } });
     const { url } = await assets.open(result.assetId!);
     signal.throwIfAborted();
+    result = this.withLatestUpscale(id, result);
     // Publishing an asset also adds it to the library, whose previews need its local URL.
     this.patch(id, { result });
     const media = new MediaEngine({ id, name: 'Video', url });
@@ -398,8 +415,15 @@ export class InterstitialController {
       const info = await media.inspect();
       signal.throwIfAborted();
       if (result.start < 0 || result.duration <= 0 || result.start + result.duration > info.duration + 1 / info.fps) throw new Error('The returned video does not contain the full video.');
-      this.patch(id, { phase: 'ready', result, previousResult: undefined, error: undefined, progress: undefined, progressDetails: undefined });
+      // A 2K job can finish while this same render is being checked.
+      this.patch(id, { phase: 'ready', result: this.withLatestUpscale(id, result), previousResult: undefined, error: undefined, progress: undefined, progressDetails: undefined });
     } finally { signal.removeEventListener('abort', abort); media.dispose(); }
+  }
+  private withLatestUpscale(id: string, result: InterstitialResult): InterstitialResult {
+    if (result.upscaled || !result.assetId) return result;
+    const item = this.state.items.find(item => item.id === id);
+    const upscaled = [item?.result, item?.previousResult].find(saved => saved?.assetId === result.assetId && saved?.upscaled)?.upscaled;
+    return upscaled ? { ...result, upscaled } : result;
   }
   async cancel(id: string) {
     if (sequenceActive(this.state.sequence) && this.state.sequence?.activeId === id) return this.cancelSequence();
@@ -428,6 +452,92 @@ export class InterstitialController {
       return false;
     }
   }
+  /** Sends the playable render's complete video for official 2K regeneration as a separate job. */
+  async upscale(id: string) {
+    const item = this.state.items.find(item => item.id === id);
+    if (!item || isGenerating(item) || this.upscaleTasks.has(id) || isUpscaling(item.upscale)) return;
+    const source = upscaleSource(item);
+    if ('error' in source) return;
+    const operation = new AbortController(); this.upscaleTasks.set(id, operation);
+    this.patch(id, { upscale: { phase: 'preparing', sourceAssetId: source.assetId } });
+    try {
+      const { asset } = await assets.open(source.assetId);
+      operation.signal.throwIfAborted();
+      const job = await upscaleInterstitial(asset.blob, { prompt: source.prompt, preservedFrames: source.preservedFrames }, operation.signal, () => {
+        if (!operation.signal.aborted) this.patchUpscale(id, { phase: 'uploading' });
+      });
+      if (operation.signal.aborted) { void cancelInterstitialJob(job.requestId).catch(() => undefined); return; }
+      this.patchUpscale(id, { phase: 'queued', requestId: job.requestId });
+      await this.pollUpscale(id, job.requestId, operation.signal);
+    } catch (error) { this.failUpscale(id, operation, error); }
+    finally { if (this.upscaleTasks.get(id) === operation) this.upscaleTasks.delete(id); }
+  }
+  /** Checks the saved 2K job again without submitting another paid job. */
+  async resumeUpscale(id: string) {
+    const job = this.state.items.find(item => item.id === id)?.upscale;
+    if (!job?.requestId || this.upscaleTasks.has(id)) return;
+    const operation = new AbortController(); this.upscaleTasks.set(id, operation);
+    try {
+      this.patchUpscale(id, { phase: 'queued', error: undefined, progress: undefined, progressDetails: undefined, queuePosition: undefined });
+      await this.pollUpscale(id, job.requestId, operation.signal);
+    } catch (error) { this.failUpscale(id, operation, error); }
+    finally { if (this.upscaleTasks.get(id) === operation) this.upscaleTasks.delete(id); }
+  }
+  async cancelUpscale(id: string) {
+    const job = this.state.items.find(item => item.id === id)?.upscale;
+    if (!isUpscaling(job)) return true;
+    this.upscaleTasks.get(id)?.abort(); this.upscaleTasks.delete(id);
+    const source = this.sourceId;
+    try {
+      if (job!.requestId && job!.phase !== 'loading') await cancelInterstitialJob(job!.requestId);
+      if (source === this.sourceId) this.patchUpscale(id, { phase: 'cancelled', error: undefined, progress: undefined, progressDetails: undefined, queuePosition: undefined });
+      return true;
+    } catch (error) {
+      if (source === this.sourceId) this.patchUpscale(id, { phase: 'error', error: `Could not cancel the 2K job. ${error instanceof Error ? error.message : ''}` });
+      return false;
+    }
+  }
+  private async pollUpscale(id: string, requestId: string, signal: AbortSignal) {
+    const job = await this.watchJob(requestId, signal, patch => this.patchUpscale(id, patch));
+    if (job.status === 'CANCELLED') { this.patchUpscale(id, { phase: 'cancelled', progress: undefined, progressDetails: undefined, queuePosition: undefined }); return; }
+    if (!job.videoUrl) throw new Error('The 2K job finished without a video. Check the result again.');
+    this.patchUpscale(id, { phase: 'loading', progress: undefined, progressDetails: { stage: 'Downloading 2K video' }, queuePosition: undefined });
+    let lastPercent: number | undefined;
+    const label = this.state.items.find(item => item.id === id)?.label ?? 'Video';
+    const asset = await assets.download(job.videoUrl, `${label} 2K.mp4`, signal, (received, total) => {
+      const progress = Number.isFinite(total) && total > 0 ? Math.min(1, received / total) : undefined, percent = progress === undefined ? undefined : Math.floor(progress * 100);
+      if (!signal.aborted && percent !== lastPercent) { lastPercent = percent; this.patchUpscale(id, { progress }); }
+    });
+    signal.throwIfAborted();
+    this.patchUpscale(id, { progress: undefined, progressDetails: { stage: 'Checking 2K video' } });
+    const media = new MediaEngine({ id: `${id}-2k`, name: '2K video', url: (await assets.open(asset.id)).url });
+    const abort = () => media.dispose(); signal.addEventListener('abort', abort, { once: true });
+    let duration: number;
+    try { duration = (await media.inspect()).duration; } finally { signal.removeEventListener('abort', abort); media.dispose(); }
+    signal.throwIfAborted();
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error('The 2K video could not be read. Check the result again.');
+    this.attachUpscale(id, { assetId: asset.id, totalDuration: duration });
+  }
+  /** Attach the 2K video to the render it was made from, which may now be the retained previous render. */
+  private attachUpscale(id: string, upscaled: UpscaledResult) {
+    const item = this.state.items.find(item => item.id === id), job = item?.upscale;
+    if (!item || !job) return;
+    const matches = (result?: InterstitialResult) => !!result && (result.fullAssetId ?? result.assetId) === job.sourceAssetId;
+    if (!matches(item.result) && !matches(item.previousResult)) {
+      this.patchUpscale(id, { phase: 'error', error: 'The generated video changed during the 2K upscale. Upscale the new video.', progress: undefined, progressDetails: undefined });
+      return;
+    }
+    this.patch(id, { upscale: undefined, ...(matches(item.result) ? { result: { ...item.result!, upscaled } } : {}),
+      ...(matches(item.previousResult) ? { previousResult: { ...item.previousResult!, upscaled } } : {}) });
+  }
+  private patchUpscale(id: string, patch: Partial<UpscaleJob>) {
+    const job = this.state.items.find(item => item.id === id)?.upscale;
+    if (job) this.patch(id, { upscale: { ...job, ...patch } });
+  }
+  private failUpscale(id: string, operation: AbortController, error: unknown) {
+    if (!operation.signal.aborted) this.patchUpscale(id, { phase: 'error', progress: undefined, progressDetails: undefined, queuePosition: undefined,
+      error: error instanceof Error ? error.message : 'The 2K upscale failed. Try again.' });
+  }
   async remove(id: string) {
     return this.removeMany([id]);
   }
@@ -439,6 +549,7 @@ export class InterstitialController {
     for (const item of items) {
       if (signal?.aborted || source !== this.sourceId) return false;
       if ((isGenerating(item) || item.phase === 'error' && item.requestId && !item.result) && !await this.cancel(item.id)) return false;
+      if (isUpscaling(item.upscale) && !await this.cancelUpscale(item.id)) return false;
     }
     if (signal?.aborted || source !== this.sourceId) return false;
     this.update({ items: this.state.items.filter(item => !removed.has(item.id)), selectedId: this.state.selectedId && removed.has(this.state.selectedId) ? null : this.state.selectedId }, true);
@@ -458,7 +569,9 @@ export class InterstitialController {
     this.update({ items: edits.map(edit => ({ ...this.retained.get(edit.id)!, ...edit, seed: edit.seed })), selectedId, error: null }, true);
   }
   dispose() {
+    this.promptEnhancements.dispose();
     this.sequenceOperation?.abort(); this.sequenceOperation = undefined;
     this.tasks.forEach(task => task.abort()); this.tasks.clear(); this.cancelling.clear();
+    this.upscaleTasks.forEach(task => task.abort()); this.upscaleTasks.clear();
   }
 }

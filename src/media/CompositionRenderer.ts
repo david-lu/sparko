@@ -8,12 +8,13 @@ import { CompositionAudioWriter } from './CompositionAudioWriter';
 import { generatedClipFit, type ExportFrame } from './videoFraming';
 import { audioVolume, scaleAudioSample } from './audioVolume';
 import { loadStillImage, stillCanvas } from './stillImage';
+import { CompositionAudioLayers } from './CompositionAudioLayers';
 
 type Options = { start: number; end: number; signal: AbortSignal; preview?: boolean; maxDimension?: number; frame?: ExportFrame;
   beforeFrame?: (time: number) => Promise<void>; onProgress?: (progress: number) => void };
 
 /** Encodes one continuous frame/sample clock, including across different source assets. */
-export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean }, output: Output, options: Options) {
+export async function renderComposition(composition: Pick<TimelineComposition, 'info' | 'fps' | 'segments'> & Partial<Pick<TimelineComposition, 'audioLayers'>> & { crossfade?: boolean; crossfadeFrames?: number; matchFraming?: boolean }, output: Output, options: Options) {
   await ensureAac();
   options.signal.throwIfAborted();
   const scale = Math.min(1, (options.preview ? 720 : options.maxDimension ? Infinity : 1080) / composition.info.height,
@@ -27,7 +28,8 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
   const video = new CanvasSource(canvas, { codec: 'avc', ...(options.preview ? { fullCodecString: 'avc1.42002a' } : {}),
     quality: new Quality(options.preview ? 'medium' : 'high'), keyFrameInterval: 1, latencyMode: 'quality' });
   const audio = new AudioSampleSource({ codec: 'aac', quality: new Quality('medium') });
-  const audioWriter = new CompositionAudioWriter(async sample => { options.signal.throwIfAborted(); await audio.add(sample); });
+  const audioLayers = new CompositionAudioLayers(composition.audioLayers ?? [], options.signal);
+  const audioWriter = new CompositionAudioWriter(async sample => { options.signal.throwIfAborted(); await audioLayers.write(sample, origin, mixed => audio.add(mixed)); });
   const transitions = composition.crossfade === false ? [] : compositionTransitions(composition.segments, composition.crossfadeFrames, composition.fps);
   const normalizedAudio = new AudioNormalizer(async sample => {
     options.signal.throwIfAborted();
@@ -62,6 +64,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
   };
   const crossfadeAudio = new CompositionAudioCrossfade(transitions, composition.fps, inputFor, options.signal);
   const cancel = () => {
+    audioLayers.dispose();
     for (const input of inputs.values()) input.dispose();
     void normalizedAudio.cancel().catch(() => undefined); void output.cancel().catch(() => undefined);
   };
@@ -184,6 +187,7 @@ export async function renderComposition(composition: Pick<TimelineComposition, '
     cancel();
     throw error;
   } finally {
+    audioLayers.dispose();
     options.signal.removeEventListener('abort', cancel);
     for (const input of inputs.values()) input.dispose();
   }
