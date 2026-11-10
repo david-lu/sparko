@@ -37,13 +37,14 @@ jobs:
         run: npm run build
 
   browser:
-    name: Browser tests (${{ matrix.shard }}/4)
+    name: Browser tests (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        # Tests share each runner's 4 CPUs badly, so scale out with one worker per runner.
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -54,16 +55,30 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Choose the weekly browser package cache
+        id: apt-cache
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore browser system packages
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/apt-archives
+          key: browser-apt-${{ runner.os }}-${{ steps.apt-cache.outputs.week }}
+          restore-keys: browser-apt-${{ runner.os }}-
       - name: Install Chrome and browser dependencies
         timeout-minutes: 5
         run: |
-          # The Azure mirror can stall package downloads; use Ubuntu's archive.
+          # Ubuntu mirrors can stall downloads for minutes; reuse packages kept in the Actions cache.
+          mkdir -p ~/apt-archives/partial
+          printf 'Dir::Cache::Archives "%s";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' "$HOME/apt-archives" | sudo tee /etc/apt/apt.conf.d/99sparko-archives
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
           npx playwright install --with-deps chrome
           sudo apt-get install -y libvulkan1 mesa-vulkan-drivers xvfb xauth
+          sudo chown -R "$USER" ~/apt-archives
       - name: Browser tests
         # Linux WebGPU canvas capture needs a display compositor, even with software rendering.
-        run: xvfb-run -a npm run test:e2e:ci -- --headed --shard=${{ matrix.shard }}/4
+        run: |
+          npx tsx scripts/browser-shard.ts ${{ matrix.shard }}/${{ strategy.job-total }} > "$RUNNER_TEMP/browser-tests.txt"
+          xvfb-run -a npm run test:e2e:ci -- --headed --test-list "$RUNNER_TEMP/browser-tests.txt"
       - name: Upload browser report and failure traces
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7.0.2

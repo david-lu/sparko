@@ -3,7 +3,7 @@ export default defineConfig({
   testDir: './tests/browser', outputDir: './test-results/browser', timeout: 90_000, workers: 1, fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'list',
+  reporter: process.env.CI ? [['line'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/results.json' }]] : 'list',
   use: { baseURL: 'http://127.0.0.1:3100', channel: 'chrome', viewport: { width: 1440, height: 1000 }, trace: 'retain-on-failure',
     // Use one software Vulkan backend for WebGPU, video textures, and compositing.
     // Selecting only a WebGPU adapter leaves Linux's compositor unable to share frames.
