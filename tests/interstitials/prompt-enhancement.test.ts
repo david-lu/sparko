@@ -65,11 +65,55 @@ describe('AI-owned prompt enhancement', () => {
     expect(instructions).toContain('do not ask which clock was intended');
     expect(JSON.parse(args.input[0].content[0].text).draft).toBe(draft);
     expect(JSON.parse(args.input[0].content[0].text).context.timing.offsetSeconds).toBe(1.625);
-    for (const time of ['0.458 seconds from the generated section\'s start; 2.083 seconds on the full-video clock',
-      '1.375 seconds from the generated section\'s start; 3 seconds on the full-video clock',
-      '13.167 seconds from the generated section\'s start; 14.792 seconds on the full-video clock']) {
+    for (const time of ['0.458 seconds from the generated section\'s start; 2.083 seconds on the full-video clock (At 00:02.083)',
+      '1.375 seconds from the generated section\'s start; 3 seconds on the full-video clock (At 00:03.000)',
+      '13.167 seconds from the generated section\'s start; 14.792 seconds on the full-video clock (At 00:14.792)']) {
       expect(args.input[0].content).toContainEqual(expect.objectContaining({ type: 'input_text', text: expect.stringContaining(time) }));
     }
+    expect(instructions).toContain('without mentioning the guide itself');
+    expect(instructions).toContain('when only framing distance or angle changes, use camera motion within the shot');
+  });
+  it('asks Enhance for H3 speaker IDs, one line per action with a closing beat, and a timecoded cut out of the opening footage', async () => {
+    output('A corrected prompt.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 13, referenceTiming: { prefixFrames: 39, suffixFrames: 0 } });
+    const instructions = respond.mock.calls[0][0].instructions;
+    expect(instructions).toContain('stable speaker ID such as (S1)');
+    expect(instructions).toContain('its own <d> block in the same sentence as the visible action or state it accompanies');
+    expect(instructions).toContain('about 2.5 words per second');
+    expect(instructions).toContain('visible closing beat');
+    expect(instructions).toContain('[Shot 1] briefly describes its visible subject, setting and action');
+    expect(instructions).toContain('[Shot 2] At 00:01.625, the camera cuts to');
+    expect(instructions).toContain('never a range');
+    expect(instructions).toContain('Leave out clock labels, generation ranges');
+    expect(instructions).toContain('without a negative prompt');
+    expect(instructions).toContain('Do not add a clock label to full-video output');
+    expect(instructions).not.toContain('Explicitly label full-video output');
+    expect(instructions).not.toContain('ends on the end reference footage');
+  });
+  it.each([
+    { prefixFrames: 0, suffixFrames: 39, opening: false, ending: '[Shot N] At 00:06.375' },
+    { prefixFrames: 0, suffixFrames: 0, opening: false, ending: undefined },
+  ])('describes reference footage shots only where footage exists: $prefixFrames / $suffixFrames', async ({ prefixFrames, suffixFrames, opening, ending }) => {
+    output('A corrected prompt.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, referenceTiming: { prefixFrames, suffixFrames } });
+    const instructions = respond.mock.calls[0][0].instructions;
+    expect(instructions.includes('opens on the start reference footage')).toBe(opening);
+    if (ending) expect(instructions).toContain(ending);
+    else expect(instructions).not.toContain('ends on the end reference footage');
+  });
+  it('applies H3 conventions to the enhanced version of a paired edit only', async () => {
+    const edit = { duration: 10, referenceTiming: { prefixFrames: 39, suffixFrames: 0 }, editInstructions: 'Make the lighting warmer.' };
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'Warm light.', enhancedPrompt: '[Shot 1] Warm light.' }) });
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, ...edit, enhancedPrompt: '[Shot 1] Daylight.' });
+    expect(respond.mock.calls[0][0].instructions).toContain('Apply these conventions to the text you add or change in enhancedPrompt; leave the original prompt in its own format.');
+    expect(respond.mock.calls[0][0].instructions).toContain('stable speaker ID such as (S1)');
+    respond.mockClear(); output('Warm light.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, ...edit });
+    expect(respond.mock.calls[0][0].instructions).not.toContain('(S1)');
+    expect(respond.mock.calls[0][0].instructions).toContain('fullVideoTime = generatedTime + context.timing.offsetSeconds');
+    respond.mockClear(); output('A shared brief.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, target: 'continuity' });
+    expect(respond.mock.calls[0][0].instructions).not.toContain('(S1)');
   });
   it('includes encoded timing without footage and leaves shared briefs free of clip timing', async () => {
     output('A corrected prompt.');
@@ -80,6 +124,33 @@ describe('AI-owned prompt enhancement', () => {
     expect(respond.mock.calls[0][0].instructions).not.toContain('generated-section clock');
     expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('timeline');
     expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('timing');
+    expect(respond.mock.calls[0][0].instructions).not.toContain('show-and-name demonstration');
+  });
+  it.each([
+    'She closes the door, then says "Ready."',
+    'She says "Ready." before closing the door.',
+    'She says "Keep going." while walking, without stopping.',
+  ])('uses the original sequence for Enhance and paired Edit without a default action order: %s', async draft => {
+    for (const editing of [false, true]) {
+      respond.mockClear();
+      const enhancedPrompt = `Full-video clock. ${draft}`;
+      const correction = 'Make the lighting warmer; preserve the event order.';
+      const result = { prompt: draft, ...(editing ? { enhancedPrompt } : {}) };
+      respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify(result) });
+      const rewritten = await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, duration: 10, prompt: draft,
+        referenceTiming: { prefixFrames: 39, suffixFrames: 39 }, ...(editing ? { enhancedPrompt, editInstructions: correction } : {}) });
+      expect(rewritten).toMatchObject(result);
+      expect(respond).toHaveBeenCalledOnce();
+      const args = respond.mock.calls[0][0], data = JSON.parse(args.input[0].content[0].text);
+      expect(data.draft).toBe(draft);
+      if (editing) expect(data).toMatchObject({ enhancedPrompt, editInstructions: correction });
+      expect(data.context.timing.offsetSeconds).toBe(1.625);
+      expect(args.instructions).toContain('Follow the order of events in the original prompt');
+      expect(args.instructions).toContain('preserving its before/during/after relationships and any intentional overlap');
+      expect(args.instructions).toContain('without inventing a default sequence');
+      expect(args.instructions).toContain('Apply explicit user corrections to that order');
+      expect(args.instructions).not.toMatch(/show-and-name|pickup|put-down|held object|held prop|hands free of demonstration objects/i);
+    }
   });
   it('gives paired edits an explicit offset while keeping original and enhanced clocks separate', async () => {
     const draft = 'At 7.95 seconds she holds the rock and asks "A rock?". At 9.85 seconds she holds the bowl. At 11.95 seconds she holds the sock.';

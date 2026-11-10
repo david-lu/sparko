@@ -32,6 +32,11 @@ export function promptTimeline(duration: number, references: PromptReferenceTimi
 }
 
 export const promptSeconds = (seconds: number) => Number(seconds.toFixed(3)).toString();
+/** H3's timestamp form, `MM:SS.mmm`, as used in `[Shot 2] At 00:03.500, the camera cuts to...`. */
+export function promptTimecode(seconds: number): string {
+  const milliseconds = Math.round(seconds * 1000), minutes = Math.floor(milliseconds / 60_000);
+  return `${String(minutes).padStart(2, '0')}:${((milliseconds % 60_000) / 1000).toFixed(3).padStart(6, '0')}`;
+}
 export function promptTimelineDirection(timeline: PromptTimeline): string {
   const { generatedStart: start, generatedEnd: end, generatedDuration: duration, totalDuration: total } = timeline;
   return `Use the supplied timeline as the authoritative render timing. The final generation prompt uses full-video timestamps; an edited original draft keeps its input clock as specified by context.timing.outputTimeBasis. New actions and scripted dialogue belong only in the generated section, from ${promptSeconds(start)} to ${promptSeconds(end)} seconds on the full-video clock.`
