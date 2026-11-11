@@ -47,7 +47,7 @@ import { formatShortcut, useShortcuts, type ShortcutId } from '../shared/shortcu
 import DropdownMenu from '../shared/DropdownMenu';
 import ModalBackdrop from '../shared/ModalBackdrop';
 import ToastStack from '../shared/ToastStack';
-import CharacterWorkspace, { CharacterWorkspaceContext, type CharacterWorkspaceControls } from '../features/project/CharacterWorkspace';
+import CharacterWorkspace, { CharacterWorkspaceContext, type CharacterView, type CharacterWorkspaceControls } from '../features/project/CharacterWorkspace';
 
 // Fast Refresh preserves useState, including instances with obsolete controller methods.
 // Reload saved project state when a controller changes during local development.
@@ -81,13 +81,13 @@ export default function App() {
   const projectState = useSyncExternalStore(projects.subscribe, projects.getSnapshot);
   const [generationId, setGenerationId] = useState<string | null>(null);
   // The Characters workspace and the generation editor each replace the player and timeline; opening one closes the other.
-  const [characterView, setCharacterView] = useState<{ id?: string; create?: boolean; key: number } | null>(null);
+  const [characterView, setCharacterView] = useState<CharacterView | null>(null);
   useEffect(() => { setGenerationId(null); setCharacterView(null); }, [projectState.activationRevision]);
   const generationWorkspace = useMemo(() => createGenerationWorkspace(id => { controller.pause(); setCharacterView(null); setGenerationId(id); }, () => setGenerationId(null)), [controller]);
-  const characterWorkspace = useMemo<CharacterWorkspaceControls>(() => ({
-    open: (id, create) => { controller.pause(); generationWorkspace.close(); setCharacterView({ id, create, key: Date.now() }); },
+  const characterWorkspace = useMemo<CharacterWorkspaceControls>(() => ({ view: characterView,
+    open: id => { controller.pause(); generationWorkspace.close(); setCharacterView({ id, key: Date.now() }); },
     close: () => setCharacterView(null),
-  }), [controller, generationWorkspace]);
+  }), [controller, generationWorkspace, characterView]);
   const storyGraph=projectState.project?.storyFlow;
   const generationItem = interstitialState.items.find(item => item.id === generationId);
   const generationNode = generationItem && storyGraph?.nodes.find(node => node.interstitialId === generationItem.id);
@@ -423,7 +423,7 @@ export default function App() {
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
       <WorkspaceLockContext.Provider value={workspace.locked}>{workspace.freeDock && !preview && storyGraph && !generationItem && !characterView ? <DockWorkspace locked={workspace.locked} items={{viewer: playerElement, timeline: storyCanvasElement, library: <StoryLibrary editor={storyEditor}/>, create: <StoryAddClips editor={storyEditor}/>, inspector: <StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>}}/> : <div className="workspace-grid" data-generation-editing={(!!generationItem || !!characterView) && !preview} inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
         <Activity mode={(generationItem || characterView) && !preview ? 'hidden' : 'visible'}>{playerElement}</Activity>
-        {characterView && !generationItem && !preview && <CharacterWorkspace key={characterView.key} projects={projects} status={status} initialId={characterView.id} create={characterView.create} onClose={() => setCharacterView(null)}/>}
+        {characterView && !generationItem && !preview && <CharacterWorkspace projects={projects} status={status} view={characterView} onSelect={id => setCharacterView({ id, key: Date.now() })} onClose={() => setCharacterView(null)}/>}
         {generationItem && !preview && <GenerationTimelineEditor key={generationItem.id} workspace selected={storyGenerationItem(generationItem, generationNode)}
           controller={interstitials} info={info} projects={projects} minDuration={minimumDuration('comfy-loop')} onPreviewPlay={() => controller.pause()}
           clipName={generationNode?.name} outputVolume={generationNode?.volume} onOutputVolume={generationNode ? volume => storyEditor.patch(generationNode.id, { volume: audioVolume(volume) }) : undefined}/>}

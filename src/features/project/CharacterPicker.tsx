@@ -1,4 +1,4 @@
-import { Users } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { ProjectCharacter } from '../../../shared/characters';
 import './characters.css';
 
@@ -9,7 +9,7 @@ export default function CharacterPicker({ characters, selected, onToggle, onMana
 }) {
   return <div className="dialogue-cast character-picker" role="group" aria-label={label}>
     <div className="dialogue-cast-heading"><span>{label}{hint ? ` · ${hint}` : ''}</span>
-      {onManage && <button type="button" className="text-button" onClick={onManage}><Users size={11}/>Edit characters</button>}</div>
+      {onManage && <button type="button" className="text-button" onClick={onManage}><Plus size={11}/>New character</button>}</div>
     <ul>{characters.length ? characters.map(character => {
       const pressed = selected.includes(character.id), reason = pressed ? undefined : unavailable?.(character);
       return <li key={character.id}><button type="button" aria-pressed={pressed} disabled={disabled || !!reason} title={reason ?? `${pressed ? 'Stop using' : 'Use'} ${character.name}`}
