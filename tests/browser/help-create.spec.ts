@@ -69,7 +69,7 @@ for(const width of [1440,390])test(`help opens from Window and preserves editing
   await expect(page.locator('.window-menu')).not.toHaveAttribute('open','');
   await expect(help.getByRole('heading',{name:'Quick start',exact:true})).toBeVisible();
   await page.screenshot({path:testInfo.outputPath(`help-${width}.png`)});
-  for(const topic of ['Timeline & connections','Generate a video','Reuse templates','Workspace & shortcuts']){
+  for(const topic of ['Timeline & connections','Generate a video','Images, audio & characters','Reuse templates','Preview & save','Workspace & shortcuts']){
     await help.getByRole('button',{name:topic,exact:false}).click();
     await expect(help.getByRole('heading',{name:topic,exact:true})).toBeVisible();
     expect(await help.locator('article').evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
