@@ -1,6 +1,6 @@
 import { openGenerationTimeline, closeGenerationTimeline, setVideoReference, expect, test, openVideo, addBridge, saveAndReopen } from './fixtures';
 
-test('reference and duration sliders synchronize with inputs and persist', async ({ page }) => {
+test('reference and duration sliders synchronize with inputs and persist', { tag: '@flaky' }, async ({ page }) => {
   await page.route('**/api/status', async route => { const response = await route.fetch(); await route.fulfill({ json: { ...await response.json(), providers: { comfy: true } } }); });
   await openVideo(page); await addBridge(page);
   await setVideoReference(page, 'end', true);

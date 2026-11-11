@@ -121,7 +121,7 @@ test('folder drop targets track single drags, reject folder cycles, and clear on
   expect((await readProject(page)).libraryFolders.find((f: any) => f.name === 'Parent').parentId).toBeUndefined();
 });
 
-for (const width of [1440, 390]) test(`30 assets use four centered thumbnails and move from nested folders to the root background at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390]) test(`30 assets use four centered thumbnails and move from nested folders to the root background at ${width}px`, { tag: width === 1440 ? '@flaky' : [] }, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await openVideo(page);
   await folder(page, 'Parent'); const nested = await folder(page, 'Nested');
   const names = Array.from({ length: 30 }, (_, i) => `Image ${i + 1}.png`);
@@ -270,7 +270,7 @@ test('batch deletion omits dependencies contained entirely within the selection'
   await expect(page.getByRole('dialog', { name: 'Saved reference errors', exact: true })).toContainText('Input.png');
 });
 
-test('deleted generated video stays missing after export without resuming its saved render', async ({ page }) => {
+test('deleted generated video stays missing after export without resuming its saved render', { tag: '@flaky' }, async ({ page }) => {
   const blob = await writeClipMetadata(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')], { type: 'video/mp4' }), clipMetadata, new AbortController().signal);
   await page.goto('/');
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'Generated.mp4', mimeType: 'video/mp4', buffer: Buffer.from(await blob.arrayBuffer()) });

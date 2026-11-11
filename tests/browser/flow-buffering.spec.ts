@@ -60,7 +60,7 @@ const activePixel = async (page: Page, x = 0, y = 48) => {
   }, { base64: screenshot.toString('base64'), x, y });
 };
 
-test('loop picture and sound fade independently while retaining the incoming decoder across repeats', async ({ page }) => {
+test('loop picture and sound fade independently while retaining the incoming decoder across repeats', { tag: '@flaky' }, async ({ page }) => {
   await setup(page, { loopColors: true });
   for (const { video, audio } of [{ video: 12, audio: 4 }, { video: 4, audio: 12 }, { video: 0, audio: 12 }, { video: 12, audio: 0 }]) {
     await page.evaluate(({ video, audio }) => {

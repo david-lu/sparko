@@ -131,7 +131,7 @@ for (const width of [1440]) test(`AI editing from generation uses its visible pr
   await expect(region).toHaveCount(0);
 });
 
-for (const kind of ['video', 'image'] as const) for (const width of [1440, 390]) test(`${kind} enhancement snapshots the displayed trimmed frame and cancels capture at ${width}px`, async ({ page }) => {
+for (const kind of ['video', 'image'] as const) for (const width of [1440, 390]) test(`${kind} enhancement snapshots the displayed trimmed frame and cancels capture at ${width}px`, { tag: kind === 'image' && width === 1440 ? '@flaky' : [] }, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   await page.route('**/api/status', async route => {
     const response = await route.fetch(), status = await response.json();

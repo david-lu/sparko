@@ -124,7 +124,7 @@ for (const width of [1440, 390]) test(`imported scene references stay disconnect
   }
 });
 
-test('converting a generated scene creates a separate copy with its metadata and reference ranges', async ({ page }) => {
+test('converting a generated scene creates a separate copy with its metadata and reference ranges', { tag: '@flaky' }, async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Choose video file', { exact: true }).setInputFiles({ name: 'portable.mp4', mimeType: 'video/mp4', buffer: await video() });
   await expect(page.locator('.story-clip.type-simple')).toHaveCount(1); await page.locator('.story-clip-title').click();
@@ -153,7 +153,7 @@ test('converting a generated scene creates a separate copy with its metadata and
   await expect(await showGenerationInfo(page)).toContainText(clipMetadata.prompt);
 });
 
-test('a direct Comfy download restores reference identities and the generated section from its saved workflow', async ({ page }) => {
+test('a direct Comfy download restores reference identities and the generated section from its saved workflow', { tag: '@flaky' }, async ({ page }) => {
   const input = new Input({ source: new BlobSource(new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')])), formats: ALL_FORMATS });
   const output = new Output({ target: new BufferTarget(), format: new Mp4OutputFormat() });
   try {

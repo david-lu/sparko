@@ -4,7 +4,7 @@ const open=async(page:Page)=>{await page.goto('/');await expect(page.getByRole('
 const saved=(page:Page)=>page.evaluate(async()=>{const {readActiveProject}=await import('/src/features/project/database.ts' as string);return readActiveProject();});
 
 for(const width of [1440,390]) {
-  test(`existing interstitials replace transitions, cancel, and undo at ${width}px`,async({page})=>{
+  test(`existing interstitials replace transitions, cancel, and undo at ${width}px`,{tag:width===1440?'@flaky':[]},async({page})=>{
     await page.setViewportSize({width,height:1000});await open(page);
     await page.locator('.story-filmstrip').focus();await page.keyboard.press('Shift+ArrowRight');await page.keyboard.press('s');
     const canvas=page.locator('.story-scroll');await canvas.click({button:'right',position:{x:12,y:12}});await page.getByRole('menuitem',{name:'Add video',exact:true}).click();

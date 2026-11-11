@@ -19,7 +19,7 @@ async function dragHandle(page:Page,side:'start'|'end',seconds:number,cancel=fal
   await page.mouse.up();
 }
 
-for(const width of [1440,390]) test(`clip handles trim nondestructively, undo, cancel, and preserve time preferences at ${width}px`,async({page})=>{
+for(const width of [1440,390]) test(`clip handles trim nondestructively, undo, cancel, and preserve time preferences at ${width}px`,{tag:width===1440?'@flaky':[]},async({page})=>{
   await page.setViewportSize({width,height:1000});const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await openVideo(page);await page.locator('.story-clip-title').click();
   const node=async()=>(await readProject(page)).storyFlow.nodes[0];
@@ -56,7 +56,7 @@ for(const width of [1440,390]) test(`clip handles trim nondestructively, undo, c
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);expect(errors).toEqual([]);
 });
 
-test('generated clips trim the playable body and display the full render’s internal time',async({page})=>{
+test('generated clips trim the playable body and display the full render’s internal time',{tag:'@flaky'},async({page})=>{
   const original=new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')],{type:'video/mp4'});
   const blob=await writeClipMetadata(original,clipMetadata,new AbortController().signal);
   await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles({name:'generated.mp4',mimeType:'video/mp4',buffer:Buffer.from(await blob.arrayBuffer())});

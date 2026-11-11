@@ -43,7 +43,7 @@ for(const width of [1440,390])test(`time label scrubs without jumping, respects 
   await page.screenshot({path:`test-results/playhead-drag-${width}.png`});
 });
 
-test('generated playhead dragging uses the playable body and retained internal time',async({page})=>{
+test('generated playhead dragging uses the playable body and retained internal time',{tag:'@flaky'},async({page})=>{
   const media=new Blob([await readFile('tests/fixtures/interstitial-reference.mp4')],{type:'video/mp4'});
   const blob=await writeClipMetadata(media,clipMetadata,new AbortController().signal);
   await page.goto('/');await page.getByLabel('Choose video file',{exact:true}).setInputFiles({name:'generated.mp4',mimeType:'video/mp4',buffer:Buffer.from(await blob.arrayBuffer())});

@@ -27,7 +27,7 @@ for(const width of [1440,390])test(`there is no draw tool; the cut tool complete
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 });
 
-test('group frames move, resize, keep their frame when emptied and survive reload',async({page})=>{
+test('group frames move, resize, keep their frame when emptied and survive reload',{tag:'@flaky'},async({page})=>{
   await open(page);const before=(await saved(page)).storyFlow;
   await groupSelection(page);
   const frame=page.locator('.story-group'),header=frame.locator('.story-group-header');await expect(frame).toHaveCount(1);

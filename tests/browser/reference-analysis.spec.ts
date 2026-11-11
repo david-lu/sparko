@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('Video prompt').fill('She waves and asks "Ready?"');
 });
 
-for (const width of [1440, 390]) test(`analyzes the actual start/end windows for Enhance and Edit without shifting controls at ${width}px`, async ({ page }) => {
+for (const width of [1440, 390]) test(`analyzes the actual start/end windows for Enhance and Edit without shifting controls at ${width}px`, { tag: width === 1440 ? '@flaky' : [] }, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   const option = page.getByRole('checkbox', { name: 'Analyze reference videos with AI' });
   await expect(option).not.toBeChecked(); await option.check();
