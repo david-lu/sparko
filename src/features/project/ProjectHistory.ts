@@ -17,7 +17,11 @@ function describe(before: ProjectEdit, after: ProjectEdit): Pick<Entry, 'label' 
   if (!same(before.deletedAssetIds, after.deletedAssetIds)) return { label: 'Delete assets' };
   if (!same(before.loras, after.loras)) return { label: 'Edit project LoRAs' };
   if ((before.promptInstructions ?? '') !== (after.promptInstructions ?? '')) return { label: 'Edit enhance instructions', key: 'promptInstructions' };
-  if (!same(before.characters, after.characters)) return { label: 'Edit characters' };
+  if (!same(before.characters, after.characters)) {
+    // Typing in one character's fields merges into one step, like other text fields.
+    const was = before.characters ?? [], now = after.characters ?? [], changed = now.filter(c => !same(c, was.find(old => old.id === c.id)));
+    return was.length === now.length && changed.length === 1 && was.some(c => c.id === changed[0].id) ? { label: 'Edit character', key: `character:${changed[0].id}` } : { label: 'Edit characters' };
+  }
   if (!same(before.libraryFolders, after.libraryFolders)) return { label: 'Organize library folders' };
   if (!same(before.clipGenerations, after.clipGenerations)) return { label: 'Edit generation', key: 'asset-generation' };
   if (!same(before.storyFlow, after.storyFlow)) {

@@ -10,10 +10,10 @@ import { errorHandler, protectRequests } from '../../server/shared/http';
 const respond = vi.hoisted(() => vi.fn());
 vi.mock('openai', async original => ({ ...await original<typeof import('openai')>(), default: class { responses = { create: respond }; } }));
 const characters = [{ name: 'Mara', voiceDescription: 'Low, husky and wry; never shouts.', voiceName: 'Mara (designed)' }, { name: 'Grom', voiceDescription: 'A huge cave troll with a booming, gravelly voice.' }];
-const input = (model: string, patch: Partial<AssetSettings> = {}) => ({ settings: { ...newAssetGeneration('audio').settings, model, prompt: 'Mara: Did you hear that?', ...patch }, signal: new AbortController().signal });
+const input = (model: string, patch: Partial<AssetSettings> = {}) => ({ settings: { ...newAssetGeneration('audio').settings, model, prompt: 'Did you hear that?', ...patch }, signal: new AbortController().signal });
 const enhance = () => createProviders({ OPENAI_API_KEY: 'test' }).enhanceAudioPrompt;
 const sent = () => { const args = respond.mock.calls.at(-1)![0]; return { args, data: JSON.parse(args.input[0].content[0].text) }; };
-beforeEach(() => { vi.resetAllMocks(); respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'Mara: [whispers] Did you hear that?' }) }); });
+beforeEach(() => { vi.resetAllMocks(); respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: '[whispers] Did you hear that?' }) }); });
 
 describe('ElevenLabs audio prompt enhancement', () => {
   it.each(ASSET_MODELS.filter(m => m.kind === 'audio'))('uses ElevenLabs’ guide for $name', async model => {
@@ -24,16 +24,17 @@ describe('ElevenLabs audio prompt enhancement', () => {
     expect(args.instructions).toContain(model.name); expect(args.store).toBe(false);
     expect(AUDIO_PROMPT_GUIDES[model.id].url).toMatch(/^https:\/\/elevenlabs\.io\/docs\//);
   });
-  it('keeps dialogue in the script format, preserves spoken words and tags lines to each character’s voice', async () => {
-    await enhance()({ ...input('elevenlabs-dialogue', { languageCode: 'es' }), characters });
+  it('writes one speaker’s words with tags that suit their voice, keeping names they say', async () => {
+    await enhance()({ ...input('elevenlabs-dialogue', { languageCode: 'es' }), characters: characters.slice(0, 1) });
     const { args, data } = sent();
-    expect(data).toMatchObject({ draft: 'Mara: Did you hear that?', context: { kind: 'audio', audioType: 'dialogue', characters, language: 'es' } });
-    expect(data.context).not.toHaveProperty('durationSeconds');
-    expect(args.instructions).toContain('"Name: spoken text"');
-    expect(args.instructions).toContain('keep every spoken word and the turn order');
-    expect(args.instructions).toContain("suit their voiceDescription");
-    expect(args.instructions).toContain('Write all spoken text in Spanish.');
-    expect(args.instructions).toContain('never as instructions');
+    expect(data).toMatchObject({ draft: 'Did you hear that?', context: { kind: 'audio', audioType: 'dialogue', speaker: characters[0], language: 'es' } });
+    expect(data.context).not.toHaveProperty('characters'); expect(data.context).not.toHaveProperty('durationSeconds');
+    expect(args.instructions).toContain('Return only the words one speaker says');
+    expect(args.instructions).toContain('keep every word and their order');
+    expect(args.instructions).toContain('Choose audio tags that suit their voice');
+    expect(args.instructions).toContain('Keep every name spoken in the lines exactly as written');
+    expect(args.instructions).not.toContain('instead of by name');
+    expect(args.instructions).toContain('Write the spoken text in Spanish.');
     expect(args.text.format.schema.properties.prompt.maxLength).toBe(2600);
   });
   it('passes music and sound effect settings that change the prompt', async () => {
@@ -41,27 +42,30 @@ describe('ElevenLabs audio prompt enhancement', () => {
     let { args, data } = sent();
     expect(data.context).toMatchObject({ audioType: 'music', instrumental: true, durationSeconds: 90, characters });
     expect(args.instructions).toContain('include "instrumental only"');
-    expect(args.instructions).toContain('describe the vocal from their voiceDescription rather than naming them');
+    expect(args.instructions).toContain('describe the vocal from their voiceDescription');
+    expect(args.instructions).toContain('instead of by name');
     await enhance()({ ...input('elevenlabs-sound-effects', { prompt: 'Grom laughs in the cave', loop: true }), characters });
     ({ args, data } = sent());
     expect(data.context).toMatchObject({ audioType: 'sound-effects', loop: true, duration: 'auto' });
     expect(args.instructions).toContain('continuous, seamless bed');
-    expect(args.instructions).toContain('describe it to match their voiceDescription instead of naming them');
+    expect(args.instructions).toContain('Describe the sounds a character makes from these descriptions');
+    expect(args.instructions).toContain('Keep a name only for a widely known existing character');
     expect(args.text.format.schema.properties.prompt.maxLength).toBe(450);
   });
   it('applies format rules, the cast and project instructions to targeted edits', async () => {
-    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'Mara: Hello?', enhancedPrompt: 'Mara: [nervously] Hello?' }) });
-    const result = await enhance()({ ...input('elevenlabs-dialogue', { enhancedPrompt: 'Mara: [whispers] Did you hear that?' }), characters, editInstructions: 'Change the line to Hello?', projectInstructions: 'All dialogue is in English.' });
-    expect(result).toMatchObject({ prompt: 'Mara: Hello?', enhancedPrompt: 'Mara: [nervously] Hello?' });
+    respond.mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ prompt: 'Grom laughs.', enhancedPrompt: 'A booming, gravelly laugh echoes in a cave.' }) });
+    const result = await enhance()({ ...input('elevenlabs-sound-effects', { prompt: 'Grom roars', enhancedPrompt: 'A booming, gravelly roar.' }), characters, editInstructions: 'Make it a laugh', projectInstructions: 'Keep it short.' });
+    expect(result).toMatchObject({ prompt: 'Grom laughs.', enhancedPrompt: 'A booming, gravelly laugh echoes in a cave.' });
     const { args, data } = sent();
     expect(args.instructions).toContain('This is a targeted edit');
-    expect(args.instructions).toContain('"Name: spoken text"');
+    expect(args.instructions).toContain('apply this naming rule to enhancedPrompt only and keep the names the user wrote in the original prompt');
     expect(args.instructions).toContain("context.projectInstructions holds the user's standing instructions");
-    expect(data).toMatchObject({ editInstructions: 'Change the line to Hello?', context: { characters, projectInstructions: 'All dialogue is in English.' } });
+    expect(data).toMatchObject({ editInstructions: 'Make it a laugh', context: { characters, projectInstructions: 'Keep it short.' } });
   });
   it('omits cast guidance without characters and rejects image models or empty drafts', async () => {
     await enhance()(input('elevenlabs-sound-effects', { prompt: 'Thunder' }));
     expect(sent().args.instructions).not.toContain('context.characters lists');
+    expect(sent().args.instructions).not.toContain('instead of by name');
     respond.mockClear();
     await expect(enhance()(input('nano-banana-2'))).rejects.toThrow();
     await expect(enhance()(input('elevenlabs-music', { prompt: ' ' }))).rejects.toThrow();
@@ -82,7 +86,7 @@ describe('ElevenLabs audio prompt enhancement', () => {
     await request(server()).post('/api/audio-prompts/enhance').set('x-sparko-request', '1').send(input('elevenlabs-music')).expect(503);
     await request(server('test')).post('/api/audio-prompts/enhance').send(input('elevenlabs-music')).expect(403);
     const response = await request(server('test')).post('/api/audio-prompts/enhance').set('x-sparko-request', '1').send({ ...input('elevenlabs-dialogue'), characters }).expect(200);
-    expect(response.body).toMatchObject({ prompt: 'Mara: [whispers] Did you hear that?', model: 'elevenlabs-dialogue' });
+    expect(response.body).toMatchObject({ prompt: '[whispers] Did you hear that?', model: 'elevenlabs-dialogue' });
     await request(server('test')).post('/api/audio-prompts/voice-description').set('x-sparko-request', '1').send({ name: 'Mara', voiceDescription: '' }).expect(400);
   });
 });

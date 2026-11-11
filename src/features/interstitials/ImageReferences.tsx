@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ImagePlus, X } from 'lucide-react';
 import { IMAGE_REFERENCE, type ImageReference } from '../../../shared/image-references';
 import { assets } from '../project/assets';
@@ -9,6 +9,9 @@ import { readLibraryDrag, startLibraryDrag, STORY_DRAG_TYPE } from '../story-flo
 import type { ProjectController } from '../project/ProjectController';
 import LibraryAssetPicker from '../project/LibraryAssetPicker';
 import AssetPreviewButton from '../project/AssetPreviewButton';
+import CharacterPicker from '../project/CharacterPicker';
+import { useCharacterWorkspace } from '../project/CharacterWorkspace';
+import type { ProjectCharacter } from '../../../shared/characters';
 
 function Thumbnail({ reference, index, onRemove, onToggle, disabled }: { reference: ImageReference; index: number; onRemove: () => void; onToggle: () => void; disabled: boolean }) {
   const [url, setUrl] = useState<string>(), [decodeError, setDecodeError] = useState('');
@@ -35,6 +38,17 @@ export default function ImageReferences({ value = [], onChange, onBusyChange, pr
   const choose = useRef<HTMLButtonElement>(null), [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [dragging, setDragging] = useState(false);
   useEffect(() => () => { operation.current?.abort(); }, []);
+  const characterWorkspace = useCharacterWorkspace();
+  const characters = useSyncExternalStore(projects?.subscribe ?? (() => () => undefined), () => projects?.getSnapshot().project?.characters);
+  const featured = [...new Set(value.flatMap(ref => ref.characterId ?? []))];
+  /** A character's images become numbered Pictures, named after them so prompts can say who each shows. */
+  const toggleCharacter = (character: ProjectCharacter) => {
+    setError('');
+    if (featured.includes(character.id)) { onChange(value.filter(ref => ref.characterId !== character.id)); return; }
+    const images = (character.images ?? []).filter(image => !value.some(ref => ref.assetId === image.assetId));
+    if (value.length + images.length > IMAGE_REFERENCE.maxCount) { setError(`Adding ${character.name} needs ${images.length} more pictures; H3 supports up to 9 image references.`); return; }
+    onChange([...value, ...images.map((image, index) => ({ assetId: image.assetId, name: images.length > 1 ? `${character.name} ${index + 1}` : character.name, characterId: character.id }))]);
+  };
   const add = async (files: File[]) => {
     if (!files.length || operation.current) return;
     setError('');
@@ -74,6 +88,9 @@ export default function ImageReferences({ value = [], onChange, onBusyChange, pr
     {projects && <button ref={choose} type="button" className="text-button" aria-label="Choose image references from Library" disabled={busy || value.length >= IMAGE_REFERENCE.maxCount} onClick={() => { setError(''); setPicking(true); }}>Choose from Library</button>}
     <input ref={input} type="file" hidden multiple accept="image/png,image/jpeg,image/webp" aria-label="Choose image references" onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void add(files); }} />
 
+    {!!characters?.length && <CharacterPicker characters={characters} selected={featured} disabled={busy} hint="adds their images as Pictures" onManage={characterWorkspace ? () => characterWorkspace.open() : undefined}
+      unavailable={character => character.images?.length ? undefined : `Add reference images to ${character.name} in Characters.`}
+      onToggle={id => { const character = characters.find(c => c.id === id); if (character) toggleCharacter(character); }}/>}
     <ul className="image-reference-list">{value.map((reference, index) => <Thumbnail key={`${reference.assetId}:${index}`} reference={reference} index={index} disabled={busy} onToggle={() => onChange(value.map((image, i) => i === index ? { ...image, enabled: image.enabled === false } : image))} onRemove={() => { setError(''); onChange(value.filter((_, i) => i !== index)); }} />)}</ul>
     <div className="image-reference-feedback" role="status" title={error}>{error}</div>
     {picking && projects && <LibraryAssetPicker library={projects.getSnapshot().project?.library ?? []} kinds={['image']} label="image references" selectedIds={value.map(ref => ref.assetId)} maxCount={IMAGE_REFERENCE.maxCount}

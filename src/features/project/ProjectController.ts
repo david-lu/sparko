@@ -264,6 +264,14 @@ export class ProjectController {
     if (JSON.stringify(next) === JSON.stringify(project.characters)) return;
     this.endHistoryGroup(); this.save({ ...project, characters: next, updatedAt: Date.now() }); this.endHistoryGroup();
   }
+  /** Edits one character in place; consecutive typing in its fields is one undo step. */
+  updateCharacter(id: string, patch: Partial<Omit<ProjectCharacter, 'id'>>) {
+    const project = this.state.project, current = project?.characters?.find(c => c.id === id); if (!project || !current) return false;
+    const characters = project.characters!.map(c => c.id === id ? Object.fromEntries(Object.entries({ ...c, ...patch }).filter(([, value]) => value !== undefined && value !== '' && !(Array.isArray(value) && !value.length))) as ProjectCharacter : c);
+    if (!projectCharactersSchema.safeParse(characters).success) return false;
+    if (JSON.stringify(characters) !== JSON.stringify(project.characters)) this.save({ ...project, characters, updatedAt: Date.now() });
+    return true;
+  }
   async importAssets(entries: LibraryFile[], folderId?: string, onProgress?: (message: string) => void) {
     const initial = this.state.project;
     if (!initial || !entries.length) return [];

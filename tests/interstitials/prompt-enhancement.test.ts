@@ -255,6 +255,19 @@ describe('AI-owned prompt enhancement', () => {
     expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('projectInstructions');
     expect(respond.mock.calls[0][0].instructions).not.toContain('context.projectInstructions');
   });
+  it.each([undefined, 'Make her laugh.'])('gives H3 the featured characters’ looks and voices (edit: %s)', async editInstructions => {
+    output('She waves.');
+    const characters = [{ name: 'Mara', visualDescription: 'Red coat, short silver hair.', voiceDescription: 'Low and husky.', images: [1] }];
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, editInstructions, characters });
+    const args = respond.mock.calls[0][0];
+    expect(JSON.parse(args.input[0].content[0].text).context.characters).toEqual(characters);
+    expect(args.instructions).toContain('describe their voice from voiceDescription beside their speaker ID, outside <d>');
+    expect(args.instructions).toContain('instead of by name');
+    expect(args.instructions).toContain('spoken words inside <d> keep their exact wording, including names');
+    respond.mockClear(); output('A shared brief.');
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, editInstructions, target: 'continuity', characters });
+    expect(JSON.parse(respond.mock.calls[0][0].input[0].content[0].text).context).not.toHaveProperty('characters');
+  });
   it('provides the same image as both endpoint guides for an image-only Idle loop', async () => {
     output('A quiet loop.');
     await createProviders({ OPENAI_API_KEY: 'test' }).enhancePrompt({ ...input, kind: 'idle', duration: 2, referenceFrames: [], imageReferences: ['data:image/jpeg;base64,Yw=='] });

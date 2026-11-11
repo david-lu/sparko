@@ -2,8 +2,7 @@ import { promptEnhancementPatch } from '../../../shared/prompt-versions';
 import { useSyncExternalStore } from 'react';
 import { generationLoraInstructions } from '../../../shared/loras';
 import { projectPromptInstructions } from '../../../shared/prompt-instructions';
-import { characterContext } from '../../../shared/characters';
-import type { AssetGeneration } from '../../../shared/asset-generation';
+import { promptCharacters, withCharacterReferences, type AssetGeneration } from '../../../shared/asset-generation';
 import type { StoryEditor } from '../story-flow/useStoryEditor';
 import { referenceImagePreviews } from '../interstitials/image-references';
 import { request } from '../../shared/api';
@@ -22,7 +21,9 @@ export function useAssetPromptEnhancement(editor: StoryEditor, generation: Asset
     const audio = generation.kind === 'audio', snapshot = editor.projects.getSnapshot(), settings = structuredClone(generation.settings);
     const fingerprint = JSON.stringify(settings), projectInstructions = projectPromptInstructions(snapshot.project);
     const loraInstructions = audio ? undefined : generationLoraInstructions(settings, snapshot.project?.loras, settings.model);
-    const cast = (project = snapshot.project) => audio ? characterContext(project?.characters) : undefined, characters = cast();
+    const cast = (project = snapshot.project) => promptCharacters(settings, project?.characters), characters = cast();
+    // The request uses the references generation will submit, including selected characters' images.
+    const requestSettings = withCharacterReferences(settings, snapshot.project?.characters);
     return tasks.run(generation.id, {
       isCurrent: () => {
         const state = editor.projects.getSnapshot(), project = state.project, current = project?.clipGenerations?.find(g => g.id === generation.id);
@@ -30,17 +31,18 @@ export function useAssetPromptEnhancement(editor: StoryEditor, generation: Asset
           && JSON.stringify(current.settings) === fingerprint
           && (audio || generationLoraInstructions(current.settings, project?.loras, current.settings.model) === loraInstructions)
           && projectPromptInstructions(project) === projectInstructions
-          && JSON.stringify(cast(project)) === JSON.stringify(characters);
+          && JSON.stringify(cast(project)) === JSON.stringify(characters)
+          && JSON.stringify(withCharacterReferences(current.settings, project?.characters).references) === JSON.stringify(requestSettings.references);
       },
       subscribe: editor.projects.subscribe,
       execute: async signal => {
         if (audio) return request<Result>('/api/audio-prompts/enhance', { method: 'POST', signal,
-          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings, editInstructions, characters, projectInstructions }) });
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: requestSettings, editInstructions, characters, projectInstructions }) });
         const currentFrame = await capturePromptFrame(editor.player, signal, workspace?.getFrameCapture());
-        const images = await referenceImagePreviews(settings.references.filter(r => r.kind === 'image'), signal);
+        const images = await referenceImagePreviews(requestSettings.references.filter(r => r.kind === 'image'), signal);
         signal.throwIfAborted();
         return request<Result>('/api/image-prompts/enhance', { method: 'POST', signal,
-          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings, editInstructions, images, currentFrame, loraInstructions, projectInstructions }) });
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: requestSettings, editInstructions, images, currentFrame, loraInstructions, projectInstructions, characters }) });
       },
       apply: result => {
         if (result.model !== settings.model || typeof result.prompt !== 'string' || !result.prompt.trim()) throw new Error('Prompt enhancement returned an invalid result.');

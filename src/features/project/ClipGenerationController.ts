@@ -1,9 +1,8 @@
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { assetPlacement } from './migrateClipMedia';
 import { projectLoraAddress, projectLoraStrength } from '../../../shared/loras';
-import { LEGACY_AUDIO_REPLACEMENTS, assetModel, audioModelSettings, generationBusy, validateAssetSettings, type AssetGeneration, type AssetSettings } from '../../../shared/asset-generation';
+import { LEGACY_AUDIO_REPLACEMENTS, assetModel, audioModelSettings, generationBusy, validateAssetSettings, withCharacterReferences, type AssetGeneration, type AssetSettings } from '../../../shared/asset-generation';
 import { castDialogueVoices } from '../../../shared/dialogue-script';
-import { generationPrompt } from '../../../shared/prompt-versions';
 import { request, appHeaders } from '../../shared/api';
 import { imageDataUrl } from '../interstitials/image-references';
 import { assets } from './assets';
@@ -51,10 +50,11 @@ export class ClipGenerationController {
     if (!g || !projectId || generationBusy(g)) return;
     const settings = { ...g.settings, count: 1 }, model = assetModel(settings.model);
     // Dialogue records each speaker's voice at submission, so every version keeps the cast it was made with.
-    const cast = model?.audioType === 'dialogue' ? castDialogueVoices(generationPrompt(settings), project.characters) : undefined;
-    const error = validateAssetSettings(settings) ?? cast?.error;
+    const cast = model?.audioType === 'dialogue' ? castDialogueVoices(settings.characterIds, project.characters) : undefined;
+    // Selected characters' images join the submitted references; the draft keeps only the selection.
+    const resolved = withCharacterReferences(settings, project.characters), error = validateAssetSettings(resolved) ?? cast?.error;
     if (error) { this.edit(id, { error }, false); return; }
-    const key = `${projectId}:${id}`, task = new AbortController(), submitted: AssetSettings = structuredClone({ ...settings, ...(cast?.voices ? { dialogueVoices: cast.voices } : {}) });
+    const key = `${projectId}:${id}`, task = new AbortController(), submitted: AssetSettings = structuredClone({ ...resolved, ...(cast?.voices ? { dialogueVoices: cast.voices } : {}) });
     this.tasks.set(key, task);
     if (model?.provider === 'elevenlabs') {
       this.edit(id, { phase: 'rendering', error: undefined, settings, submitted, requestId: undefined }, false);

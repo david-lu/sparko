@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 export const IMAGE_REFERENCE = { maxCount: 9, maxBytes: 1024 * 1024, maxInputBytes: 20 * 1024 * 1024, maxDimension: 1536 } as const;
-export const imageReferencesSchema = z.array(z.object({ assetId: z.uuid(), name: z.string().min(1).max(1000), enabled: z.boolean().optional() })).max(IMAGE_REFERENCE.maxCount);
+/** characterId marks pictures added from a project character, so prompts can name who they show. */
+export const imageReferencesSchema = z.array(z.object({ assetId: z.uuid(), name: z.string().min(1).max(1000), enabled: z.boolean().optional(), characterId: z.uuid().optional() })).max(IMAGE_REFERENCE.maxCount);
 export type ImageReference = z.infer<typeof imageReferencesSchema>[number];
 export const imageReferenceIndexSchema = z.number().int().min(0).max(IMAGE_REFERENCE.maxCount - 1);
 

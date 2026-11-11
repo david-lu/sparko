@@ -3,14 +3,14 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import { assetSettingsSchema } from '../../../shared/asset-generation.js';
-import { CHARACTER_VOICE_DESCRIPTION_MAX_LENGTH, characterNameSchema } from '../../../shared/characters.js';
+import { CHARACTER_DESCRIPTION_MAX_LENGTH, characterNameSchema } from '../../../shared/characters.js';
 import { authenticate } from '../../hosting.js';
 import { HttpError } from '../../shared/http.js';
 import { generatedVoiceIdPattern, type ElevenLabsClient } from './elevenlabs.js';
 
 const MAX_AUDIO_BYTES = 128 * 1024 ** 2;
 /** ElevenLabs needs a description it can act on; very short ones produce generic voices. */
-export const voiceDescriptionSchema = z.string().trim().min(20, 'Describe the voice in at least 20 characters.').max(CHARACTER_VOICE_DESCRIPTION_MAX_LENGTH);
+export const voiceDescriptionSchema = z.string().trim().min(20, 'Describe the voice in at least 20 characters.').max(CHARACTER_DESCRIPTION_MAX_LENGTH);
 const generateSchema = z.object({ settings: assetSettingsSchema });
 const voicesSchema = z.object({ search: z.string().trim().max(100).optional(), page: z.string().max(500).regex(/^[A-Za-z0-9_=:.+/-]*$/).optional() });
 const designSchema = z.object({ description: voiceDescriptionSchema });

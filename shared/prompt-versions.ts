@@ -20,7 +20,7 @@ const inputs = new Set(['prompt', 'duration', 'continuity', 'dialogue', 'time', 
   'lora', 'loraInstructions', 'imageReferences', 'keyframes', 'timelineVideos', 'start_range', 'end_range', 'method',
   'useInputReference', 'useOutputReference', 'useStartVideoAsset', 'useEndVideoAsset', 'startVideoAsset', 'endVideoAsset',
   'startVideoAssets', 'endVideoAssets', 'startImageIndex', 'endImageIndex', 'startReferenceType', 'endReferenceType',
-  'audioMaskCurve', 'audioMaskTransitionMs']);
+  'audioMaskCurve', 'audioMaskTransitionMs', 'characterIds', 'instrumental', 'loop', 'autoDuration', 'languageCode']);
 export function promptSettingsPatch<T extends PromptVersions>(current: T, patch: Partial<T>): Partial<T> {
   if ('enhancedPrompt' in patch) return { ...patch, enhancedPromptStale: false };
   if (current.enhancedPrompt?.trim() && Object.keys(patch).some(key => inputs.has(key)

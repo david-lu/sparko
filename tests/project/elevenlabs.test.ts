@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { ASSET_MODELS, audioModelSettings, interruptedGeneration, newAssetGeneration, validateAssetSettings, type AssetSettings } from '../../shared/asset-generation';
-import { castDialogueVoices, dialogueInputs, parseDialogueScript } from '../../shared/dialogue-script';
+import { castDialogueVoices, dialogueInputs, dialogueText } from '../../shared/dialogue-script';
 import { projectCharactersSchema, type ProjectCharacter } from '../../shared/characters';
 import { createElevenLabsClient, elevenLabsError, elevenLabsRequest } from '../../server/features/asset-generation/elevenlabs';
 import { addElevenLabsRoutes } from '../../server/features/asset-generation/elevenlabs-routes';
@@ -11,28 +11,25 @@ import { errorHandler, protectRequests } from '../../server/shared/http';
 const mara: ProjectCharacter = { id: crypto.randomUUID(), name: 'Mara', voiceDescription: 'Low, husky and wry.', voice: { id: 'VoiceMara0001', name: 'Mara (designed)' } };
 const theo: ProjectCharacter = { id: crypto.randomUUID(), name: 'Theo', voice: { id: 'VoiceTheo0001', name: 'Theo' } };
 const audio = (model: string, patch: Partial<AssetSettings> = {}): AssetSettings => ({ ...newAssetGeneration('audio').settings, model, ...patch });
-const script = 'Mara: [whispers] Did you hear that?\nTheo: It’s just the wind…\nright?';
+const lines = '[whispers] Did you hear that?\nIt’s just the wind… right?';
 
-describe('dialogue scripts', () => {
-  it('parses one turn per line, joins continuation lines and keeps colons in the spoken text', () => {
-    expect(parseDialogueScript(`${script}\n\nmara: It's 10:30 already.`)).toEqual({ turns: [
-      { speaker: 'Mara', text: '[whispers] Did you hear that?' }, { speaker: 'Theo', text: 'It’s just the wind… right?' }, { speaker: 'mara', text: "It's 10:30 already." },
-    ] });
-    expect(parseDialogueScript('[whispers] Hello there').error).toContain('Start each line with a speaker name');
-    expect(parseDialogueScript('  \n').error).toContain('Write at least one line');
-    expect(parseDialogueScript('Mara:').error).toBe('Add a line for Mara or remove the empty turn.');
+describe('single-speaker dialogue', () => {
+  it('sends the speaker’s words, dropping only a label for that speaker', () => {
+    expect(dialogueText('  Mara: [whispers] Hi, Theo: look.\n\nmara:  It’s 10:30.', 'Mara')).toBe('[whispers] Hi, Theo: look.\nIt’s 10:30.');
+    expect(dialogueText('Theo: Hello?', 'Mara')).toBe('Theo: Hello?');
   });
-  it('resolves speakers to character voices case-insensitively and explains missing characters or voices', () => {
-    expect(castDialogueVoices(`${script}\nMARA: Again.`, [mara, theo])).toEqual({ voices: [
-      { speaker: 'Mara', voiceId: 'VoiceMara0001', voiceName: 'Mara (designed)' }, { speaker: 'Theo', voiceId: 'VoiceTheo0001', voiceName: 'Theo' },
-    ] });
-    expect(castDialogueVoices('Iris: Hi.', [mara]).error).toContain('No character is named “Iris”');
-    expect(castDialogueVoices('Theo: Hi.', [{ ...theo, voice: undefined }]).error).toContain('Theo has no voice yet');
-    const { voices } = castDialogueVoices(script, [mara, theo]);
-    expect(dialogueInputs(script, voices).inputs).toEqual([{ text: '[whispers] Did you hear that?', voice_id: 'VoiceMara0001' }, { text: 'It’s just the wind… right?', voice_id: 'VoiceTheo0001' }]);
-    expect(dialogueInputs(script, voices?.slice(0, 1)).error).toBe('Choose a voice for Theo.');
+  it('uses the selected character’s voice and explains a missing speaker or voice', () => {
+    expect(castDialogueVoices([mara.id], [mara, theo])).toEqual({ voices: [{ speaker: 'Mara', voiceId: 'VoiceMara0001', voiceName: 'Mara (designed)' }] });
+    expect(castDialogueVoices([], [mara]).error).toBe('Choose the character who speaks.');
+    expect(castDialogueVoices(undefined, []).error).toContain('Add a character with a voice');
+    expect(castDialogueVoices([mara.id, theo.id], [mara, theo]).error).toContain('one speaker');
+    expect(castDialogueVoices([theo.id], [{ ...theo, voice: undefined }]).error).toContain('Theo has no voice yet');
+    const { voices } = castDialogueVoices([mara.id], [mara]);
+    expect(dialogueInputs(lines, voices).inputs).toEqual([{ text: lines, voice_id: 'VoiceMara0001' }]);
+    expect(dialogueInputs(lines, undefined).error).toBe('Choose the character who speaks.');
+    expect(dialogueInputs(' ', voices).error).toBe('Write what the speaker says.');
   });
-  it('keeps character names usable as script speakers and unique', () => {
+  it('keeps character names usable in scripts and unique', () => {
     expect(projectCharactersSchema.safeParse([{ ...mara, name: 'Dr: Who' }]).success).toBe(false);
     expect(projectCharactersSchema.safeParse([mara, { ...theo, name: ' mara ' }]).success).toBe(false);
     expect(projectCharactersSchema.safeParse([mara, theo]).success).toBe(true);
@@ -40,12 +37,11 @@ describe('dialogue scripts', () => {
 });
 
 describe('ElevenLabs requests', () => {
-  it('builds dialogue requests with the submitted voices and delivery settings', () => {
-    const { voices } = castDialogueVoices(script, [mara, theo]);
-    expect(elevenLabsRequest(audio('elevenlabs-dialogue', { prompt: script, dialogueVoices: voices, stability: 0, languageCode: 'en', seed: 42 }))).toEqual({ path: 'v1/text-to-dialogue', body: {
-      inputs: [{ text: '[whispers] Did you hear that?', voice_id: 'VoiceMara0001' }, { text: 'It’s just the wind… right?', voice_id: 'VoiceTheo0001' }],
-      model_id: 'eleven_v4', settings: { stability: 0 }, language_code: 'en', seed: 42 } });
-    expect(() => elevenLabsRequest(audio('elevenlabs-dialogue', { prompt: script }))).toThrow('Choose a voice for Mara.');
+  it('builds dialogue requests with the submitted voice and delivery settings', () => {
+    const { voices } = castDialogueVoices([mara.id], [mara, theo]);
+    expect(elevenLabsRequest(audio('elevenlabs-dialogue', { prompt: lines, characterIds: [mara.id], dialogueVoices: voices, stability: 0, languageCode: 'en', seed: 42 }))).toEqual({ path: 'v1/text-to-dialogue', body: {
+      inputs: [{ text: lines, voice_id: 'VoiceMara0001' }], model_id: 'eleven_v4', settings: { stability: 0 }, language_code: 'en', seed: 42 } });
+    expect(() => elevenLabsRequest(audio('elevenlabs-dialogue', { prompt: lines }))).toThrow('Choose the character who speaks.');
   });
   it('builds music and sound effect requests, omitting fixed lengths in Auto mode', () => {
     expect(elevenLabsRequest(audio('elevenlabs-music', { prompt: 'Lo-fi, 80 BPM', autoDuration: false, duration: 45, instrumental: true }))).toEqual({ path: 'v1/music',
@@ -60,9 +56,9 @@ describe('ElevenLabs requests', () => {
     expect(validateAssetSettings(audio('elevenlabs-music', { prompt: 'Jazz', autoDuration: true, duration: 2 }))).toBeUndefined();
     expect(validateAssetSettings(audio('elevenlabs-sound-effects', { prompt: 'Boom', autoDuration: false, duration: 31 }))).toContain('from 0.5 to 30 seconds');
     expect(validateAssetSettings(audio('elevenlabs-sound-effects', { prompt: 'x'.repeat(451) }))).toContain('up to 450 characters');
-    expect(validateAssetSettings(audio('elevenlabs-dialogue', { prompt: Array.from({ length: 11 }, (_, i) => `Speaker ${i}: Hi.`).join('\n') }))).toContain('up to 10 different voices');
-    expect(validateAssetSettings(audio('elevenlabs-dialogue', { prompt: `Mara: ${'a'.repeat(2001)}` }))).toContain('2,000 characters');
-    expect(validateAssetSettings(audio('elevenlabs-dialogue', { prompt: 'No speaker', enhancedPrompt: 'Mara: Hello.', useEnhancedPrompt: true }))).toBeUndefined();
+    expect(validateAssetSettings(audio('elevenlabs-dialogue', { prompt: 'Hi.', characterIds: [mara.id, theo.id] }))).toContain('one speaker');
+    expect(validateAssetSettings(audio('elevenlabs-dialogue', { prompt: 'a'.repeat(2001) }))).toContain('2,000 characters');
+    expect(validateAssetSettings(audio('elevenlabs-dialogue', { prompt: 'Draft', enhancedPrompt: '[sighs] Hello.', useEnhancedPrompt: true }))).toBeUndefined();
   });
   it('clamps durations when switching audio models and settles interrupted direct requests', () => {
     expect(audioModelSettings(audio('elevenlabs-music', { duration: 120 }), 'elevenlabs-sound-effects')).toMatchObject({ model: 'elevenlabs-sound-effects', duration: 30 });
@@ -129,7 +125,7 @@ describe('ElevenLabs routes', () => {
     const response = await request(server).post('/api/elevenlabs/audio').set('x-sparko-request', '1').send({ settings }).expect(200).expect('Content-Type', /audio\/mpeg/);
     expect(response.body.toString()).toBe('mp3-bytes');
     await request(server).post('/api/elevenlabs/audio').set('x-sparko-request', '1').send({ settings: { ...settings, model: 'nano-banana-2' } }).expect(400);
-    await request(server).post('/api/elevenlabs/audio').set('x-sparko-request', '1').send({ settings: { ...settings, model: 'elevenlabs-dialogue', prompt: 'Mara: Hi.' } }).expect(400);
+    await request(server).post('/api/elevenlabs/audio').set('x-sparko-request', '1').send({ settings: { ...settings, model: 'elevenlabs-dialogue', prompt: 'Hi.' } }).expect(400);
     expect(fetcher).toHaveBeenCalledOnce();
   });
   it('returns sanitized provider errors and validates voice design input', async () => {

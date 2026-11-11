@@ -22,6 +22,7 @@ export function useVideoPromptEnhancement({ selected, controller, engine, info, 
       reference: controller.dependency(item.id)?.reference,
       loraInstructions: generationLoraInstructions(item, projects?.getSnapshot().project?.loras, H3_MODEL_ID),
       projectInstructions: projectPromptInstructions(projects?.getSnapshot().project),
+      characters: projects?.getSnapshot().project?.characters,
     });
     const submitted = fingerprint(source);
     return tasks.run(selected.id, {
@@ -36,7 +37,7 @@ export function useVideoPromptEnhancement({ selected, controller, engine, info, 
       },
       execute: (signal, onAnalyzing) => enhancePrompt({ ...source, loraInstructions }, controller.clipKind(selected.id),
         controller.dependency(selected.id)?.reference, engine, info, signal,
-        { player, captureFrame: workspace?.getFrameCapture(), editInstructions, projectInstructions, onAnalyzing }),
+        { player, captureFrame: workspace?.getFrameCapture(), editInstructions, projectInstructions, characters: project?.project?.characters, onAnalyzing }),
       apply: result => controller.edit(selected.id, promptEnhancementPatch(selected, result, !!editInstructions)),
       onError: message => { if (!editInstructions) showErrorToast('Video prompt enhancement failed', message, selected.label); },
     });

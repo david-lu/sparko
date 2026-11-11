@@ -1,57 +1,39 @@
-import { characterKey, findCharacter, type ProjectCharacter } from './characters.js';
+import { selectedCharacters, type ProjectCharacter } from './characters.js';
 
 /**
- * Dialogue prompts are scripts with one speaker turn per line:
- *   Mara: [whispers] Did you hear that?
- *   Theo: It's just the wind… right?
- * Lines without a "Name:" prefix continue the previous turn.
+ * A dialogue clip has one speaker for now: the selected character. The prompt is
+ * the words they say, with optional audio tags such as [whispers].
  */
-export type DialogueTurn = { speaker: string; text: string };
 export type DialogueVoice = { speaker: string; voiceId: string; voiceName: string };
-export const DIALOGUE_MAX_VOICES = 10;
 /** ElevenLabs recommends keeping the combined text of one dialogue request at or below 2,000 characters. */
 export const DIALOGUE_MAX_TEXT_LENGTH = 2000;
+export const DIALOGUE_MAX_SPEAKERS = 1;
 
-const turnPattern = /^([^:[\]\n]{1,60}?)\s*:\s*(.*)$/;
-export function parseDialogueScript(script: string): { turns: DialogueTurn[]; error?: string } {
-  const turns: DialogueTurn[] = [];
-  for (const raw of script.split(/\r?\n/)) {
-    const line = raw.trim(); if (!line) continue;
-    const match = turnPattern.exec(line);
-    if (match) turns.push({ speaker: match[1].trim(), text: match[2].trim() });
-    else if (turns.length) turns[turns.length - 1].text = `${turns[turns.length - 1].text} ${line}`.trim();
-    else return { turns: [], error: 'Start each line with a speaker name, such as “Mara: Did you hear that?”' };
-  }
-  if (!turns.length) return { turns, error: 'Write at least one line, such as “Mara: Did you hear that?”' };
-  const empty = turns.find(turn => !turn.text);
-  if (empty) return { turns, error: `Add a line for ${empty.speaker} or remove the empty turn.` };
-  return { turns };
+/** The spoken text, dropping "Name:" labels for the speaker that would otherwise be read aloud. */
+export function dialogueText(prompt: string, speaker?: string) {
+  const lines = prompt.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const label = speaker ? new RegExp(`^${speaker.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*`, 'i') : undefined;
+  return lines.map(line => label ? line.replace(label, '') : line).join('\n').trim();
 }
-export const dialogueSpeakers = (turns: readonly DialogueTurn[]) => [...new Map(turns.map(turn => [characterKey(turn.speaker), turn.speaker])).values()];
-export const dialogueTextLength = (turns: readonly DialogueTurn[]) => turns.reduce((total, turn) => total + turn.text.length, 0);
+export function dialogueTextError(prompt: string, speaker?: string) {
+  const text = dialogueText(prompt, speaker);
+  if (!text) return 'Write what the speaker says.';
+  if (text.length > DIALOGUE_MAX_TEXT_LENGTH) return `Keep the spoken text to ${DIALOGUE_MAX_TEXT_LENGTH.toLocaleString('en-US')} characters or fewer. Split longer speeches into separate clips.`;
+}
 
-/** Resolve each speaker to its character's voice when a generation is submitted. */
-export function castDialogueVoices(script: string, characters: readonly ProjectCharacter[] | undefined): { voices?: DialogueVoice[]; error?: string } {
-  const { turns, error } = parseDialogueScript(script); if (error) return { error };
-  const voices: DialogueVoice[] = [];
-  for (const speaker of dialogueSpeakers(turns)) {
-    const character = findCharacter(characters, speaker);
-    if (!character) return { error: `No character is named “${speaker}”. Add ${speaker} under Characters in Project settings, or use an existing name.` };
-    if (!character.voice) return { error: `${character.name} has no voice yet. Choose or design a voice for ${character.name} under Characters.` };
-    voices.push({ speaker: character.name, voiceId: character.voice.id, voiceName: character.voice.name });
-  }
-  return { voices };
+/** Resolve the speaker's voice when a generation is submitted, so each version keeps the voice it used. */
+export function castDialogueVoices(characterIds: readonly string[] | undefined, characters: readonly ProjectCharacter[] | undefined): { voices?: DialogueVoice[]; error?: string } {
+  const speakers = selectedCharacters(characters, characterIds);
+  if (!speakers.length) return { error: characters?.length ? 'Choose the character who speaks.' : 'Add a character with a voice in Characters, then choose them as the speaker.' };
+  if (speakers.length > DIALOGUE_MAX_SPEAKERS) return { error: 'Dialogue clips have one speaker. Choose one character.' };
+  const [speaker] = speakers;
+  if (!speaker.voice) return { error: `${speaker.name} has no voice yet. Choose or design a voice for ${speaker.name} in Characters.` };
+  return { voices: [{ speaker: speaker.name, voiceId: speaker.voice.id, voiceName: speaker.voice.name }] };
 }
-/** The request inputs for a script whose speakers were resolved at submission. */
-export function dialogueInputs(script: string, voices: readonly DialogueVoice[] | undefined): { inputs?: { text: string; voice_id: string }[]; error?: string } {
-  const { turns, error } = parseDialogueScript(script); if (error) return { error };
-  if (dialogueSpeakers(turns).length > DIALOGUE_MAX_VOICES) return { error: `Dialogue can use up to ${DIALOGUE_MAX_VOICES} different voices.` };
-  if (dialogueTextLength(turns) > DIALOGUE_MAX_TEXT_LENGTH) return { error: `Keep the spoken text to ${DIALOGUE_MAX_TEXT_LENGTH.toLocaleString('en-US')} characters or fewer. Split longer scenes into separate clips.` };
-  const inputs = [];
-  for (const turn of turns) {
-    const voice = voices?.find(v => characterKey(v.speaker) === characterKey(turn.speaker));
-    if (!voice) return { error: `Choose a voice for ${turn.speaker}.` };
-    inputs.push({ text: turn.text, voice_id: voice.voiceId });
-  }
-  return { inputs };
+/** The request inputs for the submitted speaker. */
+export function dialogueInputs(prompt: string, voices: readonly DialogueVoice[] | undefined): { inputs?: { text: string; voice_id: string }[]; error?: string } {
+  const voice = voices?.[0];
+  if (!voice || voices!.length > DIALOGUE_MAX_SPEAKERS) return { error: 'Choose the character who speaks.' };
+  const error = dialogueTextError(prompt, voice.speaker); if (error) return { error };
+  return { inputs: [{ text: dialogueText(prompt, voice.speaker), voice_id: voice.voiceId }] };
 }

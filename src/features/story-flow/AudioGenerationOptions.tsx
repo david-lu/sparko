@@ -1,21 +1,6 @@
-import { Plus } from 'lucide-react';
 import { useId } from 'react';
 import { AUDIO_DURATION_LIMITS, DIALOGUE_LANGUAGES, DIALOGUE_STABILITY, type AssetModel, type AssetSettings } from '../../../shared/asset-generation';
-import type { ProjectCharacter } from '../../../shared/characters';
 import '../project/characters.css';
-
-/** Character chips insert "Name: " into the script; dashed chips still need a voice. */
-export function DialogueCast({ characters, disabled, onInsert, onAdd }: { characters: readonly ProjectCharacter[]; disabled: boolean; onInsert: (name: string) => void; onAdd: (element: HTMLElement) => void }) {
-  return <div className="dialogue-cast" role="group" aria-label="Dialogue speakers">
-    <div className="dialogue-cast-heading"><span>Speakers · one “Name: line” per turn</span>
-      <button type="button" className="text-button" disabled={disabled} onClick={event => onAdd(event.currentTarget)}><Plus size={11}/>Add character</button></div>
-    <ul>{characters.length ? characters.map(character => <li key={character.id}>
-      <button type="button" disabled={disabled} data-voiceless={!character.voice} aria-label={`Insert ${character.name}`}
-        title={character.voice ? `Insert a line for ${character.name} · Voice: ${character.voice.name}` : `${character.name} has no voice yet. Edit them under Characters in Project settings.`}
-        onClick={() => onInsert(character.name)}><span>{character.name}</span></button>
-    </li>) : <li className="dialogue-cast-empty">Add characters to give each speaker a voice.</li>}</ul>
-  </div>;
-}
 
 function Duration({ model, settings, update }: { model: AssetModel; settings: AssetSettings; update: (patch: Partial<AssetSettings>) => void }) {
   const limits = AUDIO_DURATION_LIMITS[model.audioType!]!, auto = !!settings.autoDuration;

@@ -18,20 +18,20 @@ function setup(generation: AssetGeneration, characters: ProjectCharacter[] = [ma
     editAssets: vi.fn((change: (p: Project) => Project) => { project = change(project); listeners.forEach(listener => listener()); }) };
   return { controller: new ClipGenerationController(projects as unknown as ProjectController), project: () => project, projects };
 }
-const dialogue = (prompt: string) => { const g = newAssetGeneration('audio'); g.settings.prompt = prompt; return g; };
+const dialogue = (prompt: string, speaker = mara) => { const g = newAssetGeneration('audio'); g.settings.prompt = prompt; g.settings.characterIds = [speaker.id]; return g; };
 beforeEach(() => { vi.stubGlobal('sessionStorage', { getItem: () => null }); vi.stubGlobal('window', { dispatchEvent: vi.fn(), setTimeout, clearTimeout }); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('direct ElevenLabs generation', () => {
-  it('submits each speaker’s voice, saves the streamed audio as a version and leaves the draft unchanged', async () => {
+  it('submits the speaker’s voice, saves the streamed audio as a version and leaves the draft unchanged', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('mp3', { headers: { 'content-type': 'audio/mpeg' } }));
     vi.stubGlobal('fetch', fetcher);
-    const generation = dialogue('Mara: Did you hear that?\nTheo: Just the wind.'), { controller, project } = setup(generation);
+    const generation = dialogue('[whispers] Did you hear that?'), { controller, project } = setup(generation);
     await controller.generate(generation.id);
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe('/api/elevenlabs/audio');
     expect(init?.headers).toMatchObject({ 'x-sparko-request': '1', 'Content-Type': 'application/json' });
-    const voices = [{ speaker: 'Mara', voiceId: 'VoiceMara0001', voiceName: 'Mara' }, { speaker: 'Theo', voiceId: 'VoiceTheo0001', voiceName: 'Theo' }];
+    const voices = [{ speaker: 'Mara', voiceId: 'VoiceMara0001', voiceName: 'Mara' }];
     expect(JSON.parse(String(init?.body)).settings).toMatchObject({ model: 'elevenlabs-dialogue', dialogueVoices: voices });
     const saved = project().clipGenerations![0];
     expect(saved).toMatchObject({ phase: 'ready', submitted: { dialogueVoices: voices } });
@@ -42,18 +42,18 @@ describe('direct ElevenLabs generation', () => {
   });
   it('explains a speaker without a voice before calling the server', async () => {
     const fetcher = vi.fn<typeof fetch>(); vi.stubGlobal('fetch', fetcher);
-    const generation = dialogue('Theo: Hello?'), { controller, project } = setup(generation, [{ ...theo, voice: undefined }]);
+    const generation = dialogue('Hello?', theo), { controller, project } = setup(generation, [{ ...theo, voice: undefined }]);
     await controller.generate(generation.id);
     expect(fetcher).not.toHaveBeenCalled();
     expect(project().clipGenerations![0]).toMatchObject({ phase: 'draft', error: expect.stringContaining('Theo has no voice yet') });
   });
   it('shows server errors and cancels an in-flight request without an error', async () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(Response.json({ error: 'Your ElevenLabs account does not have enough credits for this request.' }, { status: 402 })));
-    const generation = dialogue('Mara: Hi.'), first = setup(generation);
+    const generation = dialogue('Hi.'), first = setup(generation);
     await first.controller.generate(generation.id);
     expect(first.project().clipGenerations![0]).toMatchObject({ phase: 'error', error: 'Your ElevenLabs account does not have enough credits for this request.' });
     vi.stubGlobal('fetch', vi.fn<typeof fetch>((_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))))));
-    const second = setup(dialogue('Mara: Hi.')), id = second.project().clipGenerations![0].id, running = second.controller.generate(id);
+    const second = setup(dialogue('Hi.')), id = second.project().clipGenerations![0].id, running = second.controller.generate(id);
     expect(second.project().clipGenerations![0].phase).toBe('rendering');
     await second.controller.cancel(id); await running;
     expect(second.project().clipGenerations![0]).toMatchObject({ phase: 'cancelled' });

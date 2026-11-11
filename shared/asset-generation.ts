@@ -1,8 +1,8 @@
 import { enhancedPromptSettings, generationPrompt, promptSelectionError } from './prompt-versions.js';
 import { z } from 'zod';
 import { loraSettings, projectLoraAddress, projectLoraStrength, type ProjectLora } from './loras.js';
-import { characterNameSchema, characterVoiceSchema } from './characters.js';
-import { DIALOGUE_MAX_TEXT_LENGTH, DIALOGUE_MAX_VOICES, dialogueSpeakers, dialogueTextLength, parseDialogueScript } from './dialogue-script.js';
+import { characterContext, characterIdsSchema, characterNameSchema, characterVoiceSchema, featuredCharacters, selectedCharacters, type ProjectCharacter } from './characters.js';
+import { DIALOGUE_MAX_SPEAKERS, dialogueTextError } from './dialogue-script.js';
 
 export type MediaKind = 'image' | 'video' | 'audio';
 export type AssetProvider = 'fal' | 'elevenlabs';
@@ -67,8 +67,10 @@ export const assetSettingsSchema = z.object({
   /** Dialogue: ISO 639-1 language code; omitted to detect it from the text. */
   languageCode: z.string().regex(/^[a-z]{2}$/).optional(),
   seed: z.number().int().min(0).max(4294967295).optional(),
+  /** Characters this generation features. Image models receive their reference images; prompts receive their descriptions. */
+  characterIds: characterIdsSchema.optional(),
   /** Dialogue: each speaker's voice, resolved from the project's characters when submitted. */
-  dialogueVoices: z.array(z.object({ speaker: characterNameSchema, voiceId: characterVoiceSchema.shape.id, voiceName: characterVoiceSchema.shape.name })).max(DIALOGUE_MAX_VOICES).optional(),
+  dialogueVoices: z.array(z.object({ speaker: characterNameSchema, voiceId: characterVoiceSchema.shape.id, voiceName: characterVoiceSchema.shape.name })).max(DIALOGUE_MAX_SPEAKERS).optional(),
 });
 export type AssetSettings = z.infer<typeof assetSettingsSchema>;
 export type AssetReference = z.infer<typeof assetReferenceSchema>;
@@ -83,6 +85,29 @@ export const assetGenerationSchema = z.object({
   .refine(g => (!g.selectedAssetId || g.versions.some(v => v.assetId === g.selectedAssetId)) && new Set(g.versions.map(v => v.assetId)).size === g.versions.length, 'Invalid generation versions.');
 export type AssetGeneration = z.infer<typeof assetGenerationSchema>;
 export const generationBusy = (g: Pick<AssetGeneration, 'phase'>) => ['preparing', 'queued', 'rendering', 'loading'].includes(g.phase);
+/** Explicit references first (an edit's base image stays first), then each selected character's images. */
+export function characterReferences(settings: AssetSettings, characters: readonly ProjectCharacter[] | undefined): AssetReference[] {
+  if (!assetModel(settings.model)?.inputs.includes('image')) return [];
+  const seen = new Set(settings.references.map(ref => ref.assetId));
+  return selectedCharacters(characters, settings.characterIds).flatMap(character => (character.images ?? []).flatMap((image, index, images) => {
+    if (seen.has(image.assetId)) return []; seen.add(image.assetId);
+    return [{ assetId: image.assetId, name: images.length > 1 ? `${character.name} ${index + 1}` : character.name, kind: 'image' as const }];
+  }));
+}
+/** The settings actually submitted: selected characters' images join the references. */
+export const withCharacterReferences = (settings: AssetSettings, characters: readonly ProjectCharacter[] | undefined): AssetSettings => {
+  const added = characterReferences(settings, characters);
+  return added.length ? { ...settings, references: [...settings.references, ...added] } : settings;
+};
+/** The characters enhancement should know: dialogue's speaker, or the selected characters plus any the prompt names. */
+export function promptCharacters(settings: AssetSettings, characters: readonly ProjectCharacter[] | undefined) {
+  const model = assetModel(settings.model);
+  if (model?.audioType === 'dialogue') return characterContext(selectedCharacters(characters, settings.characterIds).slice(0, DIALOGUE_MAX_SPEAKERS), { voice: true, visual: true });
+  const featured = featuredCharacters(settings.prompt, characters, settings.characterIds);
+  if (model?.kind === 'audio') return characterContext(featured, { voice: true, visual: true });
+  const images = withCharacterReferences(settings, characters).references.filter(ref => ref.kind === 'image');
+  return characterContext(featured, { voice: false, visual: true, images: character => images.flatMap((ref, index) => character.images?.some(image => image.assetId === ref.assetId) ? [index + 1] : []) });
+}
 /** A synchronous request that was interrupted by a reload has no job to resume. */
 export const interruptedGeneration = (g: Pick<AssetGeneration, 'phase' | 'requestId'>) => g.phase === 'preparing' || generationBusy(g) && !g.requestId;
 export function newAssetGeneration(kind: MediaKind, folderId?: string, loras?: readonly ProjectLora[]): AssetGeneration {
@@ -118,8 +143,6 @@ function validateAudioSettings(settings: AssetSettings, model: AssetModel): stri
   if (limits && !settings.autoDuration && (settings.duration < limits.min || settings.duration > limits.max)) return `Choose a duration from ${limits.min} to ${limits.max} seconds, or Auto.`;
   if (model.audioType === 'sound-effects' && prompt.length > SOUND_EFFECT_PROMPT_MAX_LENGTH) return `Sound effect prompts can be up to ${SOUND_EFFECT_PROMPT_MAX_LENGTH} characters. Describe one sound, or split a sequence into separate clips.`;
   if (model.audioType !== 'dialogue') return;
-  const { turns, error } = parseDialogueScript(prompt);
-  if (error) return error;
-  if (dialogueSpeakers(turns).length > DIALOGUE_MAX_VOICES) return `Dialogue can use up to ${DIALOGUE_MAX_VOICES} different voices.`;
-  if (dialogueTextLength(turns) > DIALOGUE_MAX_TEXT_LENGTH) return `Keep the spoken text to ${DIALOGUE_MAX_TEXT_LENGTH.toLocaleString('en-US')} characters or fewer. Split longer scenes into separate clips.`;
+  if ((settings.characterIds?.length ?? 0) > DIALOGUE_MAX_SPEAKERS) return 'Dialogue clips have one speaker. Choose one character.';
+  return dialogueTextError(prompt, settings.dialogueVoices?.[0]?.speaker);
 }
