@@ -7,7 +7,8 @@ const controls = (page: Page) => page.locator('.interstitial-editor').evaluate(r
   });
 });
 
-for (const loop of [false, true]) for (const width of [1440, 390]) test(`H3 images guide ${loop ? 'loop' : 'scene'} enhancement and generation with stable loading at ${width}px`, { tag: loop && width === 1440 ? '@slow' : [] }, async ({ page }) => {
+// The narrow loop run repeats every scene step and layout check, so the scene runs only at full width.
+for (const [loop, width] of [[false, 1440], [true, 1440], [true, 390]] as const) test(`H3 images guide ${loop ? 'loop' : 'scene'} enhancement and generation with stable loading at ${width}px`, { tag: loop && width === 1440 ? '@slow' : [] }, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/status', async route => {

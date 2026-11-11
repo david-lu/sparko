@@ -76,9 +76,11 @@ jobs:
           sudo chown -R "$USER" ~/apt-archives
       - name: Browser tests
         # Linux WebGPU canvas capture needs a display compositor, even with software rendering.
+        # Tests tagged @flaky still run, but browser-results.ts lets them fail without failing the shard.
         run: |
           npx tsx scripts/browser-shard.ts ${{ matrix.shard }}/${{ strategy.job-total }} > "$RUNNER_TEMP/browser-tests.txt"
-          xvfb-run -a npm run test:e2e:ci -- --headed --test-list "$RUNNER_TEMP/browser-tests.txt"
+          xvfb-run -a npm run test:e2e:ci -- --headed --test-list "$RUNNER_TEMP/browser-tests.txt" \
+            || npx tsx scripts/browser-results.ts test-results/results.json
       - name: Upload browser report and failure traces
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7.0.2

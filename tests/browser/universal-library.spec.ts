@@ -123,23 +123,6 @@ for (const width of [1440, 390]) test(`image generation keeps Inspector controls
   expect(errors).toEqual([]);
 });
 
-test('a cancelled generation can retrieve its result without another paid submission', async ({ page }) => {
-  await falStatus(page); await openVideo(page); const png = await importImage(page);
-  let complete = false, submitted = 0, cancelled = 0;
-  await page.route('**/api/library-generations', route => { submitted++; return route.fulfill({ json: { requestId: 'request_123' } }); });
-  await page.route('**/api/library-generations/nano-banana-2/request_123', route => {
-    if (route.request().method() === 'DELETE') { cancelled++; return route.fulfill({ json: { cancelled: true } }); }
-    return route.fulfill({ json: { phase: complete ? 'ready' : 'queued', count: 1 } });
-  });
-  await page.route('**/api/library-generations/nano-banana-2/request_123/content/0', route => route.fulfill({ contentType: 'image/png', body: png }));
-  await create(page, 'Image'); await page.getByLabel('Generation prompt', { exact: true }).fill('A poster');
-  await page.getByRole('button', { name: 'Generate image', exact: true }).click();
-  await expect.poll(() => submitted).toBe(1);
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click(); await expect.poll(() => cancelled).toBe(1);
-  complete = true; await page.getByRole('button', { name: 'Check result', exact: true }).click();
-  await expect(page.locator('.story-clip.selected .video-filmstrip img')).toBeVisible(); expect(submitted).toBe(1);
-});
-
 test('folders import media without creating timeline clips and Start/End video toggles stay independent', async ({ page }) => {
   await openVideo(page);
   await page.getByRole('button', { name: 'New folder', exact: true }).click();

@@ -27,12 +27,15 @@ for (const width of [1440, 390]) test(`loop video and audio fades edit independe
   await audio.blur(); expect(await position()).toBe(idle);
   await page.screenshot({ path: `test-results/loop-settings-${width}.png`, fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-  await expect.poll(async () => (await readProject(page)).storyFlow.nodes[0]).toMatchObject({ loopVideoCrossfade: .75, loopAudioCrossfade: 0 });
-  await saveAndReopen(page); await page.locator('.story-clip-title').click();
-  await expect(video).toHaveValue('0.75'); await expect(audio).toHaveValue('0');
-  await page.getByRole('checkbox', { name: 'Loop', exact: true }).uncheck();
-  await expect(video).toBeHidden(); await expect(audio).toBeHidden();
-  await page.getByRole('checkbox', { name: 'Loop', exact: true }).check();
-  await expect(video).toHaveValue('0.75'); await expect(audio).toHaveValue('0');
-  await audio.fill('999'); await audio.blur(); await expect(audio).toHaveValue('1');
+  // Persistence and the Loop toggle are checked once, at full width.
+  if (width === 1440) {
+    await expect.poll(async () => (await readProject(page)).storyFlow.nodes[0]).toMatchObject({ loopVideoCrossfade: .75, loopAudioCrossfade: 0 });
+    await saveAndReopen(page); await page.locator('.story-clip-title').click();
+    await expect(video).toHaveValue('0.75'); await expect(audio).toHaveValue('0');
+    await page.getByRole('checkbox', { name: 'Loop', exact: true }).uncheck();
+    await expect(video).toBeHidden(); await expect(audio).toBeHidden();
+    await page.getByRole('checkbox', { name: 'Loop', exact: true }).check();
+    await expect(video).toHaveValue('0.75'); await expect(audio).toHaveValue('0');
+    await audio.fill('999'); await audio.blur(); await expect(audio).toHaveValue('1');
+  }
 });

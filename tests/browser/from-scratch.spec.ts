@@ -1,6 +1,9 @@
 import { openGenerationTimeline, closeGenerationTimeline, test, expect, addDraft, readProject, saveAndReopen } from './fixtures';
 
-for (const width of [1440, 390]) for (const loop of [false, true]) for (const conditional of [false, true]) {
+// Conditional is only a checkbox here; it never changes the submitted form or the measured controls,
+// so it is checked together with loop instead of crossed with every case.
+const cases = [[1440, false, false], [1440, true, false], [1440, true, true], [390, false, false], [390, true, true]] as const;
+for (const [width, loop, conditional] of cases) {
   test(`create from scratch: loop ${loop}, conditional ${conditional}, ${width}px`, { tag: width === 1440 && loop ? '@slow' : [] }, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));

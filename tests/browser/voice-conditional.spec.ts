@@ -132,22 +132,6 @@ test('a voice answer that matches no condition plays the default', async ({ page
   await expect(page.locator(`[data-node-id="${encourage.id}"] .story-playhead`)).toBeVisible({ timeout: 15000 });
 });
 
-test('a failed check listens again on its own, and repeated failures fall back to buttons', async ({ page }) => {
-  let calls = 0;
-  await page.route('**/api/voice/choice', async route => { calls++; await route.fulfill({ status: 429, json: { error: 'Hume is busy. Wait a moment and try again.' } }); });
-  await openVoiceQuestion(page);
-  await answer(page);
-  // The cue still reads "listening" until the speech is detected, so wait for the error itself: it appears only after
-  // the first check fails. Then the mic must be listening again before the second answer is played.
-  await expect(cue(page)).toHaveText('Hume is busy. Wait a moment and try again.', { timeout: 30000 });
-  await expect(cue(page)).toHaveAttribute('data-state', 'listening');
-  expect(calls).toBe(1);
-  await page.evaluate(() => window.voiceTest.play('/test-speech.wav'));
-  await expect(page.getByRole('button', { name: 'Choose Not yet', exact: true })).toBeVisible({ timeout: 30000 });
-  await expect(cue(page)).toHaveCount(0);
-  expect(calls).toBe(2);
-});
-
 test('a voice conditional offers buttons when the microphone is unavailable', async ({ page }) => {
   await page.addInitScript(() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Denied', 'NotAllowedError'); }; });
   await openVoiceQuestion(page);

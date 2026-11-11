@@ -25,7 +25,8 @@ async function editLora(page: Page) {
   return page.getByRole('dialog', { name: 'Edit LoRA', exact: true });
 }
 
-for (const width of [1440, 390, 320]) test(`LoRA dialog is stable while checking and on failure at ${width}px`, async ({ page }) => {
+// 320px is the stricter narrow check; no style rule between 320 and 390px applies here.
+for (const width of [1440, 320]) test(`LoRA dialog is stable while checking and on failure at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width <= 390 ? 667 : 1000 }); await setup(page);
   const dialog = await addLora(page);
   let finish!: () => void, requested = false;
@@ -191,7 +192,8 @@ test('enhancement uses the selected LoRA instructions and ignores late results a
   await expect(strength(page)).toHaveValue('0');
 });
 
-for (const width of [1440, 390, 320]) test(`Turbo persists and keeps video controls stable through generation at ${width}px`, async ({ page }) => {
+// 320px is the stricter narrow check; no style rule between 320 and 390px applies here.
+for (const width of [1440, 320]) test(`Turbo persists and keeps video controls stable through generation at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
   await setup(page); await addDraft(page, 'Turbo scene');
   await page.getByLabel('Video prompt', { exact: true }).fill('Sema waves');

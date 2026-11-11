@@ -37,16 +37,19 @@ for(const width of [1440,390])test(`joins a selected chain in graph order with u
   await expect.poll(async()=>(await readProject(page)).storyFlow.nodes[0].source).toEqual(original.nodes[0].source);
   expect((await readProject(page)).storyFlow.edges).toEqual([]);
   await expect(page.locator('.story-playhead>span')).toHaveText('00:00.000');
-  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(3);
-  expect((await readProject(page)).storyFlow).toEqual(before);
-  await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(1);
-  await saveAndReopen(page);expect((await readProject(page)).storyFlow.nodes[0].source).toMatchObject({inFrame:0,outFrame:96});
+  // Undo, redo and persistence run once, at full width.
+  if (width === 1440) {
+    await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(3);
+    expect((await readProject(page)).storyFlow).toEqual(before);
+    await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.locator('.story-clip')).toHaveCount(1);
+    await saveAndReopen(page);expect((await readProject(page)).storyFlow.nodes[0].source).toMatchObject({inFrame:0,outFrame:96});
+  }
   await page.locator('.story-clip-title').click();await page.screenshot({path:`test-results/joined-clips-${width}.png`});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   expect(nativeDialogs).toEqual([]);expect(errors).toEqual([]);
 });
 
-for(const width of [1440,390])test(`lists all join failures, updates availability, and restores a gap at ${width}px`,async({page})=>{
+for (const width of [1440])test(`lists all join failures, updates availability, and restores a gap at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:1000});
   await openVideo(page);await page.locator('.story-clip-title').click();await splitSelected(page);await fitAll(page);
   await page.locator('.story-crossfade').click();

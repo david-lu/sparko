@@ -103,14 +103,17 @@ for (const width of [1440, 390]) test(`video and audio fades stay independent an
   await expect(page.getByLabel('Video crossfade timing')).toContainText('Video · Cut');
   await expect(page.getByLabel('Audio crossfade timing')).toContainText('0.750 s fade');
   expect(await positions()).toEqual(before);
-  await audio.press('Tab');
-  await page.getByRole('button',{name:'Undo',exact:true}).click();
-  await expect(video).toHaveValue('0.375'); await expect(audio).toHaveValue('0.75');
-  await page.getByRole('button',{name:'Redo',exact:true}).click();
-  await expect(video).toHaveValue('0'); await expect(audio).toHaveValue('0.75');
-  await saveAndReopen(page); await fitAll(page);
-  await page.locator(`[data-edge-id="${connection.id}"] .story-crossfade`).click();
-  await expect(video).toHaveValue('0'); await expect(audio).toHaveValue('0.75');
+  // Undo, redo and persistence run once, at full width.
+  if (width === 1440) {
+    await audio.press('Tab');
+    await page.getByRole('button',{name:'Undo',exact:true}).click();
+    await expect(video).toHaveValue('0.375'); await expect(audio).toHaveValue('0.75');
+    await page.getByRole('button',{name:'Redo',exact:true}).click();
+    await expect(video).toHaveValue('0'); await expect(audio).toHaveValue('0.75');
+    await saveAndReopen(page); await fitAll(page);
+    await page.locator(`[data-edge-id="${connection.id}"] .story-crossfade`).click();
+    await expect(video).toHaveValue('0'); await expect(audio).toHaveValue('0.75');
+  }
   const bounds = await page.evaluate(() => ({width:document.documentElement.scrollWidth,viewport:innerWidth}));
   expect(bounds.width).toBeLessThanOrEqual(bounds.viewport);
   await audio.scrollIntoViewIfNeeded();

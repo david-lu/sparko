@@ -21,7 +21,7 @@ test('library media survives deleting its clip, is reusable without arrows, and 
   await context.close();
 });
 
-test('animation panels reorder, snap, resize, cancel, persist, and reset while the player remains above the timeline',async({page})=>{
+test('animation panels reorder, snap, resize, cancel, persist, and reset while the player remains above the timeline',{tag:'@flaky'},async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await open(page);
   const library=page.getByRole('button',{name:'Move Library panel',exact:true}),inspector=page.getByRole('button',{name:'Move Inspector panel',exact:true});
   const start=await library.boundingBox(),end=await page.locator('[data-panel-id=inspector]').boundingBox();await page.mouse.move(start!.x+60,start!.y+15);await page.mouse.down();await page.mouse.move(end!.x+60,end!.y+end!.height-20,{steps:8});await expect(page.locator('.sidePanelInsertionIndicator')).toHaveCount(1);await page.mouse.up();

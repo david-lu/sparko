@@ -29,6 +29,11 @@ for (const width of [1440, 390]) test(`input audio tracks add, edit, play, delet
   await expect.poll(async () => (await sounds(page)).inputAudioTracks?.[0]?.clips).toMatchObject([
     { name: 'Line.wav', frame: 21, inFrame: 0, outFrame: 48, volume: 1 }, { name: 'Hit.wav', frame: 69, inFrame: 0, outFrame: 12, volume: 1 }]);
   await expect(lane.locator('.generation-waveform-clip svg')).toHaveCount(2);
+  // The narrow run checks the populated lanes fit; the wide run covers editing, playback, deletion and persistence.
+  if (width !== 1440) {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/generation-audio-tracks-${width}.png` }); return;
+  }
   // Input sound keeps its audio in the mask; the picture still generates.
   expect(await maskPath('audio')).not.toBe(silentMask.audio);
   expect(await maskPath('video')).toBe(silentMask.video);
@@ -93,6 +98,11 @@ for (const width of [1440, 390]) test(`the audio mix sets every input level, kee
   await editor.getByRole('slider', { name: 'Timeline ruler', exact: true }).press('Home');
   await editor.getByRole('button', { name: 'Play timeline', exact: true }).click();
   await expect(editor.getByRole('button', { name: 'Pause timeline', exact: true })).toBeVisible();
+  // The narrow run checks the mix fits while playing; the wide run covers level changes and undo.
+  if (width !== 1440) {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await mix.scrollIntoViewIfNeeded(); await page.screenshot({ path: `test-results/generation-audio-mix-${width}.png` }); return;
+  }
 
   // Levels change while the preview keeps playing. A drag is one undo step.
   const start = mix.getByRole('slider', { name: 'Start reference volume', exact: true });

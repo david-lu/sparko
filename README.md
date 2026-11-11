@@ -330,6 +330,8 @@ Do not prefix API secrets with `VITE_`. Redeploy after changing deployment envir
 
 CI uses `npm run test:e2e:ci`, which excludes tests tagged `@slow` or `@generation`. The normal local `npm run test:e2e` command uses the same fast selection. Tagged generation scenarios are excluded even though their provider responses are mocked. All excluded tests remain available through `npm run test:e2e:full` or `npm run test:full`. The fast browser suite continues to cover editing, playback, preview, menus, loading states, and project operations.
 
+Tests tagged `@flaky` still run in CI but are optional: each has failed in CI on code that passed in another attempt or another run. If one still fails after its retry, the run shows a warning and the shard passes; any other failure still fails it. [`scripts/browser-results.ts`](scripts/browser-results.ts) makes that decision from Playwright's JSON report. Local runs treat them like any other test. List them with `npx playwright test --list --grep @flaky`, and remove a test's tag once its cause is fixed. The current tags come from CI runs between November 6 and 10, 2026, leaving out an experiment that ran several workers per runner.
+
 For faster PR feedback, the ten longest individual cases from the [November 5 CI run](https://github.com/david-lu/sparko/actions/runs/42070133184) are also tagged `@slow`. The new tags apply only to the listed variants, alongside the existing exclusions:
 
 | Additional full-suite-only case | Measured CI time |

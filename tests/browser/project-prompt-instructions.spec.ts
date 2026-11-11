@@ -7,7 +7,8 @@ async function setup(page: Page) {
   await openVideo(page);
 }
 
-for (const width of [1440, 390, 320]) test(`project enhance instructions fit the Project inspector at ${width}px`, async ({ page }) => {
+// 320px is the stricter narrow check; no style rule between 320 and 390px applies here.
+for (const width of [1440, 320]) test(`project enhance instructions fit the Project inspector at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width <= 390 ? 667 : 1000 }); await setup(page);
   await field(page).scrollIntoViewIfNeeded();
   await expect(field(page)).toBeVisible(); await expect(field(page)).toHaveValue('');

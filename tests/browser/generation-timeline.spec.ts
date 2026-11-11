@@ -13,18 +13,22 @@ for (const width of [1440, 390]) test(`timeline keyframes drag, delete, and undo
   await editor.getByLabel('Keyframe frame', { exact: true }).fill('63');
   const marker = editor.getByRole('button', { name: 'Select image keyframe 1', exact: true });
   await expect(marker).toHaveAttribute('title', /2\.625s/);
-  await marker.hover();
-  const lane = (await editor.locator('.generation-guides-lane').boundingBox())!, box = (await marker.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + lane.width * 24 / 226, box.y + box.height / 2, { steps: 5 }); await page.mouse.up();
-  await expect(editor.getByLabel('Keyframe frame', { exact: true })).toHaveValue('87');
-  await editor.getByRole('button', { name: 'Close generation timeline', exact: true }).click();
-  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await open();
+  // Dragging and undo run once, at full width; the narrow run checks the menu stays on screen.
+  if (width === 1440) {
+    await marker.hover();
+    const lane = (await editor.locator('.generation-guides-lane').boundingBox())!, box = (await marker.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + lane.width * 24 / 226, box.y + box.height / 2, { steps: 5 }); await page.mouse.up();
+    await expect(editor.getByLabel('Keyframe frame', { exact: true })).toHaveValue('87');
+    await editor.getByRole('button', { name: 'Close generation timeline', exact: true }).click();
+    await page.getByRole('button', { name: 'Undo', exact: true }).click(); await open();
+  }
   await marker.click(); await expect(editor.getByLabel('Keyframe frame', { exact: true })).toHaveValue('63');
   await marker.click({ button: 'right' });
   const menu = page.getByRole('menu', { name: 'Image keyframe actions', exact: true });
   await expect(menu).toBeVisible();
   expect(await menu.evaluate(el => { const box = el.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight; })).toBe(true);
+  if (width !== 1440) { await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0); return; }
   await menu.getByRole('menuitem', { name: 'Disable keyframe', exact: true }).click();
   await expect(marker).toHaveAttribute('data-enabled', 'false');
   await marker.press('Shift+F10'); await expect(menu).toBeVisible(); await page.keyboard.press('Escape');

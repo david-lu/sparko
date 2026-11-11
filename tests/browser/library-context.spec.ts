@@ -130,15 +130,16 @@ test('asset actions operate on the clicked asset and folders preserve their cont
 
 test('generation controls stay on the clip while the Library exposes completed media', async ({ page }) => {
   await page.route('**/api/status',async route=>{const response=await route.fetch(),body=await response.json();await route.fulfill({json:{...body,providers:{...body.providers,fal:true}}});});
-  await openVideo(page);const png=await picture(page);let complete=false,cancelled=0;
-  await page.route('**/api/library-generations',route=>route.fulfill({json:{requestId:'request_123'}}));
+  await openVideo(page);const png=await picture(page);let complete=false,cancelled=0,submitted=0;
+  await page.route('**/api/library-generations',route=>{submitted++;return route.fulfill({json:{requestId:'request_123'}});});
   await page.route('**/api/library-generations/nano-banana-2/request_123',route=>{if(route.request().method()==='DELETE'){cancelled++;return route.fulfill({json:{cancelled:true}});}return route.fulfill({json:{phase:complete?'ready':'queued',count:1}});});
   await page.route('**/api/library-generations/nano-banana-2/request_123/content/0',route=>route.fulfill({body:png.buffer,contentType:'image/png'}));
   await page.getByRole('button',{name:'Add image',exact:true}).press('Enter');
   await expect(page.locator('[data-library-type=generation]')).toHaveCount(0);
   await page.getByLabel('Generation prompt',{exact:true}).fill('A reference image');await page.getByRole('button',{name:'Generate image',exact:true}).click();
-  await page.getByRole('button',{name:'Cancel',exact:true}).click();await expect.poll(()=>cancelled).toBe(1);
+  await expect.poll(()=>submitted).toBe(1);await page.getByRole('button',{name:'Cancel',exact:true}).click();await expect.poll(()=>cancelled).toBe(1);
   complete=true;await page.getByRole('button',{name:'Check result',exact:true}).click();
-  const output=asset(page,'Untitled image · v1');await expect(output).toBeVisible();await output.click({button:'right'});
+  // Retrieving a cancelled result never submits, and pays for, a second generation.
+  const output=asset(page,'Untitled image · v1');await expect(output).toBeVisible();expect(submitted).toBe(1);await output.click({button:'right'});
   expect(await actions(page).getByRole('menuitem').allTextContents()).toEqual(['Draw on image…','Open in Inspector','Add to timeline','Download','Rename asset…','Delete asset…']);
 });
