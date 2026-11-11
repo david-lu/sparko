@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { GripVertical, Upload, X } from 'lucide-react';
+import { Upload, X } from 'lucide-react';
 import type { AssetReference, MediaKind } from '../../../shared/asset-generation';
 import type { ProjectController } from './ProjectController';
 import { fileEntries, mediaFile, mediaKind } from './libraryFiles';
@@ -58,7 +58,8 @@ export default function AssetInput({ projects, value, kinds, onChange, label = '
     } catch (e) { if (!task.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to add reference.'); return false; }
     finally { if (!task.signal.aborted) { operation.current = null; setBusy(false); } }
   };
-  const dropLabel = multiple ? `Drag ${kinds.length === 1 ? kinds[0] === 'audio' ? 'audio files' : kinds[0] + 's' : 'assets'} from Library` : `Drag ${kinds[0]} from Library`;
+  const noun = kinds.length === 1 ? kinds[0] === 'audio' ? multiple ? 'audio files' : 'an audio file' : multiple ? `${kinds[0]}s` : `${/^[aeiou]/.test(kinds[0]) ? 'an' : 'a'} ${kinds[0]}` : multiple ? 'assets' : 'an asset';
+  const full = multiple && value.length >= maxCount;
   return <div className={`asset-input ${dragging ? 'is-dragging' : ''}`} role="group" aria-label={label} aria-busy={busy}
     onDragOver={e => { if (e.dataTransfer.types.includes(STORY_DRAG_TYPE) || e.dataTransfer.types.includes(LIBRARY_MOVE_TYPE) || e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = busy ? 'none' : 'copy'; if (!busy) setDragging(true); } }}
     onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
@@ -69,15 +70,16 @@ export default function AssetInput({ projects, value, kinds, onChange, label = '
       if (ids.some(id => !id)) { setError('A selected generation has no output yet.'); return; }
       void receive([...e.dataTransfer.files], ids.filter((id): id is string => !!id)); }}>
     <div className={`asset-input-slots ${multiple ? 'multiple' : ''}`}>
-      {!value.length && <div className="asset-input-empty"><Upload size={17}/><span>{dropLabel}</span></div>}
+      {!value.length && <div className="asset-input-empty"><span className="asset-input-icon" aria-hidden="true"><Upload size={15}/></span>
+        <span className="asset-input-prompt"><strong>Drop {noun} here</strong>{multiple && <small>from the Library or your computer</small>}</span></div>}
       {value.map(ref => { const error = assets.error(ref.assetId) || (!kinds.includes(ref.kind) ? `This model does not accept ${ref.kind} references. Remove this reference or choose a compatible model.` : undefined); return <div className="asset-reference-chip" key={ref.assetId} draggable={!busy} onDragStart={e => { e.stopPropagation(); startLibraryDrag(e, { assetId: ref.assetId }); }}>
         <AssetThumbnail asset={library.find(a => a.assetId === ref.assetId) ?? { assetId: ref.assetId, kind: ref.kind }} kind={ref.kind} name={ref.name}/>
         <span title={ref.name}>{ref.name}</span><ContentIssues label={`${ref.name} reference errors`} issues={error ? [{ key: ref.assetId, title: ref.name, message: error }] : []}/>
         <AssetPreviewButton assetId={ref.assetId} kind={ref.kind} name={ref.name} disabled={busy} onPlay={onPreviewPlay}/>
-        <GripVertical size={12}/><button type="button" className="icon-button small" disabled={busy} aria-label={`Remove reference ${ref.name}`} onClick={() => { setError(''); onChange(value.filter(v => v.assetId !== ref.assetId)); }}><X size={12}/></button>
+        <button type="button" className="icon-button small" disabled={busy} aria-label={`Remove reference ${ref.name}`} onClick={() => { setError(''); onChange(value.filter(v => v.assetId !== ref.assetId)); }}><X size={12}/></button>
       </div>; })}
     </div>
-    <div className="asset-input-actions"><span>{busy ? 'Adding…' : value.length ? multiple ? 'Drop to add references' : 'Drop to replace' : 'or drop a file'}</span>
+    <div className="asset-input-actions"><span>{busy ? 'Adding…' : !value.length ? '' : !multiple ? 'Drop to replace' : full ? `${value.length} of ${maxCount} · full` : maxCount < 16 ? `${value.length} of ${maxCount}` : `${value.length} added`}</span>
       <button ref={choose} type="button" className="text-button" aria-label={`Choose ${label} from Library`} disabled={busy || !kinds.length} onClick={() => { setError(''); setPicking(true); }}>Choose from Library</button>
       <button type="button" className="text-button" disabled={busy || !kinds.length} onClick={() => input.current?.click()}>Browse files</button>
     </div>
