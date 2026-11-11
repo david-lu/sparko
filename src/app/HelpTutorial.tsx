@@ -9,23 +9,25 @@ const topics = [
   { id: 'start', title: 'Quick start' },
   { id: 'timeline', title: 'Timeline & connections' },
   { id: 'generate', title: 'Generate a video' },
+  { id: 'media', title: 'Images, audio & characters' },
   { id: 'templates', title: 'Reuse templates' },
+  { id: 'preview', title: 'Preview & save' },
   { id: 'workspace', title: 'Workspace & shortcuts' },
 ] as const;
 type Topic = typeof topics[number]['id'];
 const steps: { title: string; text: string; picture: HelpPictureId }[] = [
-  { title: 'What are we adding?', text: 'A video is a new scene that plays between two parts of your video.', picture: 'overview' },
-  { title: 'Import your video', text: 'Click the upload button in Library. Choose your video.', picture: 'import' },
+  { title: 'What are we adding?', text: 'A new scene that plays between two parts of your video, made to match both sides.', picture: 'overview' },
+  { title: 'Import your video', text: 'Choose New project. Drop a video on the timeline, or click Import videos or images.', picture: 'import' },
   { title: 'Pick the moment', text: 'Click the images inside your clip. The vertical line, called the playhead, moves to that moment.', picture: 'playhead' },
   { title: 'Cut your video into two pieces', text: 'Right-click the clip → Cut at playhead. Both pieces keep their footage.', picture: 'cut' },
   { title: 'Find the Video card', text: 'Open Add clips. Find the card labeled Video.', picture: 'add' },
   { title: 'Drop it between the pieces', text: 'Drag the Video card onto the connecting line, then release.', picture: 'drop' },
-  { title: 'Check the clips on either side', text: 'Select your new scene. In Inspector, turn on Start and End to match the first and second pieces.', picture: 'references' },
-  { title: 'Describe your new scene', text: 'Write what should happen. Set Duration to how many seconds it should last.', picture: 'generate' },
-  { title: 'Make the video', text: 'Click Generate. Wait for it to finish, then open Generated video to preview it.', picture: 'generate' },
-  { title: 'Play and save', text: 'Play from the first clip. Then choose File → Save project.', picture: 'save' },
+  { title: 'Describe your new scene', text: 'Select the new clip. In Inspector, write what should happen under Original prompt.', picture: 'generate' },
+  { title: 'Match the clips on either side', text: 'Click Timeline in Inspector. Keep Start video and End video on, and set Duration.', picture: 'references' },
+  { title: 'Make the video', text: 'Click Generate. The clip shows its progress, then plays your new scene in place.', picture: 'generate' },
+  { title: 'Watch and save', text: 'Click Preview to watch it as viewers will. Then choose File → Save project.', picture: 'save' },
 ];
-const usefulShortcuts: ShortcutId[] = ['play', 'fit', 'layout', 'add', 'split', 'group', 'undo', 'redo'];
+const usefulShortcuts: ShortcutId[] = ['play', 'fit', 'layout', 'add', 'split', 'comment', 'group', 'undo', 'redo', 'save'];
 
 export default function HelpTutorial({onClose}:{onClose:()=>void}) {
   const [topic,setTopic]=useState<Topic>('start'),[step,setStep]=useState(0);
@@ -56,22 +58,41 @@ export default function HelpTutorial({onClose}:{onClose:()=>void}) {
           </div>}
           {topic==='timeline'&&<>
             <h3>Cut = split into two pieces</h3><p>Move the playhead. Right-click the clip → <strong>Cut at playhead</strong>. Use Undo if you cut in the wrong place.</p>
-            {illustration('cut')}
-            <h3>Connect clips</h3><p>Drag an output circle to the next clip’s input circle. The arrows decide what plays next.</p>
+            {illustration('split')}
+            <h3>Connect clips</h3><p>Drag an output circle to the next clip’s input circle. The lines decide what plays next.</p>
             {illustration('inserted')}
-            <h3>Move around</h3><ul className="help-tips"><li><strong>Space + drag:</strong> move around the timeline.</li><li><strong>Pinch:</strong> zoom in or out.</li><li><strong>Fit:</strong> bring your clips into view.</li></ul>
+            <h3>Loops and choices</h3><p>Select a clip. In <strong>Inspector</strong>, turn on <strong>Loop</strong> to repeat it, or <strong>Conditional</strong> to let viewers choose what plays next.</p>
+            <h3>Move around</h3><ul className="help-tips"><li><strong>Space + drag:</strong> move around the timeline.</li><li><strong>Pinch:</strong> zoom in or out.</li><li><strong>Fit:</strong> bring your clips into view.</li><li><strong>Auto layout:</strong> tidy the clips into a row.</li></ul>
+            <h3>Leave a note</h3><p>Choose the <strong>Comment tool</strong> in the timeline toolbar, then click a moment in a clip.</p>
           </>}
           {topic==='generate'&&<>
             <p>Select a video, then open <strong>Inspector</strong>.</p>
             {illustration('generate')}
-            <h3>Start and End</h3><p><strong>Start</strong> matches the previous clip. <strong>End</strong> matches the next clip.</p>
-            {illustration('references')}
             <div className="help-note">Generate disabled? Read the message under the button.</div>
+            <h3>Start and End</h3><p>Click <strong>Timeline</strong>. <strong>Start video</strong> matches the previous clip. <strong>End video</strong> matches the next clip.</p>
+            {illustration('references')}
+            <h3>More control</h3><ul className="help-tips"><li><strong>Enhance prompt:</strong> adds detail to what you wrote. Your original stays.</li><li><strong>Add image keyframe:</strong> show a picture the scene should reach at one moment.</li><li><strong>Add audio track:</strong> bring a recorded line or sound for the scene to follow.</li><li><strong>Upscale to 2K:</strong> sharpen a finished video.</li></ul>
+          </>}
+          {topic==='media'&&<>
+            <p>Sparko can also make pictures, speech, music and sound effects.</p>
+            {illustration('media')}
+            <h3>Make a picture</h3><p>Add an <strong>Image</strong> clip and select it. Pick a <strong>Model</strong>, describe the picture, then click <strong>Generate image</strong>.</p>
+            {illustration('image')}
+            <h3>Make speech, music or sound</h3><p>Add an <strong>Audio</strong> clip. Under <strong>Model</strong>, choose <strong>Dialogue</strong>, <strong>Music</strong> or <strong>Sound effects</strong>. Then click <strong>Generate audio</strong>.</p>
+            <h3>Characters</h3><p>A character keeps a look and a voice, so they stay the same in every clip.</p>
+            {illustration('characters')}
           </>}
           {topic==='templates'&&<>
             <p>Templates add a ready-made set of clips. Drag one onto the timeline.</p>
             {illustration('templates')}
             <h3>Save your own</h3><p>Select clips → right-click → <strong>Save as template</strong>.</p><p>For a group, right-click its title → <strong>Save group as template</strong>.</p>
+          </>}
+          {topic==='preview'&&<>
+            <p>Click <strong>Preview</strong> to watch your project the way viewers will. Click <strong>Edit</strong> to come back.</p>
+            {illustration('preview')}
+            <h3>Save your work</h3><p><strong>File → Save project</strong> makes one file that holds your project and all its media.</p>
+            {illustration('save')}
+            <div className="help-note">To continue later, choose <strong>Open project file</strong> on the start screen.</div>
           </>}
           {topic==='workspace'&&<>
             <p>Use <strong>Window</strong> to show panels. Drag their titles to move them.</p>

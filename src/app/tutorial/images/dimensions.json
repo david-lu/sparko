@@ -1,43 +1,55 @@
 {
   "import": {
-    "width": 1116,
-    "height": 500
+    "width": 2380,
+    "height": 830
   },
   "playhead": {
     "width": 1032,
     "height": 404
   },
   "cut": {
-    "width": 532,
-    "height": 300
+    "width": 604,
+    "height": 460
   },
   "split": {
-    "width": 1048,
+    "width": 1560,
     "height": 454
   },
   "add": {
-    "width": 1116,
+    "width": 1128,
     "height": 378
   },
+  "media": {
+    "width": 1178,
+    "height": 538
+  },
   "templates": {
-    "width": 1126,
-    "height": 628
+    "width": 1138,
+    "height": 788
   },
   "drop": {
-    "width": 1048,
+    "width": 1560,
     "height": 434
   },
   "inserted": {
     "width": 1768,
     "height": 364
   },
-  "references": {
-    "width": 1086,
-    "height": 266
-  },
   "generate": {
-    "width": 1086,
-    "height": 578
+    "width": 1130,
+    "height": 1282
+  },
+  "references": {
+    "width": 1860,
+    "height": 1924
+  },
+  "image": {
+    "width": 1138,
+    "height": 460
+  },
+  "characters": {
+    "width": 1090,
+    "height": 336
   },
   "save": {
     "width": 1000,
@@ -46,5 +58,9 @@
   "workspace": {
     "width": 1140,
     "height": 640
+  },
+  "preview": {
+    "width": 2560,
+    "height": 1520
   }
 }
