@@ -72,6 +72,18 @@ describe('model-specific image prompt enhancement', () => {
     await expect(enhance({ ...input(), projectInstructions: 'x'.repeat(4001) })).rejects.toThrow();
     expect(respond).not.toHaveBeenCalled();
   });
+  it.each([undefined, 'Make her smile.'])('passes selected characters’ looks and image numbers (edit: %s)', async editInstructions => {
+    const characters = [{ name: 'Mara', visualDescription: 'Red coat, short silver hair.', images: [1] }];
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt({ ...input(), editInstructions, characters });
+    const args = respond.mock.calls[0][0];
+    expect(JSON.parse(args.input[0].content[0].text).context.characters).toEqual(characters);
+    expect(args.instructions).toContain('The numbered images listed for a character show them');
+    expect(args.instructions).toContain('"Jeff eats a donut" becomes "An overweight Asian man with blue hair eats a donut"');
+    expect(args.instructions).toContain('Keep a name only for a widely known existing character or public figure from a household-name franchise');
+    respond.mockClear();
+    await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt({ ...input(), editInstructions });
+    expect(respond.mock.calls[0][0].instructions).not.toContain('context.characters');
+  });
   it.each(ASSET_MODELS.filter(m => m.kind === 'image'))('uses the official guide for $name', async model => {
     const result = await createProviders({ OPENAI_API_KEY: 'test' }).enhanceImagePrompt(input(model.id));
     expect(result).toEqual({ prompt, model: model.id, guideUrl: IMAGE_PROMPT_GUIDES[model.id].url });

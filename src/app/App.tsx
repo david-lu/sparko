@@ -47,6 +47,7 @@ import { formatShortcut, useShortcuts, type ShortcutId } from '../shared/shortcu
 import DropdownMenu from '../shared/DropdownMenu';
 import ModalBackdrop from '../shared/ModalBackdrop';
 import ToastStack from '../shared/ToastStack';
+import CharacterWorkspace, { CharacterWorkspaceContext, type CharacterView, type CharacterWorkspaceControls } from '../features/project/CharacterWorkspace';
 
 // Fast Refresh preserves useState, including instances with obsolete controller methods.
 // Reload saved project state when a controller changes during local development.
@@ -79,8 +80,14 @@ export default function App() {
   const [projects] = useState(() => new ProjectController(interstitials));
   const projectState = useSyncExternalStore(projects.subscribe, projects.getSnapshot);
   const [generationId, setGenerationId] = useState<string | null>(null);
-  useEffect(() => { setGenerationId(null); }, [projectState.activationRevision]);
-  const generationWorkspace = useMemo(() => createGenerationWorkspace(id => { controller.pause(); setGenerationId(id); }, () => setGenerationId(null)), [controller]);
+  // The Characters workspace and the generation editor each replace the player and timeline; opening one closes the other.
+  const [characterView, setCharacterView] = useState<CharacterView | null>(null);
+  useEffect(() => { setGenerationId(null); setCharacterView(null); }, [projectState.activationRevision]);
+  const generationWorkspace = useMemo(() => createGenerationWorkspace(id => { controller.pause(); setCharacterView(null); setGenerationId(id); }, () => setGenerationId(null)), [controller]);
+  const characterWorkspace = useMemo<CharacterWorkspaceControls>(() => ({ view: characterView,
+    open: id => { controller.pause(); generationWorkspace.close(); setCharacterView({ id, key: Date.now() }); },
+    close: () => setCharacterView(null),
+  }), [controller, generationWorkspace, characterView]);
   const storyGraph=projectState.project?.storyFlow;
   const generationItem = interstitialState.items.find(item => item.id === generationId);
   const generationNode = generationItem && storyGraph?.nodes.find(node => node.interstitialId === generationItem.id);
@@ -384,7 +391,7 @@ export default function App() {
           controller={controller} onAddInterstitial={addInterstitial} onSeek={time => controller.seek(time)} onError={setError} selection={null}
           onMoveInterstitial={moveInterstitial} onRemoveInterstitial={removeInterstitial} onSelectInterstitial={selectInterstitial}
           timelineHeight={actualTimelineHeight} maxTimelineHeight={maxTimelineHeight} onTimelineHeight={setTimelineHeight} />;
-  return <GenerationWorkspaceContext.Provider value={generationWorkspace}><div className={`app-shell${preview ? ' preview-mode' : ''}`} onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => { event.preventDefault(); if (preview) event.dataTransfer.dropEffect = 'none'; }} onDrop={event => { event.preventDefault(); if (preview) return; const files=Array.from(event.dataTransfer.files);if(!files.length)return;if(storyGraph&&files.every(file=>!/\.sparko$/i.test(file.name)))void storyEditor.importVideos(files);else openFile(files[0]); }}>
+  return <GenerationWorkspaceContext.Provider value={generationWorkspace}><CharacterWorkspaceContext.Provider value={characterWorkspace}><div className={`app-shell${preview ? ' preview-mode' : ''}`} onBlurCapture={() => projects.endHistoryGroup()} onDragOver={event => { event.preventDefault(); if (preview) event.dataTransfer.dropEffect = 'none'; }} onDrop={event => { event.preventDefault(); if (preview) return; const files=Array.from(event.dataTransfer.files);if(!files.length)return;if(storyGraph&&files.every(file=>!/\.sparko$/i.test(file.name)))void storyEditor.importVideos(files);else openFile(files[0]); }}>
     {!projectState.project ? <ProjectStart projects={projects} state={projectState} ready={startReady} error={visibleError} hasSampleProject={!!status?.defaultProject}
       onNewProject={() => void projects.newProject()} onOpenProject={() => void openProjectFile()}
       onOpenSampleProject={() => { if (status?.defaultProject) void projects.openSampleProject(status.defaultProject.url); }}
@@ -414,8 +421,9 @@ export default function App() {
     <main className="workspace">
       {visibleError && <div className="error-banner" role="alert"><span>{visibleError}</span><button className="icon-button small" aria-label="Dismiss error" onClick={() => { setError(''); controller.clearError(); interstitials.clearError(); projects.clearError(); }}><X size={16} /></button></div>}
       {projectState.busy && <div className="project-status" role="status"><span className="spinner" /><span>{projectState.message}{projectState.progress !== null ? ` · ${Math.round(projectState.progress * 100)}%` : ''}</span><button className="icon-button small" aria-label="Cancel project operation" onClick={() => projects.cancel()}><X size={14} /></button></div>}
-      <WorkspaceLockContext.Provider value={workspace.locked}>{workspace.freeDock && !preview && storyGraph && !generationItem ? <DockWorkspace locked={workspace.locked} items={{viewer: playerElement, timeline: storyCanvasElement, library: <StoryLibrary editor={storyEditor}/>, create: <StoryAddClips editor={storyEditor}/>, inspector: <StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>}}/> : <div className="workspace-grid" data-generation-editing={!!generationItem && !preview} inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
-        <Activity mode={generationItem && !preview ? 'hidden' : 'visible'}>{playerElement}</Activity>
+      <WorkspaceLockContext.Provider value={workspace.locked}>{workspace.freeDock && !preview && storyGraph && !generationItem && !characterView ? <DockWorkspace locked={workspace.locked} items={{viewer: playerElement, timeline: storyCanvasElement, library: <StoryLibrary editor={storyEditor}/>, create: <StoryAddClips editor={storyEditor}/>, inspector: <StoryInspector editor={storyEditor} engine={engine} info={info} status={status}/>}}/> : <div className="workspace-grid" data-generation-editing={(!!generationItem || !!characterView) && !preview} inert={projectState.busy} style={{ '--sidebar-width': `${actualSideWidth}px` } as CSSProperties}><section className="main-column" aria-label="Video player">
+        <Activity mode={(generationItem || characterView) && !preview ? 'hidden' : 'visible'}>{playerElement}</Activity>
+        {characterView && !generationItem && !preview && <CharacterWorkspace projects={projects} status={status} view={characterView} onSelect={id => setCharacterView({ id, key: Date.now() })} onClose={() => setCharacterView(null)}/>}
         {generationItem && !preview && <GenerationTimelineEditor key={generationItem.id} workspace selected={storyGenerationItem(generationItem, generationNode)}
           controller={interstitials} info={info} projects={projects} minDuration={minimumDuration('comfy-loop')} onPreviewPlay={() => controller.pause()}
           clipName={generationNode?.name} outputVolume={generationNode?.volume} onOutputVolume={generationNode ? volume => storyEditor.patch(generationNode.id, { volume: audioVolume(volume) }) : undefined}/>}
@@ -452,5 +460,5 @@ export default function App() {
       event.preventDefault(); sessionStorage.setItem('sparko:password', password); setLoginError('');
       void request('/api/session', { method: 'POST' }).then(() => { setLogin(false); setPassword(''); }).catch(err => { sessionStorage.removeItem('sparko:password'); setLoginError(err.message); });
     }}><label className="field">Workspace password<input type="password" autoFocus autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label><button className="button primary full-width" type="submit">Unlock</button></form>{loginError && <p className="inline-error" role="alert">{loginError}</p>}</div></ModalBackdrop>}
-  </div></GenerationWorkspaceContext.Provider>;
+  </div></CharacterWorkspaceContext.Provider></GenerationWorkspaceContext.Provider>;
 }

@@ -13,8 +13,11 @@ import { addPromptEnhancementRoutes } from './features/interstitials/prompt-enha
 import { addAssetGenerationRoutes } from './features/asset-generation/routes.js';
 import { createFalClient, type FalClient } from './features/asset-generation/fal.js';
 import { addImagePromptEnhancementRoutes } from './features/asset-generation/prompt-enhancement.js';
+import { addAudioPromptEnhancementRoutes } from './features/asset-generation/audio-prompt-enhancement.js';
+import { createElevenLabsClient, type ElevenLabsClient } from './features/asset-generation/elevenlabs.js';
+import { addElevenLabsRoutes } from './features/asset-generation/elevenlabs-routes.js';
 
-export async function createApp(options: { root?: string; providers?: Providers; fal?: FalClient } = {}) {
+export async function createApp(options: { root?: string; providers?: Providers; fal?: FalClient; elevenlabs?: ElevenLabsClient } = {}) {
   const root = options.root || process.cwd();
   const providers = options.providers || createProviders(process.env);
   const uploadDir = hosted ? path.join(os.tmpdir(), 'sparko-uploads') : path.join(root, '.data', 'uploads');
@@ -24,6 +27,7 @@ export async function createApp(options: { root?: string; providers?: Providers;
   app.use(protectRequests);
   const fal = options.fal ?? (process.env.SPARKO_TEST_MODE !== '1' && process.env.FAL_KEY ? createFalClient(process.env.FAL_KEY) : undefined);
   addAssetGenerationRoutes(app, fal);
+  const elevenlabs = options.elevenlabs ?? (process.env.SPARKO_TEST_MODE !== '1' && process.env.ELEVENLABS_API_KEY ? createElevenLabsClient(process.env.ELEVENLABS_API_KEY) : undefined);
   // Up to nine timed image previews alongside the existing scene references.
   app.use('/api/interstitials/enhance-prompt', express.json({ limit: '2mb' }));
   app.use(express.json({ limit: '1mb' }));
@@ -37,7 +41,7 @@ export async function createApp(options: { root?: string; providers?: Providers;
     const info = await stat(defaultPath).catch(() => null);
     const sampleProject = await stat(sampleProjectPath).catch(() => null);
     res.json({ uploadMode: hosted ? 'blob' : 'local', requiresPassword: !!process.env.APP_PASSWORD,
-      providers: { ...providers.configured, fal: !!fal }, models: providers.models,
+      providers: { ...providers.configured, fal: !!fal, elevenlabs: !!elevenlabs }, models: providers.models,
       defaultVideo: { name: 'sample.mp4', url: hosted ? remoteDefault || '' : info ? '/media/sample.mp4' : remoteDefault || '', size: info?.size || 0 },
       defaultProject: hosted ? remoteProject ? { url: remoteProject } : null : sampleProject ? { url: '/media/sample.sparko' } : remoteProject ? { url: remoteProject } : null });
   });
@@ -55,6 +59,8 @@ export async function createApp(options: { root?: string; providers?: Providers;
   addVoiceRoutes(app, providers);
   addPromptEnhancementRoutes(app, providers);
   addImagePromptEnhancementRoutes(app, providers);
+  addAudioPromptEnhancementRoutes(app, providers);
+  addElevenLabsRoutes(app, elevenlabs);
   addComfyRoutes(app, providers, receive);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Unknown API route.' }));
   return app;

@@ -54,6 +54,14 @@ describe('project edit history', () => {
     history.commit('undo');
     expect(history.target('redo')?.promptInstructions).toBe('Warm light');
   });
+  it('records character edits as one undoable step', () => {
+    const history = new ProjectHistory(), start = project(), next = { ...start, characters: [{ id: crypto.randomUUID(), name: 'Mara' }] };
+    history.record(start, next, 0);
+    expect(history.undoLabel).toBe('Edit characters');
+    expect(history.target('undo')?.characters).toBeUndefined();
+    history.commit('undo');
+    expect(history.target('redo')?.characters).toEqual(next.characters);
+  });
   it('groups consecutive typing, round-trips it, and starts a separate group after undo', () => {
     const history = new ProjectHistory(), start = project(), first = prompt(start, 'H'), next = prompt(first, 'Hello');
     history.record(start, first, 0); history.record(first, next, 100);

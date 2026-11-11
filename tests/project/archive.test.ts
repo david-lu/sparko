@@ -37,6 +37,16 @@ describe('portable project archives', () => {
     expect(result.project.promptInstructions).toBe(promptInstructions);
     await expect(packProject({ ...project, promptInstructions: 'x'.repeat(4001) }, media, signal(), progress)).rejects.toThrow();
   });
+  it('round-trips characters as archive version 9 and keeps older versions for projects without them', async () => {
+    const version = async (blob: Blob) => { const reader = new ZipReader(new BlobReader(blob), { useWebWorkers: false }); const entry = (await reader.getEntries()).find(e => e.filename === 'project.json')!;
+      const manifest = JSON.parse(entry.directory ? '{}' : await entry.getData(new TextWriter())); await reader.close(); return manifest.version as number; };
+    const characters = [{ id: crypto.randomUUID(), name: 'Mara', voiceDescription: 'Low and husky.', voice: { id: 'VoiceMara0001', name: 'Mara' } }];
+    const packed = await packProject({ ...project, characters }, media, signal(), progress);
+    expect(await version(packed)).toBe(9);
+    expect((await unpackProject(packed, signal(), progress)).project.characters).toEqual(characters);
+    expect(await version(await packProject(project, media, signal(), progress))).toBeLessThan(9);
+    await expect(packProject({ ...project, characters: [...characters, { ...characters[0], id: crypto.randomUUID(), name: 'MARA' }] }, media, signal(), progress)).rejects.toThrow();
+  });
   it('preserves reference analysis preferences without marking a render as changed', async () => {
     const snapshot = structuredClone(project), item = snapshot.interstitials[0];
     item.analyzeReferences = false; item.generationSettings = interstitialSettings(item); item.analyzeReferences = true;

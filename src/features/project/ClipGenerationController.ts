@@ -1,7 +1,8 @@
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { assetPlacement } from './migrateClipMedia';
 import { projectLoraAddress, projectLoraStrength } from '../../../shared/loras';
-import { generationBusy, validateAssetSettings, type AssetGeneration } from '../../../shared/asset-generation';
+import { LEGACY_AUDIO_REPLACEMENTS, assetModel, audioModelSettings, generationBusy, validateAssetSettings, withCharacterReferences, type AssetGeneration, type AssetSettings } from '../../../shared/asset-generation';
+import { castDialogueVoices } from '../../../shared/dialogue-script';
 import { request, appHeaders } from '../../shared/api';
 import { imageDataUrl } from '../interstitials/image-references';
 import { assets } from './assets';
@@ -33,18 +34,35 @@ export class ClipGenerationController {
         this.projects.editAssets(p => ({ ...p, clipGenerations: p.clipGenerations?.map(g => g.settings.count === 1 ? g : { ...g, settings: { ...g.settings, count: 1 } }) }), false);
         return;
       }
+      // Retired fal audio models: drafts move to ElevenLabs; submitted jobs and saved versions keep their model.
+      if (project?.clipGenerations?.some(g => LEGACY_AUDIO_REPLACEMENTS[g.settings.model])) {
+        this.projects.editAssets(p => ({ ...p, clipGenerations: p.clipGenerations?.map(g => LEGACY_AUDIO_REPLACEMENTS[g.settings.model]
+          ? { ...g, settings: audioModelSettings(g.settings, LEGACY_AUDIO_REPLACEMENTS[g.settings.model]) } : g) }), false);
+        return;
+      }
       for (const g of project?.clipGenerations ?? []) if (generationBusy(g) && g.requestId && g.submitted && !this.tasks.has(`${project!.id}:${g.id}`)) void this.resume(g.id);
     };
     const unsubscribe = this.projects.subscribe(check); check();
     return () => { unsubscribe(); this.promptEnhancements.dispose(); for (const task of this.tasks.values()) task.abort(); this.tasks.clear(); };
   }
   async generate(id: string) {
-    const g = this.get(id), projectId = this.projects.getSnapshot().project?.id;
+    const g = this.get(id), project = this.projects.getSnapshot().project, projectId = project?.id;
     if (!g || !projectId || generationBusy(g)) return;
-    const settings = { ...g.settings, count: 1 }, error = validateAssetSettings(settings);
+    const settings = { ...g.settings, count: 1 }, model = assetModel(settings.model);
+    // Dialogue records each speaker's voice at submission, so every version keeps the cast it was made with.
+    const cast = model?.audioType === 'dialogue' ? castDialogueVoices(settings.characterIds, project.characters) : undefined;
+    // Selected characters' images join the submitted references; the draft keeps only the selection.
+    const resolved = withCharacterReferences(settings, project.characters), error = validateAssetSettings(resolved) ?? cast?.error;
     if (error) { this.edit(id, { error }, false); return; }
-    const key = `${projectId}:${id}`, task = new AbortController(), submitted = structuredClone(settings);
+    const key = `${projectId}:${id}`, task = new AbortController(), submitted: AssetSettings = structuredClone({ ...resolved, ...(cast?.voices ? { dialogueVoices: cast.voices } : {}) });
     this.tasks.set(key, task);
+    if (model?.provider === 'elevenlabs') {
+      this.edit(id, { phase: 'rendering', error: undefined, settings, submitted, requestId: undefined }, false);
+      try { await this.generateDirect(id, projectId, task, submitted); }
+      catch (e) { if (!task.signal.aborted && this.projects.getSnapshot().project?.id === projectId && this.get(id)) this.edit(id, { phase: 'error', error: e instanceof Error ? e.message : 'Generation failed.' }, false); }
+      finally { if (this.tasks.get(key) === task) this.tasks.delete(key); }
+      return;
+    }
     this.edit(id, { phase: 'preparing', error: undefined, settings, submitted, requestId: undefined }, false);
     try {
       const inputs = [];
@@ -92,26 +110,44 @@ export class ClipGenerationController {
       if (this.projects.getSnapshot().project?.id !== projectId || task.signal.aborted) return;
       if (status.phase === 'ready') {
         this.edit(id, { phase: 'loading' }, false);
-        const added: LibraryAsset[] = [], versions: AssetGeneration['versions'] = [];
+        const blobs: Blob[] = [];
         for (let i = 0; i < (status.count ?? 1); i++) {
           const response = await fetch(`${base}/content/${i}`, { headers: appHeaders(), signal: task.signal });
           if (!response.ok) throw new Error('Unable to download output. Use Check result to try again.');
-          const blob = await response.blob(), kind = g.kind;
-          if (!blob.size || !blob.type.startsWith(`${kind}/`)) throw new Error('Generated media has an unexpected format.');
-          const metadata = await inspectAsset(blob, kind), name = `${g.name} · v${g.versions.length + i + 1}`;
-          const asset = await assets.save(blob, name, task.signal); await assets.open(asset.id);
-          added.push({ assetId: asset.id, name, kind: kind === 'video' ? 'generated' : kind, generationId: id, generation:{provider:'fal',settings:structuredClone(g.submitted),createdAt:Date.now()}, ...metadata });
-          versions.push({ assetId: asset.id, name, createdAt: Date.now(), settings: g.submitted });
+          blobs.push(await response.blob());
         }
-        task.signal.throwIfAborted(); if (this.projects.getSnapshot().project?.id !== projectId) return;
-        this.projects.editAssets(project => ({ ...project, library: [...project.library ?? [], ...added], storyFlow:project.storyFlow?{...project.storyFlow,nodes:project.storyFlow.nodes.map(n=>n.generationId===id&&added[0]?{...n,source:assetPlacement(added[0],n.source?(n.source.outFrame-n.source.inFrame)/TIMELINE_FPS:n.duration),trim:undefined}:n)}:undefined, clipGenerations: project.clipGenerations?.map(item => item.id === id ? {
-          ...item, phase: 'ready', error: undefined, versions: [...item.versions, ...versions], selectedAssetId: versions[0]?.assetId,
-        } : item) }), false);
+        await this.store(id, projectId, task, g, g.submitted, blobs);
         return;
       }
       this.edit(id, { phase: status.phase }, false);
       await new Promise<void>(resolve => { const finish = () => { clearTimeout(timer); task.signal.removeEventListener('abort', finish); resolve(); }; const timer = window.setTimeout(finish, 2000); task.signal.addEventListener('abort', finish, { once: true }); });
     }
+  }
+  /** ElevenLabs answers synchronously; the server streams the audio back. There is no job to resume. */
+  private async generateDirect(id: string, projectId: string, task: AbortController, submitted: AssetSettings) {
+    const response = await fetch('/api/elevenlabs/audio', { method: 'POST', signal: task.signal,
+      headers: { ...appHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: submitted }) });
+    if (response.status === 401) window.dispatchEvent(new Event('sparko:auth-required'));
+    if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || `Generation failed (${response.status}).`); }
+    const blob = await response.blob(), g = this.get(id);
+    if (!g || this.projects.getSnapshot().project?.id !== projectId) return;
+    this.edit(id, { phase: 'loading' }, false);
+    await this.store(id, projectId, task, g, submitted, [blob]);
+  }
+  private async store(id: string, projectId: string, task: AbortController, g: AssetGeneration, submitted: AssetSettings, blobs: Blob[]) {
+    const added: LibraryAsset[] = [], versions: AssetGeneration['versions'] = [];
+    for (const [i, blob] of blobs.entries()) {
+      const kind = g.kind;
+      if (!blob.size || !blob.type.startsWith(`${kind}/`)) throw new Error('Generated media has an unexpected format.');
+      const metadata = await inspectAsset(blob, kind), name = `${g.name} · v${g.versions.length + i + 1}`;
+      const asset = await assets.save(blob, name, task.signal); await assets.open(asset.id);
+      added.push({ assetId: asset.id, name, kind: kind === 'video' ? 'generated' : kind, generationId: id, generation:{provider:'fal',settings:structuredClone(submitted),createdAt:Date.now()}, ...metadata });
+      versions.push({ assetId: asset.id, name, createdAt: Date.now(), settings: submitted });
+    }
+    task.signal.throwIfAborted(); if (this.projects.getSnapshot().project?.id !== projectId) return;
+    this.projects.editAssets(project => ({ ...project, library: [...project.library ?? [], ...added], storyFlow:project.storyFlow?{...project.storyFlow,nodes:project.storyFlow.nodes.map(n=>n.generationId===id&&added[0]?{...n,source:assetPlacement(added[0],n.source?(n.source.outFrame-n.source.inFrame)/TIMELINE_FPS:n.duration),trim:undefined}:n)}:undefined, clipGenerations: project.clipGenerations?.map(item => item.id === id ? {
+      ...item, phase: 'ready', error: undefined, versions: [...item.versions, ...versions], selectedAssetId: versions[0]?.assetId,
+    } : item) }), false);
   }
   async cancel(id: string) {
     const g = this.get(id), projectId = this.projects.getSnapshot().project?.id; if (!g || !projectId) return;

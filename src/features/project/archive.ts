@@ -2,6 +2,7 @@ import { enhancedPromptSettings } from '../../../shared/prompt-versions';
 import { generationSeedSchema } from '../../../shared/generation-seed';
 import { loraSettings, projectLorasSchema } from '../../../shared/loras';
 import { PROMPT_INSTRUCTIONS_MAX_LENGTH } from '../../../shared/prompt-instructions';
+import { projectCharactersSchema } from '../../../shared/characters';
 import { BlobReader, BlobWriter, TextReader, TextWriter, ZipReader, ZipWriter } from '@zip.js/zip.js';
 import { z } from 'zod';
 import { generationMethods, generationResolutions, interstitialSettings, maskInjections } from '../../../shared/interstitials';
@@ -13,7 +14,7 @@ import { clipMetadataSchema, clipOriginSchema } from '../../../shared/clip-metad
 import { imageReferencesSchema, imageReferenceIndexSchema } from '../../../shared/image-references';
 import { maskCurveSchema } from '../../../shared/mask-curves';
 import { videoReferenceSettings } from '../../../shared/video-references';
-import { assetGenerationSchema, assetSettingsSchema } from '../../../shared/asset-generation';
+import { assetGenerationSchema, assetModel, assetSettingsSchema } from '../../../shared/asset-generation';
 import { videoKeyframesSchema } from '../../../shared/video-keyframes';
 import { legacyAudioLayersSchema, withoutAudioLayers } from './legacyAudioLayers';
 import { audioTracksSchema, type AudioTrack } from '../../../shared/audio-tracks';
@@ -78,6 +79,7 @@ const projectSchema = z.object({
     }), 'Invalid folder hierarchy.').optional(),
   loras: projectLorasSchema.optional(),
   promptInstructions: z.string().max(PROMPT_INSTRUCTIONS_MAX_LENGTH).optional(),
+  characters: projectCharactersSchema.optional(),
   assetAliases: z.record(z.uuid(), z.uuid()).optional(),
   mediaModelVersion: z.literal(1).optional(),
   deletedAssetIds: z.array(z.uuid()).max(100000).optional(),
@@ -114,7 +116,11 @@ const projectSchema = z.object({
   .refine(project=>!project.mediaModelVersion||project.storyFlow?.nodes.every(n=>!n.generationId||project.clipGenerations?.some(g=>g.id===n.generationId)),'A clip references missing generation settings.')
   .refine(project=>!project.mediaModelVersion||(project.clipGenerations??[]).every(g=>project.storyFlow?.nodes.filter(n=>n.generationId===g.id).length===1),'Generation settings must belong to exactly one timeline clip.')
   .refine(project=>!!project.source.assetId||!!project.storyFlow&&!project.callResponse&&!project.callResponses?.length,'A legacy project is missing its source video.');
-const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8)]), project: projectSchema,
+/** Characters and ElevenLabs recipes need version 9, so older builds refuse the file rather than dropping or rejecting them confusingly. */
+const usesVersion9 = (project: Project) => !!project.characters?.length || [...project.clipGenerations ?? [], ...project.storyFlow?.templates.flatMap(t => t.generations ?? []) ?? []]
+  .flatMap(g => [g.settings, g.submitted, ...g.versions.map(v => v.settings)]).concat(project.library?.map(a => a.generation?.provider === 'fal' ? a.generation.settings : undefined) ?? [])
+  .some(settings => settings && assetModel(settings.model)?.provider === 'elevenlabs');
+const manifestSchema = z.object({ format: z.literal('sparko-project'), version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9)]), project: projectSchema,
   assets: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(1000), mime: z.string().max(200), size: number.int().positive().max(MAX_BYTES) })).max(2000),
 });
 type Progress = (message: string, fraction: number) => void;
@@ -125,7 +131,7 @@ const hasAudioTracks = (project: Project) => [...project.interstitials.flatMap(i
 export async function packProject(project: Project, assets: Asset[], signal: AbortSignal, progress: Progress) {
   assets = assets.filter(asset => !project.deletedAssetIds?.includes(asset.id));
   const supplied = new Set(assets.map(asset => asset.id));
-  const manifest = manifestSchema.parse({ format: 'sparko-project', version: project.storyFlow?.comments?.length ? 8 : hasAudioTracks(project) ? 7 : project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
+  const manifest = manifestSchema.parse({ format: 'sparko-project', version: usesVersion9(project) ? 9 : project.storyFlow?.comments?.length ? 8 : hasAudioTracks(project) ? 7 : project.mediaModelVersion ? 5 : project.assetGenerations?.length || project.clipGenerations?.length || project.libraryFolders?.length || project.library?.some(a => a.kind === 'image' || a.kind === 'audio') ? 4 : project.storyFlow ? 3 : project.callResponse ? 2 : 1, project: {
     ...project,
     audioLayers: undefined,
     assetAliases: project.assetAliases ? Object.fromEntries(Object.entries(project.assetAliases).filter(([, id]) => supplied.has(id))) : undefined,
@@ -169,7 +175,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     const entry = entries.find(entry => entry.filename === 'project.json');
     if (!entry || entry.directory || entry.uncompressedSize > MAX_MANIFEST) throw new Error('The archive is missing a valid project.json manifest.');
     const raw = JSON.parse(await entry.getData(new TextWriter(), { signal, checkSignature: true }));
-    if (![1, 2, 3, 4, 5, 6, 7, 8].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
+    if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(raw.version) || raw.format !== 'sparko-project') throw new Error('This project format or version is not supported.');
     const parsed = manifestSchema.safeParse(raw);
     if (!parsed.success) throw new Error(`Invalid project metadata: ${parsed.error.issues[0].message}`);
     const { assets: descriptions } = parsed.data, project = withoutAudioLayers(parsed.data.project);
@@ -216,6 +222,7 @@ export async function unpackProject(file: Blob, signal: AbortSignal, progress: P
     return { project: {
       ...project, id: `project:${crypto.randomUUID()}`, updatedAt: Date.now(), assetAliases,
       deletedAssetIds: project.deletedAssetIds?.map(id => remap.get(id)!),
+      characters: project.characters?.map(character => character.images ? { ...character, images: character.images.map(image => ({ ...image, assetId: remap.get(image.assetId) ?? image.assetId })) } : character),
       library: project.library?.map(item => ({ ...item, generation:item.generation?.provider==='comfy'?{...item.generation,result:remapResult(item.generation.result),settings:item.generation.settings?remapSettings(item.generation.settings):undefined}:item.generation?{...item.generation,settings:remapAssetSettings(item.generation.settings)}:undefined, assetId: remap.get(item.assetId)!, originalAssetId: item.originalAssetId ? remap.get(item.originalAssetId)! : undefined })),
       assetGenerations:project.assetGenerations?.map(remapGeneration),
       clipGenerations: project.clipGenerations?.map(g => ({ ...g, settings: remapAssetSettings(g.settings), submitted: g.submitted ? remapAssetSettings(g.submitted) : undefined,

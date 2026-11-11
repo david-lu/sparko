@@ -10,7 +10,7 @@ export class HttpError extends Error {
 
 export function requireProvider(configured: AppStatus['providers'], provider: keyof AppStatus['providers']): RequestHandler {
   return (_req, _res, next) => {
-    if (!configured[provider]) next(new HttpError(503, ({ openai: 'OPENAI_API_KEY', gemini: 'GEMINI_KEY', comfy: 'COMFY_CLOUD_API_KEY', fal: 'FAL_KEY', hume: 'HUME_API_KEY' } as const)[provider] + ' is missing. Add it to .env and restart the server.'));
+    if (!configured[provider]) next(new HttpError(503, ({ openai: 'OPENAI_API_KEY', gemini: 'GEMINI_KEY', comfy: 'COMFY_CLOUD_API_KEY', fal: 'FAL_KEY', elevenlabs: 'ELEVENLABS_API_KEY', hume: 'HUME_API_KEY' } as const)[provider] + ' is missing. Add it to .env and restart the server.'));
     else next();
   };
 }

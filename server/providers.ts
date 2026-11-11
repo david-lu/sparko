@@ -7,6 +7,7 @@ import { createVoiceChoiceProvider, type VoiceChoiceProvider } from './features/
 import { createComfyProvider, type ComfyProvider } from './features/comfy/provider.js';
 import { createPromptEnhancer, type PromptEnhancementProvider } from './features/interstitials/prompt-enhancement.js';
 import { createImagePromptEnhancer, type ImagePromptEnhancementProvider } from './features/asset-generation/prompt-enhancement.js';
+import { createAudioPromptEnhancer, createVoiceDescriptionEnhancer, type AudioPromptEnhancementProvider, type VoiceDescriptionEnhancementProvider } from './features/asset-generation/audio-prompt-enhancement.js';
 
 export interface Providers extends AnalysisProviders {
   configured: AppStatus['providers'];
@@ -16,6 +17,8 @@ export interface Providers extends AnalysisProviders {
   comfy?: ComfyProvider;
   enhancePrompt: PromptEnhancementProvider;
   enhanceImagePrompt: ImagePromptEnhancementProvider;
+  enhanceAudioPrompt: AudioPromptEnhancementProvider;
+  enhanceVoiceDescription: VoiceDescriptionEnhancementProvider;
 }
 
 export function createProviders(env: NodeJS.ProcessEnv): Providers {
@@ -29,5 +32,7 @@ export function createProviders(env: NodeJS.ProcessEnv): Providers {
     comfy: createComfyProvider(env),
     enhancePrompt: createPromptEnhancer(clients),
     enhanceImagePrompt: createImagePromptEnhancer(clients),
+    enhanceAudioPrompt: createAudioPromptEnhancer(clients),
+    enhanceVoiceDescription: createVoiceDescriptionEnhancer(clients),
   };
 }

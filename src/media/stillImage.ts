@@ -1,6 +1,8 @@
 import type { MediaSource } from './media';
 
 export const DEFAULT_IMAGE_DURATION = 1;
+/** New image generation clips start as one-second placeholders, independent of the import default. */
+export const GENERATED_IMAGE_DURATION = 1;
 
 /** Decode once, including only the first frame of animated image formats. */
 export async function loadStillImage(source: MediaSource, signal?: AbortSignal): Promise<ImageBitmap> {

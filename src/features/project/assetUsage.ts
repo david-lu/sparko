@@ -62,6 +62,7 @@ export function assetUsage(project: Project, ids: string[]): AssetUse[] {
     }
   }
   for (const flow of project.callResponses ?? (project.callResponse ? [project.callResponse] : [])) for (const scene of flow.scenes) add(scene.clip.assetId, scene.label, 'Timeline footage');
+  for (const character of project.characters ?? []) for (const image of character.images ?? []) add(image.assetId, character.name, 'Character reference image');
   add(project.subtitle?.assetId, 'Project subtitles', 'Subtitle track');
   add(project.source.originalAssetId, 'Project source', 'Original playback source');
   if (!uses.length) add(project.source.assetId, 'Project source', 'Playback source');

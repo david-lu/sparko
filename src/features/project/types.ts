@@ -2,6 +2,7 @@ import { referenceClips } from '../../../shared/reference-clips';
 import { videoAssets } from '../../../shared/video-references';
 import { audioTrackAssetIds } from '../../../shared/audio-tracks';
 import type { ProjectLora } from '../../../shared/loras';
+import { characterImageAssetIds, type ProjectCharacter } from '../../../shared/characters';
 import type { CaptionResult, Provider, Slice } from '../../../shared/contracts';
 import type { Interstitial, InterstitialSettings, InterstitialResult } from '../../../shared/interstitials';
 import type { CallResponseFlow } from '../call-response/model';
@@ -10,6 +11,7 @@ import type { AssetGeneration, AssetSettings } from '../../../shared/asset-gener
 
 export type Asset = { id: string; name: string; blob: Blob };
 export type MediaGeneration = { provider: 'comfy'; settings?: InterstitialSettings; result: InterstitialResult }
+  // 'fal' tags every Library generation recipe, including ElevenLabs audio; settings.model names the actual provider.
   | { provider: 'fal'; settings: AssetSettings; createdAt: number };
 export type LibraryAsset = { assetId: string; originalAssetId?: string; normalizedFps?: number; name: string; kind: 'video' | 'generated' | 'image' | 'audio'; folderId?: string; generationId?: string; generation?: MediaGeneration; width?: number; height?: number; duration?: number; inFrame?: number; outFrame?: number;
   /** Read only when migrating projects created before clip-owned playback settings. */
@@ -37,6 +39,8 @@ export type Project = {
   loras?: ProjectLora[];
   /** Raw text as typed; applied to every prompt enhancement and AI edit in the project. */
   promptInstructions?: string;
+  /** Cast for generated dialogue: names, how they sound and their ElevenLabs voices. */
+  characters?: ProjectCharacter[];
   subtitle: { name: string; assetId: string } | null;
   analysis: AnalysisState;
 };
@@ -44,7 +48,7 @@ export const emptyAnalysis = (): AnalysisState => ({ slice: { start: 0, end: 10 
 export const projectFlows = (project?: Pick<Project, 'callResponse' | 'callResponses'> | null) => project?.callResponses ?? (project?.callResponse ? [project.callResponse] : []);
 export const activeFlows = (project?: Project | null) => projectFlows(project).filter(flow => project?.interstitials.find(item => item.id === flow.interstitial.id)?.kind !== 'regular');
 export const withFlows = (project: Project, callResponses: CallResponseFlow[]): Project => ({ ...project, callResponses, callResponse: callResponses[0] });
-export const assetIds = (project: Project) => [...new Set([project.source.assetId, project.source.originalAssetId, project.subtitle?.assetId,
+export const assetIds = (project: Project) => [...new Set([project.source.assetId, project.source.originalAssetId, project.subtitle?.assetId, ...characterImageAssetIds(project.characters),
   ...[...project.clipGenerations??[],...project.assetGenerations??[],...project.storyFlow?.templates.flatMap(t=>t.generations??[])??[]].flatMap(g => [g.selectedAssetId, ...g.versions.flatMap(v => [v.assetId, ...v.settings.references.map(r => r.assetId)]), ...g.settings.references.map(r => r.assetId), ...(g.submitted?.references.map(r => r.assetId) ?? [])]),
   ...project.storyFlow?.templates.flatMap(template => Object.values(template.settings).flatMap(settings => [...(settings.timelineVideos ?? []).flatMap(v => v.video ? [v.video.assetId] : []), ...videoAssets(settings, 'start').map(r => r.assetId), ...videoAssets(settings, 'end').map(r => r.assetId), ...settings.imageReferences?.map(image => image.assetId) ?? [], ...settings.keyframes?.flatMap(keyframe => keyframe.image ? [keyframe.image.assetId] : []) ?? [], ...audioTrackAssetIds(settings.inputAudioTracks), ...audioTrackAssetIds(settings.generatedAudioTracks)])) ?? [],
   ...(project.library ?? []).flatMap(item => [item.assetId, item.originalAssetId]),

@@ -3,7 +3,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Combine, Copy, Flag, Hand, GripVertical, ImageOff, LayoutTemplate, Maximize, MessageSquare, MessageSquarePlus, Minus, Paintbrush, Palette, Plus, Scissors, Trash2, Unplug, Upload } from 'lucide-react';
 import { videoAssets } from '../../../shared/video-references';
-import { DEFAULT_IMAGE_DURATION } from '../../media/stillImage';
+import { DEFAULT_IMAGE_DURATION, GENERATED_IMAGE_DURATION } from '../../media/stillImage';
 import { TIMELINE_FPS } from '../../../shared/constants';
 import { isGenerating, playableResult } from '../../../shared/interstitials';
 import { formatTime } from '../../../shared/contracts';
@@ -101,7 +101,7 @@ export default function StoryCanvas({editor,flow,session,height,maxHeight,onHeig
   },[libraryDrag,graph.templates]);
   const dragPreview=useMemo(()=>{
     if(!libraryDrag)return [];
-    if('mediaKind' in libraryDrag)return [{id:'draft',name:libraryDrag.mediaKind==='image'?'Image':libraryDrag.mediaKind==='video'?'Video':'Audio',kind:'source',x:0,y:0,duration:libraryDrag.mediaKind==='image'?DEFAULT_IMAGE_DURATION:4,color:'gray' as const}];
+    if('mediaKind' in libraryDrag)return [{id:'draft',name:libraryDrag.mediaKind==='image'?'Image':libraryDrag.mediaKind==='video'?'Video':'Audio',kind:'source',x:0,y:0,duration:libraryDrag.mediaKind==='image'?GENERATED_IMAGE_DURATION:4,color:'gray' as const}];
     if('kind' in libraryDrag){const {node,item}=createNode(libraryDrag.kind);return [{...node,x:0,y:0,duration:nodeDuration(node,[item])}];}
     if('assetId' in libraryDrag){const asset=library?.find(a=>a.assetId===libraryDrag.assetId);return asset && (asset.duration || asset.kind === 'image')?[{id:asset.assetId,name:asset.name,kind:'source',color:'gray' as const,x:0,y:0,duration:((asset.outFrame??(asset.duration??DEFAULT_IMAGE_DURATION)*TIMELINE_FPS)-(asset.inFrame??0))/TIMELINE_FPS}]:[];}
     return templatePreview?.graph.nodes.map(n=>({...n,duration:nodeDuration(n,templatePreview.items)}))??[];

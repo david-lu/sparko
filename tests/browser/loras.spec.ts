@@ -15,7 +15,7 @@ async function addLora(page: Page) {
   const dialog = page.getByRole('dialog', { name: 'Add LoRA', exact: true });
   await dialog.getByRole('combobox', { name: 'Model', exact: true }).click();
   await expect(dialog.getByRole('option', { name: /Nano Banana 2/ })).toBeDisabled();
-  await expect(dialog.getByRole('option', { name: /Sound Effects/ })).toBeDisabled();
+  await expect(dialog.getByRole('option', { name: /Sound effects · ElevenLabs/ })).toBeDisabled();
   await dialog.getByRole('option', { name: /^H3/ }).click();
   await dialog.getByLabel('Comfy Cloud model address', { exact: true }).fill(filename);
   return dialog;

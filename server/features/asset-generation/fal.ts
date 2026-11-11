@@ -6,6 +6,7 @@ export type FalInput = { kind: MediaKind; data: string };
 export function falPayload(settings: AssetSettings, references: FalInput[]) {
   const error = validateAssetSettings(settings); if (error) throw new HttpError(400, error);
   const model = assetModel(settings.model)!;
+  if (model.provider !== 'fal' || model.kind !== 'image') throw new HttpError(400, `${model.name} is not generated through fal.`);
   const images = references.filter(r => r.kind === 'image').map(r => r.data);
   const input: Record<string, unknown> = { prompt: generationPrompt(settings) };
   const [w, h] = settings.aspectRatio.split(':').map(Number), edge = settings.resolution === '4K' ? 4096 : settings.resolution === '2K' ? 2048 : 1024;
@@ -16,11 +17,7 @@ export function falPayload(settings: AssetSettings, references: FalInput[]) {
   } else if (model.id === 'flux-2-pro' || model.id === 'flux-2-max') Object.assign(input, { image_size, output_format: 'png' });
   else if (model.id === 'seedream-4.5') Object.assign(input, { image_size, num_images: 1, max_images: 1 });
   else if (model.id === 'ideogram-v3') Object.assign(input, { image_size: ({ '1:1': 'square_hd', '16:9': 'landscape_16_9', '9:16': 'portrait_16_9', '4:3': 'landscape_4_3', '3:4': 'portrait_4_3' } as const)[settings.aspectRatio], num_images: 1, rendering_speed: 'QUALITY', enable_prompt_expansion: false });
-  else if (model.id === 'stable-audio-2.5') {
-    const audio = references.find(r => r.kind === 'audio');
-    Object.assign(input, audio ? { audio_url: audio.data, total_seconds: settings.duration } : { seconds_total: settings.duration });
-  } else { delete input.prompt; Object.assign(input, { text: generationPrompt(settings), duration_seconds: settings.duration }); }
-  if (model.kind === 'image' && images.length) input.image_urls = images;
+  if (images.length) input.image_urls = images;
   return { endpoint: references.length && model.editEndpoint ? model.editEndpoint : model.endpoint, input };
 }
 export function falRequestPath(modelId: string, requestId: string) {
